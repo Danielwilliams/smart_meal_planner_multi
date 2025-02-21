@@ -1,0 +1,691 @@
+import json
+import time
+import re
+from fastapi import APIRouter, HTTPException, Query, Body
+import openai
+from psycopg2.extras import RealDictCursor
+from ..db import get_db_connection
+from ..config import OPENAI_API_KEY
+from ..models.user import GenerateMealPlanRequest
+import logging
+from ..utils.grocery_aggregator import aggregate_grocery_list
+from ..integration.kroger import add_to_kroger_cart
+from ..integration.walmart import add_to_cart as add_to_walmart_cart
+
+# Enhanced logging setup
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/menu", tags=["Menu"])
+
+# OpenAI initialization with error handling
+if not OPENAI_API_KEY:
+    logger.error("OPENAI_API_KEY not found in environment variables")
+else:
+    try:
+        openai.api_key = OPENAI_API_KEY
+        logger.info("OpenAI API key configured successfully")
+    except Exception as e:
+        logger.error(f"Failed to configure OpenAI API key: {str(e)}")
+
+def merge_preference(db_value, req_value, default=None):
+    """Helper function to merge preferences with precedence to request parameters"""
+    return req_value if req_value is not None else (db_value or default)
+
+def extract_meal_times(user_row, req_meal_times):
+    """Helper function to extract meal times from user preferences"""
+    if req_meal_times:
+        return req_meal_times
+    if user_row and 'meal_times' in user_row:
+        return [meal for meal, enabled in user_row['meal_times'].items() 
+                if enabled and meal != 'snacks']
+    return ["breakfast", "lunch", "dinner"]
+
+def process_dietary_restrictions(user_row, req_preferences):
+    """Helper function to process dietary restrictions"""
+    restrictions = []
+    if user_row and user_row.get("dietary_restrictions"):
+        restrictions.extend(user_row["dietary_restrictions"].split(','))
+    if req_preferences:
+        restrictions.extend(req_preferences)
+    return list(set(filter(bool, restrictions)))
+
+def process_disliked_ingredients(user_row, req_dislikes):
+    """Helper function to process disliked ingredients"""
+    dislikes = []
+    if user_row and user_row.get("disliked_ingredients"):
+        dislikes.extend(user_row["disliked_ingredients"].split(','))
+    if req_dislikes:
+        dislikes.extend(req_dislikes)
+    return list(set(filter(bool, dislikes)))
+
+def format_appliances_string(appliances_dict):
+    """Helper function to format appliances string"""
+    if not appliances_dict:
+        return "None"
+    active_appliances = [
+        k.replace('airFryer', 'Air Fryer')
+         .replace('instapot', 'Instant Pot')
+         .replace('crockpot', 'Crock Pot')
+        for k, v in appliances_dict.items() if v
+    ]
+    return ", ".join(active_appliances) if active_appliances else "None"
+
+def get_prep_complexity_level(complexity_value):
+    """Helper function to determine prep complexity level"""
+    if complexity_value <= 25:
+        return "minimal"
+    elif complexity_value <= 50:
+        return "easy"
+    elif complexity_value <= 75:
+        return "standard"
+    return "complex"
+
+@router.post("/generate")
+def generate_meal_plan_variety(req: GenerateMealPlanRequest):
+    """Generate a meal plan based on user preferences and requirements"""
+    try:
+        if req.duration_days < 1 or req.duration_days > 30:
+            raise HTTPException(400, "duration_days must be between 1 and 30")
+
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        try:
+            # Fetch user preferences
+            cursor.execute("""
+                SELECT 
+                    recipe_type,
+                    macro_protein,
+                    macro_carbs,
+                    macro_fat,
+                    calorie_goal,
+                    appliances,
+                    prep_complexity,
+                    servings_per_meal,
+                    meal_times,
+                    diet_type,
+                    dietary_restrictions,
+                    disliked_ingredients,
+                    snacks_per_day
+                FROM user_profiles
+                WHERE id = %s
+                LIMIT 1
+            """, (req.user_id,))
+            
+            user_row = cursor.fetchone()
+            logger.debug(f"Fetched user preferences: {user_row}")
+
+            # Process preferences
+            servings_per_meal = merge_preference(
+                user_row.get("servings_per_meal") if user_row else None,
+                req.servings_per_meal,
+                2
+            )
+
+            calorie_goal = merge_preference(
+                user_row.get("calorie_goal") if user_row else None,
+                req.calorie_goal,
+                2000
+            )
+
+            # Macronutrients
+            protein_goal = merge_preference(
+                user_row.get("macro_protein") if user_row else None,
+                req.macro_protein,
+                40
+            )
+            carbs_goal = merge_preference(
+                user_row.get("macro_carbs") if user_row else None,
+                req.macro_carbs,
+                30
+            )
+            fat_goal = merge_preference(
+                user_row.get("macro_fat") if user_row else None,
+                req.macro_fat,
+                30
+            )
+
+            # Meal times and preferences
+            selected_meal_times = extract_meal_times(user_row, req.meal_times)
+            dietary_restrictions = process_dietary_restrictions(user_row, req.dietary_preferences)
+            disliked_ingredients = process_disliked_ingredients(user_row, req.disliked_foods)
+
+            # Appliances and complexity
+            appliances = user_row.get("appliances", {}) if user_row else {}
+            appliances_str = format_appliances_string(appliances)
+
+            prep_complexity = merge_preference(
+                user_row.get("prep_complexity") if user_row else None,
+                req.prep_complexity,
+                0
+            )
+            prep_level = get_prep_complexity_level(prep_complexity)
+
+            # Diet and recipe types
+            diet_type = merge_preference(
+                user_row.get("diet_type") if user_row else None,
+                req.diet_type,
+                "Gluten-Free, Anabolic"
+            )
+            recipe_type = merge_preference(
+                user_row.get("recipe_type") if user_row else None,
+                "American, Italian, Mexican, Asian, Chinese, Spanish"
+            )
+
+            # Generate meal plan
+            final_plan = {"days": []}
+            used_meal_titles = set()
+
+            for day_number in range(1, req.duration_days + 1):
+                logger.info(f"Generating day {day_number} of {req.duration_days}")
+                no_repeat_list = "\n- " + "\n- ".join(used_meal_titles) if used_meal_titles else "None so far"
+
+                day_prompt = f'''
+                You are a highly detailed meal planning assistant. Your task is to generate meal plans with explicit cooking instructions while strictly adhering to user preferences.              
+
+                ## **Critical Guidelines:**
+                - **DO NOT include any of the following disliked foods:** {', '.join(disliked_ingredients)}.
+                - **DO NOT repeat meal titles** from the following list:
+                  {no_repeat_list}
+                - **Each day must feature at least 3 distinct cuisines.**
+                - **Primary ingredients CANNOT repeat within a 3-day window.**
+                - **Limit the same protein source to once per day.**
+                - **Ensure a balance of plant-based and animal-based proteins.**
+                - **Use standardized units for ingredient measurements (e.g., grams, ounces, tablespoons).**  
+
+                - **Vary cooking techniques, cuisines, and flavor profiles across meals**.
+                - **Ensure units and ingredient quantities are standardized** (e.g., use grams, ounces, tablespoons consistently).              
+
+                ---
+                ## **Cooking Complexity Levels:**
+                ### **Minimal (5-15 min prep)**  
+                  - Use **fully pre-packaged** and **pre-cooked** ingredients (e.g., *Kevin's pre-cooked meats, pre-breaded fish, microwaveable sides*).  
+                  - Avoid extensive prep; limit steps to heating or simple assembly.                
+
+                ### **Easy (15-30 min prep)**  
+                  - Use **pre-prepped** ingredients (e.g., *pre-seasoned meats, pre-cut vegetables, bagged salads*).  
+                  - Allow minor cooking steps (e.g., *pan-searing, oven-baking with minimal prep*), but avoid extensive chopping or complex sauces.             
+
+                ### **Standard (30-45 min prep)**  
+                  - Traditional home cooking using **raw ingredients**.  
+                  - Involves moderate chopping, seasoning, and multiple cooking steps.              
+
+                ### **Complex (45+ min prep)**  
+                  - Includes advanced techniques like **braising, slow cooking, marination, multiple cooking stages**.  
+                  - May require homemade sauces, intricate plating, and longer cooking times.               
+
+                ---
+                ## **Appliance Usage:**
+                - **Prioritize the following appliances when applicable**: {appliances_str}.
+                - If an **Instant Pot, Air Fryer, or Slow Cooker is available, use it where appropriate**.
+                - Avoid suggesting appliance-dependent recipes if those appliances are not listed.  
+                - Try to include at least 2 recipies in the mealplan that utilize the available appliances                
+
+                ---
+                ## **Meal Plan Details:**
+                - **Day {day_number} of {req.duration_days}**.
+                - **CRITICAL INSTRUCTION: GENERATE ALL RECIPES FOR {servings_per_meal} SERVINGS**
+                - **Cuisine Preference:** {recipe_type}.
+                - **Dietary Preferences:** {', '.join(dietary_restrictions)}.
+                - **Servings per meal:** {servings_per_meal}.
+                - **Meal Times:** {', '.join(selected_meal_times)} plus {req.snacks_per_day} snack(s). 
+                - **Serving Size per Meal:** {servings_per_meal}
+
+
+                ---
+                ## **Macronutrient Goals (Per Day):**
+                - **Calories:** {calorie_goal} * {servings_per_meal} = {calorie_goal * servings_per_meal} calories
+                - **Protein:** {protein_goal} %
+                - **Carbs:** {carbs_goal} %
+                - **Fat:** {fat_goal} %             
+
+                ---
+                ## **Meal & Snack Structure:**
+                ### **For Each Meal (Breakfast, Lunch, Dinner, etc.):**
+                - **Title**: Unique and varied from past meal plans.
+                - **Ingredients**: Provide **measured quantities** for all ingredients (e.g., *1 cup, 200g, 2 tbsp*).
+                - **Instructions**: 
+                  - Step-by-step details including **cooking times, temperatures, and techniques**.
+                  - Specify when to **preheat ovens, sear, boil, or steam**.
+                  - **Appliance-specific instructions** (if applicable).
+                - **Macronutrient breakdown per serving and per meal**.             
+
+                ### **For Each Snack:**
+                - **Use quick, simple, or pre-made snack options**.
+                - **No extensive preparation required**.  
+
+               ## **Critical Guidelines:**
+               - **DO NOT include any of the following disliked foods:** {', '.join(disliked_ingredients)}.
+               - **DO NOT repeat meal titles** from the following list:
+                 {no_repeat_list}
+               - **Each day must feature at least 3 distinct cuisines.**
+               - **Primary ingredients CANNOT repeat within a 3-day window.**
+               - **Limit the same protein source to once per day.**
+               - **Ensure a balance of plant-based and animal-based proteins.**
+               - **Use standardized units for ingredient measurements (e.g., grams, ounces, tablespoons).**               
+
+               ---
+               ## **🔴 Critical Instruction: Match the Exact Daily Caloric Target**
+               - **TOTAL DAILY CALORIES MUST BE EXACTLY** `{calorie_goal} kcal` (±2% allowed).
+               - **Each meal must meet its calorie range**:
+                 - **Breakfast:** `{round(calorie_goal * 0.25)}` kcal
+                 - **Lunch:** `{round(calorie_goal * 0.35)}` kcal
+                 - **Dinner:** `{round(calorie_goal * 0.35)}` kcal
+                 - **Snacks:** `{round(calorie_goal * 0.10)}` kcal  
+               - **DO NOT generate a daily total below `{round(calorie_goal * 0.98)}` or above `{round(calorie_goal * 1.02)}` kcal.**
+               - **If needed, scale portion sizes up or down to meet these numbers.**
+               - **DO NOT add new ingredients—adjust quantities instead.**
+               - **Use calorie-dense foods (nuts, oils, starches) as needed to hit the goal.**
+               - **Ensure the meal plan feels balanced and satisfying.**              
+
+               ---
+               ## **Macronutrient Breakdown (STRICTLY ENFORCE)**
+               - **Protein:** `{protein_goal}% of {calorie_goal} kcal` → Target `{round((calorie_goal * protein_goal / 100) / 4)}`g protein.
+               - **Carbs:** `{carbs_goal}% of {calorie_goal} kcal` → Target `{round((calorie_goal * carbs_goal / 100) / 4)}`g carbs.
+               - **Fat:** `{fat_goal}% of {calorie_goal} kcal` → Target `{round((calorie_goal * fat_goal / 100) / 9)}`g fat.
+               - **Ensure total macros add up to `{calorie_goal} kcal` ±2%.**             
+
+               ---
+               ## **📌 Meal & Snack Structure (MANDATORY)**
+               - **Each meal/snack must explicitly show its calories, protein, carbs, and fat.**
+               - **Use realistic portion sizes but ensure calorie accuracy.**
+               - **Each recipe must be filling, satisfying, and properly portioned.**
+               - **NO MEALS BELOW 500 KCAL unless they are snacks.**
+               - **Snacks must contribute at least `{round(calorie_goal * 0.10)}` kcal.**             
+
+               ---
+               ## **🔥 Appliance Usage & Meal Variety**
+               - **Prioritize these appliances when applicable**: {appliances_str}.
+               - **Ensure at least 2 recipes per meal plan use the available appliances.**
+               - **Balance appliance usage evenly across the meal plan.**
+               - **Each day must feature a variety of cooking techniques and cuisines.**
+               - **Use a diverse mix of proteins (plant-based & animal-based).**              
+
+               ---
+               ## **✅ Strict Validation Step**
+               - **Before finalizing, VERIFY that total daily calories = `{calorie_goal}` ±2%.**
+               - **If calories are too low, increase portion sizes instead of adding new ingredients.**
+               - **Ensure that calorie calculations match expected values for all meals and snacks.**
+               - **Reject any plan that does not meet calorie/macronutrient goals.**
+               - **List the final calculated calories and macronutrients in the JSON output.**
+
+               ## **Meal Calorie Distribution Guidelines:**
+                - Breakfast: 20-25% of total daily calories ({round(calorie_goal * servings_per_meal * 0.20)} - {round(calorie_goal * servings_per_meal * 0.25)} calories)
+                - Lunch: 30-35% of total daily calories ({round(calorie_goal * servings_per_meal * 0.30)} - {round(calorie_goal * servings_per_meal * 0.35)} calories)
+                - Dinner: 30-35% of total daily calories ({round(calorie_goal * servings_per_meal * 0.30)} - {round(calorie_goal * servings_per_meal * 0.35)} calories)
+                - Snacks: 10-15% of total daily calories ({round(calorie_goal * servings_per_meal * 0.10)} - {round(calorie_goal * servings_per_meal * 0.15)} calories)   
+
+                ## **JSON Output Requirements:**
+                - **MANDATORY: Each meal and snack MUST have {servings_per_meal} servings**
+                - **All ingredient quantities MUST be scaled to {servings_per_meal} servings**
+                - **Macronutrient calculations MUST reflect {servings_per_meal} total servings**
+
+                ## **STRICT REQUIREMENT: Servings Must Match `{servings_per_meal}`**
+                - **Each recipe MUST be scaled to `{servings_per_meal}` servings.**
+                - **All ingredient quantities MUST reflect `{servings_per_meal}` servings.**
+                - **If a standard recipe serves 1, then multiply ingredient amounts by `{servings_per_meal}`.**
+                - **For example, if a recipe uses 1 egg for 1 serving, then use `{servings_per_meal}` eggs.**
+                - **If a meal traditionally serves 2, then adjust quantities to make exactly `{servings_per_meal}` servings.**
+                - **Explicitly list the final ingredient quantities adjusted for `{servings_per_meal}` servings.**              
+
+                ---
+                ## **Mandatory Ingredient Scaling Instructions**
+                - **Every ingredient’s calories, protein, carbs, and fat must be listed per serving.**
+                - **Scale all ingredient amounts by `{servings_per_meal}` servings.**
+                - **For example, if a recipe calls for 1 egg (140 kcal, 12g protein, 2g carbs, 9g fat) per serving, then for `{servings_per_meal}` servings, use `{round(1 * servings_per_meal)}` eggs and `{round(140 * servings_per_meal)}` kcal.**
+                - **Ensure that macronutrient totals match the correct meal calorie allocation.**
+                - **Do not modify macronutrient values—only scale them.**
+
+
+
+                ## **JSON Output Format:**
+                Respond ONLY in valid JSON format. Here's the exact structure to follow (replacing example values with appropriate ones):
+
+                {{
+                    "dayNumber": {day_number},
+                    "meals": [
+                        {{
+                            "meal_time": "breakfast",
+                            "title": "Example Meal Title",
+                            "ingredients": [
+                                {{
+                                    "name": "Eggs",
+                                    "quantity": "{round(2 * servings_per_meal)}",
+                                    "calories": "{round(140 * servings_per_meal)}",
+                                    "protein": "{round(12 * servings_per_meal)}g",
+                                    "carbs": "{round(2 * servings_per_meal)}g",
+                                    "fat": "{round(9 * servings_per_meal)}g"
+                            ],
+                            "instructions": [
+                                "Step 1...",
+                                "Step 2..."
+                            ],
+                            "servings": {servings_per_meal},
+                            "macros": {{
+                                "perServing": {{
+                                    "calories": {round(calorie_goal * servings_per_meal / (len(selected_meal_times) + req.snacks_per_day))},
+                                    "protein": f"{round(((calorie_goal * servings_per_meal * protein_goal / 100) / 4) / (len(selected_meal_times) + req.snacks_per_day))}g",
+                                    "carbs": f"{round(((calorie_goal * servings_per_meal * carbs_goal / 100) / 4) / (len(selected_meal_times) + req.snacks_per_day))}g",
+                                    "fat": f"{round(((calorie_goal * servings_per_meal * fat_goal / 100) / 9) / (len(selected_meal_times) + req.snacks_per_day))}g"
+                                }},
+                                "perMeal": {{
+                                    "calories": {round((calorie_goal * servings_per_meal / (len(selected_meal_times) + req.snacks_per_day)) * servings_per_meal)},
+                                    "protein": f"{round((((calorie_goal * servings_per_meal * protein_goal / 100) / 4) / (len(selected_meal_times) + req.snacks_per_day)) * servings_per_meal)}g",
+                                    "carbs": f"{round((((calorie_goal * servings_per_meal * carbs_goal / 100) / 4) / (len(selected_meal_times) + req.snacks_per_day)) * servings_per_meal)}g",
+                                    "fat": f"{round((((calorie_goal * servings_per_meal * fat_goal / 100) / 9) / (len(selected_meal_times) + req.snacks_per_day)) * servings_per_meal)}g"
+                                }}
+                            }},
+                            "appliance_used": "Stovetop",
+                            "complexity_level": "{prep_level}"
+                        }}
+                    ],
+                    "snacks": [],
+                    "summary": {{
+                        "calorie_goal": {calorie_goal} * {servings_per_meal}  calories,
+                        "protein_goal": "{protein_goal}%",
+                        "carbs_goal": "{carbs_goal}%",
+                        "fat_goal": "{fat_goal}%",
+                        "protein_grams": "{round((calorie_goal * protein_goal / 100) / 4)}g",
+                        "carbs_grams": "{round((calorie_goal * carbs_goal / 100) / 4)}g",
+                        "fat_grams": "{round((calorie_goal * fat_goal / 100) / 9)}g",
+                        "variance_from_goal": "0%"
+                    }}
+                }}
+                '''
+
+                # Generate menu using OpenAI
+                MAX_RETRIES = 3
+                day_json = None
+
+                for attempt in range(MAX_RETRIES):
+                    try:
+                        response = openai.ChatCompletion.create(
+                            model="gpt-3.5-turbo",
+                            messages=[{"role": "user", "content": day_prompt}],
+                            max_tokens=3000,
+                            temperature=0,
+                            top_p=1,
+                            request_timeout=300
+                        )
+                        ai_text = response.choices[0].message["content"].strip()
+                        logger.info(f"Received OpenAI response for day {day_number}")
+
+                        try:
+                            # Enhanced JSON parsing
+                            json_match = re.search(r'\{.*\}', ai_text, re.DOTALL)
+                            if json_match:
+                                ai_text = json_match.group(0)
+                            
+                            ai_text = ai_text.replace('```json', '').replace('```', '').strip()
+                            
+                            day_json = json.loads(ai_text)
+                            
+                            # Additional validation
+                            if not isinstance(day_json, dict):
+                                raise ValueError("Response is not a valid JSON object")
+                            
+                            if 'meals' not in day_json or 'dayNumber' not in day_json:
+                                raise ValueError("JSON missing required keys")
+                            
+                            break
+                        
+                        except (json.JSONDecodeError, ValueError) as json_err:
+                            logger.warning(f"JSON parsing error on attempt {attempt + 1}: {str(json_err)}")
+                            logger.warning(f"Problematic JSON content: {ai_text}")
+                            
+                            if attempt == MAX_RETRIES - 1:
+                                raise HTTPException(500, f"Unable to parse JSON for day {day_number}")
+                            
+                            time.sleep(1)
+
+                    except openai.error.AuthenticationError:
+                        logger.error("OpenAI authentication failed")
+                        raise HTTPException(500, "OpenAI API key authentication failed")
+                    except openai.error.APIError as e:
+                        logger.error(f"OpenAI API error: {str(e)}")
+                        if attempt == MAX_RETRIES - 1:
+                            raise HTTPException(500, f"OpenAI API error: {str(e)}")
+                        time.sleep(1)
+
+                if "dayNumber" in day_json:
+                    day_json["dayNumber"] = day_number
+                else:
+                    day_json["dayNumber"] = day_number
+
+                final_plan["days"].append(day_json)
+
+                # Track used meal titles
+                for meal in day_json.get("meals", []):
+                    used_meal_titles.add(meal.get("title", "").strip())
+                for snack in day_json.get("snacks", []):
+                    used_meal_titles.add(snack.get("title", "").strip())
+
+            # Save to database
+            cursor.execute("""
+                INSERT INTO menus (user_id, meal_plan_json, duration_days, meal_times, snacks_per_day)
+                VALUES (%s, %s, %s, %s, %s)
+                RETURNING id;
+            """, (
+                req.user_id,
+                json.dumps(final_plan),
+                req.duration_days,
+                json.dumps(selected_meal_times),
+                req.snacks_per_day
+            ))
+            
+            menu_id = cursor.fetchone()["id"]
+            conn.commit()
+
+            return {
+                "menu_id": menu_id,
+                "meal_plan": final_plan
+            }
+
+        finally:
+            cursor.close()
+            conn.close()
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in generate_meal_plan_variety: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/latest/{user_id}")
+def get_latest_menu(user_id: int):
+    """Fetch the most recent menu for a user"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        cursor.execute("""
+            SELECT id, meal_plan_json, created_at::TEXT AS created_at
+            FROM menus
+            WHERE user_id = %s
+            ORDER BY created_at DESC
+            LIMIT 1;
+        """, (user_id,))
+
+        menu = cursor.fetchone()
+        
+        if not menu:
+            raise HTTPException(status_code=404, detail="No menu found for this user.")
+
+        return {
+            "menu_id": menu["id"],
+            "meal_plan": menu["meal_plan_json"],
+            "created_at": menu["created_at"]
+        }
+
+    finally:
+        cursor.close()
+        conn.close()
+
+@router.get("/history/{user_id}")
+def get_menu_history(user_id: int):
+    """Get menu history for a user"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        cursor.execute("""
+            SELECT 
+                id as menu_id, 
+                meal_plan_json, 
+                created_at::TEXT AS created_at,
+                COALESCE(nickname, '') AS nickname
+            FROM menus
+            WHERE user_id = %s
+            ORDER BY created_at DESC
+            LIMIT 10;
+        """, (user_id,))
+
+        menus = cursor.fetchall()
+        
+        if not menus:
+            raise HTTPException(status_code=404, detail="No menu history found.")
+
+        return [
+            {
+                "menu_id": m["menu_id"], 
+                "meal_plan": m["meal_plan_json"], 
+                "created_at": m["created_at"],
+                "nickname": m["nickname"]
+            } 
+            for m in menus
+        ]
+
+    finally:
+        cursor.close()
+        conn.close()
+
+@router.patch("/{menu_id}/nickname")
+async def update_menu_nickname(menu_id: int, nickname: str = Body(..., embed=True)):
+    """Update the nickname for a menu"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        cursor.execute("""
+            UPDATE menus 
+            SET nickname = %s
+            WHERE id = %s
+            RETURNING id;
+        """, (nickname, menu_id))
+        
+        conn.commit()
+        
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Menu not found")
+            
+        return {"status": "success", "message": "Nickname updated successfully"}
+    
+    finally:
+        cursor.close()
+        conn.close()
+
+@router.get("/{menu_id}/grocery-list")
+def get_grocery_list(menu_id: int):
+    """Get grocery list for a specific menu"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        cursor.execute("""
+            SELECT meal_plan_json
+            FROM menus
+            WHERE id = %s;
+        """, (menu_id,))
+
+        menu = cursor.fetchone()
+        if not menu:
+            raise HTTPException(status_code=404, detail="No grocery list found for this menu.")
+
+        # Generate grocery list using the menu plan
+        grocery_list = aggregate_grocery_list(menu["meal_plan_json"])
+
+        return {"menu_id": menu_id, "groceryList": grocery_list}
+
+    finally:
+        cursor.close()
+        conn.close()
+
+@router.post("/{menu_id}/add-to-cart")
+def add_grocery_list_to_cart(
+    menu_id: int,
+    store: str = Query(..., description="Choose 'walmart', 'kroger', or 'mixed'"),
+    user_token: str = Query(None, description="User token for Walmart or Kroger (if required)"),
+):
+    """Add menu items to a store cart"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        cursor.execute("SELECT meal_plan_json FROM menus WHERE id = %s;", (menu_id,))
+        menu = cursor.fetchone()
+        if not menu:
+            raise HTTPException(status_code=404, detail="Menu not found.")
+
+        grocery_list = aggregate_grocery_list(menu["meal_plan_json"])
+        added_items = []
+
+        for item in grocery_list:
+            item_name = item["name"]
+            quantity = item["quantity"] or 1
+
+            if store == "walmart":
+                result = add_to_walmart_cart(user_token, item_name, quantity)
+            elif store == "kroger":
+                result = add_to_kroger_cart(user_token, item_name, quantity)
+            elif store == "mixed":
+                # For mixed store selection, return pending status for frontend handling
+                result = {
+                    "store": "User Choice Required",
+                    "item": item_name,
+                    "status": "pending"
+                }
+            else:
+                raise HTTPException(status_code=400, detail="Invalid store selection.")
+
+            added_items.append(result)
+
+        return {
+            "message": "Items added to cart",
+            "addedItems": added_items
+        }
+
+    finally:
+        cursor.close()
+        conn.close()
+
+@router.get("/latest/{user_id}/grocery-list")
+def get_latest_grocery_list(user_id: int):
+    """Get grocery list for user's latest menu"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        cursor.execute("""
+            SELECT id, meal_plan_json
+            FROM menus
+            WHERE user_id = %s
+            ORDER BY created_at DESC
+            LIMIT 1;
+        """, (user_id,))
+
+        menu = cursor.fetchone()
+        if not menu:
+            raise HTTPException(status_code=404, detail="No menu found for this user.")
+
+        # Generate grocery list from the latest menu
+        grocery_list = aggregate_grocery_list(menu["meal_plan_json"])
+
+        return {
+            "menu_id": menu["id"],
+            "groceryList": grocery_list
+        }
+
+    finally:
+        cursor.close()
+        conn.close()

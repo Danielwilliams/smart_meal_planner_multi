@@ -1,0 +1,79 @@
+{
+ 
+
+  "fillers": [
+    "\\sof\\s",
+    "for dipping",
+    "and seeds removed",
+    "for the dressing[:]*",
+    "to taste"
+  ],
+
+  "descriptors": [
+    "\\bdiced\\b",
+    "\\bchopped\\b",
+    "\\bsliced\\b",
+    "\\bminced\\b",
+    "\\bshredded\\b",
+    "\\bfresh\\b",
+    "\\bbaby\\b"
+  ],
+
+  "units": {
+    "cups": "cup",
+    "c": "cup",
+    "scoops": "scoop",
+    "slices": "slice",
+    "heads": "head",
+    "cloves": "clove",
+    "lbs": "lb"
+    
+  },
+
+  "regex_replacements": {
+    "\\beggs\\b": "egg",
+    "\\bcups\\b": "cup",
+    "\\bscoops\\b": "scoop",
+    "\\bslices\\b": "slice",
+    "\\bheads\\b": "head",
+    "\\bcloves\\b": "clove",
+    "\\bpeppers\\b": "pepper",
+    "\\bonions\\b": "onion",
+    "\\bcucumbers\\b": "cucumber",
+    "\\bmushrooms\\b": "mushroom",
+    "\\bfillets\\b": "fillet",
+    "\\bthighs\\b": "thigh",
+    "\\bmini bell peppers\\b": "mini bell pepper",
+    "\\bbell peppers\\b": "bell pepper",
+    "\\btomatoes\\b": "tomato",
+    "\\bmuffins\\b": "muffin",
+    "\\bavocados\\b": "avocado",
+    "\\bzucchinis\\b": "zucchini",
+    "\\blemons\\b": "lemon",
+    "\\blymes\\b": "lime",
+    "\\bpieces\\b": "piece",
+    "\\bslices of\\b": "slice",
+    "\\bbreasts\\b": "breast",
+    "\\bcans\\b": "can",
+    "\\bmilks\\b": "milk",
+    "\\bcarrots\\b": "carrot",
+    "\\bspinaches\\b": "spinach",
+    "\\bcilantros\\b": "cilantro",
+    "\\bbroccolis\\b": "broccoli",
+    "\\bsnap peas\\b": "snap pea",
+    "\\bfishes\\b": "fish",
+    "\\bshrimps\\b": "shrimp",
+    "\\bsteaks\\b": "steak",
+    "\\bturkeys\\b": "turkey",
+    "\\bbacons\\b": "bacon",
+    "\\bloaves\\b": "loaf",
+    "\\bloafs\\b": "loaf",
+    "\\bpackages\\b": "package",
+    "\\bbottles\\b": "bottle",
+    "\\bpacks\\b": "pack",
+    "\\bsausages\\b": "sausage",
+    "\\bherbs\\b": "herb",
+    "\\bseasonings\\b": "seasoning",
+    "\\bpotatoes\\b": "potato"
+  }
+}

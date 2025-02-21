@@ -1,0 +1,36 @@
+@"
+# Environment variables
+.env
+*.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# Sensitive configuration
+config.py
+secret_keys.py
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# Django specifics
+*.log
+local_settings.py
+db.sqlite3
+
+# IDE and system files
+.idea/
+.vscode/
+.DS_Store
+
+# Compiled Python files
+*.pyc
+"@ | Out-File .gitignore -Encoding UTF8

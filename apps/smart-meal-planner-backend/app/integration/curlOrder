@@ -1,0 +1,19 @@
+curl -X 'POST' \
+  'http://127.0.0.1:8000/menu/generate' \
+  -H 'accept: application/json' \
+  -H 'Content-Type: application/json' \
+  -d '{
+  "user_id": 2,
+  "diet_type": ["mediterranean"],
+  "dietary_preferences": ["Gluten Free, High Protein"],
+  "disliked_foods": ["Capers, Onions"],
+  "dietary_restrictions": ["Shellfish Allergy"],
+  "duration_days": 7,
+  "meal_times": [
+    "breakfast",
+    "lunch",
+    "dinner"
+  ],
+  "snacks_per_day": 2,
+  "servings_per_meal": 2,
+}'

@@ -1,0 +1,10 @@
+Produce
+Fruits
+Beverages
+Dairy/Eggs
+Deli
+Breads/Grains
+Frozen Foods
+Meat/Seafood
+Baking/Spices
+Condiments

@@ -1,0 +1,49 @@
+@media print {
+  .MuiAppBar-root,
+  .MuiButton-root,
+  .MuiSelect-root,
+  .MuiFormControl-root,
+  .MuiAccordionSummary-expandIcon,
+  .no-print {
+    display: none !important;
+  }
+
+  .print-expanded {
+    display: block !important;
+  }
+
+  .print-expanded .MuiCollapse-root {
+    visibility: visible !important;
+    height: auto !important;
+    display: block !important;
+  }
+
+  .print-expanded .MuiAccordionDetails-root {
+    display: block !important;
+  }
+
+  .meal-content,
+  .meal-details,
+  .snack-details {
+    display: block !important;
+    visibility: visible !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .MuiAccordion-root {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    margin: 0 !important;
+  }
+
+  .MuiContainer-root {
+    padding: 0 !important;
+    max-width: none !important;
+  }
+
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}
