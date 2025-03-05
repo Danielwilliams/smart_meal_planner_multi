@@ -6,7 +6,23 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from dotenv import load_dotenv
-from app.routers import auth, preferences, menu, cart, kroger_auth, order, store, grocery_list
+
+# Import regular routers
+from app.routers import (
+    auth, 
+    preferences, 
+    menu, 
+    cart, 
+    kroger_auth, 
+    order, 
+    store, 
+    grocery_list
+)
+
+# Import store-specific routers directly
+from app.routers.kroger_store import router as kroger_store_router
+from app.routers.walmart_store import router as walmart_store_router
+from app.routers import saved_recipes 
 
 # Load environment variables
 load_dotenv()
@@ -17,6 +33,20 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+# Explicit environment variable logging at startup
+def log_environment_variables():
+    print("ENVIRONMENT VARIABLE INVESTIGATION:")
+    for key, value in os.environ.items():
+        # Only log keys, mask sensitive values
+        if 'SECRET' in key or 'TOKEN' in key or 'KEY' in key:
+            print(f"{key}: {'*' * 10}")
+        else:
+            print(f"{key}: {value[:50] + '...' if len(value) > 50 else value}")
+
+# Call this at startup
+log_environment_variables()
 
 def create_app() -> FastAPI:
     logger.info("Creating FastAPI application...")
@@ -52,7 +82,7 @@ def create_app() -> FastAPI:
             "https://api.smartmealplannerio.com",
         ],
         allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "FETCH"],
         allow_headers=["Content-Type", "Authorization"],
     )
 
@@ -82,9 +112,12 @@ def create_app() -> FastAPI:
     app.include_router(menu.router)
     app.include_router(cart.router)
     app.include_router(order.router)
+    app.include_router(kroger_store_router)  # Using imported router
+    app.include_router(walmart_store_router)  # Using imported router
     app.include_router(kroger_auth.router)
     app.include_router(grocery_list.router)
     app.include_router(store.router)
+    app.include_router(saved_recipes.router)
 
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request, exc):

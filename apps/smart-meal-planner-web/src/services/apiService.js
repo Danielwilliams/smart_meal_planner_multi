@@ -1,14 +1,11 @@
 // src/services/apiService.js
 import axios from 'axios';
 
-
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://api.smartmealplannerio.com';
-
-
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://www.smartmealplannerio.com';
 
 const axiosInstance = axios.create({
   baseURL: API_BASE_URL,
-   timeout: 300000,  
+  timeout: 300000,  
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json'
@@ -53,7 +50,6 @@ axiosInstance.interceptors.response.use(
   }
 );
 
-
 // Updated interceptor with better token handling
 axiosInstance.interceptors.request.use((config) => {
   const token = localStorage.getItem('access_token');
@@ -83,32 +79,32 @@ axiosInstance.interceptors.response.use(
 const apiService = {
   // Authentication Endpoints
   async login(payload) {
-  try {
-    console.log('Sending login request with payload:', {
-      email: payload.email,
-      hasPassword: !!payload.password,
-      hasCaptcha: !!payload.captchaToken
-    });
+    try {
+      console.log('Sending login request with payload:', {
+        email: payload.email,
+        hasPassword: !!payload.password,
+        hasCaptcha: !!payload.captchaToken
+      });
 
-    const resp = await axiosInstance.post('/auth/login', {
-      email: payload.email,
-      password: payload.password,
-      captcha_token: payload.captchaToken  // Note: backend might expect snake_case
-    });
-    
-    console.log('Login Response Status:', resp.status);
-    return resp.data;
-  } catch (err) {
-    console.error("Login Error Details:", {
-      status: err.response?.status,
-      data: err.response?.data,
-      validation: err.response?.data?.detail
-    });
-    throw err;
-  }
-},
+      const resp = await axiosInstance.post('/auth/login', {
+        email: payload.email,
+        password: payload.password,
+        captcha_token: payload.captchaToken  // Note: backend might expect snake_case
+      });
+      
+      console.log('Login Response Status:', resp.status);
+      return resp.data;
+    } catch (err) {
+      console.error("Login Error Details:", {
+        status: err.response?.status,
+        data: err.response?.data,
+        validation: err.response?.data?.detail
+      });
+      throw err;
+    }
+  },
 
-    async verifyEmail(token) {
+  async verifyEmail(token) {
     try {
       const resp = await axiosInstance.get(`/auth/verify-email/${token}`);
       return resp.data;
@@ -117,7 +113,6 @@ const apiService = {
       throw err;
     }
   },
-
 
   async signUp(payload) {
     try {
@@ -172,7 +167,7 @@ const apiService = {
             instapot: false,
             crockpot: false
           },
-        prepComplexity: 50,
+          prepComplexity: 50,
           snacksPerDay: 0,
           servings_per_meal: 1,
           kroger_store_location: null
@@ -193,29 +188,28 @@ const apiService = {
     }
   },
 
-async updateMenuNickname(menuId, nickname) {
-  try {
-    const response = await axiosInstance.patch(`/menu/${menuId}/nickname`, nickname, {
-      headers: {
-        'Content-Type': 'text/plain'
-      }
-    });
-    return response.data;
-  } catch (err) {
-    console.error("Error updating menu nickname:", err);
-    throw err;
-  }
-},
+  async updateMenuNickname(menuId, nickname) {
+    try {
+      const response = await axiosInstance.patch(`/menu/${menuId}/nickname`, {
+        nickname
+      });
+      return response.data;
+    } catch (err) {
+      console.error("Error updating menu nickname:", err.response?.data || err.message);
+      throw err;
+    }
+  },
 
- getMenuDetails: async (menuId) => {
-  try {
-    const resp = await axiosInstance.get(`/menu/${menuId}`);
-    return resp.data;
-  } catch (err) {
-    console.error('Error fetching menu details:', err.response?.data || err.message);
-    throw err;
-  }
-},
+  getMenuDetails: async (menuId) => {
+    try {
+      const resp = await axiosInstance.get(`/menu/${menuId}`);
+      return resp.data;
+    } catch (err) {
+      console.error('Error fetching menu details:', err.response?.data || err.message);
+      throw err;
+    }
+  },
+  
   async getMenuHistory(userId) {
     try {
       const resp = await axiosInstance.get(`/menu/history/${userId}`);
@@ -225,18 +219,6 @@ async updateMenuNickname(menuId, nickname) {
       throw err;
     }
   },
-
-    async updateMenuNickname(menuId, nickname) {
-  try {
-    const response = await axiosInstance.patch(`/menu/${menuId}/nickname`, {
-      nickname
-    });
-    return response.data;
-  } catch (err) {
-    console.error("Error updating menu nickname:", err.response?.data || err.message);
-    throw err;
-  }
-},
 
   async generateMenu(menuRequest) {
     try {
@@ -269,6 +251,53 @@ async updateMenuNickname(menuId, nickname) {
     }
   },
 
+  // Saved Recipie Endpoints
+
+saveRecipe: async (saveData) => {
+  try {
+    const response = await axiosInstance.post('/saved-recipes/', saveData);
+    return response.data;
+  } catch (err) {
+    console.error('Error saving recipe:', err);
+    throw err;
+  }
+},
+
+unsaveRecipe: async (savedId) => {
+  try {
+    const response = await axiosInstance.delete(`/saved-recipes/${savedId}`);
+    return response.data;
+  } catch (err) {
+    console.error('Error unsaving recipe:', err);
+    throw err;
+  }
+},
+
+getSavedRecipes: async () => {
+  try {
+    const response = await axiosInstance.get('/saved-recipes/');
+    return response.data.saved_recipes || [];
+  } catch (err) {
+    console.error('Error fetching saved recipes:', err);
+    return [];
+  }
+},
+
+async checkRecipeSaved(menuId, recipeId = null, mealTime = null) {
+  try {
+    const params = new URLSearchParams();
+    params.append('menu_id', menuId);
+    if (recipeId) params.append('recipe_id', recipeId);
+    if (mealTime) params.append('meal_time', mealTime);
+
+    const resp = await axiosInstance.get(`/saved-recipes/check?${params.toString()}`);
+    return resp.data;
+  } catch (err) {
+    console.error("Check saved recipe error:", err.response?.data || err.message);
+    throw err;
+  }
+},
+
   // Cart Management Endpoints
   async getCartContents(userId) {
     try {
@@ -276,7 +305,7 @@ async updateMenuNickname(menuId, nickname) {
       const resp = await axiosInstance.get(`/cart/internal/${userId}/contents`);
       return resp.data;
     } catch (err) {
-      console.error("Cart contents fetch error:", err.response?.data || err.message);
+      console.error("Cart contents fetch error:", err);
       throw err;
     }
   },
@@ -287,7 +316,7 @@ async updateMenuNickname(menuId, nickname) {
       const resp = await axiosInstance.post('/cart/internal/add_items', payload);
       return resp.data;
     } catch (err) {
-      console.error("Internal cart add error:", err.response?.data || err.message);
+      console.error("Internal cart add error:", err);
       throw err;
     }
   },
@@ -301,191 +330,172 @@ async updateMenuNickname(menuId, nickname) {
       });
       return resp.data;
     } catch (err) {
-      console.error("Store assignment error:", err.response?.data || err.message);
+      console.error("Store assignment error:", err);
       throw err;
     }
   },
 
-  // Store Search and Cart Operations
-  async searchStoreItems(payload) {
-  try {
-    console.log('Searching store items:', payload);
-    const resp = await axiosInstance.post('/cart/store/search', {
-      items: payload.items,
-      store: payload.store
-    });
-    
-    // Enhanced error handling
-    if (resp.data.status === 'error') {
-      console.warn('Store search error:', resp.data);
-      if (resp.data.redirect) {
-        // Different handling based on error type
-        if (resp.data.needs_setup) {
-          // Redirect to preferences
-          window.location.href = '/preferences-page';
-        } else if (resp.data.needs_credentials) {
-          // Prompt for Kroger credentials
-          window.location.href = '/preferences-page';
-        } else if (resp.data.needs_login) {
-          // Redirect to Kroger login
-          window.location.href = resp.data.redirect;
-        }
-      }
-      throw new Error(resp.data.message);
-    }
-    
-    return resp.data;
-  } catch (err) {
-    console.error("Store search error:", err.response?.data || err.message);
-    throw err;
-  }
-},
-
-async testKrogerLogin() {
-  try {
-    const resp = await axiosInstance.get('/kroger/test-login');
-    return resp.data;
-  } catch (err) {
-    console.error("Kroger login test error:", err.response?.data || err.message);
-    throw err;
-  }
-},
-
-  async addToStoreCart(store, itemId, quantity = 1) {
+  // Store-Specific Search Endpoints
+  async searchKrogerItems(items) {
     try {
-      const resp = await axiosInstance.post('/store/cart/add', {
-        store,
-        item_id: itemId,
-        quantity
+      console.log("Searching Kroger items:", items);
+      const response = await axiosInstance.post('/kroger/search', { items });
+      console.log("Kroger search response:", response.data);
+      
+      // Ensure needs_setup is properly handled
+      if (response.data.needs_setup === true) {
+        return {
+          success: false,
+          needs_setup: true,
+          message: response.data.message
+        };
+      }
+      
+      return response.data;
+    } catch (err) {
+      console.error("Kroger search error:", err);
+      // Check if the error response contains needs_setup
+      if (err.response?.data?.needs_setup) {
+        return {
+          success: false,
+          needs_setup: true,
+          message: err.response.data.message
+        };
+      }
+      throw err;
+    }
+  },
+
+  // Kroger-Specific Operations
+  async addToKrogerCart(items) {
+    try {
+      const resp = await axiosInstance.post('/kroger/cart/add', {
+        items: items.map(item => ({
+          upc: item.upc,
+          quantity: 1
+        }))
       });
       return resp.data;
     } catch (err) {
-      console.error("Store cart add error:", err.response?.data || err.message);
+      console.error("Kroger cart add error:", err);
+      if (err.response?.data?.redirect) {
+        return {
+          success: false,
+          redirect: err.response.data.redirect,
+          message: "Kroger authentication required"
+        };
+      }
       throw err;
     }
   },
 
+  // Kroger Connection Management
   async getKrogerConnectionStatus() {
     try {
       const resp = await axiosInstance.get('/kroger/connection-status');
       return resp.data;
     } catch (err) {
-      console.error("Kroger connection status error:", err.response?.data || err.message);
+      console.error("Kroger connection status error:", err);
       throw err;
     }
-  },  
+  },
 
   async getKrogerLoginUrl() {
     try {
       const resp = await axiosInstance.get('/kroger/login-url');
       return resp.data;
     } catch (err) {
-      console.error("Kroger login URL error:", err.response?.data || err.message);
-      throw err;
-    }
-  },
-
-  // Kroger Specific Endpoints
-async addToKrogerCart(items) {
-  try {
-    const resp = await axiosInstance.post('/cart/add-kroger', {
-      items: items.map(item => ({
-        upc: item.upc,
-        quantity: 1  // default quantity
-      }))
-    });
-    return resp.data;
-  } catch (err) {
-    console.error("Kroger cart add error:", err.response?.data || err.message);
-    
-    // Handle connection needed scenario
-    if (err.response?.data?.redirect) {
-      window.location.href = err.response.data.redirect;
-    }
-    
-    throw err;
-  }
-},
-
-  async getKrogerCart(locationId) {
-    try {
-      const resp = await axiosInstance.get('/cart/kroger', {
-        params: { location_id: locationId }
-      });
-      return resp.data;
-    } catch (err) {
-      console.error("Kroger cart fetch error:", err.response?.data || err.message);
-      throw err;
-    }
-  },
-
-  async clearKrogerCart(locationId) {
-    try {
-      const resp = await axiosInstance.delete('/cart/kroger', {
-        params: { location_id: locationId }
-      });
-      return resp.data;
-    } catch (err) {
-      console.error("Kroger cart clear error:", err.response?.data || err.message);
-      throw err;
-    }
-  },
-
-  // Kroger Auth and Location Endpoints
-  async getKrogerAuthStatus() {
-    try {
-      const resp = await axiosInstance.get('/kroger/connection-status');
-      return resp.data;
-    } catch (err) {
-      console.error("Kroger auth status error:", err.response?.data || err.message);
+      console.error("Kroger login URL error:", err);
       throw err;
     }
   },
 
   async updateKrogerLocation(locationId) {
     try {
-      const resp = await axiosInstance.post('/kroger/store-location', {
+      const response = await axiosInstance.post('/kroger/store-location', {
         store_location_id: locationId
       });
-      return resp.data;
+      return response.data;
     } catch (err) {
-      console.error("Kroger location update error:", err.response?.data || err.message);
+      console.error("Kroger location update error:", err);
       throw err;
     }
   },
 
-  // Progress Tracking
-  async getUserProgress(userId) {
+  // Store Location Endpoints
+  async findNearbyStores(storeType, params) {
     try {
-      const resp = await axiosInstance.get(`/users/${userId}/progress`);
+      const response = await axiosInstance.get(`/${storeType}/stores/near`, { 
+        params: {
+          zip_code: params.zipCode,
+          radius: params.radius
+        }
+      });
+      return response.data;
+    } catch (err) {
+      console.error("Store search error:", err);
+      throw err;
+    }
+  },
+  
+  // Walmart-Specific Operations
+  async searchWalmartItems(items) {
+    try {
+      console.log('Searching Walmart items:', items);
+      const resp = await axiosInstance.post('/walmart/search', { items });
+      console.log('Walmart search response:', resp.data);
       return resp.data;
     } catch (err) {
-      console.error('User progress fetch error:', err);
+      console.error("Walmart search error:", err);
       throw err;
     }
   },
 
-  // Error Handler Helper
-  handleError(error) {
-    if (error.response) {
-      return {
-        message: error.response.data.detail || 'Server error occurred',
-        status: error.response.status
-      };
-    } else if (error.request) {
-      return {
-        message: 'No response from server',
-        status: 503
-      };
-    } else {
-      return {
-        message: error.message || 'An error occurred',
-        status: 500
-      };
+  async findNearbyWalmartStores(zipCode, radius = 15) {
+    try {
+      console.log(`Finding Walmart stores near ${zipCode}`);
+      const response = await axiosInstance.get('/walmart/stores/near', {
+        params: {
+          zip_code: zipCode,
+          radius: radius
+        }
+      });
+      return response.data;
+    } catch (err) {
+      console.error("Walmart store search error:", err);
+      throw err;
+    }
+  },
+
+  async getWalmartProductDetails(productId) {
+    try {
+      console.log(`Getting Walmart product details for ${productId}`);
+      const response = await axiosInstance.get(`/walmart/product/${productId}`);
+      return response.data;
+    } catch (err) {
+      console.error("Walmart product details error:", err);
+      throw err;
+    }
+  },
+
+  async addToWalmartCart(items) {
+    try {
+      console.log('Adding items to Walmart cart:', items);
+      const resp = await axiosInstance.post('/walmart/cart/add', {
+        items: items.map(item => ({
+          id: item.id || item.itemId,
+          name: item.name,
+          price: item.price || item.salePrice,
+          quantity: item.quantity || 1
+        }))
+      });
+      console.log('Walmart cart response:', resp.data);
+      return resp.data;
+    } catch (err) {
+      console.error("Walmart cart add error:", err);
+      throw err;
     }
   }
 };
-
-
 
 export default apiService;

@@ -11,6 +11,7 @@ import logging
 from ..utils.grocery_aggregator import aggregate_grocery_list
 from ..integration.kroger import add_to_kroger_cart
 from ..integration.walmart import add_to_cart as add_to_walmart_cart
+from ..db import track_recipe_interaction, is_recipe_saved
 
 # Enhanced logging setup
 logging.basicConfig(level=logging.DEBUG)
@@ -253,7 +254,40 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
 
                 ### **For Each Snack:**
                 - **Use quick, simple, or pre-made snack options**.
-                - **No extensive preparation required**.  
+                - **No extensive preparation required**. 
+
+                ## **Diversity & Meal Rotation (STRICTLY ENFORCED)**
+                - **DO NOT repeat similar meal structures week-to-week.**
+                - **Ensure variety in meal styles (e.g., no consecutive weeks of grain bowls, tacos, or pasta-heavy meals).**
+                - **Use different international cuisines each day** (e.g., Mexican, Mediterranean, Asian, Italian, Middle Eastern).
+                - **Ensure at least 3 meals per week use a different protein type** (e.g., chicken, tofu, fish, lentils).
+                - **Avoid repeating the same carb base more than 2 times per week** (e.g., rice, quinoa, sweet potatoes should alternate).  
+                - **Make sure breakfast, lunch, and dinner each feel distinct.**
+
+
+
+                ### **Minimal (5-15 min prep)**  
+                - **Prioritize fully pre-packaged & pre-cooked meals** (e.g., *Kevin's pre-cooked meats, MorningStar Black Bean Burgers, Beyond Chicken Strips*).  
+                - **Use microwaveable or ready-to-eat meals where possible** (e.g., *Trader Joe’s frozen meals, pre-marinated proteins*).  
+                - **Limit steps to heating, simple assembly, or quick pan-searing.**  
+                - **Examples of great minimal-prep meals:**
+                  - **Pre-made veggie burgers** (e.g., MorningStar Black Bean Burger with pre-cut salad mix & dressing).
+                  - **Microwaveable grain bowls** (e.g., Trader Joe's frozen quinoa with canned beans & pre-chopped veggies).
+                  - **Pre-seasoned rotisserie chicken + instant mashed potatoes + steamed bagged veggies.**
+                  - **High-protein meal bars/shakes as quick breakfasts.**
+                  - **Canned tuna/chicken mixed with pre-made slaw for quick wraps.**    
+
+                ### **For Each Snack:**
+                - **Use quick, simple, or pre-made snack options.**
+                - **Examples of pre-made snacks:**
+                  - **High-protein bars (Quest, RXBar, Clif Builder's)**
+                  - **Pre-packaged hummus & veggie cups**
+                  - **Pre-portioned Greek yogurt with honey & granola**
+                  - **String cheese & almonds**
+                  - **Peanut butter & banana roll-ups**
+                  - **Pre-made protein shakes (e.g., Fairlife, Orgain, Huel)**  
+                - **No extensive preparation required.**
+
 
                ## **Critical Guidelines:**
                - **DO NOT include any of the following disliked foods:** {', '.join(disliked_ingredients)}.
@@ -688,4 +722,69 @@ def get_latest_grocery_list(user_id: int):
 
     finally:
         cursor.close()
+        conn.close()
+
+
+@router.get("/{menu_id}")
+def get_menu_details(
+    menu_id: int, 
+    user_id: int = Query(None)
+):
+    """Retrieve full menu details for a specific menu"""
+    conn = get_db_connection()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Fetch the full menu details
+            cur.execute("""
+                SELECT 
+                    id AS menu_id, 
+                    meal_plan_json, 
+                    user_id, 
+                    created_at, 
+                    nickname
+                FROM menus 
+                WHERE id = %s
+            """, (menu_id,))
+            menu = cur.fetchone()
+        
+        if not menu:
+            raise HTTPException(status_code=404, detail="Menu not found")
+        
+        # Track that user viewed this menu if user_id provided
+        if user_id:
+            track_recipe_interaction(user_id, menu_id, "viewed")
+            
+            # Check if menu is saved by this user
+            menu['is_saved'] = is_recipe_saved(user_id, menu_id)
+            
+            # If the menu has recipe-level data, check each recipe
+            # Parse the meal plan JSON
+            menu['meal_plan'] = json.loads(menu['meal_plan_json']) if isinstance(menu['meal_plan_json'], str) else menu['meal_plan_json']
+            
+            # Check saved status for each recipe in the meal plan
+            if 'days' in menu['meal_plan']:
+                for day in menu['meal_plan']['days']:
+                    day_number = day.get('dayNumber')
+                    
+                    if 'meals' in day:
+                        for meal in day['meals']:
+                            meal_time = meal.get('meal_time')
+                            recipe_id = meal.get('id')  # If your recipes have IDs
+                            
+                            if recipe_id:
+                                meal['is_saved'] = is_recipe_saved(
+                                    user_id, 
+                                    menu_id, 
+                                    recipe_id=recipe_id, 
+                                    meal_time=meal_time
+                                )
+        else:
+            # Ensure meal_plan_json is parsed
+            menu['meal_plan'] = json.loads(menu['meal_plan_json']) if isinstance(menu['meal_plan_json'], str) else menu['meal_plan_json']
+        
+        return menu
+    except Exception as e:
+        logger.error(f"Error retrieving menu details: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+    finally:
         conn.close()

@@ -27,7 +27,6 @@ def debug_environment():
     logger.debug(f"Client ID length: {len(KROGER_CLIENT_ID) if KROGER_CLIENT_ID else 0}")
     logger.debug(f"Client Secret length: {len(KROGER_CLIENT_SECRET) if KROGER_CLIENT_SECRET else 0}")
 
-
 def get_kroger_access_token() -> Dict[str, Any]:
     """
     Get an access token for Kroger API using client credentials flow
@@ -50,7 +49,7 @@ def get_kroger_access_token() -> Dict[str, Any]:
         # Using only product.compact scope
         data = {
             'grant_type': 'client_credentials',
-            'scope': 'product.compact'
+            'scope': 'product.compact location'
         }
         
         logger.debug(f"Making token request to: {token_url}")
@@ -277,7 +276,6 @@ def kroger_search_item(query: str, location_id: Optional[str] = None) -> Dict[st
             "results": []
         }
 
-
 def add_to_kroger_cart(access_token: str, location_id: str, items: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
     Standalone function to add items to Kroger cart
@@ -318,96 +316,189 @@ def add_to_kroger_cart(access_token: str, location_id: str, items: List[Dict[str
         }
 
 class KrogerIntegration:
-    def __init__(self, id: Optional[int] = None, access_token: Optional[str] = None):
-        """Initialize Kroger Integration"""
-        if access_token:
-            self.access_token = access_token
-        elif id:
-            # Retrieve user-specific credentials
-            credentials = get_user_kroger_credentials(id)
-            
-            # Try to get access token
-            token_response = get_kroger_access_token()
-            
-            if token_response['success']:
-                self.access_token = token_response['access_token']
-            else:
-                raise ValueError("Failed to obtain Kroger access token")
-        else:
-            # Fallback to environment credentials
-            token_response = get_kroger_access_token()
-            
-            if token_response['success']:
-                self.access_token = token_response['access_token']
-            else:
-                raise ValueError("Failed to obtain Kroger access token")
-
-def get_kroger_cart(access_token: str) -> Dict[str, Any]:
-    """Get current Kroger cart contents"""
-    try:
-        cart_url = f"{KROGER_BASE_URL}/cart"
+    def __init__(self):
+        # Use Certification environment base URL
+        self.base_url = "https://api-ce.kroger.com/v1"
         
-        headers = {
-            "Accept": "application/json",
-            "Authorization": f"Bearer {access_token}"
-        }
+        # Load credentials from environment
+        self.client_id = os.getenv("KROGER_CLIENT_ID")
+        self.client_secret = os.getenv("KROGER_CLIENT_SECRET")
 
-        response = requests.get(cart_url, headers=headers)
-        
-        logger.info(f"Get cart response status: {response.status_code}")
-
-        if response.status_code == 200:
-            return {
-                "success": True,
-                "cart": response.json()
+    def get_access_token(self) -> Dict[str, Any]:
+        try:
+            logger.info("Attempting to get Kroger access token")
+            
+            if not self.client_id or not self.client_secret:
+                logger.error("Missing Kroger API credentials")
+                return {
+                    "success": False,
+                    "message": "Missing Kroger API credentials"
+                }
+            
+            auth_string = f"{self.client_id}:{self.client_secret}"
+            basic_auth = base64.b64encode(auth_string.encode('utf-8')).decode('utf-8')
+            
+            token_url = f"{self.base_url}/connect/oauth2/token"
+            
+            headers = {
+                'Authorization': f'Basic {basic_auth}',
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Accept': 'application/json'
             }
-        else:
-            error_msg = f"Failed to get Kroger cart: {response.status_code} - {response.text}"
-            logger.error(error_msg)
+            
+            data = {
+                'grant_type': 'client_credentials',
+                'scope': 'product.compact chain.locations.read'
+            }
+            
+            logger.info(f"Sending token request to: {token_url}")
+            logger.debug(f"Scopes: {data['scope']}")
+            
+            response = requests.post(
+                token_url, 
+                headers=headers, 
+                data=data,
+                timeout=10
+            )
+            
+            logger.info(f"Token Request Status: {response.status_code}")
+            
+            if response.status_code == 200:
+                token_data = response.json()
+                logger.info("✅ Token generated successfully")
+                logger.debug(f"Access Token: {token_data.get('access_token')[:10]}...")  # Log first 10 chars
+                return {
+                    "success": True,
+                    "access_token": token_data.get('access_token'),
+                    "expires_in": token_data.get('expires_in')
+                }
+            else:
+                logger.error(f"Token generation failed. Status: {response.status_code}")
+                logger.error(f"Response Content: {response.text}")
+                return {
+                    "success": False,
+                    "message": f"Token generation failed. Status {response.status_code}: {response.text}"
+                }
+        
+        except Exception as e:
+            logger.error(f"Unexpected error during token generation: {str(e)}", exc_info=True)
             return {
                 "success": False,
-                "message": error_msg
+                "message": f"Unexpected error: {str(e)}"
             }
 
-    except Exception as e:
-        error_msg = f"Error getting Kroger cart: {str(e)}"
-        logger.error(error_msg)
-        return {
-            "success": False,
-            "message": error_msg
-        }
-
-def clear_kroger_cart(access_token: str) -> Dict[str, Any]:
-    """Clear the Kroger cart"""
-    try:
-        cart_url = f"{KROGER_BASE_URL}/cart"
-        
-        headers = {
-            "Accept": "application/json",
-            "Authorization": f"Bearer {access_token}"
-        }
-
-        response = requests.delete(cart_url, headers=headers)
-        
-        logger.info(f"Clear cart response status: {response.status_code}")
-
-        if response.status_code == 204:
-            return {
-                "success": True,
-                "message": "Cart cleared successfully"
+    def find_nearby_stores(self, zip_code: str = '80538', radius: int = 10) -> Dict[str, Any]:
+        """
+        Find nearby Kroger stores using Certification environment
+        """
+        try:
+            # Get access token first
+            token_result = self.get_access_token()
+            
+            if not token_result.get("success"):
+                logger.error("Failed to obtain access token")
+                return token_result
+            
+            access_token = token_result["access_token"]
+            locations_url = f"{self.base_url}/locations"
+            
+            headers = {
+                "Accept": "application/json",
+                "Authorization": f"Bearer {access_token}"
             }
-        else:
-            error_msg = f"Failed to clear Kroger cart: {response.status_code} - {response.text}"
-            logger.error(error_msg)
+            
+            params = {
+                "filter.zipCode.near": zip_code,
+                "filter.limit": 5,
+                "filter.radiusInMiles": radius
+            }
+            
+            logger.info(f"Searching stores near ZIP: {zip_code}")
+            logger.debug(f"Request Headers: {headers}")
+            logger.debug(f"Request URL: {locations_url}")
+            logger.debug(f"Request Params: {params}")
+            
+            response = requests.get(
+                locations_url, 
+                headers=headers, 
+                params=params,
+                timeout=10
+            )
+            
+            logger.info(f"Store Lookup Status: {response.status_code}")
+            logger.debug(f"Response Headers: {response.headers}")
+            logger.debug(f"Response Content: {response.text[:200]}...")  # Log first 200 chars of response
+            
+            if response.status_code == 200:
+                data = response.json()
+                stores = data.get('data', [])
+                
+                logger.info(f"Found {len(stores)} stores")
+                
+                return {
+                    "success": True,
+                    "stores": [
+                        {
+                            "name": store.get('name'),
+                            "address": store.get('address', {}).get('addressLine1'),
+                            "city": store.get('address', {}).get('city'),
+                            "state": store.get('address', {}).get('state'),
+                            "zipCode": store.get('address', {}).get('zipCode'),
+                            "distance": store.get('distance')
+                        }
+                        for store in stores
+                    ]
+                }
+            else:
+                logger.error(f"Store lookup failed. Status: {response.status_code}")
+                logger.error(f"Response Content: {response.text}")
+                return {
+                    "success": False,
+                    "message": f"Store lookup failed. Status {response.status_code}: {response.text}"
+                }
+        
+        except Exception as e:
+            logger.error(f"Unexpected error during store lookup: {str(e)}", exc_info=True)
             return {
                 "success": False,
-                "message": error_msg
+                "message": f"Unexpected error: {str(e)}"
             }
 
-    except Exception as e:
-        error_msg = f"Error clearing Kroger cart: {str(e)}"
-        logger.error(error_msg)
-        return {
-            "success": False,
-            "message": error_msg
-        }
+    async def set_store_location(self, user_id: int, location_id: str) -> Dict[str, Any]:
+        """Save store location to user profile"""
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                UPDATE user_profiles 
+                SET kroger_store_location_id = %s
+                WHERE id = %s
+                RETURNING id;
+            """, (location_id, user_id))
+            
+            conn.commit()
+            
+            if cursor.rowcount == 0:
+                return {
+                    "success": False,
+                    "message": "Failed to update store location"
+                }
+                
+            return {
+                "success": True,
+                "message": "Store location updated successfully"
+            }
+            
+        except Exception as e:
+            logger.error(f"Error setting store location: {str(e)}")
+            return {
+                "success": False,
+                "message": "Database error occurred"
+            }
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
+   

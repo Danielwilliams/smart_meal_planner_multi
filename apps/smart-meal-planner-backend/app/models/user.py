@@ -165,3 +165,12 @@ class UserKrogerConnection(BaseModel):
     is_connected: bool = False
     store_location_id: Optional[str] = None
     last_synced: Optional[datetime] = None
+
+
+class SaveRecipeRequest(BaseModel):
+    menu_id: int
+    recipe_id: Optional[int] = None
+    recipe_name: Optional[str] = None
+    day_number: Optional[int] = None
+    meal_time: Optional[str] = None
+    notes: Optional[str] = None

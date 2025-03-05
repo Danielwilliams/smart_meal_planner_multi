@@ -1,74 +1,124 @@
 import os
 import requests
+import logging
+from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
+from .walmart_io import WalmartIOIntegration
 
-load_dotenv()  # so we can read from .env if not already done in main
+# Load environment variables
+load_dotenv()
 
-WALMART_BASE_URL = os.getenv("WALMART_BASE_URL", "https://api.walmart.com/v3")
-WALMART_API_KEY = os.getenv("WALMART_API_KEY")
-# If needed:
-WALMART_CLIENT_ID = os.getenv("WALMART_CLIENT_ID")
-WALMART_CLIENT_SECRET = os.getenv("WALMART_CLIENT_SECRET")
+# Set up logging
+logger = logging.getLogger(__name__)
+
+# Configuration from environment
+WALMART_BASE_URL = os.getenv("WALMART_BASE_URL", "https://developer.api.walmart.com/api-proxy/service")
+WALMART_ENV = os.getenv("WALMART_ENV", "production")  # 'production' or 'stage'
+
+# Determine which Consumer ID to use based on environment
+if WALMART_ENV == "stage":
+    WALMART_CONSUMER_ID = os.getenv("WALMART_STAGE_CONSUMER_ID", "0c3150a4-d8f0-44b4-8b4f-4c2a1cecb163")
+else:
+    WALMART_CONSUMER_ID = os.getenv("WALMART_PROD_CONSUMER_ID", "0694cf0e-00f0-4b11-ac97-e38cd4d8f3a7")
 
 def lookup_item(query: str) -> dict:
     """
-    Pseudo code for searching Walmart items by name or UPC, using your API key.
-    Adjust the endpoint and params to match actual Walmart item search.
+    Search for Walmart items by name, using the Walmart.io API
     """
-    url = f"{WALMART_BASE_URL}/items"  # or the correct search path
-    headers = {
-        "Accept": "application/json",
-        "WM_SEC.ACCESS_TOKEN": WALMART_API_KEY,  # sometimes used
-        # "Authorization": f"Bearer {token}" if using OAuth
-    }
-    params = {
-        "query": query,
-        "format": "json"
-    }
-    resp = requests.get(url, headers=headers, params=params)
-    if resp.status_code == 200:
-        return resp.json()
-    else:
-        # handle errors or return None
-        print("Walmart lookup_item error:", resp.status_code, resp.text)
-        return None
+    try:
+        integration = WalmartIOIntegration()
+        return integration.search_products(query, limit=10)
+    except Exception as e:
+        logger.error(f"Walmart lookup_item error: {str(e)}")
+        return {
+            "success": False,
+            "message": f"Error looking up items: {str(e)}",
+            "results": []
+        }
 
 def add_to_cart(user_token: str, item_id: str, quantity: int) -> dict:
     """
-    Example function to add an item to the user's cart. 
-    user_token might represent a Walmart user session or OAuth token.
-    item_id is the Walmart product identifier.
-    quantity is how many to add.
+    Simulate adding an item to a Walmart cart
+    Note: This is currently a simulation as Walmart.io doesn't provide a cart API
     """
-    url = f"{WALMART_BASE_URL}/cart"
-    headers = {
-        "Accept": "application/json",
-        "Authorization": f"Bearer {user_token}",
-        "WM_SEC.ACCESS_TOKEN": WALMART_API_KEY
-    }
-    payload = {
-        "itemId": item_id,
-        "quantity": quantity
-    }
-    resp = requests.post(url, headers=headers, json=payload)
-    if resp.status_code == 200:
-        return resp.json()
-    else:
-        print("Walmart add_to_cart error:", resp.status_code, resp.text)
-        return None
+    try:
+        integration = WalmartIOIntegration()
+        item_details = integration.get_product_details(item_id)
+        
+        if not item_details.get("success"):
+            return {
+                "success": False,
+                "message": item_details.get("message", "Failed to get product details")
+            }
+            
+        return integration.add_to_cart([{
+            "id": item_id,
+            "quantity": quantity,
+            "name": item_details.get("product", {}).get("name", "Unknown Product"),
+            "price": item_details.get("product", {}).get("salePrice", 0.0)
+        }])
+    except Exception as e:
+        logger.error(f"Walmart add_to_cart error: {str(e)}")
+        return {
+            "success": False,
+            "message": f"Error adding to cart: {str(e)}"
+        }
 
 def walmart_user_login(username: str, password: str) -> str:
     """
-    Pseudo code for logging the user in to Walmart. 
-    In reality, Walmart might rely on OAuth or a web-based approach.
-    Return a user token if successful.
+    Simulate user login to Walmart
+    Note: This is a placeholder function as Walmart.io doesn't support this directly
     """
-    # Example:
-    url = f"{WALMART_BASE_URL}/login"
-    data = {"username": username, "password": password}
-    resp = requests.post(url, json=data)
-    if resp.status_code == 200:
-        return resp.json().get("userToken")
-    else:
-        print("Walmart user login error:", resp.status_code, resp.text)
-        return ""
+    logger.warning("Walmart user login is simulated; no actual authentication occurs")
+    return "simulated-walmart-token"
+
+
+class WalmartIntegration:
+    def __init__(self):
+        self.integration = WalmartIOIntegration()
+        logger.info(f"Initialized Walmart Integration using {WALMART_ENV} environment")
+
+    def search_products(self, query: str) -> dict:
+        """Search Walmart products by query"""
+        try:
+            return self.integration.search_products(query)
+        except Exception as e:
+            logger.error(f"Error searching Walmart products: {str(e)}")
+            return {
+                "success": False,
+                "message": str(e),
+                "results": []
+            }
+
+    def add_to_cart(self, items: list) -> dict:
+        """Add items to Walmart cart (simulation)"""
+        try:
+            # Transform items to expected format
+            formatted_items = []
+            for item in items:
+                formatted_items.append({
+                    "id": item.get("id"),
+                    "quantity": item.get("quantity", 1),
+                    "name": item.get("name", "Unknown Product"),
+                    "price": item.get("price", 0.0)
+                })
+                
+            return self.integration.add_to_cart(formatted_items)
+        except Exception as e:
+            logger.error(f"Error adding to Walmart cart: {str(e)}")
+            return {
+                "success": False,
+                "message": str(e)
+            }
+            
+    def find_nearby_stores(self, zip_code: str = '94040', radius: int = 50) -> dict:
+        """Find nearby Walmart stores"""
+        try:
+            return self.integration.find_nearby_stores(zip_code, radius)
+        except Exception as e:
+            logger.error(f"Error finding nearby Walmart stores: {str(e)}")
+            return {
+                "success": False,
+                "message": str(e),
+                "stores": []
+            }

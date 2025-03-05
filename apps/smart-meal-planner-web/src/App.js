@@ -20,6 +20,7 @@ import LandingPage from './pages/LandingPage';
 import PrivateRoute from './components/PrivateRoute';
 import ExampleMealPlansPage from './pages/ExampleMealPlansPage';
 import VerifyEmailPage from './pages/VerifyEmailPage';
+import SavedRecipesPage from './pages/SavedRecipesPage';
 
 
 function App() {
@@ -83,6 +84,14 @@ function App() {
                 element={
                   <PrivateRoute>
                     <CartPage />
+                  </PrivateRoute>
+                } 
+              />
+              <Route 
+                path="/saved-recipes" 
+                element={
+                  <PrivateRoute>
+                    <SavedRecipesPage />
                   </PrivateRoute>
                 } 
               />

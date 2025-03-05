@@ -618,6 +618,7 @@ function PreferencesPage() {
 
         <Divider sx={{ my: 3 }} />
 
+        
         {/* Macro Goals */}
         <Typography variant="subtitle1" gutterBottom>
           Daily Macro Goals
@@ -628,28 +629,29 @@ function PreferencesPage() {
               Set your macro split (must total 100%)
             </Typography>
           </Grid>
-          <Grid item xs={12} sm={4}>
-             <MacroDefaults 
-                initialValues={{
-                  protein: preferences.macroGoals.protein,
-                  carbs: preferences.macroGoals.carbs,
-                  fat: preferences.macroGoals.fat,
-                  calories: preferences.macroGoals.calories
-                }}
-                onChange={(newMacros) => {
-                  setPreferences(prev => ({
-                    ...prev,
-                    macroGoals: {
-                      ...prev.macroGoals,
-                      protein: newMacros.protein,
-                      carbs: newMacros.carbs,
-                      fat: newMacros.fat,
-                      calories: newMacros.calories
-                    }
-                  }));
-                }}
-              />
+          <Grid item xs={12}>
+            <MacroDefaults 
+              initialValues={{
+                protein: preferences.macroGoals.protein,
+                carbs: preferences.macroGoals.carbs,
+                fat: preferences.macroGoals.fat,
+                calories: preferences.macroGoals.calories
+              }}
+              onChange={(newMacros) => {
+                setPreferences(prev => ({
+                  ...prev,
+                  macroGoals: {
+                    ...prev.macroGoals,
+                    protein: newMacros.protein,
+                    carbs: newMacros.carbs,
+                    fat: newMacros.fat,
+                    calories: newMacros.calories
+                  }
+                }));
+              }}
+            />
           </Grid>
+        
 
           <Grid item xs={12}>
             <Typography 
@@ -662,19 +664,7 @@ function PreferencesPage() {
                 : `Remaining: ${calculateRemaining()}%`}
             </Typography>
           </Grid>
-          <Grid item xs={12}>
-            <TextField
-              name="macroGoals.calories"
-              label="Daily Calorie Goal"
-              fullWidth
-              margin="normal"
-              value={preferences.macroGoals.calories}
-              onChange={handleMacroPercentageChange}
-              InputProps={{
-                endAdornment: <InputAdornment position="end">kcal/day</InputAdornment>,
-              }}
-            />
-          </Grid>
+
         </Grid>
 
         <Divider sx={{ my: 3 }} />

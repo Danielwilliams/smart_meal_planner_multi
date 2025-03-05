@@ -1,4 +1,10 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
+import { 
+  Grid, 
+  TextField, 
+  Typography, 
+  InputAdornment 
+} from '@mui/material';
 
 // Default values for macros
 const DEFAULT_MACROS = {
@@ -49,74 +55,79 @@ export default function MacroDefaults({ initialValues, onChange }) {
     }));
   };
 
+  const calculateTotal = () => {
+    return ['protein', 'carbs', 'fat'].reduce((sum, macro) => 
+      sum + (parseInt(macros[macro]) || 0), 0
+    );
+  };
+
   return (
-    <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700">
-            Protein (%)
-          </label>
-          <input
+    <>
+      <Grid container spacing={2} sx={{ width: '100%' }}>
+        <Grid item xs={12} sm={4}>
+          <TextField
+            label="Protein (%)"
+            fullWidth
+            margin="normal"
             type="number"
             value={macros.protein}
             onChange={(e) => handleMacroChange('protein', e.target.value)}
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
-            min="0"
-            max="100"
+            InputProps={{
+              endAdornment: <InputAdornment position="end">%</InputAdornment>,
+            }}
           />
-        </div>
-        
-        <div>
-          <label className="block text-sm font-medium text-gray-700">
-            Carbs (%)
-          </label>
-          <input
+        </Grid>
+        <Grid item xs={12} sm={4}>
+          <TextField
+            label="Carbs (%)"
+            fullWidth
+            margin="normal"
             type="number"
             value={macros.carbs}
             onChange={(e) => handleMacroChange('carbs', e.target.value)}
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
-            min="0"
-            max="100"
+            InputProps={{
+              endAdornment: <InputAdornment position="end">%</InputAdornment>,
+            }}
           />
-        </div>
-        
-        <div>
-          <label className="block text-sm font-medium text-gray-700">
-            Fat (%)
-          </label>
-          <input
+        </Grid>
+        <Grid item xs={12} sm={4}>
+          <TextField
+            label="Fat (%)"
+            fullWidth
+            margin="normal"
             type="number"
             value={macros.fat}
             onChange={(e) => handleMacroChange('fat', e.target.value)}
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
-            min="0"
-            max="100"
+            InputProps={{
+              endAdornment: <InputAdornment position="end">%</InputAdornment>,
+            }}
           />
-        </div>
-        
-        <div>
-          <label className="block text-sm font-medium text-gray-700">
-            Daily Calories
-          </label>
-          <input
+        </Grid>
+        <Grid item xs={12}>
+          <Typography 
+            variant="body2" 
+            color={calculateTotal() === 100 ? "success.main" : "warning.main"}
+            sx={{ mt: 1 }}
+          >
+            {calculateTotal() === 100 
+              ? "Perfect! Your macros total 100%" 
+              : `Remaining: ${100 - calculateTotal()}%`}
+          </Typography>
+        </Grid>
+        <Grid item xs={12}>
+          <TextField
+            label="Daily Calorie Goal"
+            fullWidth
+            margin="normal"
             type="number"
             value={macros.calories}
             onChange={(e) => handleMacroChange('calories', e.target.value)}
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
-            min="500"
-            step="50"
+            InputProps={{
+              endAdornment: <InputAdornment position="end">kcal/day</InputAdornment>,
+            }}
           />
-        </div>
-      </div>
-      
-      <div className="text-sm text-gray-500">
-        {macros.protein + macros.carbs + macros.fat !== 100 && (
-          <p className="text-red-500">
-            Macronutrient percentages must total 100%. Current total: 
-            {macros.protein + macros.carbs + macros.fat}%
-          </p>
-        )}
-      </div>
-    </div>
+        </Grid>
+      </Grid>
+    </>
   );
 }

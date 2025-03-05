@@ -39,6 +39,9 @@ function NavBar() {
             <Button color="inherit" component={Link} to="/cart">
               Cart
             </Button>
+            <Button color="inherit" component={Link} to="/saved-recipes">
+              Saved Recipes
+            </Button>
             <Button color="inherit" component={Link} to="/preferences-page">
               Preferences
             </Button>

@@ -1,42 +1,35 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+
+// MUI Components
 import { 
-  Container, 
-  Typography, 
-  Button, 
-  Box, 
-  Paper, 
-  Select, 
-  MenuItem, 
-  FormControl, 
-  InputLabel,
-  CircularProgress,
-  Alert,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  TextField,
-  IconButton,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  FormGroup,
-  FormControlLabel,
-  Checkbox,
-  Grid,
-  Chip
+  Container, Typography, Button, Box, Paper, 
+  Select, MenuItem, FormControl, InputLabel,
+  CircularProgress, Alert, Accordion, AccordionSummary, 
+  AccordionDetails, TextField, IconButton, Dialog, 
+  DialogTitle, DialogContent, DialogActions,
+  FormGroup, FormControlLabel, Checkbox, Grid, Chip,
+  Snackbar
 } from '@mui/material';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import EditIcon from '@mui/icons-material/Edit';
-import SaveIcon from '@mui/icons-material/Save';
-import PrintIcon from '@mui/icons-material/Print';
-import RestaurantIcon from '@mui/icons-material/Restaurant';
-import TimerIcon from '@mui/icons-material/Timer';
+
+// MUI Icons
+import { 
+  ExpandMore as ExpandMoreIcon, 
+  Edit as EditIcon, 
+  Save as SaveIcon, 
+  Print as PrintIcon, 
+  Restaurant as RestaurantIcon, 
+  Timer as TimerIcon,
+  Favorite as FavoriteIcon,
+  FavoriteBorder as FavoriteBorderIcon
+} from '@mui/icons-material';
+
+// Local Imports
 import { useAuth } from '../context/AuthContext';
 import apiService from '../services/apiService';
 import '../styles/print.css';
-
+import RecipeSaveButton from '../components/RecipeSaveButton';
+import RecipeSaveDialog from '../components/RecipeSaveDialog';
 
 // Utility Functions
 function formatIngredient(ing) {
@@ -93,6 +86,7 @@ function MenuDisplayPage() {
   const [selectedDays, setSelectedDays] = useState({});
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [savedRecipes, setSavedRecipes] = useState([]);
 
   // Filter States
   const [mealTimeFilters, setMealTimeFilters] = useState({
@@ -115,6 +109,26 @@ function MenuDisplayPage() {
     dinner: true,
     snacks: true
   });
+
+  const [durationDays, setDurationDays] = useState(7);
+
+  // Fetch saved recipes
+  useEffect(() => {
+    const fetchSavedRecipes = async () => {
+      try {
+        const saved = await apiService.getSavedRecipes();
+        setSavedRecipes(saved);
+      } catch (err) {
+        console.error('Failed to fetch saved recipes', err);
+      }
+    };
+
+    if (user) {
+      fetchSavedRecipes();
+    }
+  }, [user]);
+
+  
 
   // Fetch menu data
   const fetchMenuData = async () => {
@@ -166,8 +180,6 @@ function MenuDisplayPage() {
   }, [user]);
 
   // Generate new menu
-  const [durationDays, setDurationDays] = useState(7); // Default to 7 days
-
   const handleGenerateMenu = async () => {
     try {
       setLoading(true);
@@ -366,227 +378,269 @@ function MenuDisplayPage() {
   };
 
   const renderMenuItems = () => {
-  if (!menu?.meal_plan?.days) return null;
+    if (!menu?.meal_plan?.days) return null;
 
-  const parsedMealPlan = typeof menu.meal_plan === 'string' 
-    ? JSON.parse(menu.meal_plan) 
-    : menu.meal_plan;
+    const parsedMealPlan = typeof menu.meal_plan === 'string' 
+      ? JSON.parse(menu.meal_plan) 
+      : menu.meal_plan;
 
-  return parsedMealPlan.days
-    .filter(day => printMode ? selectedDays[day.dayNumber] : true)
-    .map((day, dayIndex) => (
-      <Accordion 
-        key={dayIndex} 
-        TransitionProps={{ unmountOnExit: false }}
-        className={printMode ? 'print-expanded' : ''}
-      >
-        <AccordionSummary
-          expandIcon={<ExpandMoreIcon />}
-          aria-controls={`day${day.dayNumber}-content`}
-          id={`day${day.dayNumber}-header`}
+    return parsedMealPlan.days
+      .filter(day => printMode ? selectedDays[day.dayNumber] : true)
+      .map((day, dayIndex) => (
+        <Accordion 
+          key={dayIndex} 
+          TransitionProps={{ unmountOnExit: false }}
+          className={printMode ? 'print-expanded' : ''}
         >
-          <Box sx={{ width: '100%' }}>
-            <Typography variant="h6">Day {day.dayNumber}</Typography>
-            {day.summary && (
-              <Typography variant="body2" color="text.secondary">
-                Goal: {day.summary.calorie_goal} cal | 
-                P: {day.summary.protein_goal} | 
-                C: {day.summary.carbs_goal} | 
-                F: {day.summary.fat_goal} |
-                Servings Per Meal: {(day.meals && day.meals[0]?.servings) || 1} servings
-              </Typography>
-            )}
-          </Box>
-        </AccordionSummary>
-        <AccordionDetails>
-          {day.meals && day.meals
-            .filter(meal => {
-              const mealType = meal.meal_time.toLowerCase();
-              return mealTimeFilters[mealType];
-            })
-            .map((meal, mealIndex) => (
-              <Accordion 
-                key={mealIndex} 
-                TransitionProps={{ unmountOnExit: false }}
-                sx={{ mb: 1, boxShadow: 'none', '&:before': { display: 'none' } }}
-              >
-                <AccordionSummary
-                  expandIcon={<ExpandMoreIcon />}
-                  aria-controls={`meal${mealIndex}-content`}
-                  id={`meal${mealIndex}-header`}
-                  sx={{ bgcolor: 'background.default', borderRadius: 1 }}
+          <AccordionSummary
+            expandIcon={<ExpandMoreIcon />}
+            aria-controls={`day${day.dayNumber}-content`}
+            id={`day${day.dayNumber}-header`}
+          >
+            <Box sx={{ width: '100%' }}>
+              <Typography variant="h6">Day {day.dayNumber}</Typography>
+              {day.summary && (
+                <Typography variant="body2" color="text.secondary">
+                  Goal: {day.summary.calorie_goal} cal | 
+                  P: {day.summary.protein_goal} | 
+                  C: {day.summary.carbs_goal} | 
+                  F: {day.summary.fat_goal} |
+                  Servings Per Meal: {(day.meals && day.meals[0]?.servings) || 1} servings
+                </Typography>
+              )}
+            </Box>
+          </AccordionSummary>
+          <AccordionDetails>
+            {day.meals && day.meals
+              .filter(meal => {
+                const mealType = meal.meal_time.toLowerCase();
+                return mealTimeFilters[mealType];
+              })
+              .map((meal, mealIndex) => (
+                <Accordion 
+                  key={mealIndex} 
+                  TransitionProps={{ unmountOnExit: false }}
+                  sx={{ mb: 1, boxShadow: 'none', '&:before': { display: 'none' } }}
                 >
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
-                    <Typography variant="subtitle1">
-                      {meal.meal_time.charAt(0).toUpperCase() + meal.meal_time.slice(1)}: {meal.title}
-                    </Typography>
-                    <Box sx={{ display: 'flex', gap: 1 }}>
-                      {meal.appliance_used && (
-                        <Chip
-                          icon={<RestaurantIcon />}
-                          label={meal.appliance_used}
-                          size="small"
-                          variant="outlined"
-                        />
-                      )}
-                      {meal.complexity_level && (
-                        <Chip
-                          icon={<TimerIcon />}
-                          label={meal.complexity_level}
-                          size="small"
-                          color={getComplexityColor(meal.complexity_level)}
-                        />
-                      )}
-                    </Box>
-                  </Box>
-                </AccordionSummary>
-                <AccordionDetails>
-                  <Box sx={{ pl: 2 }}>
-                    <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                      <strong>Ingredients:</strong>
-                    </Typography>
-                    <ul style={{ margin: '8px 0' }}>
-                      {meal.ingredients.map((ingredient, idx) => (
-                        <li key={idx}>
-                          <Typography variant="body2">
-                            {formatIngredient(ingredient)}
-                          </Typography>
-                        </li>
-                      ))}
-                    </ul>
-
-                  <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-                    <strong>Instructions:</strong>
-                  </Typography>
-                  {Array.isArray(meal.instructions) ? (
-                    <ol style={{ margin: '8px 0', paddingLeft: '20px' }}>
-                      {meal.instructions.map((step, idx) => {
-                        // Remove any leading numbers and dots from the step
-                        const cleanStep = step.replace(/^\d+\.\s*/, '');
-                        return (
-                          <li key={idx}>
-                            <Typography variant="body2">{cleanStep}</Typography>
-                          </li>
-                        );
-                      })}
-                    </ol>
-                  ) : (
-                    <Typography variant="body2" sx={{ mt: 1 }}>
-                      {meal.instructions}
-                    </Typography>
-                  )}
-                    {meal.macros && (
-                    <Box sx={{ mt: 2, p: 1, bgcolor: 'background.default', borderRadius: 1 }}>
-                      <Typography variant="body2" color="text.secondary">
-                        <strong>Number of Servings:</strong> {meal.servings || 1}
+                  <AccordionSummary
+                    expandIcon={<ExpandMoreIcon />}
+                    aria-controls={`meal${mealIndex}-content`}
+                    id={`meal${mealIndex}-header`}
+                    sx={{ bgcolor: 'background.default', borderRadius: 1 }}
+                  >
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
+                      <Typography variant="subtitle1">
+                        {meal.meal_time.charAt(0).toUpperCase() + meal.meal_time.slice(1)}: {meal.title}
                       </Typography>
-                      <Box sx={{ mt: 1 }}>
-                        <Typography variant="body2">
-                          <strong>Per Serving:</strong><br />
-                          Calories: {meal.macros.perServing.calories} |
-                          Protein: {meal.macros.perServing.protein} |
-                          Carbs: {meal.macros.perServing.carbs} |
-                          Fat: {meal.macros.perServing.fat}
-                        </Typography>
-                        <Typography variant="body2" sx={{ mt: 1 }}>
-                          <strong>Total Recipe ({meal.servings || 1} servings):</strong><br />
-                          Calories: {meal.macros.perMeal.calories} |
-                          Protein: {meal.macros.perMeal.protein} |
-                          Carbs: {meal.macros.perMeal.carbs} |
-                          Fat: {meal.macros.perMeal.fat}
-                        </Typography>
+                      <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                        {/* Save/Unsave Button */}                           
+                            <RecipeSaveDialog
+                              menuId={menu.menu_id}
+                              dayNumber={day.dayNumber}
+                              mealTime={meal.meal_time}
+                              recipeTitle={meal.title}
+                              isSaved={savedRecipes.some(
+                                saved => saved.menu_id === menu.menu_id && 
+                                         saved.meal_time === meal.meal_time &&
+                                         saved.day_number === day.dayNumber
+                              )}
+                              savedId={savedRecipes.find(
+                                saved => saved.menu_id === menu.menu_id && 
+                                         saved.recipe_id === `${menu.menu_id}-${day.dayNumber}-${meal.meal_time}` && 
+                                         saved.meal_time === meal.meal_time
+                              )?.id}
+                              onSaveSuccess={(result) => {
+                                if (result.isSaved) {
+                                  // Add the new saved recipe to the state
+                                  setSavedRecipes(prev => [
+                                    ...prev,
+                                    {
+                                      id: result.savedId,
+                                      menu_id: result.menuId,
+                                      recipe_id: result.recipeId,
+                                      meal_time: result.mealTime,
+                                      recipe_name: result.recipeTitle
+                                    }
+                                  ]);
+                                } else {
+                                  // Remove the unsaved recipe from state
+                                  setSavedRecipes(prev => 
+                                    prev.filter(item => 
+                                      !(item.menu_id === result.menuId && 
+                                        item.recipe_id === result.recipeId && 
+                                        item.meal_time === result.mealTime)
+                                    )
+                                  );
+                                }
+                              }}
+                            />
+
+                        {meal.appliance_used && (
+                          <Chip
+                            icon={<RestaurantIcon />}
+                            label={meal.appliance_used}
+                            size="small"
+                            variant="outlined"
+                          />
+                        )}
+                        {meal.complexity_level && (
+                          <Chip
+                            icon={<TimerIcon />}
+                            label={meal.complexity_level}
+                            size="small"
+                            color={getComplexityColor(meal.complexity_level)}
+                          />
+                        )}
                       </Box>
                     </Box>
-                  )}
-                </Box> 
-                </AccordionDetails>
-              </Accordion>
-            ))}
+                  </AccordionSummary>
+                  <AccordionDetails>
+                    <Box sx={{ pl: 2 }}>
+                      <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                        <strong>Ingredients:</strong>
+                      </Typography>
+                      <ul style={{ margin: '8px 0' }}>
+                        {meal.ingredients.map((ingredient, idx) => (
+                          <li key={idx}>
+                            <Typography variant="body2">
+                              {formatIngredient(ingredient)}
+                            </Typography>
+                          </li>
+                        ))}
+                      </ul>
 
-          {/* Snacks Section */}
-       {day.snacks && mealTimeFilters.snacks && (
-         <Box sx={{ mt: 3 }}>
-           <Typography variant="h6" sx={{ mb: 2 }}>Snacks</Typography>
-           {day.snacks.map((snack, snackIndex) => (
-             <Accordion 
-               key={snackIndex}
-               TransitionProps={{ unmountOnExit: false }}
-               sx={{ mb: 1 }}
-             >
-               <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                 <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
-                   <Typography variant="subtitle1">
-                     {safeGet(snack, 'title', 'Unnamed Snack')}
-                   </Typography>
-                   <Box sx={{ display: 'flex', gap: 1 }}>
-                     {snack.appliance_used && (
-                       <Chip
-                         icon={<RestaurantIcon />}
-                         label={snack.appliance_used}
-                         size="small"
-                         variant="outlined"
-                       />
-                     )}
-                     {snack.complexity_level && (
-                       <Chip
-                         icon={<TimerIcon />}
-                         label={snack.complexity_level}
-                         size="small"
-                         color={getComplexityColor(snack.complexity_level)}
-                       />
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                      <strong>Instructions:</strong>
+                    </Typography>
+                    {Array.isArray(meal.instructions) ? (
+                      <ol style={{ margin: '8px 0', paddingLeft: '20px' }}>
+                        {meal.instructions.map((step, idx) => {
+                          // Remove any leading numbers and dots from the step
+                          const cleanStep = step.replace(/^\d+\.\s*/, '');
+                          return (
+                            <li key={idx}>
+                              <Typography variant="body2">{cleanStep}</Typography>
+                            </li>
+                          );
+                        })}
+                      </ol>
+                    ) : (
+                      <Typography variant="body2" sx={{ mt: 1 }}>
+                        {meal.instructions}
+                      </Typography>
+                    )}
+                      {meal.macros && (
+                      <Box sx={{ mt: 2, p: 1, bgcolor: 'background.default', borderRadius: 1 }}>
+                        <Typography variant="body2" color="text.secondary">
+                          <strong>Number of Servings:</strong> {meal.servings || 1}
+                        </Typography>
+                        <Box sx={{ mt: 1 }}>
+                          <Typography variant="body2">
+                            <strong>Per Serving:</strong><br />
+                            Calories: {meal.macros.perServing.calories} |
+                            Protein: {meal.macros.perServing.protein} |
+                            Carbs: {meal.macros.perServing.carbs} |
+                            Fat: {meal.macros.perServing.fat}
+                          </Typography>
+                          <Typography variant="body2" sx={{ mt: 1 }}>
+                            <strong>Total Recipe ({meal.servings || 1} servings):</strong><br />
+                            Calories: {meal.macros.perMeal.calories} |
+                            Protein: {meal.macros.perMeal.protein} |
+                            Carbs: {meal.macros.perMeal.carbs} |
+                            Fat: {meal.macros.perMeal.fat}
+                          </Typography>
+                        </Box>
+                      </Box>
+                    )}
+                  </Box> 
+                  </AccordionDetails>
+                </Accordion>
+              ))}
+
+            {/* Snacks Section */}
+         {day.snacks && mealTimeFilters.snacks && (
+           <Box sx={{ mt: 3 }}>
+             <Typography variant="h6" sx={{ mb: 2 }}>Snacks</Typography>
+             {day.snacks.map((snack, snackIndex) => (
+               <Accordion 
+                 key={snackIndex}
+                 TransitionProps={{ unmountOnExit: false }}
+                 sx={{ mb: 1 }}
+               >
+                 <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                   <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
+                     <Typography variant="subtitle1">
+                       {safeGet(snack, 'title', 'Unnamed Snack')}
+                     </Typography>
+                     <Box sx={{ display: 'flex', gap: 1 }}>
+                       {snack.appliance_used && (
+                         <Chip
+                           icon={<RestaurantIcon />}
+                           label={snack.appliance_used}
+                           size="small"
+                           variant="outlined"
+                         />
+                       )}
+                       {snack.complexity_level && (
+                         <Chip
+                           icon={<TimerIcon />}
+                           label={snack.complexity_level}
+                           size="small"
+                           color={getComplexityColor(snack.complexity_level)}
+                         />
+                       )}
+                     </Box>
+                   </Box>
+                 </AccordionSummary>
+                 <AccordionDetails>
+                   <Box sx={{ pl: 2 }}>
+                     <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                       <strong>Ingredients:</strong>
+                     </Typography>
+                     <ul style={{ margin: '8px 0' }}>
+                       {(snack.ingredients || []).map((ingredient, idx) => (
+                         <li key={idx}>
+                           <Typography variant="body2">
+                             {formatIngredient(ingredient)}
+                           </Typography>
+                         </li>
+                       ))}
+                     </ul>               
+                      {snack.macros && (
+                       <Box sx={{ mt: 2, p: 1, bgcolor: 'background.default', borderRadius: 1 }}>
+                         <Typography variant="body2" color="text.secondary">
+                           <strong>Number of Servings:</strong> {snack.servings || 1}
+                         </Typography>
+                         <Box sx={{ mt: 1 }}>
+                           <Typography variant="body2">
+                             <strong>Per Serving:</strong><br />
+                             Calories: {safeGet(snack.macros, 'perServing.calories', 'N/A')} |
+                             Protein: {safeGet(snack.macros, 'perServing.protein', 'N/A')} |
+                             Carbs: {safeGet(snack.macros, 'perServing.carbs', 'N/A')} |
+                             Fat: {safeGet(snack.macros, 'perServing.fat', 'N/A')}
+                           </Typography>
+                           {safeGet(snack.macros, 'perMeal') && (
+                             <Typography variant="body2" sx={{ mt: 1 }}>
+                               <strong>Total Recipe ({snack.servings || 1} servings):</strong><br />
+                               Calories: {safeGet(snack.macros, 'perMeal.calories', 'N/A')} |
+                               Protein: {safeGet(snack.macros, 'perMeal.protein', 'N/A')} |
+                               Carbs: {safeGet(snack.macros, 'perMeal.carbs', 'N/A')} |
+                               Fat: {safeGet(snack.macros, 'perMeal.fat', 'N/A')}
+                             </Typography>
+                           )}
+                         </Box>
+                       </Box>
                      )}
                    </Box>
-                 </Box>
-               </AccordionSummary>
-               <AccordionDetails>
-                 <Box sx={{ pl: 2 }}>
-                   <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                     <strong>Ingredients:</strong>
-                   </Typography>
-                   <ul style={{ margin: '8px 0' }}>
-                     {(snack.ingredients || []).map((ingredient, idx) => (
-                       <li key={idx}>
-                         <Typography variant="body2">
-                           {formatIngredient(ingredient)}
-                         </Typography>
-                       </li>
-                     ))}
-                   </ul>               
-                    {snack.macros && (
-                     <Box sx={{ mt: 2, p: 1, bgcolor: 'background.default', borderRadius: 1 }}>
-                       <Typography variant="body2" color="text.secondary">
-                         <strong>Number of Servings:</strong> {snack.servings || 1}
-                       </Typography>
-                       <Box sx={{ mt: 1 }}>
-                         <Typography variant="body2">
-                           <strong>Per Serving:</strong><br />
-                           Calories: {safeGet(snack.macros, 'perServing.calories', 'N/A')} |
-                           Protein: {safeGet(snack.macros, 'perServing.protein', 'N/A')} |
-                           Carbs: {safeGet(snack.macros, 'perServing.carbs', 'N/A')} |
-                           Fat: {safeGet(snack.macros, 'perServing.fat', 'N/A')}
-                         </Typography>
-                         {safeGet(snack.macros, 'perMeal') && (
-                           <Typography variant="body2" sx={{ mt: 1 }}>
-                             <strong>Total Recipe ({snack.servings || 1} servings):</strong><br />
-                             Calories: {safeGet(snack.macros, 'perMeal.calories', 'N/A')} |
-                             Protein: {safeGet(snack.macros, 'perMeal.protein', 'N/A')} |
-                             Carbs: {safeGet(snack.macros, 'perMeal.carbs', 'N/A')} |
-                             Fat: {safeGet(snack.macros, 'perMeal.fat', 'N/A')}
-                           </Typography>
-                         )}
-                       </Box>
-                     </Box>
-                   )}
-                 </Box>
-               </AccordionDetails>
-             </Accordion>
-           ))}
-         </Box>
-       )}
-        </AccordionDetails>
-      </Accordion>
-    ));
-};
+                 </AccordionDetails>
+               </Accordion>
+             ))}
+           </Box>
+         )}
+          </AccordionDetails>
+        </Accordion>
+      ));
+  };
   
   return (
     <Container maxWidth="md">
@@ -762,7 +816,7 @@ function MenuDisplayPage() {
         </Box>
       </Box>
 
-      {/* Print Dialog */}
+ {/* Print Dialog */}
       <Dialog open={printDialogOpen} onClose={handlePrintDialogClose}>
         <DialogTitle>Print Menu Options</DialogTitle>
         <DialogContent>
@@ -814,6 +868,15 @@ function MenuDisplayPage() {
       </Dialog>
 
       {menu && renderMenuItems()}
+
+      {/* Snackbar for save/unsave messages */}
+      <Snackbar
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        open={snackbarOpen}
+        autoHideDuration={3000}
+        onClose={() => setSnackbarOpen(false)}
+        message={snackbarMessage}
+      />
     </Container>
   );
 }
