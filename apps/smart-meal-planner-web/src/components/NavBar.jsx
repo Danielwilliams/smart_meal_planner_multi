@@ -11,11 +11,22 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useOrganization } from '../context/OrganizationContext';
 
-
 function NavBar() {
   const { isAuthenticated, user, logout } = useAuth();
   const navigate = useNavigate();
-  const { organization, isOwner } = useOrganization();
+  
+  // Only use the organization context if authenticated
+  let orgData = { organization: null, isOwner: false };
+  if (isAuthenticated) {
+    try {
+      // This will only run if the user is authenticated
+      orgData = useOrganization();
+    } catch (err) {
+      console.error("Failed to load organization data:", err);
+    }
+  }
+  
+  const { organization, isOwner } = orgData;
 
   const handleLogout = () => {
     logout();
@@ -36,7 +47,6 @@ function NavBar() {
             />
           )}
         </Typography>
-
         {isAuthenticated ? (
           <Box>
             <Button color="inherit" component={Link} to="/">
