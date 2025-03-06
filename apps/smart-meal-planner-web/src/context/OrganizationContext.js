@@ -3,9 +3,12 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import apiService from '../services/apiService';
 import { useAuth } from './AuthContext';
 
-const OrganizationContext = createContext();
+// Create the context
+const OrganizationContext = createContext(undefined);
 
+// Provider component
 export const OrganizationProvider = ({ children }) => {
+  console.log("OrganizationProvider initialized"); // Add this for debugging
   const { user, isAuthenticated } = useAuth();
   const [organization, setOrganization] = useState(null);
   const [clients, setClients] = useState([]);
@@ -110,29 +113,45 @@ export const OrganizationProvider = ({ children }) => {
     }
   };
 
+  // Create a value object with all the context data
+  const contextValue = {
+    organization,
+    clients,
+    loading,
+    error,
+    isOwner,
+    createOrganization,
+    inviteClient,
+    addClientToOrganization,
+    shareMenuWithClient
+  };
+
+  console.log("OrganizationContext value:", contextValue); // Add this for debugging
+
   return (
-    <OrganizationContext.Provider value={{
-      organization,
-      clients,
-      loading,
-      error,
-      isOwner,
-      createOrganization,
-      inviteClient,
-      addClientToOrganization,
-      shareMenuWithClient
-    }}>
+    <OrganizationContext.Provider value={contextValue}>
       {children}
     </OrganizationContext.Provider>
   );
 };
 
+// Custom hook to use the context
 export const useOrganization = () => {
+  // Add this for debugging
+  console.log("useOrganization hook called");
+  
   const context = useContext(OrganizationContext);
+  
+  // Add this for debugging
+  console.log("useOrganization context value:", context);
+  
   if (context === undefined) {
+    console.error("useOrganization called outside of provider!");
     throw new Error('useOrganization must be used within an OrganizationProvider');
   }
   return context;
 };
 
+// Export both named and default for flexibility
+export { OrganizationContext };
 export default OrganizationContext;
