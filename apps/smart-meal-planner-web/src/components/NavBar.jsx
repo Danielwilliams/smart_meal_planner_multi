@@ -11,89 +11,95 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useOrganization } from '../context/OrganizationContext';
 
-function NavBar() {
-  const { isAuthenticated, user, logout } = useAuth();
+// Split into two components for authenticated and non-authenticated users
+const AuthenticatedNavContent = () => {
+  const { logout } = useAuth();
   const navigate = useNavigate();
+  const { organization, isOwner } = useOrganization();
   
-  // Only use the organization context if authenticated
-  let orgData = { organization: null, isOwner: false };
-  if (isAuthenticated) {
-    try {
-      // This will only run if the user is authenticated
-      orgData = useOrganization();
-    } catch (err) {
-      console.error("Failed to load organization data:", err);
-    }
-  }
-  
-  const { organization, isOwner } = orgData;
-
   const handleLogout = () => {
     logout();
     navigate('/login');
   };
+  
+  return (
+    <>
+      <Typography variant="h6" sx={{ flexGrow: 1 }}>
+        Smart Meal Planner
+        {organization && (
+          <Chip
+            label={organization.name}
+            size="small"
+            color="secondary"
+            sx={{ ml: 1 }}
+          />
+        )}
+      </Typography>
+      <Box>
+        <Button color="inherit" component={Link} to="/">
+          Home
+        </Button>
+        <Button color="inherit" component={Link} to="/menu">
+          Menu
+        </Button>
+        <Button color="inherit" component={Link} to="/shopping-list">
+          Shopping List
+        </Button>
+        <Button color="inherit" component={Link} to="/cart">
+          Cart
+        </Button>
+        <Button color="inherit" component={Link} to="/saved-recipes">
+          Saved Recipes
+        </Button>
+        <Button color="inherit" component={Link} to="/preferences-page">
+          Preferences
+        </Button>
+        
+        {/* Add organization navigation */}
+        <Button 
+          color="inherit" 
+          component={Link} 
+          to={organization ? "/organization/dashboard" : "/organization/create"}
+        >
+          {organization ? "Organization" : "Create Organization"}
+        </Button>
+        
+        <Button color="inherit" onClick={handleLogout}>
+          Logout
+        </Button>
+      </Box>
+    </>
+  );
+};
+
+const UnauthenticatedNavContent = () => {
+  return (
+    <>
+      <Typography variant="h6" sx={{ flexGrow: 1 }}>
+        Smart Meal Planner
+      </Typography>
+      <Box>
+        <Button color="inherit" component={Link} to="/">
+          Home
+        </Button>
+        <Button color="inherit" component={Link} to="/login">
+          Login
+        </Button>
+        <Button color="inherit" component={Link} to="/signup">
+          Sign Up
+        </Button>
+      </Box>
+    </>
+  );
+};
+
+function NavBar() {
+  const { isAuthenticated } = useAuth();
 
   return (
     <AppBar position="static">
       <Toolbar>
-        <Typography variant="h6" sx={{ flexGrow: 1 }}>
-          Smart Meal Planner
-          {organization && (
-            <Chip
-              label={organization.name}
-              size="small"
-              color="secondary"
-              sx={{ ml: 1 }}
-            />
-          )}
-        </Typography>
-        {isAuthenticated ? (
-          <Box>
-            <Button color="inherit" component={Link} to="/">
-              Home
-            </Button>
-            <Button color="inherit" component={Link} to="/menu">
-              Menu
-            </Button>
-            <Button color="inherit" component={Link} to="/shopping-list">
-              Shopping List
-            </Button>
-            <Button color="inherit" component={Link} to="/cart">
-              Cart
-            </Button>
-            <Button color="inherit" component={Link} to="/saved-recipes">
-              Saved Recipes
-            </Button>
-            <Button color="inherit" component={Link} to="/preferences-page">
-              Preferences
-            </Button>
-            
-            {/* Add organization navigation */}
-            <Button 
-              color="inherit" 
-              component={Link} 
-              to={organization ? "/organization/dashboard" : "/organization/create"}
-            >
-              {organization ? "Organization" : "Create Organization"}
-            </Button>
-            
-            <Button color="inherit" onClick={handleLogout}>
-              Logout
-            </Button>
-          </Box>
-        ) : (
-          <Box>
-            <Button color="inherit" component={Link} to="/">
-              Home
-            </Button>
-            <Button color="inherit" component={Link} to="/login">
-              Login
-            </Button>
-            <Button color="inherit" component={Link} to="/signup">
-              Sign Up
-            </Button>
-          </Box>
-        )}
+        {isAuthenticated ? <AuthenticatedNavContent /> : <UnauthenticatedNavContent />}
       </Toolbar>
     </AppBar>
   );
