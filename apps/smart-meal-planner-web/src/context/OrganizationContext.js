@@ -60,6 +60,79 @@ export const OrganizationProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  };
+  };  // Changed comma to semicolon
 
-  const inviteClient = async (email
+  const inviteClient = async (email) => {
+    try {
+      if (!organization) throw new Error('No organization found');
+      
+      setLoading(true);
+      const response = await apiService.inviteClient(organization.id, email);
+      return response;
+    } catch (err) {
+      setError('Failed to invite client');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };  // Changed comma to semicolon
+
+  const addClientToOrganization = async (clientId, role = 'client') => {
+    try {
+      if (!organization) throw new Error('No organization found');
+      
+      setLoading(true);
+      await apiService.addClientToOrganization(organization.id, clientId, role);
+      
+      // Refresh client list
+      const clientsResponse = await apiService.getOrganizationClients(organization.id);
+      setClients(clientsResponse || []);
+      
+      return true;
+    } catch (err) {
+      setError('Failed to add client');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };  // Changed comma to semicolon
+
+  const shareMenuWithClient = async (menuId, clientId, permissionLevel = 'read') => {
+    try {
+      setLoading(true);
+      await apiService.shareMenuWithClient(menuId, clientId, permissionLevel);
+      return true;
+    } catch (err) {
+      setError('Failed to share menu');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };  // Changed comma to semicolon
+
+  return (
+    <OrganizationContext.Provider value={{
+      organization,
+      clients,
+      loading,
+      error,
+      isOwner,
+      createOrganization,
+      inviteClient,
+      addClientToOrganization,
+      shareMenuWithClient
+    }}>
+      {children}
+    </OrganizationContext.Provider>
+  );
+};
+
+export const useOrganization = () => {
+  const context = useContext(OrganizationContext);
+  if (context === undefined) {
+    throw new Error('useOrganization must be used within an OrganizationProvider');
+  }
+  return context;
+};
+
+export default OrganizationContext;
