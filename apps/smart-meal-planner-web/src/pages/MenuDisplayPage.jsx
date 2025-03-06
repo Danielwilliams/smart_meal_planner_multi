@@ -29,7 +29,6 @@ import {
 
 // Local Imports
 import { useAuth } from '../context/AuthContext';
-import { useOrganization } from '../context/OrganizationContext';
 import apiService from '../services/apiService';
 import '../styles/print.css';
 import RecipeSaveButton from '../components/RecipeSaveButton';
@@ -77,7 +76,9 @@ function safeGet(obj, path, defaultValue = '') {
 
 function MenuDisplayPage() {
   const { user, updateUserProgress } = useAuth();
-  const { organization, clients, isOwner } = useOrganization();
+  const [organization, setOrganization] = useState(null);
+  const [clients, setClients] = useState([]);
+  const [isOwner, setIsOwner] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -149,6 +150,35 @@ function MenuDisplayPage() {
     if (user) {
       fetchSavedRecipes();
     }
+  }, [user]);
+
+    // Add a new effect to fetch organization data
+  useEffect(() => {
+    const fetchOrganizationData = async () => {
+      if (!user?.userId) return;
+      
+      try {
+        // Get organization data
+        const orgResponse = await apiService.getUserOrganizations();
+        
+        if (orgResponse && orgResponse.length > 0) {
+          const userOrg = orgResponse[0];
+          setOrganization(userOrg);
+          setIsOwner(userOrg.owner_id === user.userId);
+          
+          // If user is owner, fetch clients
+          if (userOrg.owner_id === user.userId) {
+            const clientsResponse = await apiService.getOrganizationClients(userOrg.id);
+            setClients(clientsResponse || []);
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching organization data:', err);
+        // No need to set error state for this - it's supplementary data
+      }
+    };
+
+    fetchOrganizationData();
   }, [user]);
 
   // Fetch menu data
