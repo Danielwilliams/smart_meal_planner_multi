@@ -22,7 +22,7 @@ function NavBar() {
     <AppBar position="static">
       <Toolbar>
         <Typography variant="h6" sx={{ flexGrow: 1 }}>
-          Meal Planner
+          Smart Meal Planner IO
         </Typography>
 
         {isAuthenticated ? (
