@@ -65,8 +65,8 @@ def create_app() -> FastAPI:
         "http://127.0.0.1:3000",
         "https://smartmealplannerio.vercel.app",
         "https://www.smartmealplannerio.com",
-        "https://api.smartmealplannerio.com",
-        "https://smart-meal-planner-multi.vercel.app/"
+        "https://api.smartmealplannerio.com", 
+        "https://smart-meal-planner-multi.vercel.app"
     ]
 
     if ENVIRONMENT == "production":
