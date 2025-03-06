@@ -8,10 +8,13 @@ import {
 } from '@mui/material';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useOrganization } from '../context/OrganizationContext';
+
 
 function NavBar() {
   const { isAuthenticated, user, logout } = useAuth();
   const navigate = useNavigate();
+  const { organization, isOwner } = useOrganization();
 
   const handleLogout = () => {
     logout();
@@ -22,7 +25,15 @@ function NavBar() {
     <AppBar position="static">
       <Toolbar>
         <Typography variant="h6" sx={{ flexGrow: 1 }}>
-          Smart Meal Planner IO
+          Smart Meal Planner
+          {organization && (
+            <Chip
+              label={organization.name}
+              size="small"
+              color="secondary"
+              sx={{ ml: 1 }}
+            />
+          )}
         </Typography>
 
         {isAuthenticated ? (
@@ -45,6 +56,16 @@ function NavBar() {
             <Button color="inherit" component={Link} to="/preferences-page">
               Preferences
             </Button>
+            
+            {/* Add organization navigation */}
+            <Button 
+              color="inherit" 
+              component={Link} 
+              to={organization ? "/organization/dashboard" : "/organization/create"}
+            >
+              {organization ? "Organization" : "Create Organization"}
+            </Button>
+            
             <Button color="inherit" onClick={handleLogout}>
               Logout
             </Button>

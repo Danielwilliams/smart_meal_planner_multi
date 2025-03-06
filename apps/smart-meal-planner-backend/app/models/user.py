@@ -174,3 +174,30 @@ class SaveRecipeRequest(BaseModel):
     day_number: Optional[int] = None
     meal_time: Optional[str] = None
     notes: Optional[str] = None
+
+
+class OrganizationBase(BaseModel):
+    name: str
+    description: Optional[str] = None
+
+class OrganizationCreate(OrganizationBase):
+    pass
+
+class Organization(OrganizationBase):
+    id: int
+    owner_id: int
+    created_at: str
+
+class OrganizationClient(BaseModel):
+    organization_id: int
+    client_id: int
+    role: str = "client"
+    status: str = "active"
+
+class UserWithRole(BaseModel):
+    id: int
+    email: str
+    name: str
+    profile_complete: bool
+    organization_id: Optional[int] = None
+    role: Optional[str] = None

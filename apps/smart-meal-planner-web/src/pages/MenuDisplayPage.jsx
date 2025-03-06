@@ -1,5 +1,6 @@
+// src/pages/MenuDisplayPage.jsx
 import React, { useEffect, useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 
 // MUI Components
 import { 
@@ -9,7 +10,7 @@ import {
   AccordionDetails, TextField, IconButton, Dialog, 
   DialogTitle, DialogContent, DialogActions,
   FormGroup, FormControlLabel, Checkbox, Grid, Chip,
-  Snackbar
+  Snackbar, Radio, RadioGroup
 } from '@mui/material';
 
 // MUI Icons
@@ -21,15 +22,19 @@ import {
   Restaurant as RestaurantIcon, 
   Timer as TimerIcon,
   Favorite as FavoriteIcon,
-  FavoriteBorder as FavoriteBorderIcon
+  FavoriteBorder as FavoriteBorderIcon,
+  Share as ShareIcon,
+  Person as PersonIcon
 } from '@mui/icons-material';
 
 // Local Imports
 import { useAuth } from '../context/AuthContext';
+import { useOrganization } from '../context/OrganizationContext';
 import apiService from '../services/apiService';
 import '../styles/print.css';
 import RecipeSaveButton from '../components/RecipeSaveButton';
 import RecipeSaveDialog from '../components/RecipeSaveDialog';
+import MenuSharingModal from '../components/MenuSharingModal';
 
 // Utility Functions
 function formatIngredient(ing) {
@@ -72,8 +77,10 @@ function safeGet(obj, path, defaultValue = '') {
 
 function MenuDisplayPage() {
   const { user, updateUserProgress } = useAuth();
+  const { organization, clients, isOwner } = useOrganization();
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
 
   // State management
   const [menu, setMenu] = useState(null);
@@ -87,6 +94,11 @@ function MenuDisplayPage() {
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [savedRecipes, setSavedRecipes] = useState([]);
+  const [sharingModalOpen, setSharingModalOpen] = useState(false);
+  const [creatorName, setCreatorName] = useState('');
+  const [isShared, setIsShared] = useState(false);
+  const [selectedClient, setSelectedClient] = useState(null);
+  const [accessLevel, setAccessLevel] = useState('owner');
 
   // Filter States
   const [mealTimeFilters, setMealTimeFilters] = useState({
@@ -112,6 +124,17 @@ function MenuDisplayPage() {
 
   const [durationDays, setDurationDays] = useState(7);
 
+  // Initialize selectedClient from URL params if present
+  useEffect(() => {
+    const clientId = searchParams.get('clientId');
+    if (clientId && isOwner && clients.length > 0) {
+      const client = clients.find(c => c.id === parseInt(clientId));
+      if (client) {
+        setSelectedClient(client);
+      }
+    }
+  }, [searchParams, clients, isOwner]);
+
   // Fetch saved recipes
   useEffect(() => {
     const fetchSavedRecipes = async () => {
@@ -127,8 +150,6 @@ function MenuDisplayPage() {
       fetchSavedRecipes();
     }
   }, [user]);
-
-  
 
   // Fetch menu data
   const fetchMenuData = async () => {
@@ -149,6 +170,22 @@ function MenuDisplayPage() {
         const latestMenu = await apiService.getLatestMenu(user.userId);
         setMenu(latestMenu);
         setSelectedMenuId(latestMenu.menu_id);
+        
+        // Check access level
+        if (latestMenu.access_level) {
+          setAccessLevel(latestMenu.access_level);
+        }
+        
+        // Check if shared menu and get creator info
+        if (latestMenu.user_id !== user.userId) {
+          try {
+            const userData = await apiService.getUserProfile(latestMenu.user_id);
+            setCreatorName(userData.name);
+            setIsShared(true);
+          } catch (err) {
+            console.error('Error fetching creator details:', err);
+          }
+        }
         
         // Initialize selected days
         if (latestMenu.meal_plan?.days) {
@@ -191,10 +228,13 @@ function MenuDisplayPage() {
         return;
       }
 
-      const preferences = await apiService.getUserPreferences(user.userId);
+      const preferences = await apiService.getUserPreferences(
+        selectedClient ? selectedClient.id : user.userId
+      );
 
       const menuRequest = {
         user_id: user.userId,
+        client_id: selectedClient ? selectedClient.id : null,
         duration_days: durationDays,
         diet_type: preferences.diet_type || '',
         dietary_preferences: preferences.dietary_restrictions ? 
@@ -244,30 +284,38 @@ function MenuDisplayPage() {
       setLoading(true);
       setError('');
       
-      const selectedMenu = menuHistory.find(menu => menu.menu_id === menuId);
+      // Reset shared menu status
+      setIsShared(false);
+      setCreatorName('');
       
-      if (selectedMenu) {
-        const parsedMealPlan = typeof selectedMenu.meal_plan === 'string' 
-          ? JSON.parse(selectedMenu.meal_plan) 
-          : selectedMenu.meal_plan;
-
-        const menuToSet = {
-          ...selectedMenu,
-          meal_plan: parsedMealPlan
-        };
-
-        setMenu(menuToSet);
-        setSelectedMenuId(menuId);
-
-        if (menuToSet.meal_plan?.days) {
-          const initialSelectedDays = {};
-          menuToSet.meal_plan.days.forEach(day => {
-            initialSelectedDays[day.dayNumber] = true;
-          });
-          setSelectedDays(initialSelectedDays);
-        }
+      const menuDetails = await apiService.getMenuDetails(menuId);
+      setMenu(menuDetails);
+      setSelectedMenuId(menuId);
+      
+      // Check access level
+      if (menuDetails.access_level) {
+        setAccessLevel(menuDetails.access_level);
       } else {
-        setError('Selected menu not found.');
+        setAccessLevel('owner');
+      }
+      
+      // Check if shared menu and get creator info
+      if (menuDetails.user_id !== user.userId) {
+        try {
+          const userData = await apiService.getUserProfile(menuDetails.user_id);
+          setCreatorName(userData.name);
+          setIsShared(true);
+        } catch (err) {
+          console.error('Error fetching creator details:', err);
+        }
+      }
+
+      if (menuDetails.meal_plan?.days) {
+        const initialSelectedDays = {};
+        menuDetails.meal_plan.days.forEach(day => {
+          initialSelectedDays[day.dayNumber] = true;
+        });
+        setSelectedDays(initialSelectedDays);
       }
     } catch (err) {
       console.error('Error selecting menu:', err);
@@ -434,46 +482,47 @@ function MenuDisplayPage() {
                       </Typography>
                       <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
                         {/* Save/Unsave Button */}                           
-                            <RecipeSaveDialog
-                              menuId={menu.menu_id}
-                              dayNumber={day.dayNumber}
-                              mealTime={meal.meal_time}
-                              recipeTitle={meal.title}
-                              isSaved={savedRecipes.some(
-                                saved => saved.menu_id === menu.menu_id && 
-                                         saved.meal_time === meal.meal_time &&
-                                         saved.day_number === day.dayNumber
-                              )}
-                              savedId={savedRecipes.find(
-                                saved => saved.menu_id === menu.menu_id && 
-                                         saved.recipe_id === `${menu.menu_id}-${day.dayNumber}-${meal.meal_time}` && 
-                                         saved.meal_time === meal.meal_time
-                              )?.id}
-                              onSaveSuccess={(result) => {
-                                if (result.isSaved) {
-                                  // Add the new saved recipe to the state
-                                  setSavedRecipes(prev => [
-                                    ...prev,
-                                    {
-                                      id: result.savedId,
-                                      menu_id: result.menuId,
-                                      recipe_id: result.recipeId,
-                                      meal_time: result.mealTime,
-                                      recipe_name: result.recipeTitle
-                                    }
-                                  ]);
-                                } else {
-                                  // Remove the unsaved recipe from state
-                                  setSavedRecipes(prev => 
-                                    prev.filter(item => 
-                                      !(item.menu_id === result.menuId && 
-                                        item.recipe_id === result.recipeId && 
-                                        item.meal_time === result.mealTime)
-                                    )
-                                  );
+                        <RecipeSaveDialog
+                          menuId={menu.menu_id}
+                          dayNumber={day.dayNumber}
+                          mealTime={meal.meal_time}
+                          recipeTitle={meal.title}
+                          isSaved={savedRecipes.some(
+                            saved => saved.menu_id === menu.menu_id && 
+                                     saved.meal_time === meal.meal_time &&
+                                     saved.day_number === day.dayNumber
+                          )}
+                          savedId={savedRecipes.find(
+                            saved => saved.menu_id === menu.menu_id && 
+                                     saved.recipe_id === `${menu.menu_id}-${day.dayNumber}-${meal.meal_time}` && 
+                                     saved.meal_time === meal.meal_time
+                          )?.id}
+                          onSaveSuccess={(result) => {
+                            if (result.isSaved) {
+                              // Add the new saved recipe to the state
+                              setSavedRecipes(prev => [
+                                ...prev,
+                                {
+                                  id: result.savedId,
+                                  menu_id: result.menuId,
+                                  recipe_id: result.recipeId,
+                                  meal_time: result.mealTime,
+                                  recipe_name: result.recipeTitle,
+                                  day_number: day.dayNumber
                                 }
-                              }}
-                            />
+                              ]);
+                            } else {
+                              // Remove the unsaved recipe from state
+                              setSavedRecipes(prev => 
+                                prev.filter(item => 
+                                  !(item.menu_id === result.menuId && 
+                                    item.recipe_id === result.recipeId && 
+                                    item.meal_time === result.mealTime)
+                                )
+                              );
+                            }
+                          }}
+                        />
 
                         {meal.appliance_used && (
                           <Chip
@@ -648,6 +697,16 @@ function MenuDisplayPage() {
         Your Meal Plan
       </Typography>
 
+      {/* Show shared menu attribution */}
+      {isShared && creatorName && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          This menu was created by {creatorName} and shared with you. 
+          {accessLevel === 'read' ? 
+            ' You have read-only access.' : 
+            ' You can comment on this menu.'}
+        </Alert>
+      )}
+
       {loading && (
         <Box display="flex" justifyContent="center" my={2}>
           <CircularProgress />
@@ -717,6 +776,44 @@ function MenuDisplayPage() {
           </Box>
         </Paper>
       </Box>
+
+      {/* Client Selection for Organization Owners */}
+      {isOwner && organization && (
+        <Paper sx={{ p: 2, mb: 2 }}>
+          <Typography variant="subtitle1" gutterBottom>
+            Create Menu For
+          </Typography>
+          <RadioGroup 
+            row 
+            value={selectedClient ? selectedClient.id : ''}
+            onChange={(e) => {
+              const clientId = e.target.value;
+              if (clientId === '') {
+                setSelectedClient(null);
+              } else {
+                const client = clients.find(c => c.id === parseInt(clientId));
+                if (client) {
+                  setSelectedClient(client);
+                }
+              }
+            }}
+          >
+            <FormControlLabel
+              value=""
+              control={<Radio />}
+              label="Myself"
+            />
+            {clients.map(client => (
+              <FormControlLabel
+                key={client.id}
+                value={client.id.toString()}
+                control={<Radio />}
+                label={client.name}
+              />
+            ))}
+          </RadioGroup>
+        </Paper>
+      )}
 
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 2 }}>
         {menuHistory.length > 0 && (
