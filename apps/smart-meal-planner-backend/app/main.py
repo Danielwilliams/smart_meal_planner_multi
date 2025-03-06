@@ -81,7 +81,9 @@ def create_app() -> FastAPI:
             "https://smartmealplannerio.vercel.app",
             "https://www.smartmealplannerio.com",
             "https://api.smartmealplannerio.com",
+            "https://smart-meal-planner-multi.vercel.app",
         ],
+        
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "FETCH"],
         allow_headers=["Content-Type", "Authorization"],
