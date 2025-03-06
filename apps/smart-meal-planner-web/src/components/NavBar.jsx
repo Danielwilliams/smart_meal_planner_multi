@@ -1,4 +1,4 @@
-// src/components/NavBar.jsx - Final version with organization features
+// Modified NavBar.jsx with correct apiService method
 import React, { useState, useEffect } from 'react';
 import { 
   AppBar, 
@@ -23,9 +23,20 @@ function NavBar() {
     if (isAuthenticated && user) {
       const fetchOrgData = async () => {
         try {
-          const orgResponse = await apiService.getUserOrganizations();
-          if (orgResponse && orgResponse.length > 0) {
-            setOrganization(orgResponse[0]);
+          // Check if the method exists before calling it
+          if (typeof apiService.getOrganizations === 'function') {
+            const orgResponse = await apiService.getOrganizations();
+            if (orgResponse && orgResponse.length > 0) {
+              setOrganization(orgResponse[0]);
+            }
+          } else if (typeof apiService.getUserOrganization === 'function') {
+            // Try alternate method name
+            const orgResponse = await apiService.getUserOrganization();
+            if (orgResponse) {
+              setOrganization(orgResponse);
+            }
+          } else {
+            console.error('No organization API method found');
           }
         } catch (err) {
           console.error('Error fetching organization data in NavBar:', err);
@@ -57,6 +68,7 @@ function NavBar() {
               sx={{ ml: 1 }}
             />
           )}
+          
         </Typography>
         {isAuthenticated ? (
           <Box>
