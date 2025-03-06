@@ -60,7 +60,7 @@ export const OrganizationProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  };  // Changed comma to semicolon
+  };
 
   const inviteClient = async (email) => {
     try {
@@ -75,7 +75,7 @@ export const OrganizationProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  };  // Changed comma to semicolon
+  };
 
   const addClientToOrganization = async (clientId, role = 'client') => {
     try {
@@ -95,7 +95,7 @@ export const OrganizationProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  };  // Changed comma to semicolon
+  };
 
   const shareMenuWithClient = async (menuId, clientId, permissionLevel = 'read') => {
     try {
@@ -108,7 +108,7 @@ export const OrganizationProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  };  // Changed comma to semicolon
+  };
 
   return (
     <OrganizationContext.Provider value={{
