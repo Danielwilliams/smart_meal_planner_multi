@@ -1,18 +1,43 @@
-// src/components/NavBar.jsx - TEMPORARY VERSION WITHOUT ORGANIZATION CONTEXT
-import React from 'react';
+// src/components/NavBar.jsx - Final version with organization features
+import React, { useState, useEffect } from 'react';
 import { 
   AppBar, 
   Toolbar, 
   Typography, 
   Button, 
-  Box 
+  Box,
+  Chip 
 } from '@mui/material';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import apiService from '../services/apiService';
 
 function NavBar() {
   const { isAuthenticated, user, logout } = useAuth();
   const navigate = useNavigate();
+  const [organization, setOrganization] = useState(null);
+  
+  // Fetch organization data directly in this component
+  useEffect(() => {
+    // Only fetch if the user is authenticated
+    if (isAuthenticated && user) {
+      const fetchOrgData = async () => {
+        try {
+          const orgResponse = await apiService.getUserOrganizations();
+          if (orgResponse && orgResponse.length > 0) {
+            setOrganization(orgResponse[0]);
+          }
+        } catch (err) {
+          console.error('Error fetching organization data in NavBar:', err);
+        }
+      };
+      
+      fetchOrgData();
+    } else {
+      // Reset organization when not authenticated
+      setOrganization(null);
+    }
+  }, [isAuthenticated, user]);
 
   const handleLogout = () => {
     logout();
@@ -24,6 +49,14 @@ function NavBar() {
       <Toolbar>
         <Typography variant="h6" sx={{ flexGrow: 1 }}>
           Smart Meal Planner
+          {organization && (
+            <Chip
+              label={organization.name}
+              size="small"
+              color="secondary"
+              sx={{ ml: 1 }}
+            />
+          )}
         </Typography>
         {isAuthenticated ? (
           <Box>
@@ -46,12 +79,13 @@ function NavBar() {
               Preferences
             </Button>
             
+            {/* Add organization navigation */}
             <Button 
               color="inherit" 
               component={Link} 
-              to="/organization/create"
+              to={organization ? "/organization/dashboard" : "/organization/create"}
             >
-              Organization
+              {organization ? "Organization" : "Create Organization"}
             </Button>
             
             <Button color="inherit" onClick={handleLogout}>
