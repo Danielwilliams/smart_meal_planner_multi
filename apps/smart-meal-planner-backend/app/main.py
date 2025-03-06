@@ -83,24 +83,12 @@ def create_app() -> FastAPI:
             "https://api.smartmealplannerio.com",
             "https://smart-meal-planner-multi.vercel.app",
         ],
-        
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "FETCH"],
-        allow_headers=["Content-Type", "Authorization"],
+        allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
+        expose_headers=["Content-Type", "Authorization"],
     )
 
-   # Handle CORS preflight OPTIONS requests
-    @app.options("/{full_path:path}")
-    async def preflight_handler(full_path: str):
-        return JSONResponse(
-            content={"message": "CORS preflight successful"},
-            headers={
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, PATCH",
-                "Access-Control-Allow-Headers": "Authorization, Content-Type"
-            },
-            status_code=200
-        )
 
     # Add trusted host middleware
     app.add_middleware(
