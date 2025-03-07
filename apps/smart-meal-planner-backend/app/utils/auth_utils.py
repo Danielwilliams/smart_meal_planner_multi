@@ -3,10 +3,11 @@
 from fastapi import HTTPException, Request
 import jwt
 import logging
+from psycopg2.extras import RealDictCursor  # Add this import
 from app.config import JWT_SECRET, JWT_ALGORITHM
+from app.db import get_db_connection  # Add this import
 
 logger = logging.getLogger(__name__)
-
 
 async def get_user_from_token(request: Request):
     """Enhanced token validation with organization role checking"""
@@ -39,7 +40,7 @@ async def get_user_from_token(request: Request):
     except jwt.ExpiredSignatureError:
         logger.error("Token has expired")
         raise HTTPException(status_code=401, detail="Token has expired")
-    except jwt.JWTError as e:
+    except jwt.PyJWTError as e:  # Changed from JWTError to PyJWTError
         logger.error(f"JWT validation error: {str(e)}")
         raise HTTPException(status_code=401, detail="Invalid token")
     except Exception as e:
