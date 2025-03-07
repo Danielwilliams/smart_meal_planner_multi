@@ -25,6 +25,7 @@ import { OrganizationProvider } from './context/OrganizationContext';
 import OrganizationDashboard from './pages/OrganizationDashboard';
 import ClientProfile from './pages/ClientProfile';
 import AcceptInvitation from './pages/AcceptInvitation';
+import ClientPreferencesPage from './pages/ClientPreferencesPage';
 
 
 function App() {
