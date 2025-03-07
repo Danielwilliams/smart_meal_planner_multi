@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
-import {
-  Box, Typography, TextField, Button, Card, CardContent, Alert
+import { 
+  Box, Typography, TextField, Button, Card, CardContent, Alert,
+  RadioGroup, Radio, FormControlLabel, FormControl, FormLabel
 } from '@mui/material';
 import { useGoogleReCaptcha } from 'react-google-recaptcha-v3';
 import apiService from '../services/apiService';
@@ -17,31 +18,36 @@ function SignUpPage() {
   const [signupComplete, setSignupComplete] = useState(false);
   const { executeRecaptcha } = useGoogleReCaptcha();
   const navigate = useNavigate();
+  const [accountType, setAccountType] = useState('individual');
+  const [organizationName, setOrganizationName] = useState('');
 
-  const handleSignUp = useCallback(async (e) => {
+  const handleSignUp = async (e) => {
     e.preventDefault();
     setError('');
-    setLoading(true); 
+    setLoading(true);
 
     try {
       if (!executeRecaptcha) {
         throw new Error('reCAPTCHA not initialized');
-      } 
+      }
 
-      // Get reCAPTCHA token
       const captchaToken = await executeRecaptcha('signup');
       
-      // Attempt signup
-      const response = await apiService.signUp({
+      // Prepare payload based on account type
+      const payload = {
         name,
         email,
         password,
-        captchaToken
-      }); 
-
-      console.log('Signup Response:', response);
+        captchaToken,
+        account_type: accountType
+      };
       
-      // Set signup complete state
+      // Add organization name if signing up as organization
+      if (accountType === 'organization' && organizationName) {
+        payload.organization_name = organizationName;
+      }
+      
+      const response = await apiService.signUp(payload);
       setSignupComplete(true);
     } catch (err) {
       console.error('Signup Error:', err);
@@ -53,27 +59,7 @@ function SignUpPage() {
     } finally {
       setLoading(false);
     }
-  }, [email, password, name, executeRecaptcha]);
-
-  // If signup is complete, show verification message
-  if (signupComplete) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
-        <Card sx={{ maxWidth: 400, width: '100%' }}>
-          <CardContent sx={{ textAlign: 'center' }}>
-            <Alert severity="success" sx={{ mb: 2 }}>
-              Registration successful!
-            </Alert>
-            <Typography variant="body1">
-              A confirmation email has been sent to {email}.
-              Please check your inbox and click the verification link to activate your account.
-              You will not be able to log in until you verify your email.
-            </Typography>
-          </CardContent>
-        </Card>
-      </Box>
-    );
-  }
+  };
 
   return (
     <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
@@ -110,6 +96,38 @@ function SignUpPage() {
               onChange={(e) => setPassword(e.target.value)}
               required
             />
+            
+            <FormControl component="fieldset" sx={{ my: 2 }}>
+              <FormLabel component="legend">Account Type</FormLabel>
+              <RadioGroup
+                row
+                name="account-type"
+                value={accountType}
+                onChange={(e) => setAccountType(e.target.value)}
+              >
+                <FormControlLabel 
+                  value="individual" 
+                  control={<Radio />} 
+                  label="Individual" 
+                />
+                <FormControlLabel 
+                  value="organization" 
+                  control={<Radio />} 
+                  label="Organization" 
+                />
+              </RadioGroup>
+            </FormControl>
+            
+            {accountType === 'organization' && (
+              <TextField
+                label="Organization Name"
+                fullWidth
+                margin="normal"
+                value={organizationName}
+                onChange={(e) => setOrganizationName(e.target.value)}
+                required
+              />
+            )}
             
             {error && (
               <Alert severity="error" sx={{ mt: 2 }}>

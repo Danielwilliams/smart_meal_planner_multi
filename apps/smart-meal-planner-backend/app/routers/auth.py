@@ -68,7 +68,7 @@ async def sign_up(user_data: UserSignUp, background_tasks: BackgroundTasks):
         # Insert user with verified=False
         cursor.execute("""
             INSERT INTO user_profiles 
-            (email, name, hashed_password, verified, verification_token)
+            (email, name, hashed_password, verified, verification_token,  account_type)
             VALUES (%s, %s, %s, %s, %s)
             RETURNING id
         """, (
@@ -76,10 +76,19 @@ async def sign_up(user_data: UserSignUp, background_tasks: BackgroundTasks):
             user_data.name,
             hashed_password.decode('utf-8'),
             False,
-            verification_token
+            verification_token,
+            user_data.account_type
         ))
         
         user_id = cursor.fetchone()[0]
+        
+        # If this is an organization account, create the organization
+        if user_data.account_type == "organization" and user_data.organization_name:
+            cursor.execute("""
+                INSERT INTO organizations (name, owner_id)
+                VALUES (%s, %s)
+            """, (user_data.organization_name, user_id))
+        
         conn.commit()
         
         # Send verification email in background
@@ -88,6 +97,8 @@ async def sign_up(user_data: UserSignUp, background_tasks: BackgroundTasks):
         return {
             "message": "Please check your email to verify your account",
             "email": user_data.email
+            "account_type": user_data.account_type
+
         }
         
     except HTTPException:
