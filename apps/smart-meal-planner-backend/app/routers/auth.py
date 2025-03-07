@@ -81,6 +81,7 @@ async def sign_up(user_data: UserSignUp, background_tasks: BackgroundTasks):
         ))
         
         user_id = cursor.fetchone()[0]
+        user_id, email, name, stored_hash, profile_complete, has_prefs, has_menu, has_list, verified, account_type = user
         
         # If this is an organization account, create the organization
         if user_data.account_type == "organization" and user_data.organization_name:
@@ -205,6 +206,7 @@ async def login(user_data: UserLogin):
             "email": email,
             "name": name,
             "profile_complete": profile_complete,
+            "account_type": account_type,
             "exp": datetime.utcnow() + timedelta(hours=12)
         }
         
@@ -214,6 +216,7 @@ async def login(user_data: UserLogin):
         return {
             "access_token": token,
             "profile_complete": profile_complete,
+            "account_type": account_type,
             "progress": {
                 "has_preferences": has_prefs,
                 "has_generated_menu": has_menu,

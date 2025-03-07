@@ -7,6 +7,7 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [accountType, setAccountType] = useState(null);
 
   useEffect(() => {
     const checkAuthStatus = async () => {
@@ -22,6 +23,7 @@ export const AuthProvider = ({ children }) => {
             userId: parsedUser.id || parsedUser.userId || parsedUser.user_id,
             email: parsedUser.email,
             profile_complete: parsedUser.profile_complete || false,
+            account_type: response.account_type,
             progress: {
               has_preferences: parsedUser.progress?.has_preferences || false,
               has_generated_menu: parsedUser.progress?.has_generated_menu || false,
@@ -116,6 +118,7 @@ export const AuthProvider = ({ children }) => {
       user, 
       isAuthenticated, 
       loading,
+      accountType,
       login, 
       logout,
       updateUser,

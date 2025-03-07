@@ -21,6 +21,11 @@ import PrivateRoute from './components/PrivateRoute';
 import ExampleMealPlansPage from './pages/ExampleMealPlansPage';
 import VerifyEmailPage from './pages/VerifyEmailPage';
 import SavedRecipesPage from './pages/SavedRecipesPage';
+import { OrganizationProvider } from './context/OrganizationContext';
+import OrganizationDashboard from './pages/OrganizationDashboard';
+import OrganizationSetup from './pages/OrganizationSetup';
+import ClientProfile from './pages/ClientProfile';
+import AcceptInvitation from './pages/AcceptInvitation';
 
 
 function App() {
@@ -34,10 +39,12 @@ function App() {
       }}
     >
       <AuthProvider>
+       <OrganizationProvider>
         <ThemeProvider theme={theme}>
           <CssBaseline />
           <Router>
             <NavBar />
+            <OrganizationSetupCheck>
             <Routes>
               {/* Public Routes */}
               <Route path="/" element={<LandingPage />} />
@@ -95,12 +102,39 @@ function App() {
                   </PrivateRoute>
                 } 
               />
+               <Route 
+              path="/organization/dashboard" 
+              element={
+                <PrivateRoute>
+                  <OrganizationDashboard />
+                </PrivateRoute>
+              } 
+            />
+            <Route 
+              path="/organization/create" 
+              element={
+                <PrivateRoute>
+                  <OrganizationSetup />
+                </PrivateRoute>
+              } 
+            />
+            <Route 
+              path="/clients/:clientId" 
+              element={
+                <PrivateRoute>
+                  <ClientProfile />
+                </PrivateRoute>
+              } 
+            />
+            <Route path="/accept-invitation" element={<AcceptInvitation />} />
               
               {/* Fallback route */}
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
+           </OrganizationSetupCheck>
           </Router>
         </ThemeProvider>
+       </OrganizationProvider>
       </AuthProvider>
     </GoogleReCaptchaProvider>
   );

@@ -24,7 +24,7 @@ function LoginPage() {
   const [loading, setLoading] = useState(false);
 
 
-  const handleLogin = useCallback(async (e) => {
+const handleLogin = useCallback(async (e) => {
   e.preventDefault();
   setError('');
   setLoading(true);
@@ -45,13 +45,29 @@ function LoginPage() {
 
     console.log('Login Response:', response);
 
-    // Navigation based on response
-    if (response.progress.has_preferences) {
-      console.log('Navigating to /home');
-      navigate('/home');
+    // Redirect based on account type
+    if (response.account_type === 'organization') {
+      // Check if user has an organization already set up
+      try {
+        const orgs = await apiService.getUserOrganizations();
+        if (orgs && orgs.length > 0) {
+          navigate('/organization/dashboard');
+        } else {
+          navigate('/organization/setup');
+        }
+      } catch (err) {
+        console.error('Error checking organizations:', err);
+        navigate('/organization/setup');
+      }
     } else {
-      console.log('Navigating to /preferences-page');
-      navigate('/preferences-page');
+      // Regular user flow
+      if (response.progress.has_preferences) {
+        console.log('Navigating to /home');
+        navigate('/home');
+      } else {
+        console.log('Navigating to /preferences-page');
+        navigate('/preferences-page');
+      }
     }
   } catch (err) {
     console.error('Full Login Error:', {
