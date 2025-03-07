@@ -177,7 +177,7 @@ async def login(user_data: UserLogin):
             )
 
         # Unpack user data (added verified at the end)
-         user_id, email, name, stored_hash, profile_complete, has_prefs, has_menu, has_list, verified, account_type = user
+        user_id, email, name, stored_hash, profile_complete, has_prefs, has_menu, has_list, verified, account_type = user
         
         # Check if email is verified
         if not verified:
