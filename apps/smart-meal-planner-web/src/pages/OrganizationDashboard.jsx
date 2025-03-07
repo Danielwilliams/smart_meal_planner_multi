@@ -12,7 +12,7 @@ import {
   Email as EmailIcon,
   Person as PersonIcon,
   Menu as MenuIcon,
-  Share as ShareIcon
+  Share as ShareIcon,
   Settings as SettingsIcon
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
