@@ -515,7 +515,7 @@ const apiService = {
       console.error('Error fetching organizations:', err);
       return [];
     }
-  }
+  },
 
   createOrganization: async (orgData) => {
     try {
