@@ -100,7 +100,7 @@ async def get_user_organizations(user=Depends(get_user_from_token)):
 @router.get("/{org_id}")
 async def get_organization(
     org_id: int,
-    user=Depends(require_organization_member)
+    user=Depends(require_organization_owner)
 ):
     """Get organization details (must be owner or client)"""
     # Ensure user belongs to this specific organization
