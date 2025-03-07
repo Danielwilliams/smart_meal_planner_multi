@@ -68,7 +68,7 @@ async def sign_up(user_data: UserSignUp, background_tasks: BackgroundTasks):
         # Insert user with verified=False
         cursor.execute("""
             INSERT INTO user_profiles 
-            (email, name, hashed_password, verified, verification_token,  account_type)
+            (email, name, hashed_password, verified, verification_token, account_type)
             VALUES (%s, %s, %s, %s, %s, %s)
             RETURNING id
         """, (
@@ -81,7 +81,6 @@ async def sign_up(user_data: UserSignUp, background_tasks: BackgroundTasks):
         ))
         
         user_id = cursor.fetchone()[0]
-        user_id, email, name, stored_hash, profile_complete, has_prefs, has_menu, has_list, verified, account_type = user
         
         # If this is an organization account, create the organization
         if user_data.account_type == "organization" and user_data.organization_name:
@@ -99,7 +98,6 @@ async def sign_up(user_data: UserSignUp, background_tasks: BackgroundTasks):
             "message": "Please check your email to verify your account",
             "email": user_data.email,
             "account_type": user_data.account_type
-
         }
         
     except HTTPException:
@@ -109,8 +107,8 @@ async def sign_up(user_data: UserSignUp, background_tasks: BackgroundTasks):
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         cursor.close()
-        conn.close()
 
+        
 @router.get("/verify-email/{token}")
 async def verify_email(token: str):
     try:
