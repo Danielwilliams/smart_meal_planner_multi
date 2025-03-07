@@ -23,6 +23,8 @@ from app.routers import (
 from app.routers.kroger_store import router as kroger_store_router
 from app.routers.walmart_store import router as walmart_store_router
 from app.routers import saved_recipes 
+from app.routers import organizations
+
 
 # Load environment variables
 load_dotenv()
@@ -109,6 +111,7 @@ def create_app() -> FastAPI:
     app.include_router(grocery_list.router)
     app.include_router(store.router)
     app.include_router(saved_recipes.router)
+    app.include_router(organizations.router)
 
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request, exc):
