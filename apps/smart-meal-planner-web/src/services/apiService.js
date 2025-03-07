@@ -565,15 +565,15 @@ async checkRecipeSaved(menuId, recipeId = null, mealTime = null) {
   },  
 
   // Client methods
-getClientDetails: async (clientId) => {
-  const response = await axiosInstance.get(`/organizations/clients/${clientId}`);
-  return response.data;
-},
+  getClientDetails: async (clientId) => {
+    const response = await axiosInstance.get(`/organizations/clients/${clientId}`);
+    return response.data;
+  },  
 
-getClientMenus: async (clientId) => {
-  const response = await axiosInstance.get(`/menu/client/${clientId}`);
-  return response.data;
-},
+  getClientMenus: async (clientId) => {
+    const response = await axiosInstance.get(`/menu/client/${clientId}`);
+    return response.data;
+  },
 
 
   acceptInvitation: async (token, orgId) => {
