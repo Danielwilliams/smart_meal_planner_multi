@@ -116,6 +116,14 @@ function App() {
                   </PrivateRoute>
                 } 
               />
+              <Route 
+                path="/organization/clients/:clientId/preferences" 
+                element={
+                  <PrivateRoute>
+                    <ClientPreferencesPage />
+                  </PrivateRoute>
+                } 
+              />
               <Route path="/accept-invitation" element={<AcceptInvitation />} />
               
               {/* Fallback route */}

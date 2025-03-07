@@ -1,6 +1,6 @@
 // src/pages/MenuDisplayPage.jsx
-import React, { useEffect, useState } from 'react';
-import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
 
 // MUI Components
 import { 
@@ -24,7 +24,8 @@ import {
   Favorite as FavoriteIcon,
   FavoriteBorder as FavoriteBorderIcon,
   Share as ShareIcon,
-  Person as PersonIcon
+  Person as PersonIcon,
+  ShoppingCart as ShoppingCartIcon
 } from '@mui/icons-material';
 
 // Local Imports
@@ -76,17 +77,19 @@ function safeGet(obj, path, defaultValue = '') {
 
 function MenuDisplayPage() {
   const { user, updateUserProgress } = useAuth();
-  const [organization, setOrganization] = useState(null);
-  const [clients, setClients] = useState([]);
-  const [isOwner, setIsOwner] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+  const { menuId: paramMenuId } = useParams();
   const [searchParams] = useSearchParams();
+
+  // Client mode state
+  const [clientMode, setClientMode] = useState(false);
+  const [selectedClient, setSelectedClient] = useState(null);
 
   // State management
   const [menu, setMenu] = useState(null);
   const [menuHistory, setMenuHistory] = useState([]);
-  const [selectedMenuId, setSelectedMenuId] = useState(null);
+  const [selectedMenuId, setSelectedMenuId] = useState(paramMenuId || null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [printMode, setPrintMode] = useState(false);
@@ -98,7 +101,6 @@ function MenuDisplayPage() {
   const [sharingModalOpen, setSharingModalOpen] = useState(false);
   const [creatorName, setCreatorName] = useState('');
   const [isShared, setIsShared] = useState(false);
-  const [selectedClient, setSelectedClient] = useState(null);
   const [accessLevel, setAccessLevel] = useState('owner');
 
   // Filter States
@@ -113,6 +115,40 @@ function MenuDisplayPage() {
   const [editingNickname, setEditingNickname] = useState(null);
   const [nicknameInput, setNicknameInput] = useState('');
 
+  // Check for client ID in URL params
+  useEffect(() => {
+    const clientId = searchParams.get('clientId');
+    if (clientId) {
+      setClientMode(true);
+      // Fetch client data if in client mode
+      apiService.getClientDetails(clientId)
+        .then(client => {
+          setSelectedClient(client);
+          // If a specific menuId isn't provided, get the client's latest menu
+          if (!selectedMenuId) {
+            apiService.getClientMenus(clientId)
+              .then(menus => {
+                if (menus && menus.length > 0) {
+                  const latestMenu = menus[0];
+                  setMenu(latestMenu);
+                  setSelectedMenuId(latestMenu.menu_id);
+                }
+              })
+              .catch(err => console.error('Error fetching client menus:', err));
+          }
+        })
+        .catch(err => console.error('Error fetching client details:', err));
+    }
+  }, [searchParams, selectedMenuId]);
+
+  // Check if share mode is active
+  useEffect(() => {
+    const shareMode = searchParams.get('share') === 'true';
+    if (shareMode && selectedMenuId) {
+      setSharingModalOpen(true);
+    }
+  }, [searchParams, selectedMenuId]);
+
   // Check for new user flow from navigation state
   const { isNewUser, showWalkthrough } = location.state || {};
 
@@ -124,17 +160,6 @@ function MenuDisplayPage() {
   });
 
   const [durationDays, setDurationDays] = useState(7);
-
-  // Initialize selectedClient from URL params if present
-  useEffect(() => {
-    const clientId = searchParams.get('clientId');
-    if (clientId && isOwner && clients.length > 0) {
-      const client = clients.find(c => c.id === parseInt(clientId));
-      if (client) {
-        setSelectedClient(client);
-      }
-    }
-  }, [searchParams, clients, isOwner]);
 
   // Fetch saved recipes
   useEffect(() => {
@@ -152,35 +177,6 @@ function MenuDisplayPage() {
     }
   }, [user]);
 
-    // Add a new effect to fetch organization data
-  useEffect(() => {
-    const fetchOrganizationData = async () => {
-      if (!user?.userId) return;
-      
-      try {
-        // Get organization data
-        const orgResponse = await apiService.getUserOrganizations();
-        
-        if (orgResponse && orgResponse.length > 0) {
-          const userOrg = orgResponse[0];
-          setOrganization(userOrg);
-          setIsOwner(userOrg.owner_id === user.userId);
-          
-          // If user is owner, fetch clients
-          if (userOrg.owner_id === user.userId) {
-            const clientsResponse = await apiService.getOrganizationClients(userOrg.id);
-            setClients(clientsResponse || []);
-          }
-        }
-      } catch (err) {
-        console.error('Error fetching organization data:', err);
-        // No need to set error state for this - it's supplementary data
-      }
-    };
-
-    fetchOrganizationData();
-  }, [user]);
-
   // Fetch menu data
   const fetchMenuData = async () => {
     if (!user || !user.userId) {
@@ -193,29 +189,29 @@ function MenuDisplayPage() {
       setLoading(true);
       setError('');
 
+      // Fetch menu history
       const history = await apiService.getMenuHistory(user.userId);
       setMenuHistory(history);
 
-      if (history && history.length > 0) {
+      // If we have a specific menu ID, fetch that menu
+      if (selectedMenuId) {
+        const menuDetails = await apiService.getMenuDetails(selectedMenuId);
+        setMenu(menuDetails);
+        
+        // Initialize selected days
+        if (menuDetails.meal_plan?.days) {
+          const initialSelectedDays = {};
+          menuDetails.meal_plan.days.forEach(day => {
+            initialSelectedDays[day.dayNumber] = true;
+          });
+          setSelectedDays(initialSelectedDays);
+        }
+      } 
+      // Otherwise fetch the latest menu
+      else if (history && history.length > 0) {
         const latestMenu = await apiService.getLatestMenu(user.userId);
         setMenu(latestMenu);
         setSelectedMenuId(latestMenu.menu_id);
-        
-        // Check access level
-        if (latestMenu.access_level) {
-          setAccessLevel(latestMenu.access_level);
-        }
-        
-        // Check if shared menu and get creator info
-        if (latestMenu.user_id !== user.userId) {
-          try {
-            const userData = await apiService.getUserProfile(latestMenu.user_id);
-            setCreatorName(userData.name);
-            setIsShared(true);
-          } catch (err) {
-            console.error('Error fetching creator details:', err);
-          }
-        }
         
         // Initialize selected days
         if (latestMenu.meal_plan?.days) {
@@ -244,7 +240,7 @@ function MenuDisplayPage() {
   // Initial data fetch
   useEffect(() => {
     fetchMenuData();
-  }, [user]);
+  }, [user, selectedMenuId]);
 
   // Generate new menu
   const handleGenerateMenu = async () => {
@@ -258,23 +254,24 @@ function MenuDisplayPage() {
         return;
       }
 
-      const preferences = await apiService.getUserPreferences(
-        selectedClient ? selectedClient.id : user.userId
-      );
+      // Determine whose preferences to use
+      const targetUserId = selectedClient ? selectedClient.id : user.userId;
+
+      const preferences = await apiService.getUserPreferences(targetUserId);
 
       const menuRequest = {
-        user_id: user.userId,
-        client_id: selectedClient ? selectedClient.id : null,
+        user_id: user.userId, // Current user (trainer) is the creator
+        client_id: selectedClient ? selectedClient.id : null, // Client ID if applicable
         duration_days: durationDays,
         diet_type: preferences.diet_type || '',
         dietary_preferences: preferences.dietary_restrictions ? 
           preferences.dietary_restrictions.split(',').map(item => item.trim()) : [],
         disliked_foods: preferences.disliked_ingredients ? 
           preferences.disliked_ingredients.split(',').map(item => item.trim()) : [],
-        meal_times: Object.keys(preferences.meal_times).filter(
+        meal_times: Object.keys(preferences.meal_times || {}).filter(
           time => preferences.meal_times[time] && time !== 'snacks'
         ),
-        snacks_per_day: preferences.meal_times.snacks ? preferences.snacks_per_day : 0,
+        snacks_per_day: preferences.meal_times?.snacks ? preferences.snacks_per_day : 0,
         servings_per_meal: preferences.servings_per_meal || 2,
         calorie_goal: preferences.calorie_goal || 2000,
         macro_protein: preferences.macro_protein,
@@ -290,6 +287,11 @@ function MenuDisplayPage() {
       setSelectedMenuId(newMenu.menu_id);
 
       updateUserProgress({ has_generated_menu: true });
+
+      // If in client mode, navigate to show the generated menu with client context
+      if (clientMode && selectedClient) {
+        navigate(`/menu/${newMenu.menu_id}?clientId=${selectedClient.id}`, { replace: true });
+      }
       
       if (isNewUser) {
         navigate('/shopping-list', { 
@@ -453,6 +455,27 @@ function MenuDisplayPage() {
       ...prev,
       [dayNumber]: !prev[dayNumber]
     }));
+  };
+
+  // Open sharing modal
+  const handleOpenSharingModal = () => {
+    setSharingModalOpen(true);
+  };
+
+  // Add to cart handler
+  const handleAddToCart = async () => {
+    if (!menu || !menu.menu_id) {
+      setError('No menu selected');
+      return;
+    }
+
+    try {
+      // Redirect to shopping list with this menu
+      navigate(`/shopping-list?menuId=${menu.menu_id}${selectedClient ? `&clientId=${selectedClient.id}` : ''}`);
+    } catch (err) {
+      console.error('Error navigating to shopping list:', err);
+      setError('Failed to process shopping list');
+    }
   };
 
   const renderMenuItems = () => {
@@ -637,85 +660,85 @@ function MenuDisplayPage() {
               ))}
 
             {/* Snacks Section */}
-         {day.snacks && mealTimeFilters.snacks && (
-           <Box sx={{ mt: 3 }}>
-             <Typography variant="h6" sx={{ mb: 2 }}>Snacks</Typography>
-             {day.snacks.map((snack, snackIndex) => (
-               <Accordion 
-                 key={snackIndex}
-                 TransitionProps={{ unmountOnExit: false }}
-                 sx={{ mb: 1 }}
-               >
-                 <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                   <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
-                     <Typography variant="subtitle1">
-                       {safeGet(snack, 'title', 'Unnamed Snack')}
-                     </Typography>
-                     <Box sx={{ display: 'flex', gap: 1 }}>
-                       {snack.appliance_used && (
-                         <Chip
-                           icon={<RestaurantIcon />}
-                           label={snack.appliance_used}
-                           size="small"
-                           variant="outlined"
-                         />
-                       )}
-                       {snack.complexity_level && (
-                         <Chip
-                           icon={<TimerIcon />}
-                           label={snack.complexity_level}
-                           size="small"
-                           color={getComplexityColor(snack.complexity_level)}
-                         />
-                       )}
-                     </Box>
-                   </Box>
-                 </AccordionSummary>
-                 <AccordionDetails>
-                   <Box sx={{ pl: 2 }}>
-                     <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                       <strong>Ingredients:</strong>
-                     </Typography>
-                     <ul style={{ margin: '8px 0' }}>
-                       {(snack.ingredients || []).map((ingredient, idx) => (
-                         <li key={idx}>
-                           <Typography variant="body2">
-                             {formatIngredient(ingredient)}
-                           </Typography>
-                         </li>
-                       ))}
-                     </ul>               
-                      {snack.macros && (
-                       <Box sx={{ mt: 2, p: 1, bgcolor: 'background.default', borderRadius: 1 }}>
-                         <Typography variant="body2" color="text.secondary">
-                           <strong>Number of Servings:</strong> {snack.servings || 1}
-                         </Typography>
-                         <Box sx={{ mt: 1 }}>
-                           <Typography variant="body2">
-                             <strong>Per Serving:</strong><br />
-                             Calories: {safeGet(snack.macros, 'perServing.calories', 'N/A')} |
-                             Protein: {safeGet(snack.macros, 'perServing.protein', 'N/A')} |
-                             Carbs: {safeGet(snack.macros, 'perServing.carbs', 'N/A')} |
-                             Fat: {safeGet(snack.macros, 'perServing.fat', 'N/A')}
-                           </Typography>
-                           {safeGet(snack.macros, 'perMeal') && (
-                             <Typography variant="body2" sx={{ mt: 1 }}>
-                               <strong>Total Recipe ({snack.servings || 1} servings):</strong><br />
-                               Calories: {safeGet(snack.macros, 'perMeal.calories', 'N/A')} |
-                               Protein: {safeGet(snack.macros, 'perMeal.protein', 'N/A')} |
-                               Carbs: {safeGet(snack.macros, 'perMeal.carbs', 'N/A')} |
-                               Fat: {safeGet(snack.macros, 'perMeal.fat', 'N/A')}
-                             </Typography>
-                           )}
-                         </Box>
-                       </Box>
-                     )}
-                   </Box>
-                 </AccordionDetails>
-               </Accordion>
-             ))}
-           </Box>
-         )}
+            {day.snacks && mealTimeFilters.snacks && day.snacks.length > 0 && (
+              <Box sx={{ mt: 3 }}>
+                <Typography variant="h6" sx={{ mb: 2 }}>Snacks</Typography>
+                {day.snacks.map((snack, snackIndex) => (
+                  <Accordion 
+                    key={snackIndex}
+                    TransitionProps={{ unmountOnExit: false }}
+                    sx={{ mb: 1 }}
+                  >
+                    <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
+                        <Typography variant="subtitle1">
+                          {safeGet(snack, 'title', 'Unnamed Snack')}
+                        </Typography>
+                        <Box sx={{ display: 'flex', gap: 1 }}>
+                          {snack.appliance_used && (
+                            <Chip
+                              icon={<RestaurantIcon />}
+                              label={snack.appliance_used}
+                              size="small"
+                              variant="outlined"
+                            />
+                          )}
+                          {snack.complexity_level && (
+                            <Chip
+                              icon={<TimerIcon />}
+                              label={snack.complexity_level}
+                              size="small"
+                              color={getComplexityColor(snack.complexity_level)}
+                            />
+                          )}
+                        </Box>
+                      </Box>
+                    </AccordionSummary>
+                    <AccordionDetails>
+                      <Box sx={{ pl: 2 }}>
+                        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                          <strong>Ingredients:</strong>
+                        </Typography>
+                        <ul style={{ margin: '8px 0' }}>
+                          {(snack.ingredients || []).map((ingredient, idx) => (
+                            <li key={idx}>
+                              <Typography variant="body2">
+                                {formatIngredient(ingredient)}
+                              </Typography>
+                            </li>
+                          ))}
+                        </ul>               
+                        {snack.macros && (
+                          <Box sx={{ mt: 2, p: 1, bgcolor: 'background.default', borderRadius: 1 }}>
+                            <Typography variant="body2" color="text.secondary">
+                              <strong>Number of Servings:</strong> {snack.servings || 1}
+                            </Typography>
+                            <Box sx={{ mt: 1 }}>
+                              <Typography variant="body2">
+                                <strong>Per Serving:</strong><br />
+                                Calories: {safeGet(snack.macros, 'perServing.calories', 'N/A')} |
+                                Protein: {safeGet(snack.macros, 'perServing.protein', 'N/A')} |
+                                Carbs: {safeGet(snack.macros, 'perServing.carbs', 'N/A')} |
+                                Fat: {safeGet(snack.macros, 'perServing.fat', 'N/A')}
+                              </Typography>
+                              {safeGet(snack.macros, 'perMeal') && (
+                                <Typography variant="body2" sx={{ mt: 1 }}>
+                                  <strong>Total Recipe ({snack.servings || 1} servings):</strong><br />
+                                  Calories: {safeGet(snack.macros, 'perMeal.calories', 'N/A')} |
+                                  Protein: {safeGet(snack.macros, 'perMeal.protein', 'N/A')} |
+                                  Carbs: {safeGet(snack.macros, 'perMeal.carbs', 'N/A')} |
+                                  Fat: {safeGet(snack.macros, 'perMeal.fat', 'N/A')}
+                                </Typography>
+                              )}
+                            </Box>
+                          </Box>
+                        )}
+                      </Box>
+                    </AccordionDetails>
+                  </Accordion>
+                ))}
+              </Box>
+            )}
           </AccordionDetails>
         </Accordion>
       ));
@@ -724,7 +747,7 @@ function MenuDisplayPage() {
   return (
     <Container maxWidth="md">
       <Typography variant="h4" gutterBottom>
-        Your Meal Plan
+        {clientMode && selectedClient ? `${selectedClient.name}'s Meal Plan` : 'Your Meal Plan'}
       </Typography>
 
       {/* Show shared menu attribution */}
@@ -734,6 +757,13 @@ function MenuDisplayPage() {
           {accessLevel === 'read' ? 
             ' You have read-only access.' : 
             ' You can comment on this menu.'}
+        </Alert>
+      )}
+
+      {/* Show client mode info */}
+      {clientMode && selectedClient && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Viewing meal plan for client: <strong>{selectedClient.name}</strong>
         </Alert>
       )}
 
@@ -806,44 +836,6 @@ function MenuDisplayPage() {
           </Box>
         </Paper>
       </Box>
-
-      {/* Client Selection for Organization Owners */}
-      {isOwner && organization && (
-        <Paper sx={{ p: 2, mb: 2 }}>
-          <Typography variant="subtitle1" gutterBottom>
-            Create Menu For
-          </Typography>
-          <RadioGroup 
-            row 
-            value={selectedClient ? selectedClient.id : ''}
-            onChange={(e) => {
-              const clientId = e.target.value;
-              if (clientId === '') {
-                setSelectedClient(null);
-              } else {
-                const client = clients.find(c => c.id === parseInt(clientId));
-                if (client) {
-                  setSelectedClient(client);
-                }
-              }
-            }}
-          >
-            <FormControlLabel
-              value=""
-              control={<Radio />}
-              label="Myself"
-            />
-            {clients.map(client => (
-              <FormControlLabel
-                key={client.id}
-                value={client.id.toString()}
-                control={<Radio />}
-                label={client.name}
-              />
-            ))}
-          </RadioGroup>
-        </Paper>
-      )}
 
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 2 }}>
         {menuHistory.length > 0 && (
@@ -928,22 +920,51 @@ function MenuDisplayPage() {
             disabled={loading}
             sx={{ flex: 1 }}
           >
-            Generate New Menu
+            {clientMode && selectedClient 
+              ? `Generate Menu for ${selectedClient.name}` 
+              : 'Generate New Menu'}
           </Button>
 
-          <Button
-            variant="outlined"
-            startIcon={<PrintIcon />}
-            onClick={handlePrintDialogOpen}
-            disabled={!menu}
-            sx={{ flex: 1 }}
-          >
-            Print Menu
-          </Button>
+          {menu && (
+            <>
+              <Button
+                variant="outlined"
+                startIcon={<PrintIcon />}
+                onClick={handlePrintDialogOpen}
+                disabled={!menu}
+                sx={{ flex: 1 }}
+              >
+                Print Menu
+              </Button>
+
+              <Button
+                variant="outlined"
+                color="secondary"
+                startIcon={<ShoppingCartIcon />}
+                onClick={handleAddToCart}
+                disabled={!menu}
+                sx={{ flex: 1 }}
+              >
+                Shopping List
+              </Button>
+
+              {!clientMode && (
+                <Button
+                  variant="outlined"
+                  startIcon={<ShareIcon />}
+                  onClick={handleOpenSharingModal}
+                  disabled={!menu}
+                  sx={{ flex: 1 }}
+                >
+                  Share
+                </Button>
+              )}
+            </>
+          )}
         </Box>
       </Box>
 
- {/* Print Dialog */}
+      {/* Print Dialog */}
       <Dialog open={printDialogOpen} onClose={handlePrintDialogClose}>
         <DialogTitle>Print Menu Options</DialogTitle>
         <DialogContent>
@@ -993,6 +1014,14 @@ function MenuDisplayPage() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Menu Sharing Modal */}
+      <MenuSharingModal
+        open={sharingModalOpen}
+        onClose={() => setSharingModalOpen(false)}
+        menuId={selectedMenuId}
+        menuTitle={menu?.nickname || (menu ? `Menu from ${new Date(menu.created_at).toLocaleDateString()}` : '')}
+      />
 
       {menu && renderMenuItems()}
 

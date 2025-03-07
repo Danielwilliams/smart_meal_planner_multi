@@ -20,29 +20,31 @@ import {
 import {
   Person as PersonIcon,
   RestaurantMenu as MenuIcon,
-  PlaylistAdd as PlaylistAddIcon,
+  Settings as SettingsIcon,
+  Add as AddIcon,
+  ShoppingCart as CartIcon,
   Share as ShareIcon
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
-import { useOrganization } from '../context/OrganizationContext';
 import apiService from '../services/apiService';
+import ClientMenuGenerator from '../components/ClientMenuGenerator';
 
 function ClientProfile() {
   const { clientId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { organization, isOwner } = useOrganization();
   
   const [client, setClient] = useState(null);
   const [clientMenus, setClientMenus] = useState([]);
-  const [sharedMenus, setSharedMenus] = useState([]);
+  const [clientPreferences, setClientPreferences] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [tabValue, setTabValue] = useState(0);
+  const [menuGenerated, setMenuGenerated] = useState(false);
 
   useEffect(() => {
     const fetchClientData = async () => {
-      if (!clientId || !organization) return;
+      if (!clientId) return;
 
       try {
         setLoading(true);
@@ -52,14 +54,22 @@ function ClientProfile() {
         const clientData = await apiService.getClientDetails(clientId);
         setClient(clientData);
 
-        // Get menus shared with this client
-        const sharedMenusData = await apiService.getMenusSharedWithClient(clientId);
-        setSharedMenus(sharedMenusData || []);
+        // Get client's preferences
+        try {
+          const clientPrefs = await apiService.getUserPreferences(clientId);
+          setClientPreferences(clientPrefs);
+        } catch (prefErr) {
+          console.log('Client preferences not found:', prefErr);
+          // Don't set error for this - it's normal for new clients not to have preferences
+        }
 
-        // If we're the organization owner, get client's own menus
-        if (isOwner) {
+        // Get client's menus
+        try {
           const clientMenusData = await apiService.getClientMenus(clientId);
           setClientMenus(clientMenusData || []);
+        } catch (menuErr) {
+          console.log('Client menus not found:', menuErr);
+          // Don't set error for this - it's normal for clients not to have menus yet
         }
       } catch (err) {
         console.error('Error fetching client data:', err);
@@ -70,22 +80,42 @@ function ClientProfile() {
     };
 
     fetchClientData();
-  }, [clientId, organization, isOwner]);
+  }, [clientId, menuGenerated]);
 
   const handleTabChange = (event, newValue) => {
     setTabValue(newValue);
   };
 
-  const handleCreateMenu = () => {
-    navigate(`/menu/create?clientId=${clientId}`);
+  const handleEditPreferences = () => {
+    navigate(`/organization/clients/${clientId}/preferences`);
   };
 
   const handleViewMenu = (menuId) => {
-    navigate(`/menu/${menuId}?clientId=${clientId}`);
+    navigate(`/menu/${menuId}`);
   };
 
   const handleShareMenu = (menuId) => {
-    navigate(`/menu/${menuId}/share?clientId=${clientId}`);
+    navigate(`/menu/${menuId}/share`);
+  };
+
+  const handleViewCart = () => {
+    navigate(`/cart?clientId=${clientId}`);
+  };
+
+  const handleMenuGenerated = (newMenu) => {
+    setMenuGenerated(true);
+    // Refresh the menus list
+    setTimeout(() => {
+      apiService.getClientMenus(clientId)
+        .then(menus => {
+          setClientMenus(menus || []);
+          setMenuGenerated(false);
+        })
+        .catch(err => {
+          console.error('Error refreshing menus:', err);
+          setMenuGenerated(false);
+        });
+    }, 1000);
   };
 
   if (loading) {
@@ -137,8 +167,8 @@ function ClientProfile() {
           variant="fullWidth"
         >
           <Tab label="Profile" icon={<PersonIcon />} />
-          <Tab label="Shared Menus" icon={<MenuIcon />} />
-          {isOwner && <Tab label="Client's Menus" icon={<PlaylistAddIcon />} />}
+          <Tab label="Menus" icon={<MenuIcon />} />
+          <Tab label="Preferences" icon={<SettingsIcon />} />
         </Tabs>
       </Paper>
 
@@ -159,11 +189,15 @@ function ClientProfile() {
                   <Typography variant="subtitle2">Email:</Typography>
                   <Typography variant="body1">{client.email}</Typography>
                 </Box>
-                <Box sx={{ mb: 2 }}>
-                  <Typography variant="subtitle2">Organization Role:</Typography>
-                  <Typography variant="body1">{client.role || 'Client'}</Typography>
-                </Box>
               </CardContent>
+              <CardActions>
+                <Button
+                  startIcon={<CartIcon />}
+                  onClick={handleViewCart}
+                >
+                  View Client's Cart
+                </Button>
+              </CardActions>
             </Card>
           </Grid>
           
@@ -173,18 +207,24 @@ function ClientProfile() {
                 <Typography variant="h6" gutterBottom>
                   Client Preferences
                 </Typography>
-                {client.preferences ? (
+                {clientPreferences ? (
                   <>
                     <Box sx={{ mb: 2 }}>
                       <Typography variant="subtitle2">Diet Type:</Typography>
                       <Typography variant="body1">
-                        {client.preferences.diet_type || 'Not specified'}
+                        {clientPreferences.diet_type || 'Not specified'}
                       </Typography>
                     </Box>
                     <Box sx={{ mb: 2 }}>
                       <Typography variant="subtitle2">Dietary Restrictions:</Typography>
                       <Typography variant="body1">
-                        {client.preferences.dietary_restrictions || 'None'}
+                        {clientPreferences.dietary_restrictions || 'None'}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="subtitle2">Calorie Goal:</Typography>
+                      <Typography variant="body1">
+                        {clientPreferences.calorie_goal || 'Not specified'} kcal/day
                       </Typography>
                     </Box>
                   </>
@@ -194,108 +234,42 @@ function ClientProfile() {
                   </Typography>
                 )}
               </CardContent>
-              {isOwner && (
-                <CardActions>
-                  <Button size="small" onClick={() => navigate(`/clients/${clientId}/preferences`)}>
-                    Edit Preferences
-                  </Button>
-                </CardActions>
-              )}
+              <CardActions>
+                <Button
+                  size="small"
+                  onClick={handleEditPreferences}
+                >
+                  {clientPreferences ? 'Edit Preferences' : 'Set Preferences'}
+                </Button>
+              </CardActions>
             </Card>
           </Grid>
         </Grid>
       )}
 
-      {/* Shared Menus Tab */}
+// Continuing the ClientProfile.jsx file
+
+      {/* Menus Tab */}
       {tabValue === 1 && (
         <>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
-            <Typography variant="h5">
-              Shared Menus ({sharedMenus.length})
-            </Typography>
-            {isOwner && (
-              <Button
-                variant="contained"
-                startIcon={<ShareIcon />}
-                onClick={() => navigate(`/menu/share?clientId=${clientId}`)}
-              >
-                Share Menu
-              </Button>
-            )}
-          </Box>
+          <ClientMenuGenerator 
+            client={client} 
+            onMenuGenerated={handleMenuGenerated}
+          />
 
-          <Grid container spacing={3}>
-            {sharedMenus.length === 0 ? (
-              <Grid item xs={12}>
-                <Paper sx={{ p: 3, textAlign: 'center' }}>
-                  <Typography variant="body1">
-                    No menus have been shared with this client yet.
-                  </Typography>
-                </Paper>
-              </Grid>
-            ) : (
-              sharedMenus.map((menu) => (
-                <Grid item xs={12} md={6} key={menu.menu_id}>
-                  <Card>
-                    <CardContent>
-                      <Typography variant="h6">
-                        {menu.nickname || `Menu from ${new Date(menu.created_at).toLocaleDateString()}`}
-                      </Typography>
-                      <Typography color="text.secondary">
-                        Shared by: {menu.creator_name}
-                      </Typography>
-                      <Typography variant="body2" sx={{ mt: 1 }}>
-                        Permission: {menu.permission_level}
-                      </Typography>
-                    </CardContent>
-                    <Divider />
-                    <CardActions>
-                      <Button 
-                        size="small" 
-                        onClick={() => handleViewMenu(menu.menu_id)}
-                      >
-                        View Menu
-                      </Button>
-                      {isOwner && (
-                        <Button 
-                          size="small"
-                          color="secondary"
-                          onClick={() => handleShareMenu(menu.menu_id)}
-                        >
-                          Manage Sharing
-                        </Button>
-                      )}
-                    </CardActions>
-                  </Card>
-                </Grid>
-              ))
-            )}
-          </Grid>
-        </>
-      )}
-
-      {/* Client's Own Menus Tab (Owner Only) */}
-      {isOwner && tabValue === 2 && (
-        <>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
-            <Typography variant="h5">
-              Client's Menus ({clientMenus.length})
-            </Typography>
-            <Button
-              variant="contained"
-              startIcon={<PlaylistAddIcon />}
-              onClick={handleCreateMenu}
-            >
-              Create Menu
-            </Button>
-          </Box>
-
+          <Typography variant="h6" gutterBottom>
+            Client's Menus
+          </Typography>
+          
           <Grid container spacing={3}>
             {clientMenus.length === 0 ? (
               <Grid item xs={12}>
                 <Paper sx={{ p: 3, textAlign: 'center' }}>
                   <Typography variant="body1">
-                    This client hasn't created any menus yet.
+                    No menus generated for this client yet.
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                    Use the menu generator above to create a personalized meal plan.
                   </Typography>
                 </Paper>
               </Grid>
@@ -306,6 +280,9 @@ function ClientProfile() {
                     <CardContent>
                       <Typography variant="h6">
                         {menu.nickname || `Menu from ${new Date(menu.created_at).toLocaleDateString()}`}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {menu.days_count || 7} days of meals
                       </Typography>
                     </CardContent>
                     <Divider />
@@ -318,6 +295,7 @@ function ClientProfile() {
                       </Button>
                       <Button 
                         size="small"
+                        startIcon={<ShareIcon />}
                         onClick={() => handleShareMenu(menu.menu_id)}
                       >
                         Share Menu
@@ -330,6 +308,108 @@ function ClientProfile() {
           </Grid>
         </>
       )}
+
+      {/* Preferences Tab */}
+      {tabValue === 2 && (
+        <Paper sx={{ p: 3 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+            <Typography variant="h6">
+              Nutrition & Dietary Preferences
+            </Typography>
+            <Button 
+              variant="contained"
+              onClick={handleEditPreferences}
+            >
+              {clientPreferences ? 'Edit Preferences' : 'Set Preferences'}
+            </Button>
+          </Box>
+          
+          {clientPreferences ? (
+            <Grid container spacing={3}>
+              <Grid item xs={12} md={6}>
+                <Box sx={{ mb: 3 }}>
+                  <Typography variant="subtitle1">Diet Type:</Typography>
+                  <Typography variant="body1">
+                    {clientPreferences.diet_type || 'Not specified'}
+                  </Typography>
+                </Box>
+                
+                <Box sx={{ mb: 3 }}>
+                  <Typography variant="subtitle1">Dietary Restrictions:</Typography>
+                  <Typography variant="body1">
+                    {clientPreferences.dietary_restrictions || 'None'}
+                  </Typography>
+                </Box>
+                
+                <Box sx={{ mb: 3 }}>
+                  <Typography variant="subtitle1">Disliked Ingredients:</Typography>
+                  <Typography variant="body1">
+                    {clientPreferences.disliked_ingredients || 'None'}
+                  </Typography>
+                </Box>
+                
+                <Box sx={{ mb: 3 }}>
+                  <Typography variant="subtitle1">Recipe Types:</Typography>
+                  <Typography variant="body1">
+                    {clientPreferences.recipe_type || 'Not specified'}
+                  </Typography>
+                </Box>
+              </Grid>
+              
+              <Grid item xs={12} md={6}>
+                <Box sx={{ mb: 3 }}>
+                  <Typography variant="subtitle1">Nutrition Goals:</Typography>
+                  <Typography variant="body1">
+                    Calories: {clientPreferences.calorie_goal || 2000} kcal/day
+                  </Typography>
+                  <Typography variant="body1">
+                    Protein: {clientPreferences.macro_protein || 40}%
+                  </Typography>
+                  <Typography variant="body1">
+                    Carbs: {clientPreferences.macro_carbs || 30}%
+                  </Typography>
+                  <Typography variant="body1">
+                    Fat: {clientPreferences.macro_fat || 30}%
+                  </Typography>
+                </Box>
+                
+                <Box sx={{ mb: 3 }}>
+                  <Typography variant="subtitle1">Meal Configuration:</Typography>
+                  <Typography variant="body1">
+                    Meal Times: {
+                      Object.entries(clientPreferences.meal_times || {})
+                        .filter(([_, enabled]) => enabled)
+                        .map(([meal]) => meal.charAt(0).toUpperCase() + meal.slice(1))
+                        .join(', ') || 'Not specified'
+                    }
+                  </Typography>
+                  <Typography variant="body1">
+                    Servings Per Meal: {clientPreferences.servings_per_meal || 1}
+                  </Typography>
+                  {clientPreferences.meal_times?.snacks && (
+                    <Typography variant="body1">
+                      Snacks Per Day: {clientPreferences.snacks_per_day || 0}
+                    </Typography>
+                  )}
+                </Box>
+              </Grid>
+            </Grid>
+          ) : (
+            <Alert severity="info">
+              No preferences have been set for this client yet. Click "Set Preferences" to configure this client's dietary needs and preferences.
+            </Alert>
+          )}
+        </Paper>
+      )}
+
+      <Box sx={{ mt: 4, display: 'flex', justifyContent: 'center' }}>
+        <Button 
+          variant="outlined" 
+          onClick={() => navigate('/organization/dashboard')}
+        >
+          Back to Dashboard
+        </Button>
+      </Box>
     </Container>
   );
 }
