@@ -105,8 +105,8 @@ def create_app() -> FastAPI:
     app.include_router(menu.router)
     app.include_router(cart.router)
     app.include_router(order.router)
-    app.include_router(kroger_store_router)  # Using imported router
-    app.include_router(walmart_store_router)  # Using imported router
+    app.include_router(kroger_store_router) r
+    app.include_router(walmart_store_router)  
     app.include_router(kroger_auth.router)
     app.include_router(grocery_list.router)
     app.include_router(store.router)

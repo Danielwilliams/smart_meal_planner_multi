@@ -821,3 +821,36 @@ async def get_shared_menus(user_id: int = Query(...)):
         raise HTTPException(status_code=500, detail="Internal server error")
     finally:
         conn.close()
+
+
+@router.get("/shared/{user_id}")
+async def get_shared_menus(user_id: int):
+    """Get menus shared with the current user"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        cursor.execute("""
+            SELECT 
+                m.id as menu_id, 
+                m.meal_plan_json, 
+                m.user_id, 
+                m.created_at, 
+                m.nickname,
+                sm.permission_level,
+                up.name as shared_by_name
+            FROM menus m
+            JOIN shared_menus sm ON m.id = sm.menu_id
+            JOIN user_profiles up ON m.user_id = up.id
+            WHERE sm.shared_with = %s
+            ORDER BY m.created_at DESC
+        """, (user_id,))
+        
+        shared_menus = cursor.fetchall()
+        return shared_menus
+        
+    except Exception as e:
+        logger.error(f"Error fetching shared menus: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+    finally:
+        conn.close()

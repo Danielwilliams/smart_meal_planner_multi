@@ -6,6 +6,7 @@ from app.utils.auth_middleware import require_organization_owner
 from app.models.user import OrganizationCreate, Organization
 from app.db import get_db_connection
 from typing import List
+from app.utils.auth_middleware import require_organization_owner, require_organization_member
 
 router = APIRouter(prefix="/organizations", tags=["Organizations"])
 
@@ -100,7 +101,7 @@ async def get_user_organizations(user=Depends(get_user_from_token)):
 @router.get("/{org_id}")
 async def get_organization(
     org_id: int,
-    user=Depends(require_organization_owner)
+    user=Depends(require_organization_member)
 ):
     """Get organization details (must be owner or client)"""
     # Ensure user belongs to this specific organization
