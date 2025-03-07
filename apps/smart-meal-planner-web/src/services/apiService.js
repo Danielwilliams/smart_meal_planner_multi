@@ -496,6 +496,118 @@ async checkRecipeSaved(menuId, recipeId = null, mealTime = null) {
       throw err;
     }
   }
-};
+},
+
+    // Organization Management
+  getUserOrganizations: async () => {
+    try {
+      const response = await axiosInstance.get('/organizations/');
+      return response.data;
+    } catch (err) {
+      console.error('Error fetching organizations:', err);
+      throw err;
+    }
+  },  
+
+  createOrganization: async (orgData) => {
+    try {
+      const response = await axiosInstance.post('/organizations/', orgData);
+      return response.data;
+    } catch (err) {
+      console.error('Error creating organization:', err);
+      throw err;
+    }
+  },  
+
+  getOrganizationDetails: async (orgId) => {
+    try {
+      const response = await axiosInstance.get(`/organizations/${orgId}`);
+      return response.data;
+    } catch (err) {
+      console.error('Error fetching organization details:', err);
+      throw err;
+    }
+  },  
+
+  // Client Management
+  getOrganizationClients: async (orgId) => {
+    try {
+      const response = await axiosInstance.get(`/organizations/${orgId}/clients`);
+      return response.data;
+    } catch (err) {
+      console.error('Error fetching organization clients:', err);
+      throw err;
+    }
+  },  
+
+  addClientToOrganization: async (orgId, clientId, role = 'client') => {
+    try {
+      const response = await axiosInstance.post(`/organizations/${orgId}/clients/${clientId}`, {
+        role
+      });
+      return response.data;
+    } catch (err) {
+      console.error('Error adding client to organization:', err);
+      throw err;
+    }
+  },  
+
+  inviteClient: async (orgId, email) => {
+    try {
+      const response = await axiosInstance.post(`/organizations/${orgId}/invitations`, {
+        email
+      });
+      return response.data;
+    } catch (err) {
+      console.error('Error inviting client:', err);
+      throw err;
+    }
+  },  
+
+  // Client methods
+getClientDetails: async (clientId) => {
+  const response = await axiosInstance.get(`/organizations/clients/${clientId}`);
+  return response.data;
+},
+
+getClientMenus: async (clientId) => {
+  const response = await axiosInstance.get(`/menu/client/${clientId}`);
+  return response.data;
+},
+
+
+  acceptInvitation: async (token, orgId) => {
+    try {
+      const response = await axiosInstance.get(`/organizations/${orgId}/invitations/accept/${token}`);
+      return response.data;
+    } catch (err) {
+      console.error('Error accepting invitation:', err);
+      throw err;
+    }
+  },  
+
+  // Menu Sharing
+  shareMenuWithClient: async (menuId, clientId, permissionLevel = 'read') => {
+    try {
+      const response = await axiosInstance.post(`/menu/${menuId}/share`, {
+        client_id: clientId,
+        permission_level: permissionLevel
+      });
+      return response.data;
+    } catch (err) {
+      console.error('Error sharing menu:', err);
+      throw err;
+    }
+  },  
+
+  getSharedMenus: async () => {
+    try {
+      const response = await axiosInstance.get('/menu/shared');
+      return response.data;
+    } catch (err) {
+      console.error('Error fetching shared menus:', err);
+      throw err;
+    }
+  };
 
 export default apiService;

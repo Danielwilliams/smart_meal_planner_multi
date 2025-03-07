@@ -103,7 +103,7 @@ function App() {
                   </PrivateRoute>
                 } 
               />
-               <Route 
+              <Route 
               path="/organization/dashboard" 
               element={
                 <PrivateRoute>
@@ -112,7 +112,7 @@ function App() {
               } 
             />
             <Route 
-              path="/organization/create" 
+              path="/organization/setup" 
               element={
                 <PrivateRoute>
                   <OrganizationSetup />
@@ -120,7 +120,15 @@ function App() {
               } 
             />
             <Route 
-              path="/clients/:clientId" 
+              path="/organization/dashboard" 
+              element={
+                <PrivateRoute>
+                  <OrganizationDashboard />
+                </PrivateRoute>
+              } 
+            />
+            <Route 
+              path="/organization/clients/:clientId" 
               element={
                 <PrivateRoute>
                   <ClientProfile />
