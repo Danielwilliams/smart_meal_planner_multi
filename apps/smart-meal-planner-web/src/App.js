@@ -23,10 +23,8 @@ import VerifyEmailPage from './pages/VerifyEmailPage';
 import SavedRecipesPage from './pages/SavedRecipesPage';
 import { OrganizationProvider } from './context/OrganizationContext';
 import OrganizationDashboard from './pages/OrganizationDashboard';
-import OrganizationSetup from './pages/OrganizationSetup';
 import ClientProfile from './pages/ClientProfile';
 import AcceptInvitation from './pages/AcceptInvitation';
-import OrganizationSetupCheck from './components/OrganizationSetupCheck';
 
 
 function App() {
@@ -45,7 +43,6 @@ function App() {
           <CssBaseline />
           <Router>
             <NavBar />
-            <OrganizationSetupCheck>
             <Routes>
               {/* Public Routes */}
               <Route path="/" element={<LandingPage />} />
@@ -104,43 +101,26 @@ function App() {
                 } 
               />
               <Route 
-              path="/organization/dashboard" 
-              element={
-                <PrivateRoute>
-                  <OrganizationDashboard />
-                </PrivateRoute>
-              } 
-            />
-            <Route 
-              path="/organization/setup" 
-              element={
-                <PrivateRoute>
-                  <OrganizationSetup />
-                </PrivateRoute>
-              } 
-            />
-            <Route 
-              path="/organization/dashboard" 
-              element={
-                <PrivateRoute>
-                  <OrganizationDashboard />
-                </PrivateRoute>
-              } 
-            />
-            <Route 
-              path="/organization/clients/:clientId" 
-              element={
-                <PrivateRoute>
-                  <ClientProfile />
-                </PrivateRoute>
-              } 
-            />
-            <Route path="/accept-invitation" element={<AcceptInvitation />} />
+                path="/organization/dashboard" 
+                element={
+                  <PrivateRoute>
+                    <OrganizationDashboard />
+                  </PrivateRoute>
+                } 
+              />
+              <Route 
+                path="/organization/clients/:clientId" 
+                element={
+                  <PrivateRoute>
+                    <ClientProfile />
+                  </PrivateRoute>
+                } 
+              />
+              <Route path="/accept-invitation" element={<AcceptInvitation />} />
               
               {/* Fallback route */}
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
-           </OrganizationSetupCheck>
           </Router>
         </ThemeProvider>
        </OrganizationProvider>

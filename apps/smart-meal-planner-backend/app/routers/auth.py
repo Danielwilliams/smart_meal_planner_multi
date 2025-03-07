@@ -240,7 +240,6 @@ async def login(user_data: UserLogin):
         )
     finally:
         cursor.close()
-        conn.close()
 
 @router.patch("/{user_id}/progress")
 async def update_user_progress(user_id: int, progress: UserProgress):

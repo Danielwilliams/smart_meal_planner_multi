@@ -8,7 +8,6 @@ const OrganizationContext = createContext(undefined);
 
 // Provider component
 export const OrganizationProvider = ({ children }) => {
-  console.log("OrganizationProvider initialized"); // Add this for debugging
   const { user, isAuthenticated } = useAuth();
   const [organization, setOrganization] = useState(null);
   const [clients, setClients] = useState([]);
@@ -18,7 +17,7 @@ export const OrganizationProvider = ({ children }) => {
 
   useEffect(() => {
     const fetchOrganizationData = async () => {
-      if (!isAuthenticated || !user) return;
+      if (!isAuthenticated || !user || user.account_type !== 'organization') return;
 
       try {
         setLoading(true);
@@ -32,10 +31,13 @@ export const OrganizationProvider = ({ children }) => {
           setOrganization(userOrg);
           setIsOwner(userOrg.owner_id === user.userId);
           
-          // If user is owner, fetch clients
-          if (userOrg.owner_id === user.userId) {
+          // Fetch clients regardless of owner status - the API will handle permissions
+          try {
             const clientsResponse = await apiService.getOrganizationClients(userOrg.id);
             setClients(clientsResponse || []);
+          } catch (clientErr) {
+            console.log('Note: Unable to fetch clients - may not be an owner', clientErr);
+            // Don't set error for clients - it's expected for non-owners
           }
         }
       } catch (err) {
@@ -49,25 +51,11 @@ export const OrganizationProvider = ({ children }) => {
     fetchOrganizationData();
   }, [isAuthenticated, user]);
 
-  const createOrganization = async (orgData) => {
-    try {
-      setLoading(true);
-      const newOrg = await apiService.createOrganization(orgData);
-      setOrganization(newOrg);
-      setIsOwner(true);
-      setClients([]);
-      return newOrg;
-    } catch (err) {
-      setError('Failed to create organization');
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const inviteClient = async (email) => {
     try {
-      if (!organization) throw new Error('No organization found');
+      if (!organization) {
+        throw new Error('No organization found');
+      }
       
       setLoading(true);
       const response = await apiService.inviteClient(organization.id, email);
@@ -120,13 +108,10 @@ export const OrganizationProvider = ({ children }) => {
     loading,
     error,
     isOwner,
-    createOrganization,
     inviteClient,
     addClientToOrganization,
     shareMenuWithClient
   };
-
-  console.log("OrganizationContext value:", contextValue); // Add this for debugging
 
   return (
     <OrganizationContext.Provider value={contextValue}>
@@ -137,16 +122,9 @@ export const OrganizationProvider = ({ children }) => {
 
 // Custom hook to use the context
 export const useOrganization = () => {
-  // Add this for debugging
-  console.log("useOrganization hook called");
-  
   const context = useContext(OrganizationContext);
   
-  // Add this for debugging
-  console.log("useOrganization context value:", context);
-  
   if (context === undefined) {
-    console.error("useOrganization called outside of provider!");
     throw new Error('useOrganization must be used within an OrganizationProvider');
   }
   return context;

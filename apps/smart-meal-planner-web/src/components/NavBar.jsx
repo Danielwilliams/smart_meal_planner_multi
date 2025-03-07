@@ -160,9 +160,9 @@ function NavBar() {
                 <Button 
                   color="inherit" 
                   component={Link} 
-                  to={organization ? "/organization/dashboard" : "/organization/setup"}
+                  to="/organization/dashboard"
                 >
-                  {organization ? "Organization" : "Create Organization"}
+                  Manage Organization
                 </Button>
               )}
               
@@ -206,7 +206,7 @@ function NavBar() {
                   <PersonIcon sx={{ mr: 1 }} fontSize="small" />
                   Profile Settings
                 </MenuItem>
-                {isOrgAccount && organization && (
+                {isOrgAccount && (
                   <MenuItem onClick={() => { handleMenuClose(); navigate('/organization/dashboard'); }}>
                     <DashboardIcon sx={{ mr: 1 }} fontSize="small" />
                     Organization Dashboard

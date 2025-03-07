@@ -12,7 +12,6 @@ import {
 } from '@mui/material';
 import { useAuth } from '../context/AuthContext';
 import { useGoogleReCaptcha } from 'react-google-recaptcha-v3';
-import apiService from '../services/apiService';  // Import apiService
 
 function LoginPage() {
   const { login } = useAuth();
@@ -23,69 +22,56 @@ function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  const handleLogin = useCallback(async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
 
-const handleLogin = useCallback(async (e) => {
-  e.preventDefault();
-  setError('');
-  setLoading(true);
-
-  try {
-    if (!executeRecaptcha) {
-      throw new Error('reCAPTCHA not initialized');
-    }
-
-    const captchaToken = await executeRecaptcha('login');
-    
-    // Use the AuthContext login function that handles the API call
-    const response = await login({
-      email,
-      password,
-      captchaToken
-    });
-
-    console.log('Login Response:', response);
-
-    // Redirect based on account type
-    if (response.account_type === 'organization') {
-      // Check if user has an organization already set up
-      try {
-        const orgs = await apiService.getUserOrganizations();
-        if (orgs && orgs.length > 0) {
-          navigate('/organization/dashboard');
-        } else {
-          navigate('/organization/setup');
-        }
-      } catch (err) {
-        console.error('Error checking organizations:', err);
-        navigate('/organization/setup');
+    try {
+      if (!executeRecaptcha) {
+        throw new Error('reCAPTCHA not initialized');
       }
-    } else {
-      // Regular user flow
-      if (response.progress.has_preferences) {
-        console.log('Navigating to /home');
-        navigate('/home');
+
+      const captchaToken = await executeRecaptcha('login');
+      
+      // Use the AuthContext login function that handles the API call
+      const response = await login({
+        email,
+        password,
+        captchaToken
+      });
+
+      console.log('Login Response:', response);
+
+      // Redirect based on account type
+      if (response.account_type === 'organization') {
+        navigate('/organization/dashboard');
       } else {
-        console.log('Navigating to /preferences-page');
-        navigate('/preferences-page');
+        // Regular user flow
+        if (response.progress.has_preferences) {
+          console.log('Navigating to /home');
+          navigate('/home');
+        } else {
+          console.log('Navigating to /preferences-page');
+          navigate('/preferences-page');
+        }
       }
+    } catch (err) {
+      console.error('Full Login Error:', {
+        error: err,
+        response: err.response,
+        message: err.message
+      });
+      
+      setError(
+        err.response?.data?.detail || 
+        err.message || 
+        'An unexpected error occurred during login'
+      );
+    } finally {
+      setLoading(false);
     }
-  } catch (err) {
-    console.error('Full Login Error:', {
-      error: err,
-      response: err.response,
-      message: err.message
-    });
-    
-    setError(
-      err.response?.data?.detail || 
-      err.message || 
-      'An unexpected error occurred during login'
-    );
-  } finally {
-    setLoading(false);
-  }
-}, [email, password, executeRecaptcha, navigate, login]);
-
+  }, [email, password, executeRecaptcha, navigate, login]);
 
   const handleSignUp = () => {
     navigate('/signup');

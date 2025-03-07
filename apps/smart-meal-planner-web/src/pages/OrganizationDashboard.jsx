@@ -17,17 +17,19 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import { useOrganization } from '../context/OrganizationContext';
+import apiService from '../services/apiService';
 
 function OrganizationDashboard() {
   const { user } = useAuth();
   const { 
     organization, 
     clients, 
-    loading, 
-    error, 
+    loading: orgLoading, 
+    error: orgError, 
     isOwner,
     inviteClient 
   } = useOrganization();
+  
   const navigate = useNavigate();
   const [tabValue, setTabValue] = useState(0);
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
@@ -36,14 +38,39 @@ function OrganizationDashboard() {
   const [inviteError, setInviteError] = useState('');
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [sharedMenus, setSharedMenus] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  // Redirect if not authenticated
-   // Redirect individual users who try to access this page directly
+  // Redirect if not authenticated or not an organization account
   useEffect(() => {
-    if (user && user.account_type === 'individual') {
+    if (user && user.account_type !== 'organization') {
       navigate('/home');
     }
   }, [user, navigate]);
+  
+  // Fetch shared menus
+  useEffect(() => {
+    const fetchSharedMenus = async () => {
+      try {
+        setLoading(true);
+        // Check if API method exists
+        if (typeof apiService.getSharedMenus === 'function') {
+          const response = await apiService.getSharedMenus();
+          setSharedMenus(response || []);
+        }
+      } catch (err) {
+        console.error('Error fetching shared menus:', err);
+        setError('Failed to load shared menus');
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    if (user && user.account_type === 'organization') {
+      fetchSharedMenus();
+    }
+  }, [user]);
 
   const handleTabChange = (event, newValue) => {
     setTabValue(newValue);
@@ -69,31 +96,48 @@ function OrganizationDashboard() {
       setInviteLoading(true);
       setInviteError('');
       
-      const response = await inviteClient(inviteEmail.trim());
-      
-      setSnackbarMessage('Invitation sent successfully');
-      setSnackbarOpen(true);
-      handleCloseInviteDialog();
+      // Check if inviteClient method exists in context
+      if (typeof inviteClient === 'function') {
+        const response = await inviteClient(inviteEmail.trim());
+        
+        setSnackbarMessage('Invitation sent successfully');
+        setSnackbarOpen(true);
+        handleCloseInviteDialog();
+      } else if (typeof apiService.inviteClient === 'function') {
+        // Fallback to direct API call if context method is missing
+        const orgId = organization?.id;
+        if (!orgId) {
+          throw new Error('Organization ID not found');
+        }
+        
+        const response = await apiService.inviteClient(orgId, inviteEmail.trim());
+        
+        setSnackbarMessage('Invitation sent successfully');
+        setSnackbarOpen(true);
+        handleCloseInviteDialog();
+      } else {
+        throw new Error('Invite client method not available');
+      }
     } catch (err) {
-      setInviteError(err.response?.data?.detail || 'Failed to send invitation');
+      setInviteError(err.response?.data?.detail || err.message || 'Failed to send invitation');
     } finally {
       setInviteLoading(false);
     }
   };
 
   const handleViewClient = (clientId) => {
-    navigate(`/clients/${clientId}`);
+    navigate(`/organization/clients/${clientId}`);
   };
 
   const handleCreateMenu = (clientId) => {
-    navigate(`/menu/create?clientId=${clientId}`);
+    navigate(`/menu?clientId=${clientId}`);
   };
 
   const handleShareMenu = (clientId) => {
-    navigate(`/menu/share?clientId=${clientId}`);
+    navigate(`/menu?clientId=${clientId}`);
   };
 
-  if (loading) {
+  if (loading || orgLoading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="80vh">
         <CircularProgress />
@@ -101,43 +145,21 @@ function OrganizationDashboard() {
     );
   }
 
-  // Organization creation UI if no organization exists
-  if (!organization) {
-    return (
-      <Container maxWidth="md">
-        <Typography variant="h4" gutterBottom>
-          Create Your Organization
-        </Typography>
-        <Paper sx={{ p: 3, mt: 2 }}>
-          <Typography variant="body1" paragraph>
-            Create an organization to manage your clients and share meal plans.
-          </Typography>
-          <Button 
-            variant="contained" 
-            color="primary"
-            onClick={() => navigate('/organization/create')}
-          >
-            Create Organization
-          </Button>
-        </Paper>
-      </Container>
-    );
-  }
-
+  // Just show the standard organization dashboard that focuses on client management
   return (
     <Container maxWidth="lg">
       <Box sx={{ mb: 4 }}>
         <Typography variant="h4" gutterBottom>
-          {organization.name}
+          {organization?.name || user?.name || 'Organization Dashboard'}
         </Typography>
         <Typography variant="body1" color="text.secondary">
-          {organization.description}
+          {organization?.description || 'Manage your clients and meal plans'}
         </Typography>
       </Box>
 
-      {error && (
+      {(error || orgError) && (
         <Alert severity="error" sx={{ mb: 3 }}>
-          {error}
+          {error || orgError}
         </Alert>
       )}
 
@@ -160,21 +182,19 @@ function OrganizationDashboard() {
         <>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
             <Typography variant="h5">
-              Clients ({clients.length})
+              Clients ({clients?.length || 0})
             </Typography>
-            {isOwner && (
-              <Button
-                variant="contained"
-                startIcon={<AddIcon />}
-                onClick={handleOpenInviteDialog}
-              >
-                Invite Client
-              </Button>
-            )}
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={handleOpenInviteDialog}
+            >
+              Invite Client
+            </Button>
           </Box>
 
           <Grid container spacing={3}>
-            {clients.length === 0 ? (
+            {!clients || clients.length === 0 ? (
               <Grid item xs={12}>
                 <Paper sx={{ p: 3, textAlign: 'center' }}>
                   <Typography variant="body1">
@@ -195,7 +215,7 @@ function OrganizationDashboard() {
                       </Typography>
                       <Box sx={{ mt: 1 }}>
                         <Chip 
-                          label={client.role} 
+                          label={client.role || 'Client'} 
                           size="small"
                           color="primary"
                           variant="outlined"
@@ -229,6 +249,95 @@ function OrganizationDashboard() {
             )}
           </Grid>
         </>
+      )}
+
+      {/* Shared Menus Tab */}
+      {tabValue === 1 && (
+        <>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
+            <Typography variant="h5">
+              Shared Menus ({sharedMenus.length})
+            </Typography>
+          </Box>
+          
+          <Grid container spacing={3}>
+            {sharedMenus.length === 0 ? (
+              <Grid item xs={12}>
+                <Paper sx={{ p: 3, textAlign: 'center' }}>
+                  <Typography variant="body1">
+                    You haven't shared any menus yet. Create a menu and share it with your clients.
+                  </Typography>
+                  <Button 
+                    variant="contained" 
+                    color="primary" 
+                    sx={{ mt: 2 }}
+                    onClick={() => navigate('/menu')}
+                  >
+                    Create Menu
+                  </Button>
+                </Paper>
+              </Grid>
+            ) : (
+              sharedMenus.map((menu) => (
+                <Grid item xs={12} md={6} key={menu.menu_id}>
+                  <Card>
+                    <CardContent>
+                      <Typography variant="h6">
+                        {menu.nickname || `Menu from ${new Date(menu.created_at).toLocaleDateString()}`}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Shared with: {menu.shared_with_name || menu.client_name || 'Client'}
+                      </Typography>
+                      <Box sx={{ mt: 1 }}>
+                        <Chip 
+                          label={menu.permission_level || 'Read'} 
+                          size="small"
+                          color="primary"
+                          variant="outlined"
+                        />
+                      </Box>
+                    </CardContent>
+                    <Divider />
+                    <CardActions>
+                      <Button 
+                        size="small" 
+                        onClick={() => navigate(`/menu?menuId=${menu.menu_id}`)}
+                      >
+                        View Menu
+                      </Button>
+                      <Button 
+                        size="small" 
+                        color="primary"
+                        startIcon={<ShareIcon />}
+                        onClick={() => navigate(`/menu?menuId=${menu.menu_id}&share=true`)}
+                      >
+                        Manage Sharing
+                      </Button>
+                    </CardActions>
+                  </Card>
+                </Grid>
+              ))
+            )}
+          </Grid>
+        </>
+      )}
+
+      {/* Settings Tab */}
+      {tabValue === 2 && (
+        <Paper sx={{ p: 3 }}>
+          <Typography variant="h6" gutterBottom>
+            Organization Settings
+          </Typography>
+          <Typography variant="body1" paragraph>
+            Manage your organization profile and subscription.
+          </Typography>
+          <Button 
+            variant="contained" 
+            onClick={() => navigate('/preferences-page')}
+          >
+            Update Profile
+          </Button>
+        </Paper>
       )}
 
       {/* Invite Client Dialog */}
