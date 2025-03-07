@@ -632,6 +632,7 @@ getSharedMenus: async () => {
     // Return empty array instead of throwing
     return [];
   }
-},
+}
+}; // Close the apiService object here
 
 export default apiService;
