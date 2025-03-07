@@ -26,6 +26,7 @@ import OrganizationDashboard from './pages/OrganizationDashboard';
 import OrganizationSetup from './pages/OrganizationSetup';
 import ClientProfile from './pages/ClientProfile';
 import AcceptInvitation from './pages/AcceptInvitation';
+import OrganizationSetupCheck from './components/OrganizationSetupCheck';
 
 
 function App() {

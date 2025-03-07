@@ -13,6 +13,7 @@ import {
   Person as PersonIcon,
   Menu as MenuIcon,
   Share as ShareIcon
+  Settings as SettingsIcon
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import { useOrganization } from '../context/OrganizationContext';
@@ -37,9 +38,10 @@ function OrganizationDashboard() {
   const [snackbarMessage, setSnackbarMessage] = useState('');
 
   // Redirect if not authenticated
+   // Redirect individual users who try to access this page directly
   useEffect(() => {
-    if (!user) {
-      navigate('/login');
+    if (user && user.account_type === 'individual') {
+      navigate('/home');
     }
   }, [user, navigate]);
 

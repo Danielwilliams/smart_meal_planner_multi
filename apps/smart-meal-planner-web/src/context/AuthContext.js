@@ -23,7 +23,7 @@ export const AuthProvider = ({ children }) => {
             userId: parsedUser.id || parsedUser.userId || parsedUser.user_id,
             email: parsedUser.email,
             profile_complete: parsedUser.profile_complete || false,
-            account_type: response.account_type,
+            account_type: parsedUser.account_type,
             progress: {
               has_preferences: parsedUser.progress?.has_preferences || false,
               has_generated_menu: parsedUser.progress?.has_generated_menu || false,
@@ -32,6 +32,7 @@ export const AuthProvider = ({ children }) => {
           };
 
           setUser(normalizedUser);
+          setAccountType(parsedUser.account_type);
           setIsAuthenticated(true);
         }
       } catch (error) {
@@ -54,6 +55,7 @@ export const AuthProvider = ({ children }) => {
         userId: response.user.id,
         email: response.user.email,
         profile_complete: response.profile_complete,
+        account_type: response.account_type,
         progress: {
           has_preferences: response.progress.has_preferences || false,
           has_generated_menu: response.progress.has_generated_menu || false,
@@ -62,6 +64,7 @@ export const AuthProvider = ({ children }) => {
       };
 
       setUser(userData);
+      setAccountType(response.account_type);
       setIsAuthenticated(true);
       
       localStorage.setItem('user', JSON.stringify(userData));
