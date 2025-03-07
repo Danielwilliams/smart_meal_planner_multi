@@ -7,7 +7,6 @@ import {
   Button, 
   Box,
   Chip,
-  Avatar,
   Menu,
   MenuItem,
   IconButton,
@@ -31,6 +30,9 @@ function NavBar() {
   const [organization, setOrganization] = useState(null);
   const [menuAnchorEl, setMenuAnchorEl] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // Check if the user has an organization account
+  const isOrgAccount = user?.account_type === 'organization';
   
   // Fetch organization data directly in this component
   useEffect(() => {
@@ -39,7 +41,7 @@ function NavBar() {
       const fetchOrgData = async () => {
         try {
           // Only try to fetch organization data if user is an organization account
-          if (user.account_type === 'organization') {
+          if (isOrgAccount) {
             // Check if the method exists before calling it
             if (typeof apiService.getOrganizations === 'function') {
               const orgResponse = await apiService.getOrganizations();
@@ -72,7 +74,7 @@ function NavBar() {
       // Reset organization when not authenticated
       setOrganization(null);
     }
-  }, [isAuthenticated, user]);
+  }, [isAuthenticated, user, isOrgAccount]);
 
   const handleLogout = () => {
     logout();
@@ -91,8 +93,6 @@ function NavBar() {
   const handleMobileMenuToggle = () => {
     setMobileMenuOpen(!mobileMenuOpen);
   };
-
-  const isOrgAccount = user && user.account_type === 'organization';
 
   return (
     <AppBar position="static">
@@ -160,7 +160,7 @@ function NavBar() {
                 <Button 
                   color="inherit" 
                   component={Link} 
-                  to={organization ? "/organization/dashboard" : "/organization/create"}
+                  to={organization ? "/organization/dashboard" : "/organization/setup"}
                 >
                   {organization ? "Organization" : "Create Organization"}
                 </Button>

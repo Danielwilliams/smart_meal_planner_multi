@@ -162,7 +162,8 @@ async def login(user_data: UserLogin):
                 has_preferences,
                 has_generated_menu,
                 has_shopping_list,
-                verified
+                verified,
+                account_type
             FROM user_profiles 
             WHERE email = %s
         """, (user_data.email,))
@@ -176,7 +177,7 @@ async def login(user_data: UserLogin):
             )
 
         # Unpack user data (added verified at the end)
-        user_id, email, name, stored_hash, profile_complete, has_prefs, has_menu, has_list, verified = user
+         user_id, email, name, stored_hash, profile_complete, has_prefs, has_menu, has_list, verified, account_type = user
         
         # Check if email is verified
         if not verified:
