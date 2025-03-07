@@ -69,7 +69,7 @@ async def sign_up(user_data: UserSignUp, background_tasks: BackgroundTasks):
         cursor.execute("""
             INSERT INTO user_profiles 
             (email, name, hashed_password, verified, verification_token,  account_type)
-            VALUES (%s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s)
             RETURNING id
         """, (
             user_data.email,
@@ -96,7 +96,7 @@ async def sign_up(user_data: UserSignUp, background_tasks: BackgroundTasks):
         
         return {
             "message": "Please check your email to verify your account",
-            "email": user_data.email
+            "email": user_data.email,
             "account_type": user_data.account_type
 
         }
