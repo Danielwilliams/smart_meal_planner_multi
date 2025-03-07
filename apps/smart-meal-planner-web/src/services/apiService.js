@@ -252,51 +252,50 @@ const apiService = {
   },
 
   // Saved Recipie Endpoints
+  saveRecipe: async (saveData) => {
+    try {
+      const response = await axiosInstance.post('/saved-recipes/', saveData);
+      return response.data;
+    } catch (err) {
+      console.error('Error saving recipe:', err);
+      throw err;
+    }
+  },
 
-saveRecipe: async (saveData) => {
-  try {
-    const response = await axiosInstance.post('/saved-recipes/', saveData);
-    return response.data;
-  } catch (err) {
-    console.error('Error saving recipe:', err);
-    throw err;
-  }
-},
+  unsaveRecipe: async (savedId) => {
+    try {
+      const response = await axiosInstance.delete(`/saved-recipes/${savedId}`);
+      return response.data;
+    } catch (err) {
+      console.error('Error unsaving recipe:', err);
+      throw err;
+    }
+  },
 
-unsaveRecipe: async (savedId) => {
-  try {
-    const response = await axiosInstance.delete(`/saved-recipes/${savedId}`);
-    return response.data;
-  } catch (err) {
-    console.error('Error unsaving recipe:', err);
-    throw err;
-  }
-},
+  getSavedRecipes: async () => {
+    try {
+      const response = await axiosInstance.get('/saved-recipes/');
+      return response.data.saved_recipes || [];
+    } catch (err) {
+      console.error('Error fetching saved recipes:', err);
+      return [];
+    }
+  },
 
-getSavedRecipes: async () => {
-  try {
-    const response = await axiosInstance.get('/saved-recipes/');
-    return response.data.saved_recipes || [];
-  } catch (err) {
-    console.error('Error fetching saved recipes:', err);
-    return [];
-  }
-},
+  async checkRecipeSaved(menuId, recipeId = null, mealTime = null) {
+    try {
+      const params = new URLSearchParams();
+      params.append('menu_id', menuId);
+      if (recipeId) params.append('recipe_id', recipeId);
+      if (mealTime) params.append('meal_time', mealTime);
 
-async checkRecipeSaved(menuId, recipeId = null, mealTime = null) {
-  try {
-    const params = new URLSearchParams();
-    params.append('menu_id', menuId);
-    if (recipeId) params.append('recipe_id', recipeId);
-    if (mealTime) params.append('meal_time', mealTime);
-
-    const resp = await axiosInstance.get(`/saved-recipes/check?${params.toString()}`);
-    return resp.data;
-  } catch (err) {
-    console.error("Check saved recipe error:", err.response?.data || err.message);
-    throw err;
-  }
-},
+      const resp = await axiosInstance.get(`/saved-recipes/check?${params.toString()}`);
+      return resp.data;
+    } catch (err) {
+      console.error("Check saved recipe error:", err.response?.data || err.message);
+      throw err;
+    }
+  },
 
   // Cart Management Endpoints
   async getCartContents(userId) {
@@ -495,10 +494,9 @@ async checkRecipeSaved(menuId, recipeId = null, mealTime = null) {
       console.error("Walmart cart add error:", err);
       throw err;
     }
-  }
-},
+  },
 
-    // Organization Management
+  // Organization Management
   getUserOrganizations: async () => {
     try {
       const response = await axiosInstance.get('/organizations/');
@@ -566,15 +564,24 @@ async checkRecipeSaved(menuId, recipeId = null, mealTime = null) {
 
   // Client methods
   getClientDetails: async (clientId) => {
-    const response = await axiosInstance.get(`/organizations/clients/${clientId}`);
-    return response.data;
+    try {
+      const response = await axiosInstance.get(`/organizations/clients/${clientId}`);
+      return response.data;
+    } catch (err) {
+      console.error('Error fetching client details:', err);
+      throw err;
+    }
   },  
 
   getClientMenus: async (clientId) => {
-    const response = await axiosInstance.get(`/menu/client/${clientId}`);
-    return response.data;
+    try {
+      const response = await axiosInstance.get(`/menu/client/${clientId}`);
+      return response.data;
+    } catch (err) {
+      console.error('Error fetching client menus:', err);
+      throw err;
+    }
   },
-
 
   acceptInvitation: async (token, orgId) => {
     try {
@@ -608,6 +615,7 @@ async checkRecipeSaved(menuId, recipeId = null, mealTime = null) {
       console.error('Error fetching shared menus:', err);
       throw err;
     }
-  };
+  }
+};
 
 export default apiService;
