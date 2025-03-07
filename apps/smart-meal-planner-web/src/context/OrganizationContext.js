@@ -16,40 +16,45 @@ export const OrganizationProvider = ({ children }) => {
   const [isOwner, setIsOwner] = useState(false);
 
   useEffect(() => {
-    const fetchOrganizationData = async () => {
-      if (!isAuthenticated || !user || user.account_type !== 'organization') return;
+      const fetchOrganizationData = async () => {
+        if (!isAuthenticated || !user || user.account_type !== 'organization') return;    
 
-      try {
-        setLoading(true);
-        setError(null);
-        
-        // Get user's organization info
-        const orgResponse = await apiService.getUserOrganizations();
-        
-        if (orgResponse && orgResponse.length > 0) {
-          const userOrg = orgResponse[0];
-          setOrganization(userOrg);
-          setIsOwner(userOrg.owner_id === user.userId);
+        try {
+          setLoading(true);
+          setError(null);
           
-          // Fetch clients regardless of owner status - the API will handle permissions
-          try {
-            const clientsResponse = await apiService.getOrganizationClients(userOrg.id);
-            setClients(clientsResponse || []);
-          } catch (clientErr) {
-            console.log('Note: Unable to fetch clients - may not be an owner', clientErr);
-            // Don't set error for clients - it's expected for non-owners
+          // Get user's organization info - use get instead of post
+          const orgResponse = await apiService.getUserOrganizations();
+          
+          console.log('Organization response:', orgResponse);
+          
+          if (orgResponse && orgResponse.length > 0) {
+            const userOrg = orgResponse[0];
+            setOrganization(userOrg);
+            setIsOwner(userOrg.owner_id === user.userId);
+            
+            // Fetch clients only if we have a valid organization
+            if (userOrg.id) {
+              try {
+                const clientsResponse = await apiService.getOrganizationClients(userOrg.id);
+                setClients(clientsResponse || []);
+              } catch (clientErr) {
+                console.error('Error fetching clients:', clientErr);
+              }
+            }
+          } else {
+            console.log('No organizations found for user');
           }
+        } catch (err) {
+          console.error('Error fetching organization data:', err);
+          setError('Failed to load organization data');
+        } finally {
+          setLoading(false);
         }
-      } catch (err) {
-        console.error('Error fetching organization data:', err);
-        setError('Failed to load organization data');
-      } finally {
-        setLoading(false);
-      }
-    };
+      };
 
-    fetchOrganizationData();
-  }, [isAuthenticated, user]);
+  fetchOrganizationData();
+}, [isAuthenticated, user]);
 
   const inviteClient = async (email) => {
     try {

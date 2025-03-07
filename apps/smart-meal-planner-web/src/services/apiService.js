@@ -509,15 +509,13 @@ const apiService = {
   // Organization Management
   getUserOrganizations: async () => {
     try {
-      // Ensure we're using POST instead of GET based on the error
-      const response = await axiosInstance.post('/organizations/user');
+      const response = await axiosInstance.get('/organizations/');
       return response.data;
     } catch (err) {
       console.error('Error fetching organizations:', err);
-      // Return empty array instead of throwing to prevent UI errors
       return [];
     }
-  }, 
+  }
 
   createOrganization: async (orgData) => {
     try {
@@ -627,22 +625,23 @@ const apiService = {
   },  
 
 // Get shared menus
-getSharedMenus: async () => {
-  try {
-    // Add necessary parameters based on 422 error
-    const response = await axiosInstance.get('/menu/shared', {
-      params: {
-        user_id: localStorage.getItem('user') ? 
-          JSON.parse(localStorage.getItem('user')).userId : null
+  getSharedMenus: async () => {
+    try {
+      const userData = JSON.parse(localStorage.getItem('user') || '{}');
+      const userId = userData.userId;
+      
+      if (!userId) {
+        console.warn('User ID not found in local storage');
+        return [];
       }
-    });
-    return response.data;
-  } catch (err) {
-    console.error('Error fetching shared menus:', err);
-    // Return empty array instead of throwing
-    return [];
+      
+      const response = await axiosInstance.get(`/menu/shared/${userId}`);
+      return response.data;
+    } catch (err) {
+      console.error('Error fetching shared menus:', err);
+      return [];
+    }
   }
-}
 }; // Close the apiService object here
 
 export default apiService;

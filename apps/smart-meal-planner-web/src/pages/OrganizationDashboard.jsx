@@ -86,38 +86,51 @@ function OrganizationDashboard() {
     setInviteDialogOpen(false);
   };
 
-const handleSendInvite = async () => {
-  if (!inviteEmail.trim()) {
-    setInviteError('Please enter an email address');
-    return;
-  }
-
-  try {
-    setInviteLoading(true);
-    setInviteError('');
-    
-    // Make sure we have the organization object and ID
-    if (!organization || !organization.id) {
-      setInviteError('Organization information not available. Please refresh the page.');
+  const handleSendInvite = async () => {
+    if (!inviteEmail.trim()) {
+      setInviteError('Please enter an email address');
       return;
+    } 
+
+    try {
+      setInviteLoading(true);
+      setInviteError('');
+      
+      // Fetch organizations if not already loaded
+      if (!organization) {
+        try {
+          const orgs = await apiService.getUserOrganizations();
+          if (!orgs || orgs.length === 0) {
+            setInviteError('Organization not found. Please set up your organization first.');
+            return;
+          }
+          
+          // Use the first organization
+          const orgId = orgs[0].id;
+          const response = await apiService.inviteClient(orgId, inviteEmail.trim());
+          
+          setSnackbarMessage('Invitation sent successfully');
+          setSnackbarOpen(true);
+          handleCloseInviteDialog();
+        } catch (orgErr) {
+          console.error('Error fetching organization:', orgErr);
+          setInviteError('Failed to load organization data. Please refresh the page.');
+        }
+      } else {
+        // Use existing organization
+        const response = await apiService.inviteClient(organization.id, inviteEmail.trim());
+        
+        setSnackbarMessage('Invitation sent successfully');
+        setSnackbarOpen(true);
+        handleCloseInviteDialog();
+      }
+    } catch (err) {
+      console.error('Invite error:', err);
+      setInviteError(err.response?.data?.detail || err.message || 'Failed to send invitation');
+    } finally {
+      setInviteLoading(false);
     }
-    
-    // Log the organization object for debugging
-    console.log('Using organization:', organization);
-    
-    // Call the API directly with organization ID
-    const response = await apiService.inviteClient(organization.id, inviteEmail.trim());
-    
-    setSnackbarMessage('Invitation sent successfully');
-    setSnackbarOpen(true);
-    handleCloseInviteDialog();
-  } catch (err) {
-    console.error('Invite error:', err);
-    setInviteError(err.response?.data?.detail || err.message || 'Failed to send invitation');
-  } finally {
-    setInviteLoading(false);
-  }
-};
+  };
 
   const handleViewClient = (clientId) => {
     navigate(`/organization/clients/${clientId}`);
