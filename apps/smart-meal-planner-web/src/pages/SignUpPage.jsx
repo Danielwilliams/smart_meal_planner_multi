@@ -7,8 +7,6 @@ import { useGoogleReCaptcha } from 'react-google-recaptcha-v3';
 import apiService from '../services/apiService';
 import { useNavigate } from 'react-router-dom';
 
-
-
 function SignUpPage() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -65,86 +63,112 @@ function SignUpPage() {
     <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
       <Card sx={{ maxWidth: 400, width: '100%' }}>
         <CardContent>
-          <Typography variant="h5" gutterBottom>
-            Create an Account
-          </Typography>
-          
-          <form onSubmit={handleSignUp}>
-            <TextField
-              label="Name"
-              fullWidth
-              margin="normal"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-            />
-            <TextField
-              label="Email"
-              type="email"
-              fullWidth
-              margin="normal"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-            <TextField
-              label="Password"
-              type="password"
-              fullWidth
-              margin="normal"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-            
-            <FormControl component="fieldset" sx={{ my: 2 }}>
-              <FormLabel component="legend">Account Type</FormLabel>
-              <RadioGroup
-                row
-                name="account-type"
-                value={accountType}
-                onChange={(e) => setAccountType(e.target.value)}
-              >
-                <FormControlLabel 
-                  value="individual" 
-                  control={<Radio />} 
-                  label="Individual" 
-                />
-                <FormControlLabel 
-                  value="organization" 
-                  control={<Radio />} 
-                  label="Organization" 
-                />
-              </RadioGroup>
-            </FormControl>
-            
-            {accountType === 'organization' && (
-              <TextField
-                label="Organization Name"
-                fullWidth
-                margin="normal"
-                value={organizationName}
-                onChange={(e) => setOrganizationName(e.target.value)}
-                required
-              />
-            )}
-            
-            {error && (
-              <Alert severity="error" sx={{ mt: 2 }}>
-                {error}
+          {signupComplete ? (
+            // Success message UI
+            <>
+              <Alert severity="success" sx={{ mb: 2 }}>
+                Registration successful!
               </Alert>
-            )}
-            
-            <Button 
-              variant="contained" 
-              type="submit"
-              fullWidth
-              sx={{ mt: 2 }}
-              disabled={loading}
-            >
-              {loading ? 'Signing up...' : 'Sign Up'}
-            </Button>
-          </form>
+              <Typography variant="body1" sx={{ mb: 3 }}>
+                A confirmation email has been sent to <strong>{email}</strong>.
+                Please check your inbox and click the verification link to activate your account.
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                You will not be able to log in until you verify your email.
+              </Typography>
+              <Button 
+                variant="contained" 
+                fullWidth
+                onClick={() => navigate('/login')}
+              >
+                Proceed to Login
+              </Button>
+            </>
+          ) : (
+            // Sign up form
+            <>
+              <Typography variant="h5" gutterBottom>
+                Create an Account
+              </Typography>
+              
+              <form onSubmit={handleSignUp}>
+                <TextField
+                  label="Name"
+                  fullWidth
+                  margin="normal"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  required
+                />
+                <TextField
+                  label="Email"
+                  type="email"
+                  fullWidth
+                  margin="normal"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
+                <TextField
+                  label="Password"
+                  type="password"
+                  fullWidth
+                  margin="normal"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+                
+                <FormControl component="fieldset" sx={{ my: 2 }}>
+                  <FormLabel component="legend">Account Type</FormLabel>
+                  <RadioGroup
+                    row
+                    name="account-type"
+                    value={accountType}
+                    onChange={(e) => setAccountType(e.target.value)}
+                  >
+                    <FormControlLabel 
+                      value="individual" 
+                      control={<Radio />} 
+                      label="Individual" 
+                    />
+                    <FormControlLabel 
+                      value="organization" 
+                      control={<Radio />} 
+                      label="Organization" 
+                    />
+                  </RadioGroup>
+                </FormControl>
+                
+                {accountType === 'organization' && (
+                  <TextField
+                    label="Organization Name"
+                    fullWidth
+                    margin="normal"
+                    value={organizationName}
+                    onChange={(e) => setOrganizationName(e.target.value)}
+                    required
+                  />
+                )}
+                
+                {error && (
+                  <Alert severity="error" sx={{ mt: 2 }}>
+                    {error}
+                  </Alert>
+                )}
+                
+                <Button 
+                  variant="contained" 
+                  type="submit"
+                  fullWidth
+                  sx={{ mt: 2 }}
+                  disabled={loading}
+                >
+                  {loading ? 'Signing up...' : 'Sign Up'}
+                </Button>
+              </form>
+            </>
+          )}
         </CardContent>
       </Card>
     </Box>
