@@ -23,6 +23,8 @@ class UserSignUp(BaseModel):
     email: EmailStr
     password: str
     captchaToken: str
+    account_type: str = "individual"  # Can be "individual" or "organization"
+    organization_name: Optional[str] = None  # Only needed for organization accounts
 
 class UserLogin(BaseModel):
     email: EmailStr
@@ -201,3 +203,10 @@ class UserWithRole(BaseModel):
     profile_complete: bool
     organization_id: Optional[int] = None
     role: Optional[str] = None
+
+class ClientInvitation(BaseModel):
+    email: str
+
+class InvitationResponse(BaseModel):
+    message: str
+    invitation_id: int
