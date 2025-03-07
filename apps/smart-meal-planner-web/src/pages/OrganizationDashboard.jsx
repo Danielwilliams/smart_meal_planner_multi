@@ -86,44 +86,38 @@ function OrganizationDashboard() {
     setInviteDialogOpen(false);
   };
 
-  const handleSendInvite = async () => {
-    if (!inviteEmail.trim()) {
-      setInviteError('Please enter an email address');
+const handleSendInvite = async () => {
+  if (!inviteEmail.trim()) {
+    setInviteError('Please enter an email address');
+    return;
+  }
+
+  try {
+    setInviteLoading(true);
+    setInviteError('');
+    
+    // Make sure we have the organization object and ID
+    if (!organization || !organization.id) {
+      setInviteError('Organization information not available. Please refresh the page.');
       return;
     }
-
-    try {
-      setInviteLoading(true);
-      setInviteError('');
-      
-      // Check if inviteClient method exists in context
-      if (typeof inviteClient === 'function') {
-        const response = await inviteClient(inviteEmail.trim());
-        
-        setSnackbarMessage('Invitation sent successfully');
-        setSnackbarOpen(true);
-        handleCloseInviteDialog();
-      } else if (typeof apiService.inviteClient === 'function') {
-        // Fallback to direct API call if context method is missing
-        const orgId = organization?.id;
-        if (!orgId) {
-          throw new Error('Organization ID not found');
-        }
-        
-        const response = await apiService.inviteClient(orgId, inviteEmail.trim());
-        
-        setSnackbarMessage('Invitation sent successfully');
-        setSnackbarOpen(true);
-        handleCloseInviteDialog();
-      } else {
-        throw new Error('Invite client method not available');
-      }
-    } catch (err) {
-      setInviteError(err.response?.data?.detail || err.message || 'Failed to send invitation');
-    } finally {
-      setInviteLoading(false);
-    }
-  };
+    
+    // Log the organization object for debugging
+    console.log('Using organization:', organization);
+    
+    // Call the API directly with organization ID
+    const response = await apiService.inviteClient(organization.id, inviteEmail.trim());
+    
+    setSnackbarMessage('Invitation sent successfully');
+    setSnackbarOpen(true);
+    handleCloseInviteDialog();
+  } catch (err) {
+    console.error('Invite error:', err);
+    setInviteError(err.response?.data?.detail || err.message || 'Failed to send invitation');
+  } finally {
+    setInviteLoading(false);
+  }
+};
 
   const handleViewClient = (clientId) => {
     navigate(`/organization/clients/${clientId}`);
