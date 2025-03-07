@@ -114,6 +114,16 @@ const apiService = {
     }
   },
 
+  resendVerificationEmail: async (email) => {
+  try {
+    const response = await axiosInstance.post('/auth/resend-verification', { email });
+    return response.data;
+  } catch (err) {
+    console.error("Resend verification error:", err.response?.data || err.message);
+    throw err;
+  }
+},
+
   async signUp(payload) {
     try {
       const resp = await axiosInstance.post('/auth/signup', payload);

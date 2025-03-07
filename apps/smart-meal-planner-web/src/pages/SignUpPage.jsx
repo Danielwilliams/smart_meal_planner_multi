@@ -1,7 +1,8 @@
 import React, { useState, useCallback } from 'react';
 import { 
   Box, Typography, TextField, Button, Card, CardContent, Alert,
-  RadioGroup, Radio, FormControlLabel, FormControl, FormLabel
+  RadioGroup, Radio, FormControlLabel, FormControl, FormLabel,
+  CircularProgress
 } from '@mui/material';
 import { useGoogleReCaptcha } from 'react-google-recaptcha-v3';
 import apiService from '../services/apiService';
@@ -14,6 +15,9 @@ function SignUpPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [signupComplete, setSignupComplete] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
+  const [resendSuccess, setResendSuccess] = useState(false);
+  const [resendError, setResendError] = useState('');
   const { executeRecaptcha } = useGoogleReCaptcha();
   const navigate = useNavigate();
   const [accountType, setAccountType] = useState('individual');
@@ -59,6 +63,27 @@ function SignUpPage() {
     }
   };
 
+  const handleResendVerification = async () => {
+    setResendLoading(true);
+    setResendSuccess(false);
+    setResendError('');
+
+    try {
+      // Call a new API endpoint to request a new verification email
+      const response = await apiService.resendVerificationEmail(email);
+      setResendSuccess(true);
+    } catch (err) {
+      console.error('Resend verification email error:', err);
+      setResendError(
+        err.response?.data?.detail || 
+        err.message || 
+        'Failed to resend verification email'
+      );
+    } finally {
+      setResendLoading(false);
+    }
+  };
+
   return (
     <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
       <Card sx={{ maxWidth: 400, width: '100%' }}>
@@ -76,6 +101,37 @@ function SignUpPage() {
               <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
                 You will not be able to log in until you verify your email.
               </Typography>
+
+              {/* Resend verification email section */}
+              <Box sx={{ mb: 3, mt: 2 }}>
+                <Typography variant="body2" sx={{ mb: 1 }}>
+                  Didn't receive the email? 
+                </Typography>
+                
+                {resendSuccess ? (
+                  <Alert severity="success" sx={{ mb: 2 }}>
+                    Verification email resent successfully!
+                  </Alert>
+                ) : resendError ? (
+                  <Alert severity="error" sx={{ mb: 2 }}>
+                    {resendError}
+                  </Alert>
+                ) : null}
+                
+                <Button 
+                  variant="outlined" 
+                  fullWidth
+                  onClick={handleResendVerification}
+                  disabled={resendLoading}
+                  sx={{ mb: 2 }}
+                >
+                  {resendLoading ? (
+                    <CircularProgress size={24} sx={{ mr: 1 }} />
+                  ) : null}
+                  Resend Verification Email
+                </Button>
+              </Box>
+
               <Button 
                 variant="contained" 
                 fullWidth
@@ -164,7 +220,14 @@ function SignUpPage() {
                   sx={{ mt: 2 }}
                   disabled={loading}
                 >
-                  {loading ? 'Signing up...' : 'Sign Up'}
+                  {loading ? (
+                    <>
+                      <CircularProgress size={24} sx={{ mr: 1 }} />
+                      Signing up...
+                    </>
+                  ) : (
+                    'Sign Up'
+                  )}
                 </Button>
               </form>
             </>

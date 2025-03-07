@@ -108,7 +108,7 @@ async def sign_up(user_data: UserSignUp, background_tasks: BackgroundTasks):
     finally:
         cursor.close()
 
-        
+
 @router.get("/verify-email/{token}")
 async def verify_email(token: str):
     try:
@@ -142,6 +142,64 @@ async def verify_email(token: str):
     finally:
         cursor.close()
         conn.close()
+
+@router.post("/resend-verification")
+async def resend_verification_email(request: ResendVerificationRequest, background_tasks: BackgroundTasks):
+    """Resend the verification email for a user account"""
+    try:
+        email = request.email
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Check if user exists and is not verified
+        cursor.execute("""
+            SELECT id, verified, verification_token 
+            FROM user_profiles 
+            WHERE email = %s
+        """, (email,))
+        
+        user = cursor.fetchone()
+        
+        if not user:
+            raise HTTPException(status_code=404, detail="Account not found")
+        
+        user_id, verified, existing_token = user
+        
+        if verified:
+            raise HTTPException(status_code=400, detail="Account is already verified")
+        
+        # Generate a new verification token if needed
+        if not existing_token:
+            verification_token = jwt.encode({
+                'email': email,
+                'exp': datetime.utcnow() + timedelta(hours=24)
+            }, JWT_SECRET, algorithm=JWT_ALGORITHM)
+            
+            cursor.execute("""
+                UPDATE user_profiles
+                SET verification_token = %s
+                WHERE id = %s
+            """, (verification_token, user_id))
+            conn.commit()
+        else:
+            verification_token = existing_token
+        
+        # Send verification email in background
+        background_tasks.add_task(send_verification_email, email, verification_token)
+        
+        return {"message": "Verification email sent successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Resend verification error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conn' in locals():
+            conn.close()
 
 @router.post("/login")
 async def login(user_data: UserLogin):

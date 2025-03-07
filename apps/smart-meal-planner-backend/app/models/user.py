@@ -30,6 +30,10 @@ class UserLogin(BaseModel):
     email: EmailStr
     password: str
 
+# Define request model
+class ResendVerificationRequest(BaseModel):
+    email: str
+
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
 
