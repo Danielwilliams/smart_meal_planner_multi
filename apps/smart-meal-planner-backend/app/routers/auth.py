@@ -1,7 +1,7 @@
 # app/routers/auth.py
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from datetime import datetime, timedelta
-from ..models.user import UserSignUp, UserLogin, ForgotPasswordRequest, ResetPasswordRequest, UserProgress
+from ..models.user import UserSignUp, UserLogin, ForgotPasswordRequest, ResetPasswordRequest, UserProgress, ResendVerificationRequest
 from ..db import get_db_connection
 from pydantic import EmailStr
 import bcrypt
