@@ -5,7 +5,7 @@ const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://smartmealpla
 
 const axiosInstance = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30,  
+  timeout: 30000,  
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json'
