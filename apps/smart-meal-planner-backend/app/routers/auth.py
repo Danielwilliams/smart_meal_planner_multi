@@ -205,7 +205,9 @@ async def resend_verification_email(request: ResendVerificationRequest, backgrou
 async def login(user_data: UserLogin):
     try:
         conn = get_db_connection()
+        print("DB connection established")
         cursor = conn.cursor()
+        print("Cursor created")
         
         # Updated query to include verified status
         cursor.execute("""
@@ -223,14 +225,20 @@ async def login(user_data: UserLogin):
             FROM user_profiles 
             WHERE email = %s
         """, (user_data.email,))
+
+        print("Query executed, checking results")
         
         user = cursor.fetchone()
+
+        print(f"User found: {bool(user)}")
         
         if not user:
             raise HTTPException(
                 status_code=401,
                 detail="Invalid email or password"
             )
+
+
 
         # Unpack user data (added verified at the end)
         user_id, email, name, stored_hash, profile_complete, has_prefs, has_menu, has_list, verified, account_type = user
@@ -242,12 +250,16 @@ async def login(user_data: UserLogin):
                 detail="Please verify your email before logging in"
             )
 
+        print("Verifying password")
+
         # Verify password
         if not bcrypt.checkpw(user_data.password.encode('utf-8'), stored_hash.encode('utf-8')):
             raise HTTPException(
                 status_code=401,
                 detail="Invalid email or password"
             )
+
+
 
         # Update last login timestamp
         cursor.execute("""
@@ -256,6 +268,8 @@ async def login(user_data: UserLogin):
             WHERE id = %s
         """, (user_id,))
         conn.commit()
+
+        print("Generating token")
 
         # Generate JWT token
         token_payload = {
@@ -268,6 +282,8 @@ async def login(user_data: UserLogin):
         }
         
         token = jwt.encode(token_payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+        print("Token generated, returning response")
 
         # Return successful response
         return {
