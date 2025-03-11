@@ -84,7 +84,7 @@ const apiService = {
         email: payload.email,
         hasPassword: !!payload.password,
         hasCaptcha: !!payload.captchaToken
-      }); 
+      });
 
       const response = await fetch(`${API_BASE_URL}/auth/login`, {
         method: 'POST',
