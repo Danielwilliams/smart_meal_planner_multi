@@ -84,29 +84,16 @@ const apiService = {
         email: payload.email,
         hasPassword: !!payload.password,
         hasCaptcha: !!payload.captchaToken
-      }); 
+      });
 
-      // Use fetch API directly for login
-      const response = await fetch(`${API_BASE_URL}/auth/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          email: payload.email,
-          password: payload.password,
-          captcha_token: payload.captchaToken
-        })
-      }); 
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || `HTTP error! Status: ${response.status}`);
-      } 
-
-      const data = await response.json();
-      console.log('Login Response Status:', response.status);
-      return data;
+      const resp = await axiosInstance.post('/auth/login', {
+        email: payload.email,
+        password: payload.password,
+        captcha_token: payload.captchaToken  // Note: backend might expect snake_case
+      });
+      
+      console.log('Login Response Status:', resp.status);
+      return resp.data;
     } catch (err) {
       console.error("Login Error Details:", {
         status: err.response?.status,
