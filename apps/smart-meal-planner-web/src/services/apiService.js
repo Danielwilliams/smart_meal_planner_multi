@@ -10,7 +10,7 @@ const axiosInstance = axios.create({
     'Content-Type': 'application/json',
     'Accept': 'application/json'
   },
-  withCredentials: true
+  withCredentials: false
 });
 
 // Request interceptor
@@ -84,22 +84,42 @@ const apiService = {
         email: payload.email,
         hasPassword: !!payload.password,
         hasCaptcha: !!payload.captchaToken
-      });
+      }); 
 
-      const resp = await axiosInstance.post('/auth/login', {
-        email: payload.email,
-        password: payload.password,
-        captcha_token: payload.captchaToken  // Note: backend might expect snake_case
-      });
-      
-      console.log('Login Response Status:', resp.status);
-      return resp.data;
+      const response = await fetch(`${API_BASE_URL}/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          email: payload.email,
+          password: payload.password,
+          captcha_token: payload.captchaToken
+        }),
+        mode: 'cors'
+      }); 
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! Status: ${response.status}`);
+      } 
+
+      const data = await response.json();
+      return data;
     } catch (err) {
-      console.error("Login Error Details:", {
-        status: err.response?.status,
-        data: err.response?.data,
-        validation: err.response?.data?.detail
+      console.error("Login Error:", err);
+      throw err;
+    }
+  },
+
+  async healthCheck() {
+    try {
+      const response = await fetch(`${API_BASE_URL}/health`, {
+        method: 'GET',
+        mode: 'cors'
       });
+      return await response.json();
+    } catch (err) {
+      console.error("Health check error:", err);
       throw err;
     }
   },

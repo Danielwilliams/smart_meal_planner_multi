@@ -79,18 +79,11 @@ def create_app() -> FastAPI:
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[
-            "https://smartmealplannerio.vercel.app",
-            "https://www.smartmealplannerio.com",
-            "https://api.smartmealplannerio.com",
-            "https://smart-meal-planner-multi.vercel.app",
-        ],
+        allow_origins=["*"],  # Allow all origins temporarily
         allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "FETCH"],
-        allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
-        expose_headers=["Content-Type", "Authorization"],
+        allow_methods=["*"],  # Allow all methods
+        allow_headers=["*"],  # Allow all headers
     )
-
 
     # Add trusted host middleware
     app.add_middleware(
