@@ -22,6 +22,9 @@ import ExampleMealPlansPage from './pages/ExampleMealPlansPage';
 import VerifyEmailPage from './pages/VerifyEmailPage';
 import SavedRecipesPage from './pages/SavedRecipesPage';
 import RecipeAdminPanel from './pages/RecipeAdminPanel';
+import RecipeBrowserPage from './pages/RecipeBrowserPage';
+import RecipeDetailPage from './pages/RecipeDetailPage';
+import CustomMenuBuilderPage from './pages/CustomMenuBuilderPage';
 import { OrganizationProvider } from './context/OrganizationContext';
 import OrganizationDashboard from './pages/OrganizationDashboard';
 import ClientProfile from './pages/ClientProfile';
@@ -132,6 +135,30 @@ function App() {
                 element={
                   <PrivateRoute>
                     <RecipeAdminPanel />
+                  </PrivateRoute>
+                } 
+              />
+              <Route 
+                path="/recipes" 
+                element={
+                  <PrivateRoute>
+                    <RecipeBrowserPage />
+                  </PrivateRoute>
+                } 
+              />
+              <Route 
+                path="/recipes/:id" 
+                element={
+                  <PrivateRoute>
+                    <RecipeDetailPage />
+                  </PrivateRoute>
+                } 
+              />
+              <Route 
+                path="/custom-menu-builder" 
+                element={
+                  <PrivateRoute>
+                    <CustomMenuBuilderPage />
                   </PrivateRoute>
                 } 
               />
