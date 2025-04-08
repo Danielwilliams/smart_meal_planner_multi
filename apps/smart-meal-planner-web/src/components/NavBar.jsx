@@ -151,19 +151,34 @@ function NavBar() {
               <Button color="inherit" component={Link} to="/saved-recipes">
                 Saved Recipes
               </Button>
+              <Button color="inherit" component={Link} to="/recipes">
+                Recipe Browser
+              </Button>
+              <Button color="inherit" component={Link} to="/custom-menu-builder">
+                Custom Menu
+              </Button>
               <Button color="inherit" component={Link} to="/preferences-page">
                 Preferences
               </Button>
               
-              {/* Organization navigation - only show for organization accounts */}
-              {isOrgAccount && (
-                <Button 
-                  color="inherit" 
-                  component={Link} 
-                  to="/organization/dashboard"
-                >
-                  Manage Organization
-                </Button>
+              {/* Admin/Organization features */}
+              {(isOrgAccount || user?.account_type === 'admin') && (
+                <>
+                  <Button 
+                    color="inherit" 
+                    component={Link} 
+                    to="/recipe-admin"
+                  >
+                    Recipe Admin
+                  </Button>
+                  <Button 
+                    color="inherit" 
+                    component={Link} 
+                    to="/organization/dashboard"
+                  >
+                    Manage Organization
+                  </Button>
+                </>
               )}
               
               {/* User Menu */}
