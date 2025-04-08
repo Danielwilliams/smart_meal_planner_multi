@@ -21,6 +21,7 @@ import PrivateRoute from './components/PrivateRoute';
 import ExampleMealPlansPage from './pages/ExampleMealPlansPage';
 import VerifyEmailPage from './pages/VerifyEmailPage';
 import SavedRecipesPage from './pages/SavedRecipesPage';
+import RecipeAdminPanel from './pages/RecipeAdminPanel';
 import { OrganizationProvider } from './context/OrganizationContext';
 import OrganizationDashboard from './pages/OrganizationDashboard';
 import ClientProfile from './pages/ClientProfile';
@@ -126,6 +127,14 @@ function App() {
                 } 
               />
               <Route path="/accept-invitation" element={<AcceptInvitation />} />
+              <Route 
+                path="/recipe-admin" 
+                element={
+                  <PrivateRoute>
+                    <RecipeAdminPanel />
+                  </PrivateRoute>
+                } 
+              />
               
               {/* Fallback route */}
               <Route path="*" element={<Navigate to="/" replace />} />

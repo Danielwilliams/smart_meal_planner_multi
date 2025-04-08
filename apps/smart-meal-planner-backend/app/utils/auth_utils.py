@@ -85,3 +85,37 @@ async def get_user_organization_role(user_id: int):
             }
     finally:
         conn.close()
+        
+async def is_organization_admin(user_id: int) -> bool:
+    """
+    Check if a user is an organization admin (owner or admin role)
+    
+    Args:
+        user_id: The user ID to check
+        
+    Returns:
+        bool: True if the user is an organization admin, False otherwise
+    """
+    conn = get_db_connection()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Check if user is an organization owner
+            cur.execute("""
+                SELECT id FROM organizations 
+                WHERE owner_id = %s
+            """, (user_id,))
+            org_owner = cur.fetchone()
+            
+            if org_owner:
+                return True
+            
+            # Check if user is an organization admin
+            cur.execute("""
+                SELECT organization_id, role FROM organization_clients
+                WHERE client_id = %s AND role = 'admin' AND status = 'active'
+            """, (user_id,))
+            org_admin = cur.fetchone()
+            
+            return org_admin is not None
+    finally:
+        conn.close()
