@@ -654,6 +654,67 @@ const apiService = {
       console.error('Error fetching shared menus:', err);
       return [];
     }
+  },
+
+  // Scraped Recipes Methods
+  getScrapedRecipes: async (filters = {}) => {
+    try {
+      console.log('Fetching scraped recipes with filters:', filters);
+      
+      // Build query params
+      const params = new URLSearchParams();
+      if (filters.limit) params.append('limit', filters.limit);
+      if (filters.offset !== undefined) params.append('offset', filters.offset);
+      if (filters.search) params.append('search', filters.search);
+      if (filters.cuisine) params.append('cuisine', filters.cuisine);
+      if (filters.complexity) params.append('complexity', filters.complexity);
+      if (filters.tags) params.append('tags', filters.tags);
+      
+      const response = await axiosInstance.get(`/scraped-recipes/?${params.toString()}`);
+      console.log('Scraped recipes response:', response.data);
+      return response.data;
+    } catch (err) {
+      console.error('Error fetching scraped recipes:', err);
+      throw err;
+    }
+  },
+
+  getScrapedRecipeById: async (recipeId) => {
+    try {
+      console.log(`Fetching scraped recipe with ID: ${recipeId}`);
+      const response = await axiosInstance.get(`/scraped-recipes/${recipeId}`);
+      return response.data;
+    } catch (err) {
+      console.error(`Error fetching scraped recipe ${recipeId}:`, err);
+      throw err;
+    }
+  },
+
+  getRecipeCount: async () => {
+    try {
+      const response = await axiosInstance.get('/scraped-recipes/count');
+      return response.data.count;
+    } catch (err) {
+      console.error('Error fetching recipe count:', err);
+      throw err;
+    }
+  },
+
+  // Custom Menu Builder Methods
+  saveCustomMenu: async (menuData, clientId = null) => {
+    try {
+      // If clientId is provided, we're creating a menu for a client
+      let endpoint = '/menu/custom';
+      if (clientId) {
+        endpoint = `/menu/client/${clientId}/custom`;
+      }
+      
+      const response = await axiosInstance.post(endpoint, menuData);
+      return response.data;
+    } catch (err) {
+      console.error('Error saving custom menu:', err);
+      throw err;
+    }
   }
 }; // Close the apiService object here
 

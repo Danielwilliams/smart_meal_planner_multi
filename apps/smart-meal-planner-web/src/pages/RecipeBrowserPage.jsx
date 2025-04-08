@@ -45,15 +45,26 @@ const RecipeBrowserPage = () => {
       const offset = (page - 1) * recipesPerPage;
       
       console.log(`Fetching page ${page} of recipes (offset=${offset}, limit=${recipesPerPage})`);
-
+      console.log('Filters:', filters);
       
-      const response = await apiService.getScrapedRecipes({
+      // Include search query in filters if it exists
+      const searchParams = {
         ...filters,
         limit: recipesPerPage,
         offset: offset
-      });
+      };
       
+      if (searchQuery && isSearching) {
+        searchParams.search = searchQuery;
+      }
+      
+      console.log('Search params:', searchParams);
+      
+      const response = await apiService.getScrapedRecipes(searchParams);
+      
+      console.log('API Response:', response);
       console.log(`Received ${response.recipes?.length} recipes`);
+      
       if (response.recipes?.length > 0) {
         const firstId = response.recipes[0].id;
         const lastId = response.recipes[response.recipes.length-1].id;
@@ -79,7 +90,7 @@ const RecipeBrowserPage = () => {
       setTotalRecipes(response.total || 0);
     } catch (err) {
       console.error('Error fetching recipes:', err);
-      setError('Failed to load recipes. Please try again later.');
+      setError(`Failed to load recipes: ${err.message || 'Unknown error'}`);
     } finally {
       setLoading(false);
     }

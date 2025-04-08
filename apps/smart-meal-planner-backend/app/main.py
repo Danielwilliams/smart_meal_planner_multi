@@ -25,6 +25,7 @@ from app.routers.walmart_store import router as walmart_store_router
 from app.routers import saved_recipes 
 from app.routers import organizations
 from app.routers import recipe_admin  # Add recipe admin router
+from app.routers import scraped_recipes  # Add scraped recipes router
 
 
 # Load environment variables
@@ -107,6 +108,7 @@ def create_app() -> FastAPI:
     app.include_router(saved_recipes.router)
     app.include_router(organizations.router)
     app.include_router(recipe_admin.router)
+    app.include_router(scraped_recipes.router)
 
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request, exc):
