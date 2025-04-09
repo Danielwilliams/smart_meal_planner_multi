@@ -29,6 +29,11 @@ from app.routers import invitations
 from app.routers import recipe_admin  # Add recipe admin router
 from app.routers import scraped_recipes  # Add scraped recipes router
 
+# Import the alternate routers with fixed paths
+from app.routers import organization_clients_alt
+from app.routers import invitations_alt
+from app.routers import saved_recipes_alt
+
 
 # Load environment variables
 load_dotenv()
@@ -111,6 +116,12 @@ def create_app() -> FastAPI:
     app.include_router(organizations.router)
     app.include_router(organization_clients.router)
     app.include_router(invitations.router)
+    
+    # Add the alternate routers with fixed paths
+    app.include_router(organization_clients_alt.router)
+    app.include_router(invitations_alt.router)
+    app.include_router(saved_recipes_alt.router)
+    
     app.include_router(recipe_admin.router)
     app.include_router(scraped_recipes.router)
 

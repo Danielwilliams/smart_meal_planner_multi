@@ -556,7 +556,8 @@ const apiService = {
       if (!orgId) {
         throw new Error('Organization ID is required');
       }
-      const response = await axiosInstance.get(`/organizations/${orgId}/clients`);
+      // Use the alternative endpoint that doesn't have path parameter issues
+      const response = await axiosInstance.get(`/organization-clients/${orgId}`);
       return response.data;
     } catch (err) {
       console.error('Error fetching organization clients:', err);
@@ -582,8 +583,10 @@ const apiService = {
       if (!orgId) {
         throw new Error('Organization ID is required');
       }
-      const response = await axiosInstance.post(`/organizations/${orgId}/invitations`, {
-        email
+      // Use the alternative endpoint that doesn't have path parameter issues
+      const response = await axiosInstance.post(`/org-invitations/invite`, {
+        email,
+        organization_id: orgId
       });
       return response.data;
     } catch (err) {

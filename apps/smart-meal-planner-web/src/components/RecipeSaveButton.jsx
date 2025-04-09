@@ -112,10 +112,15 @@ const RecipeSaveButton = ({
         };
       }
 
-      console.log('Sending to endpoint:', `${API_BASE_URL}/saved-recipes/`);
+      console.log('Sending to endpoint:', `${API_BASE_URL}/saved-recipes-alt/scraped`);
       console.log('Payload:', JSON.stringify(saveData, null, 2));
       
-      const response = await axios.post(`${API_BASE_URL}/saved-recipes/`, saveData, {
+      // Use the simplified endpoint for scraped recipes
+      const endpoint = scraped 
+        ? `${API_BASE_URL}/saved-recipes-alt/scraped` 
+        : `${API_BASE_URL}/saved-recipes/`;
+      
+      const response = await axios.post(endpoint, saveData, {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('access_token')}`
