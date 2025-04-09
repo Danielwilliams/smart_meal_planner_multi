@@ -616,9 +616,19 @@ const apiService = {
     }
   },
 
+  checkInvitation: async (token, orgId) => {
+    try {
+      const response = await axiosInstance.get(`/org-invitations/check/${token}/${orgId}`);
+      return response.data;
+    } catch (err) {
+      console.error('Error checking invitation validity:', err);
+      return { valid: false, message: 'Error validating invitation' };
+    }
+  },
+  
   acceptInvitation: async (token, orgId) => {
     try {
-      const response = await axiosInstance.get(`/organizations/${orgId}/invitations/accept/${token}`);
+      const response = await axiosInstance.get(`/org-invitations/accept/${token}/${orgId}`);
       return response.data;
     } catch (err) {
       console.error('Error accepting invitation:', err);

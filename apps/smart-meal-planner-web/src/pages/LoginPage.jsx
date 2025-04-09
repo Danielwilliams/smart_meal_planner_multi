@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Container, 
   Typography, 
@@ -12,15 +12,54 @@ import {
 } from '@mui/material';
 import { useAuth } from '../context/AuthContext';
 import { useGoogleReCaptcha } from 'react-google-recaptcha-v3';
+import apiService from '../services/apiService';
+
+// Helper function to parse query parameters
+function useQuery() {
+  return new URLSearchParams(useLocation().search);
+}
 
 function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const { executeRecaptcha } = useGoogleReCaptcha();
+  const query = useQuery();
+  
+  // Check if we have invitation parameters
+  const isInvitation = query.get('invitation') === 'true';
+  const invitationToken = query.get('token');
+  const organizationId = query.get('org');
+  
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [invitationInfo, setInvitationInfo] = useState(null);
+
+  // Fetch invitation info if we have an invitation token and org id
+  useEffect(() => {
+    const fetchInvitationInfo = async () => {
+      if (isInvitation && invitationToken && organizationId) {
+        try {
+          const invInfo = await apiService.checkInvitation(invitationToken, organizationId);
+          if (invInfo.valid) {
+            setInvitationInfo(invInfo);
+            // Pre-fill email field if provided
+            if (invInfo.email) {
+              setEmail(invInfo.email);
+            }
+          } else {
+            setError('This invitation link is invalid or has expired.');
+          }
+        } catch (err) {
+          console.error('Error checking invitation:', err);
+          setError('There was a problem with your invitation link.');
+        }
+      }
+    };
+    
+    fetchInvitationInfo();
+  }, [isInvitation, invitationToken, organizationId]);
 
   const handleLogin = useCallback(async (e) => {
     e.preventDefault();
@@ -43,7 +82,22 @@ function LoginPage() {
 
       console.log('Login Response:', response);
 
-      // Redirect based on account type
+      // If this is an invitation login flow, accept the invitation after successful login
+      if (isInvitation && invitationToken && organizationId) {
+        try {
+          await apiService.acceptInvitation(invitationToken, organizationId);
+          // After accepting invitation, always go to client dashboard
+          navigate('/client-dashboard');
+          return; // Exit early since we've already navigated
+        } catch (err) {
+          console.error('Error accepting invitation:', err);
+          setError('There was a problem accepting your invitation.');
+          setLoading(false);
+          return; // Exit early on error
+        }
+      }
+
+      // Standard redirect flow (if not handling invitation)
       if (response.account_type === 'organization') {
         navigate('/organization/dashboard');
       } else if (response.account_type === 'client') {
@@ -75,10 +129,16 @@ function LoginPage() {
     } finally {
       setLoading(false);
     }
-  }, [email, password, executeRecaptcha, navigate, login]);
+  }, [email, password, executeRecaptcha, navigate, login, isInvitation, invitationToken, organizationId]);
 
   const handleSignUp = () => {
-    navigate('/signup');
+    if (isInvitation && invitationToken && organizationId) {
+      // If this is an invitation flow, redirect to client-specific signup
+      navigate(`/client-signup?token=${invitationToken}&org=${organizationId}`);
+    } else {
+      // Regular signup
+      navigate('/signup');
+    }
   };
 
   return (
@@ -97,8 +157,14 @@ function LoginPage() {
               align="center" 
               gutterBottom
             >
-              Sign in
+              {isInvitation ? 'Sign in to Accept Invitation' : 'Sign in'}
             </Typography>
+            
+            {isInvitation && invitationInfo && (
+              <Alert severity="info" sx={{ mb: 2 }}>
+                You've been invited to join as a client. Please sign in to accept.
+              </Alert>
+            )}
 
             {error && (
               <Alert severity="error" sx={{ mb: 2 }}>

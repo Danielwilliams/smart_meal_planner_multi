@@ -63,13 +63,13 @@ function AcceptInvitation() {
   }, [token, orgId, isAuthenticated]);
 
   const handleLogin = () => {
-    // Preserve the invitation parameters
-    navigate(`/login?redirectTo=/accept-invitation&token=${token}&org=${orgId}`);
+    // Preserve the invitation parameters with a more explicit flow
+    navigate(`/login?invitation=true&token=${token}&org=${orgId}`);
   };
 
   const handleSignUp = () => {
-    // Preserve the invitation parameters
-    navigate(`/signup?redirectTo=/accept-invitation&token=${token}&org=${orgId}`);
+    // Redirect to dedicated client signup
+    navigate(`/client-signup?token=${token}&org=${orgId}`);
   };
 
   const handleGoToDashboard = () => {

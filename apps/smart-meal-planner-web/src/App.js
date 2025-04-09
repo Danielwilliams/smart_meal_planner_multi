@@ -31,6 +31,7 @@ import ClientProfile from './pages/ClientProfile';
 import AcceptInvitation from './pages/AcceptInvitation';
 import ClientPreferencesPage from './pages/ClientPreferencesPage';
 import ClientDashboard from './pages/ClientDashboard';
+import ClientSignup from './pages/ClientSignup';
 
 
 function App() {
@@ -54,6 +55,7 @@ function App() {
               <Route path="/" element={<LandingPage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/signup" element={<SignUpPage />} />
+              <Route path="/client-signup" element={<ClientSignup />} />
               <Route path="/example-meal-plans" element={<ExampleMealPlansPage />} />
               <Route path="/verify-email" element={<VerifyEmailPage />} />
               

@@ -33,33 +33,62 @@ class InviteRequest(BaseModel):
     email: str
     organization_id: int
 
-async def send_invitation_email(email, token, org_id, user_exists):
+async def send_invitation_email(email, token, org_id, user_exists, organization_name):
     """Send invitation email to client"""
-    invitation_link = f"{FRONTEND_URL}/accept-invitation?token={token}&org={org_id}"
+    # Create different links for existing vs new users
+    if user_exists:
+        invitation_link = f"{FRONTEND_URL}/accept-invitation?token={token}&org={org_id}"
+    else:
+        # Special signup flow for new clients
+        invitation_link = f"{FRONTEND_URL}/client-signup?token={token}&org={org_id}"
     
     msg = MIMEMultipart()
-    msg['Subject'] = 'You have been invited to join a nutrition organization'
+    msg['Subject'] = f'Invitation to join {organization_name} on Smart Meal Planner'
     msg['From'] = SMTP_USERNAME
     msg['To'] = email
     
     # Customize message based on whether user already exists
     if user_exists:
         body = f"""
-        You have been invited to join an organization on Smart Meal Planner.
+        Hello!
         
-        Click the link below to accept the invitation:
+        You've been invited by {organization_name} to access their nutrition services on Smart Meal Planner.
+        
+        Click the link below to log in and accept the invitation:
         {invitation_link}
         
+        As a client, you'll be able to:
+        • View meal plans created for you
+        • Access recipes shared by your nutrition expert
+        • Generate shopping lists
+        • Send grocery items to online grocery services
+        
         This link will expire in 7 days.
+        
+        If you have any questions, please contact your nutrition provider directly.
+        
+        The Smart Meal Planner Team
         """
     else:
         body = f"""
-        You have been invited to join an organization on Smart Meal Planner.
+        Hello!
         
-        You'll need to create an account first, then you can accept the invitation:
+        You've been invited by {organization_name} to access their nutrition services on Smart Meal Planner.
+        
+        Click the link below to create your client account:
         {invitation_link}
         
+        As a client, you'll be able to:
+        • View meal plans created for you
+        • Access recipes shared by your nutrition expert
+        • Generate shopping lists
+        • Send grocery items to online grocery services
+        
         This link will expire in 7 days.
+        
+        If you have any questions, please contact your nutrition provider directly.
+        
+        The Smart Meal Planner Team
         """
     
     msg.attach(MIMEText(body, 'plain'))
@@ -132,17 +161,63 @@ async def invite_client(
             invitation_id = cur.fetchone()[0]
             conn.commit()
             
+            # Get organization name
+            cur.execute("""
+                SELECT name FROM organizations 
+                WHERE id = %s
+            """, (org_id,))
+            
+            org_result = cur.fetchone()
+            organization_name = org_result[0] if org_result else "Your Nutrition Provider"
+            
             # Send invitation email
             await send_invitation_email(
                 email, 
                 invitation_token,
                 org_id,
-                existing_user is not None
+                existing_user is not None,
+                organization_name
             )
             
             return {
                 "message": "Invitation sent successfully",
                 "invitation_id": invitation_id
+            }
+    finally:
+        conn.close()
+
+@router.get("/check/{token}/{org_id}")
+async def check_invitation(
+    token: str,
+    org_id: int
+):
+    """
+    Check if an invitation is valid without accepting it
+    Returns the email associated with the invitation
+    """
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            # Verify the invitation
+            cur.execute("""
+                SELECT id, email FROM client_invitations
+                WHERE invitation_token = %s 
+                AND organization_id = %s
+                AND status = 'pending'
+                AND expires_at > NOW()
+            """, (token, org_id))
+            
+            invitation = cur.fetchone()
+            
+            if not invitation:
+                return {
+                    "valid": False,
+                    "message": "Invalid or expired invitation"
+                }
+            
+            return {
+                "valid": True,
+                "email": invitation[1]
             }
     finally:
         conn.close()
