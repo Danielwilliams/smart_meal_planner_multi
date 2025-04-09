@@ -129,11 +129,22 @@ app = create_app()
 
 # Now we can use @app.on_event
 @app.on_event("startup")
-async def show_routes():
-    """Print all loaded routes at startup for debugging."""
-    from fastapi.routing import APIRoute
-    routes = [route.path for route in app.router.routes]
-    logger.info("✅ LOADED ROUTES: %s", routes)
+async def startup_event():
+    """Run startup tasks."""
+    try:
+        # Print all loaded routes for debugging
+        from fastapi.routing import APIRoute
+        routes = [route.path for route in app.router.routes]
+        logger.info("✅ LOADED ROUTES: %s", routes)
+        
+        # Create recipe tables if they don't exist
+        logger.info("Checking and creating recipe tables...")
+        from app.create_recipe_tables import create_tables
+        create_tables()
+        logger.info("Recipe tables check completed")
+    except Exception as e:
+        logger.error(f"Error during application startup: {str(e)}")
+        # Don't re-raise, just log the error
 
 @app.patch("/{full_path:path}")
 async def catch_all_patch(full_path: str):
