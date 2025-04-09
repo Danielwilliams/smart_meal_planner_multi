@@ -718,6 +718,71 @@ const apiService = {
       console.error('Error saving custom menu:', err);
       throw err;
     }
+  },
+  
+  // Client Dashboard Methods
+  getClientDashboard: async () => {
+    try {
+      const response = await axiosInstance.get('/client/dashboard');
+      return response.data;
+    } catch (err) {
+      console.error('Error fetching client dashboard:', err);
+      throw err;
+    }
+  },
+  
+  getClientMenu: async (menuId) => {
+    try {
+      const response = await axiosInstance.get(`/client/menus/${menuId}`);
+      return response.data;
+    } catch (err) {
+      console.error(`Error fetching client menu ${menuId}:`, err);
+      throw err;
+    }
+  },
+  
+  getClientGroceryList: async (menuId) => {
+    try {
+      const response = await axiosInstance.get(`/client/menus/${menuId}/grocery-list`);
+      return response.data;
+    } catch (err) {
+      console.error(`Error fetching client grocery list for menu ${menuId}:`, err);
+      throw err;
+    }
+  },
+  
+  getClientRecipe: async (recipeId) => {
+    try {
+      const response = await axiosInstance.get(`/client/recipes/${recipeId}`);
+      return response.data;
+    } catch (err) {
+      console.error(`Error fetching client recipe ${recipeId}:`, err);
+      throw err;
+    }
+  },
+  
+  toggleMenuSharing: async (menuId, shared) => {
+    try {
+      const response = await axiosInstance.patch(`/client/toggle-menu-sharing/${menuId}`, {
+        shared
+      });
+      return response.data;
+    } catch (err) {
+      console.error(`Error toggling menu sharing for menu ${menuId}:`, err);
+      throw err;
+    }
+  },
+  
+  toggleRecipeSharing: async (recipeId, shared) => {
+    try {
+      const response = await axiosInstance.patch(`/client/toggle-recipe-sharing/${recipeId}`, {
+        shared
+      });
+      return response.data;
+    } catch (err) {
+      console.error(`Error toggling recipe sharing for recipe ${recipeId}:`, err);
+      throw err;
+    }
   }
 }; // Close the apiService object here
 

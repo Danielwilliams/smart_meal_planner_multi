@@ -23,12 +23,12 @@ import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import FastfoodIcon from '@mui/icons-material/Fastfood';
 import apiService from '../services/apiService';
 import { OrganizationContext } from '../context/OrganizationContext';
-import { AuthContext } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext';
 
 const ClientDashboard = () => {
   const navigate = useNavigate();
   const { organization } = useContext(OrganizationContext);
-  const { user } = useContext(AuthContext);
+  const { user } = useAuth();
   const [sharedMenus, setSharedMenus] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -40,13 +40,13 @@ const ClientDashboard = () => {
         setLoading(true);
         setError(null);
         
-        // Fetch shared menus
-        const menusResponse = await apiService.getSharedMenus();
-        setSharedMenus(menusResponse || []);
+        // Use the new client dashboard endpoint which will fetch everything at once
+        const dashboardResponse = await apiService.getClientDashboard();
         
-        // Fetch saved recipes
-        const recipesResponse = await apiService.getSavedRecipes();
-        setSavedRecipes(recipesResponse || []);
+        if (dashboardResponse) {
+          setSharedMenus(dashboardResponse.shared_menus || []);
+          setSavedRecipes(dashboardResponse.shared_recipes || []);
+        }
       } catch (err) {
         console.error('Error fetching client data:', err);
         setError('Failed to load your data. Please try again later.');
