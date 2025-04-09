@@ -26,7 +26,7 @@ router = APIRouter(prefix="/organizations/{org_id}/invitations", tags=["Client I
 @router.post("/", response_model=InvitationResponse)
 async def invite_client(
     org_id: int,
-    invitation: ClientInvitation,
+    email: str = Body(..., embed=True),
     user=Depends(require_organization_owner)
 ):
     """
@@ -48,7 +48,7 @@ async def invite_client(
             # Check if user already exists
             cur.execute("""
                 SELECT id FROM user_profiles WHERE email = %s
-            """, (invitation.email,))
+            """, (email,))
             
             existing_user = cur.fetchone()
             
@@ -56,7 +56,7 @@ async def invite_client(
             cur.execute("""
                 SELECT id, status FROM client_invitations
                 WHERE email = %s AND organization_id = %s AND status = 'pending'
-            """, (invitation.email, org_id))
+            """, (email, org_id))
             
             existing_invitation = cur.fetchone()
             
@@ -76,14 +76,14 @@ async def invite_client(
                 (organization_id, email, invitation_token, expires_at)
                 VALUES (%s, %s, %s, %s)
                 RETURNING id
-            """, (org_id, invitation.email, invitation_token, expires_at))
+            """, (org_id, email, invitation_token, expires_at))
             
             invitation_id = cur.fetchone()[0]
             conn.commit()
             
             # Send invitation email
             await send_invitation_email(
-                invitation.email, 
+                email, 
                 invitation_token,
                 org_id,
                 existing_user is not None

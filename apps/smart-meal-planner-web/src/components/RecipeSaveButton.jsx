@@ -24,6 +24,7 @@ const RecipeSaveButton = ({
   isSaved = false, 
   savedId = null, 
   onSaveSuccess,
+  onSaveError,
   recipeData = null
 }) => {
   const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://smartmealplannermulti-production.up.railway.app';
@@ -65,6 +66,16 @@ const RecipeSaveButton = ({
       setLoading(true);
       setError('');
       
+      // Log important debugging details
+      console.log('RecipeSaveButton - Save details:', { 
+        scraped, 
+        scrapedRecipeId,
+        menuId,
+        dayNumber,
+        mealTime,
+        recipeTitle
+      });
+      
       let saveData = {
         notes: notes
       };
@@ -74,7 +85,8 @@ const RecipeSaveButton = ({
         saveData = {
           ...saveData,
           scraped_recipe_id: scrapedRecipeId,
-          recipe_name: recipeTitle
+          recipe_name: recipeTitle,
+          recipe_source: 'scraped'
         };
         
         // Add recipe data if provided
@@ -85,8 +97,7 @@ const RecipeSaveButton = ({
             instructions: recipeData.instructions,
             macros: recipeData.macros,
             complexity_level: recipeData.complexity_level,
-            servings: recipeData.servings,
-            recipe_source: recipeData.recipe_source || 'scraped'
+            servings: recipeData.servings
           };
         }
       } else {
@@ -101,12 +112,18 @@ const RecipeSaveButton = ({
         };
       }
 
+      console.log('Sending to endpoint:', `${API_BASE_URL}/saved-recipes/`);
+      console.log('Payload:', JSON.stringify(saveData, null, 2));
+      
       const response = await axios.post(`${API_BASE_URL}/saved-recipes/`, saveData, {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('access_token')}`
         }
       });
+      
+      // Log the API response
+      console.log('API Response:', response.data);
       
       // Extract saved_id from response
       const data = response.data;
@@ -131,7 +148,18 @@ const RecipeSaveButton = ({
       }
     } catch (err) {
       console.error('Save error:', err);
+      console.error('Save error response:', err.response?.data);
+      console.error('Save error details:', {
+        status: err.response?.status,
+        statusText: err.response?.statusText,
+        detail: err.response?.data?.detail
+      });
       setError(err.response?.data?.detail || err.message);
+      
+      // Call error callback if provided
+      if (onSaveError) {
+        onSaveError(err);
+      }
     } finally {
       setLoading(false);
     }

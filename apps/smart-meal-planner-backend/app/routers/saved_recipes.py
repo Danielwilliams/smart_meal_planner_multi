@@ -28,10 +28,14 @@ async def add_saved_recipe(
     user_id = user.get('user_id')
     
     try:
-        # Log the incoming request data
+        # Log the incoming request data in detail
         logger.info(f"Received recipe save request: {req}")
         logger.info(f"Recipe source: {req.recipe_source}, Scraped ID: {req.scraped_recipe_id}")
         logger.info(f"Client ID (if any): {client_id}")
+        
+        # Log all request fields individually for debugging
+        for field, value in req.dict().items():
+            logger.info(f"Field '{field}': {value}")
         
         # If client_id is provided, verify the user is an organization owner
         # and has access to this client
@@ -177,6 +181,12 @@ async def check_recipe_saved(
     scraped_recipe_id: Optional[int] = None,
     user = Depends(get_user_from_token)
 ):
+    """
+    Check if a recipe is saved by the current user.
+    
+    Required parameters:
+    - Either menu_id OR scraped_recipe_id must be provided
+    """
     """Check if a recipe is saved by the current user"""
     user_id = user.get('user_id')
     

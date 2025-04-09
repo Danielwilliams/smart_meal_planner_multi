@@ -556,7 +556,7 @@ const apiService = {
       if (!orgId) {
         throw new Error('Organization ID is required');
       }
-      const response = await axiosInstance.post(`/organizations/${orgId}/clients`);
+      const response = await axiosInstance.get(`/organizations/${orgId}/clients`);
       return response.data;
     } catch (err) {
       console.error('Error fetching organization clients:', err);
