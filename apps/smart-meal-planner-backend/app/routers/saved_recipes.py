@@ -8,7 +8,8 @@ from ..db import (
     get_user_saved_recipes, 
     is_recipe_saved, 
     get_saved_recipe_by_id,
-    get_saved_recipe_id
+    get_saved_recipe_id,
+    get_db_connection
 )
 from ..utils.auth_utils import get_user_from_token
 from ..models.user import SaveRecipeRequest
@@ -20,6 +21,7 @@ router = APIRouter(prefix="/saved-recipes", tags=["SavedRecipes"])
 @router.post("/")
 async def add_saved_recipe(
     req: SaveRecipeRequest,
+    client_id: Optional[int] = None,  # Optional client ID for organization owners
     user = Depends(get_user_from_token)
 ):
     """Save a recipe or entire menu to user's favorites with complete recipe data"""
@@ -29,6 +31,44 @@ async def add_saved_recipe(
         # Log the incoming request data
         logger.info(f"Received recipe save request: {req}")
         logger.info(f"Recipe source: {req.recipe_source}, Scraped ID: {req.scraped_recipe_id}")
+        logger.info(f"Client ID (if any): {client_id}")
+        
+        # If client_id is provided, verify the user is an organization owner
+        # and has access to this client
+        if client_id:
+            conn = get_db_connection()
+            try:
+                with conn.cursor() as cur:
+                    # Check if user is an organization owner
+                    cur.execute("""
+                        SELECT id FROM organizations WHERE owner_id = %s
+                    """, (user_id,))
+                    
+                    org = cur.fetchone()
+                    if not org:
+                        raise HTTPException(
+                            status_code=403,
+                            detail="Only organization owners can save recipes for clients"
+                        )
+                        
+                    org_id = org[0]
+                    
+                    # Check if client belongs to this organization
+                    cur.execute("""
+                        SELECT 1 FROM organization_clients
+                        WHERE organization_id = %s AND client_id = %s
+                    """, (org_id, client_id))
+                    
+                    if not cur.fetchone():
+                        raise HTTPException(
+                            status_code=403,
+                            detail="This client does not belong to your organization"
+                        )
+                    
+                    # Use the client_id instead of the owner's id
+                    user_id = client_id
+            finally:
+                conn.close()
         
         # Determine the recipe source
         recipe_source = req.recipe_source
@@ -62,7 +102,8 @@ async def add_saved_recipe(
                 "status": "success", 
                 "message": "Recipe saved successfully", 
                 "saved_id": saved_id,
-                "macros": req.macros
+                "macros": req.macros,
+                "for_client": client_id is not None
             }
         else:
             raise HTTPException(

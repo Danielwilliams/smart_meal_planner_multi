@@ -6,6 +6,7 @@ from app.utils.auth_middleware import require_organization_owner
 from app.models.user import UserWithRole
 from app.db import get_db_connection
 from typing import List
+from pydantic import BaseModel, EmailStr
 
 router = APIRouter(prefix="/organizations/{org_id}/clients", tags=["Organization Clients"])
 
@@ -48,7 +49,7 @@ async def get_organization_clients(
 async def add_client_to_organization(
     org_id: int,
     client_id: int,
-    role: str = Body("client"),
+    role: str = Body(..., embed=True),  # Use embed=True to parse as JSON
     user=Depends(require_organization_owner)
 ):
     """Add a client to an organization (owner only)"""
@@ -89,5 +90,64 @@ async def add_client_to_organization(
             
             conn.commit()
             return {"message": "Client added to organization successfully"}
+    finally:
+        conn.close()
+
+class ClientAddRequest(BaseModel):
+    """Request model for adding a client to an organization"""
+    email: str
+    role: str = "client"
+
+@router.post("/")
+async def add_client_by_email(
+    org_id: int,
+    client_data: ClientAddRequest,
+    user=Depends(require_organization_owner)
+):
+    """Add a client to an organization by email"""
+    if user.get('organization_id') != org_id:
+        raise HTTPException(
+            status_code=403,
+            detail="You don't have access to this organization"
+        )
+    
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            # Check if user with email exists
+            cur.execute("SELECT id FROM user_profiles WHERE email = %s", (client_data.email,))
+            user_result = cur.fetchone()
+            
+            if not user_result:
+                raise HTTPException(
+                    status_code=404,
+                    detail="No user found with that email"
+                )
+            
+            client_id = user_result[0]
+            
+            # Check if client is already in this organization
+            cur.execute("""
+                SELECT 1 FROM organization_clients
+                WHERE organization_id = %s AND client_id = %s
+            """, (org_id, client_id))
+            
+            if cur.fetchone():
+                raise HTTPException(
+                    status_code=400,
+                    detail="User is already a client of this organization"
+                )
+            
+            # Add client to organization
+            cur.execute("""
+                INSERT INTO organization_clients (organization_id, client_id, role)
+                VALUES (%s, %s, %s)
+            """, (org_id, client_id, client_data.role))
+            
+            conn.commit()
+            return {
+                "message": "Client added to organization successfully",
+                "client_id": client_id
+            }
     finally:
         conn.close()

@@ -24,6 +24,8 @@ from app.routers.kroger_store import router as kroger_store_router
 from app.routers.walmart_store import router as walmart_store_router
 from app.routers import saved_recipes 
 from app.routers import organizations
+from app.routers import organization_clients
+from app.routers import invitations
 from app.routers import recipe_admin  # Add recipe admin router
 from app.routers import scraped_recipes  # Add scraped recipes router
 
@@ -107,6 +109,8 @@ def create_app() -> FastAPI:
     app.include_router(store.router)
     app.include_router(saved_recipes.router)
     app.include_router(organizations.router)
+    app.include_router(organization_clients.router)
+    app.include_router(invitations.router)
     app.include_router(recipe_admin.router)
     app.include_router(scraped_recipes.router)
 
