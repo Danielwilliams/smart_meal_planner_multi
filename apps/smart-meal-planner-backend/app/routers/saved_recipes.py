@@ -22,10 +22,23 @@ async def add_saved_recipe(
     req: SaveRecipeRequest,
     user = Depends(get_user_from_token)
 ):
-    """Save a recipe or entire menu to user's favorites"""
+    """Save a recipe or entire menu to user's favorites with complete recipe data"""
     user_id = user.get('user_id')
     
     try:
+        # Log the incoming request data
+        logger.info(f"Received recipe save request: {req}")
+        logger.info(f"Recipe source: {req.recipe_source}, Scraped ID: {req.scraped_recipe_id}")
+        
+        # Determine the recipe source
+        recipe_source = req.recipe_source
+        if not recipe_source:
+            if req.scraped_recipe_id:
+                recipe_source = 'scraped'
+            else:
+                recipe_source = 'menu'
+        
+        # Save the recipe with all available data
         saved_id = save_recipe(
             user_id=user_id,
             menu_id=req.menu_id,
@@ -33,14 +46,23 @@ async def add_saved_recipe(
             recipe_name=req.recipe_name,
             day_number=req.day_number,
             meal_time=req.meal_time,
-            notes=req.notes
+            notes=req.notes,
+            macros=req.macros,
+            ingredients=req.ingredients,
+            instructions=req.instructions,
+            complexity_level=req.complexity_level,
+            appliance_used=req.appliance_used,
+            servings=req.servings,
+            scraped_recipe_id=req.scraped_recipe_id,
+            recipe_source=recipe_source
         )
         
         if saved_id:
             return {
                 "status": "success", 
                 "message": "Recipe saved successfully", 
-                "saved_id": saved_id
+                "saved_id": saved_id,
+                "macros": req.macros
             }
         else:
             raise HTTPException(
@@ -49,7 +71,7 @@ async def add_saved_recipe(
             )
     
     except Exception as e:
-        logging.error(f"Error saving recipe: {str(e)}")
+        logger.error(f"Error saving recipe: {str(e)}")
         raise HTTPException(
             status_code=500, 
             detail=f"Error saving recipe: {str(e)}"
@@ -108,37 +130,71 @@ async def list_saved_recipes(
 
 @router.get("/check")
 async def check_recipe_saved(
-    menu_id: int,
+    menu_id: Optional[int] = None,
     recipe_id: Optional[str] = None,
     meal_time: Optional[str] = None,
+    scraped_recipe_id: Optional[int] = None,
     user = Depends(get_user_from_token)
 ):
     """Check if a recipe is saved by the current user"""
     user_id = user.get('user_id')
     
     try:
-        is_saved = is_recipe_saved(
-            user_id=user_id,
-            menu_id=menu_id,
-            recipe_id=recipe_id,
-            meal_time=meal_time
-        )
-        
-        # If saved, also return the saved ID for easier deletion
-        saved_id = None
-        if is_saved:
-            saved_id = get_saved_recipe_id(
+        # Logic to check if recipe is saved
+        if scraped_recipe_id:
+            # Special check for scraped recipes using direct query
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            try:
+                cursor.execute("""
+                    SELECT id FROM saved_recipes
+                    WHERE user_id = %s AND scraped_recipe_id = %s
+                """, (user_id, scraped_recipe_id))
+                
+                result = cursor.fetchone()
+                is_saved = result is not None
+                saved_id = result[0] if result else None
+                
+                recipe_source = 'scraped'
+            finally:
+                cursor.close()
+                conn.close()
+        elif menu_id:
+            # Regular menu recipe check
+            is_saved = is_recipe_saved(
                 user_id=user_id,
                 menu_id=menu_id,
                 recipe_id=recipe_id,
                 meal_time=meal_time
             )
             
+            # If saved, also return the saved ID for easier deletion
+            saved_id = None
+            if is_saved:
+                saved_id = get_saved_recipe_id(
+                    user_id=user_id,
+                    menu_id=menu_id,
+                    recipe_id=recipe_id,
+                    meal_time=meal_time
+                )
+                
+            recipe_source = 'menu'
+        else:
+            # Neither menu_id nor scraped_recipe_id provided
+            raise HTTPException(
+                status_code=400,
+                detail="Either menu_id or scraped_recipe_id must be provided"
+            )
+            
         return {
             "is_saved": is_saved,
-            "saved_id": saved_id
+            "saved_id": saved_id,
+            "recipe_source": recipe_source
         }
     
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error checking saved status: {str(e)}")
         raise HTTPException(

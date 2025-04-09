@@ -174,12 +174,22 @@ class UserKrogerConnection(BaseModel):
 
 
 class SaveRecipeRequest(BaseModel):
-    menu_id: int
+    menu_id: Optional[int] = None
     recipe_id: Optional[int] = None
     recipe_name: Optional[str] = None
     day_number: Optional[int] = None
     meal_time: Optional[str] = None
     notes: Optional[str] = None
+    # Add fields for scraped recipes
+    scraped_recipe_id: Optional[int] = None
+    recipe_source: Optional[str] = None
+    # Add fields for recipe details
+    ingredients: Optional[Dict[str, Any]] = None
+    instructions: Optional[List[str]] = None
+    macros: Optional[Dict[str, Any]] = None
+    complexity_level: Optional[str] = None
+    appliance_used: Optional[str] = None
+    servings: Optional[int] = None
 
 
 class OrganizationBase(BaseModel):

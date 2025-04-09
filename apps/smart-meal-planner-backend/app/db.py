@@ -33,31 +33,67 @@ def get_db_connection():
             detail="An unexpected error occurred while connecting to database."
         )
 
-def save_recipe(user_id, menu_id, recipe_id=None, recipe_name=None, day_number=None, meal_time=None, notes=None):
-    """Save a recipe or entire menu to user's favorites"""
+def save_recipe(user_id, menu_id=None, recipe_id=None, recipe_name=None, day_number=None, 
+               meal_time=None, notes=None, macros=None, ingredients=None, 
+               instructions=None, complexity_level=None, appliance_used=None, servings=None,
+               scraped_recipe_id=None, recipe_source=None):
+    """Save a recipe or entire menu to user's favorites with complete recipe data"""
     conn = None
     try:
-        logger.info(f"Saving recipe: user={user_id}, menu={menu_id}, recipe={recipe_id}, meal_time={meal_time}")
+        logger.info(f"Saving recipe: user={user_id}, menu={menu_id}, recipe={recipe_id}, meal_time={meal_time}, scraped_id={scraped_recipe_id}, source={recipe_source}")
+        logger.info(f"With ingredients: {ingredients}")
+        logger.info(f"With instructions: {instructions}")
+        logger.info(f"With macros: {macros}")
+        
         conn = get_db_connection()
         with conn.cursor() as cur:
             # Check if already saved
-            if recipe_id:
+            if recipe_source == 'scraped':
+                # For scraped recipes
+                cur.execute("""
+                    SELECT id FROM saved_recipes
+                    WHERE user_id = %s AND scraped_recipe_id = %s
+                """, (user_id, scraped_recipe_id))
+            elif recipe_id and menu_id:
+                # For regular menu recipes with recipe_id
                 cur.execute("""
                     SELECT id FROM saved_recipes
                     WHERE user_id = %s AND menu_id = %s AND recipe_id = %s AND meal_time = %s
                 """, (user_id, menu_id, recipe_id, meal_time))
-            else:
+            elif menu_id:
+                # For entire menu
                 cur.execute("""
                     SELECT id FROM saved_recipes
                     WHERE user_id = %s AND menu_id = %s AND recipe_id IS NULL
                 """, (user_id, menu_id))
+            elif scraped_recipe_id:
+                # Backup check for scraped recipes without recipe_source
+                cur.execute("""
+                    SELECT id FROM saved_recipes
+                    WHERE user_id = %s AND scraped_recipe_id = %s
+                """, (user_id, scraped_recipe_id))
+            else:
+                logger.warning("No valid identifiers provided for recipe checking")
                 
             existing = cur.fetchone()
             logger.info(f"Existing saved recipe check: {existing}")
             
+            # Convert complex objects to JSON
+            import json
+            macros_json = json.dumps(macros) if macros else None
+            ingredients_json = json.dumps(ingredients) if ingredients else None
+            instructions_json = json.dumps(instructions) if instructions else None
+            
             if existing:
                 # Update if already exists
-                if recipe_id:
+                if recipe_source == 'scraped' or scraped_recipe_id:
+                    cur.execute("""
+                        UPDATE saved_recipes
+                        SET notes = %s, created_at = CURRENT_TIMESTAMP
+                        WHERE user_id = %s AND scraped_recipe_id = %s
+                        RETURNING id
+                    """, (notes, user_id, scraped_recipe_id))
+                elif recipe_id and menu_id:
                     cur.execute("""
                         UPDATE saved_recipes
                         SET notes = %s, created_at = CURRENT_TIMESTAMP
@@ -73,23 +109,67 @@ def save_recipe(user_id, menu_id, recipe_id=None, recipe_name=None, day_number=N
                     """, (notes, user_id, menu_id))
             else:
                 # Insert new saved recipe
-                logger.info(f"Inserting new recipe with ID: {recipe_id}")
+                logger.info(f"Inserting new recipe with source: {recipe_source}")
+                
+                # Check if the saved_recipes table has all the columns we need
                 cur.execute("""
-                    INSERT INTO saved_recipes
-                    (user_id, menu_id, recipe_id, recipe_name, day_number, meal_time, notes)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    RETURNING id
-                """, (user_id, menu_id, recipe_id, recipe_name, day_number, meal_time, notes))
+                    SELECT column_name FROM information_schema.columns 
+                    WHERE table_name = 'saved_recipes'
+                """)
+                columns = [row[0] for row in cur.fetchall()]
+                
+                # Check if scraped_recipe_id exists in the table
+                if 'scraped_recipe_id' not in columns:
+                    # Add the column if it doesn't exist
+                    cur.execute("""
+                        ALTER TABLE saved_recipes 
+                        ADD COLUMN IF NOT EXISTS scraped_recipe_id INTEGER REFERENCES scraped_recipes(id) ON DELETE SET NULL,
+                        ADD COLUMN IF NOT EXISTS recipe_source VARCHAR(50),
+                        ADD COLUMN IF NOT EXISTS macros JSONB,
+                        ADD COLUMN IF NOT EXISTS ingredients JSONB,
+                        ADD COLUMN IF NOT EXISTS instructions JSONB,
+                        ADD COLUMN IF NOT EXISTS complexity_level VARCHAR(50),
+                        ADD COLUMN IF NOT EXISTS appliance_used VARCHAR(100),
+                        ADD COLUMN IF NOT EXISTS servings INTEGER
+                    """)
+                    logger.info("Added missing columns to saved_recipes table")
+                
+                # Determine if to use the full insert with all columns
+                has_extended_columns = all(col in columns for col in ['macros', 'ingredients', 'instructions'])
+                
+                if has_extended_columns or 'scraped_recipe_id' in columns:
+                    # Extended insert with all columns
+                    cur.execute("""
+                        INSERT INTO saved_recipes
+                        (user_id, menu_id, recipe_id, recipe_name, day_number, meal_time, 
+                         notes, macros, ingredients, instructions, complexity_level, 
+                         appliance_used, servings, scraped_recipe_id, recipe_source)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        RETURNING id
+                    """, (user_id, menu_id, recipe_id, recipe_name, day_number, meal_time, 
+                          notes, macros_json, ingredients_json, instructions_json,
+                          complexity_level, appliance_used, servings, scraped_recipe_id, recipe_source))
+                else:
+                    # Basic insert with original columns only
+                    cur.execute("""
+                        INSERT INTO saved_recipes
+                        (user_id, menu_id, recipe_id, recipe_name, day_number, meal_time, notes)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        RETURNING id
+                    """, (user_id, menu_id, recipe_id, recipe_name, day_number, meal_time, notes))
             
             saved_id = cur.fetchone()[0]
             logger.info(f"Successfully saved/updated recipe with ID: {saved_id}")
             
             # Also log this as an interaction for recommendation system
-            cur.execute("""
-                INSERT INTO recipe_interactions
-                (user_id, recipe_id, interaction_type, timestamp)
-                VALUES (%s, %s, 'saved', CURRENT_TIMESTAMP)
-            """, (user_id, recipe_id or menu_id))
+            try:
+                cur.execute("""
+                    INSERT INTO recipe_interactions
+                    (user_id, recipe_id, interaction_type, timestamp)
+                    VALUES (%s, %s, 'saved', CURRENT_TIMESTAMP)
+                """, (user_id, recipe_id or scraped_recipe_id or menu_id))
+            except Exception as e:
+                logger.warning(f"Could not log recipe interaction: {e}")
             
             conn.commit()
             return saved_id
@@ -102,44 +182,60 @@ def save_recipe(user_id, menu_id, recipe_id=None, recipe_name=None, day_number=N
         if conn:
             conn.close()
 
-def unsave_recipe(user_id, saved_id=None, menu_id=None, recipe_id=None, meal_time=None):
+def unsave_recipe(user_id, saved_id=None, menu_id=None, recipe_id=None, meal_time=None, scraped_recipe_id=None):
     """Remove a recipe from saved/favorites"""
     conn = None
     try:
-        logger.info(f"Unsaving recipe: user={user_id}, saved_id={saved_id}, menu={menu_id}, recipe={recipe_id}")
+        logger.info(f"Unsaving recipe: user={user_id}, saved_id={saved_id}, menu={menu_id}, recipe={recipe_id}, scraped={scraped_recipe_id}")
         conn = get_db_connection()
         with conn.cursor() as cur:
             if saved_id:
                 cur.execute("""
                     DELETE FROM saved_recipes
                     WHERE id = %s AND user_id = %s
-                    RETURNING id, recipe_id, menu_id
+                    RETURNING id, recipe_id, menu_id, scraped_recipe_id
                 """, (saved_id, user_id))
+            elif scraped_recipe_id:
+                cur.execute("""
+                    DELETE FROM saved_recipes
+                    WHERE user_id = %s AND scraped_recipe_id = %s
+                    RETURNING id, recipe_id, menu_id, scraped_recipe_id
+                """, (user_id, scraped_recipe_id))
             elif recipe_id and meal_time:
                 cur.execute("""
                     DELETE FROM saved_recipes
                     WHERE user_id = %s AND menu_id = %s AND recipe_id = %s AND meal_time = %s
-                    RETURNING id, recipe_id, menu_id
+                    RETURNING id, recipe_id, menu_id, scraped_recipe_id
                 """, (user_id, menu_id, recipe_id, meal_time))
             else:
                 cur.execute("""
                     DELETE FROM saved_recipes
                     WHERE user_id = %s AND menu_id = %s AND recipe_id IS NULL
-                    RETURNING id, recipe_id, menu_id
+                    RETURNING id, recipe_id, menu_id, scraped_recipe_id
                 """, (user_id, menu_id))
             
             result = cur.fetchone()
             
             if result:
-                deleted_id, recipe_id_val, menu_id_val = result
+                # Handle the result with or without scraped_recipe_id
+                if len(result) >= 4:
+                    deleted_id, recipe_id_val, menu_id_val, scraped_id_val = result
+                else:
+                    deleted_id, recipe_id_val, menu_id_val = result
+                    scraped_id_val = None
+                
                 logger.info(f"Successfully removed saved recipe with ID: {deleted_id}")
                 
                 # Log this as an "unsaved" interaction
-                cur.execute("""
-                    INSERT INTO recipe_interactions
-                    (user_id, recipe_id, interaction_type, timestamp)
-                    VALUES (%s, %s, 'unsaved', CURRENT_TIMESTAMP)
-                """, (user_id, recipe_id_val or menu_id_val))
+                try:
+                    reference_id = scraped_id_val or recipe_id_val or menu_id_val
+                    cur.execute("""
+                        INSERT INTO recipe_interactions
+                        (user_id, recipe_id, interaction_type, timestamp)
+                        VALUES (%s, %s, 'unsaved', CURRENT_TIMESTAMP)
+                    """, (user_id, reference_id))
+                except Exception as e:
+                    logger.warning(f"Could not log recipe interaction: {e}")
                 
                 conn.commit()
                 return True
