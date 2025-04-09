@@ -25,7 +25,7 @@ function useQuery() {
   return new URLSearchParams(useLocation().search);
 }
 
-const ClientSignup = () => {
+const ClientSignupPage = () => {
   const query = useQuery();
   const navigate = useNavigate();
   const { login } = useAuth();
@@ -125,6 +125,12 @@ const ClientSignup = () => {
     
     try {
       setLoading(true);
+      
+      console.log('Signing up client with data:', {
+        name: signupData.name,
+        email: signupData.email,
+        account_type: 'client'
+      });
       
       // First create the user account
       await apiService.signUp({
@@ -365,4 +371,4 @@ const ClientSignup = () => {
   );
 };
 
-export default ClientSignup;
+export default ClientSignupPage;

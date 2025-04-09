@@ -28,6 +28,10 @@ from pydantic import BaseModel
 
 router = APIRouter(prefix="/org-invitations", tags=["Organization Invitations Alternative"])
 
+# Print logger configuration
+logger.info(f"Logger level: {logger.level}")
+logger.info(f"Logger handlers: {logger.handlers}")
+
 class InviteRequest(BaseModel):
     """Request model for inviting a user to an organization"""
     email: str
@@ -41,6 +45,10 @@ async def send_invitation_email(email, token, org_id, user_exists, organization_
     else:
         # Special signup flow for new clients
         invitation_link = f"{FRONTEND_URL}/client-signup?token={token}&org={org_id}"
+    
+    # Log the invitation URL for debugging
+    logger.info(f"Generated invitation link: {invitation_link}")
+    logger.info(f"FRONTEND_URL from config: {FRONTEND_URL}")
     
     msg = MIMEMultipart()
     msg['Subject'] = f'Invitation to join {organization_name} on Smart Meal Planner'

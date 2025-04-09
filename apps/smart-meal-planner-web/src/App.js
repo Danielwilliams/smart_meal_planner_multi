@@ -31,7 +31,8 @@ import ClientProfile from './pages/ClientProfile';
 import AcceptInvitation from './pages/AcceptInvitation';
 import ClientPreferencesPage from './pages/ClientPreferencesPage';
 import ClientDashboard from './pages/ClientDashboard';
-import ClientSignup from './pages/ClientSignup';
+import ClientSignupPage from './pages/ClientSignupPage';
+import TestInvitation from './TestInvitation';
 
 
 function App() {
@@ -55,9 +56,11 @@ function App() {
               <Route path="/" element={<LandingPage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/signup" element={<SignUpPage />} />
-              <Route path="/client-signup" element={<ClientSignup />} />
+              <Route path="/client-signup" element={<ClientSignupPage />} />
               <Route path="/example-meal-plans" element={<ExampleMealPlansPage />} />
               <Route path="/verify-email" element={<VerifyEmailPage />} />
+              <Route path="/test-invitation" element={<TestInvitation />} />
+              <Route path="/accept-invitation" element={<AcceptInvitation />} />
               
               {/* Protected Routes */}
               <Route 
@@ -140,7 +143,7 @@ function App() {
                   </PrivateRoute>
                 } 
               />
-              <Route path="/accept-invitation" element={<AcceptInvitation />} />
+              {/* Move AcceptInvitation to public routes (outside PrivateRoute) */}
               <Route 
                 path="/recipe-admin" 
                 element={
