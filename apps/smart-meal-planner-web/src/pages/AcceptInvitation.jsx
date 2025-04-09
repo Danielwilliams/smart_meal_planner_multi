@@ -73,7 +73,12 @@ function AcceptInvitation() {
   };
 
   const handleGoToDashboard = () => {
-    navigate('/organization/dashboard');
+    // Redirect to the appropriate dashboard based on account type
+    if (user?.account_type === 'client') {
+      navigate('/client-dashboard');
+    } else {
+      navigate('/organization/dashboard');
+    }
   };
 
   if (loading) {

@@ -46,6 +46,10 @@ function LoginPage() {
       // Redirect based on account type
       if (response.account_type === 'organization') {
         navigate('/organization/dashboard');
+      } else if (response.account_type === 'client') {
+        // Client account flow - send to client dashboard
+        console.log('Navigating to client dashboard');
+        navigate('/client-dashboard');
       } else {
         // Regular user flow
         if (response.progress.has_preferences) {

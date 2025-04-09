@@ -33,6 +33,7 @@ from app.routers import scraped_recipes  # Add scraped recipes router
 from app.routers import organization_clients_alt
 from app.routers import invitations_alt
 from app.routers import saved_recipes_alt
+from app.routers import client_resources  # Add client resources router
 
 
 # Load environment variables
@@ -121,6 +122,7 @@ def create_app() -> FastAPI:
     app.include_router(organization_clients_alt.router)
     app.include_router(invitations_alt.router)
     app.include_router(saved_recipes_alt.router)
+    app.include_router(client_resources.router)
     
     app.include_router(recipe_admin.router)
     app.include_router(scraped_recipes.router)
@@ -157,6 +159,12 @@ async def startup_event():
         from app.create_recipe_tables import create_tables
         create_tables()
         logger.info("Recipe tables check completed")
+        
+        # Create client-related tables if they don't exist
+        logger.info("Checking and creating client-related tables...")
+        from app.create_client_tables import create_tables as create_client_tables
+        create_client_tables()
+        logger.info("Client tables check completed")
     except Exception as e:
         logger.error(f"Error during application startup: {str(e)}")
         # Don't re-raise, just log the error

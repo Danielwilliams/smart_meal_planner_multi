@@ -31,8 +31,9 @@ function NavBar() {
   const [menuAnchorEl, setMenuAnchorEl] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // Check if the user has an organization account
+  // Check user account types
   const isOrgAccount = user?.account_type === 'organization';
+  const isClientAccount = user?.account_type === 'client';
   
   // Fetch organization data directly in this component
   useEffect(() => {
@@ -136,30 +137,50 @@ function NavBar() {
         <Box sx={{ display: { xs: mobileMenuOpen ? 'flex' : 'none', md: 'flex' }, flexDirection: { xs: 'column', md: 'row' } }}>
           {isAuthenticated ? (
             <>
-              <Button color="inherit" component={Link} to="/">
-                Home
-              </Button>
-              <Button color="inherit" component={Link} to="/menu">
-                Menu
-              </Button>
-              <Button color="inherit" component={Link} to="/shopping-list">
-                Shopping List
-              </Button>
-              <Button color="inherit" component={Link} to="/cart">
-                Cart
-              </Button>
-              <Button color="inherit" component={Link} to="/saved-recipes">
-                Saved Recipes
-              </Button>
-              <Button color="inherit" component={Link} to="/recipes">
-                Recipe Browser
-              </Button>
-              <Button color="inherit" component={Link} to="/custom-menu-builder">
-                Custom Menu
-              </Button>
-              <Button color="inherit" component={Link} to="/preferences-page">
-                Preferences
-              </Button>
+                  {/* Client account gets a simplified menu with their dashboard */}
+              {isClientAccount ? (
+                <>
+                  <Button color="inherit" component={Link} to="/client-dashboard">
+                    Dashboard
+                  </Button>
+                  <Button color="inherit" component={Link} to="/recipes">
+                    Recipe Browser
+                  </Button>
+                  <Button color="inherit" component={Link} to="/saved-recipes">
+                    Saved Recipes
+                  </Button>
+                  <Button color="inherit" component={Link} to="/cart">
+                    Cart
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button color="inherit" component={Link} to="/">
+                    Home
+                  </Button>
+                  <Button color="inherit" component={Link} to="/menu">
+                    Menu
+                  </Button>
+                  <Button color="inherit" component={Link} to="/shopping-list">
+                    Shopping List
+                  </Button>
+                  <Button color="inherit" component={Link} to="/cart">
+                    Cart
+                  </Button>
+                  <Button color="inherit" component={Link} to="/saved-recipes">
+                    Saved Recipes
+                  </Button>
+                  <Button color="inherit" component={Link} to="/recipes">
+                    Recipe Browser
+                  </Button>
+                  <Button color="inherit" component={Link} to="/custom-menu-builder">
+                    Custom Menu
+                  </Button>
+                  <Button color="inherit" component={Link} to="/preferences-page">
+                    Preferences
+                  </Button>
+                </>
+              )}
               
               {/* Admin/Organization features */}
               {(isOrgAccount || user?.account_type === 'admin') && (
@@ -212,7 +233,11 @@ function NavBar() {
                       {user?.email || ''}
                     </Typography>
                     <Typography variant="caption" color="primary">
-                      {user?.account_type === 'organization' ? 'Organization Account' : 'Individual Account'}
+                      {user?.account_type === 'organization' 
+                        ? 'Organization Account' 
+                        : user?.account_type === 'client'
+                          ? 'Client Account'
+                          : 'Individual Account'}
                     </Typography>
                   </Box>
                 </MenuItem>
@@ -225,6 +250,12 @@ function NavBar() {
                   <MenuItem onClick={() => { handleMenuClose(); navigate('/organization/dashboard'); }}>
                     <DashboardIcon sx={{ mr: 1 }} fontSize="small" />
                     Organization Dashboard
+                  </MenuItem>
+                )}
+                {isClientAccount && (
+                  <MenuItem onClick={() => { handleMenuClose(); navigate('/client-dashboard'); }}>
+                    <DashboardIcon sx={{ mr: 1 }} fontSize="small" />
+                    Client Dashboard
                   </MenuItem>
                 )}
                 <Divider />

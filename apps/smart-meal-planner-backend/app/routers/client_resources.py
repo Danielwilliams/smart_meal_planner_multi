@@ -1,0 +1,355 @@
+# app/routers/client_resources.py
+from fastapi import APIRouter, HTTPException, Depends, Body, Query
+from typing import List, Optional, Dict, Any
+import logging
+import json
+from pydantic import BaseModel, Field
+from ..db import get_db_connection
+from ..utils.auth_utils import get_user_from_token
+from ..utils.auth_middleware import require_client_or_owner, check_recipe_access, check_menu_access
+from psycopg2.extras import RealDictCursor
+from ..utils.grocery_aggregator import aggregate_grocery_list
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/client", tags=["Client Resources"])
+
+# --- Models ---
+class SharedResource(BaseModel):
+    id: int
+    name: str
+    description: Optional[str] = None
+    shared_at: Optional[str] = None
+    owner_name: Optional[str] = None
+
+class SharedMenu(SharedResource):
+    meal_count: Optional[int] = None
+    
+class SharedRecipe(SharedResource):
+    cuisine: Optional[str] = None
+    prep_time: Optional[int] = None
+    
+# --- Endpoints ---
+
+@router.get("/dashboard")
+async def get_client_dashboard(
+    user = Depends(require_client_or_owner)
+):
+    """
+    Get a client dashboard with all resources shared with them
+    Includes:
+    - Shared menus
+    - Shared recipes
+    - Organization info
+    """
+    user_id = user.get('user_id')
+    org_id = user.get('organization_id')
+    role = user.get('role')
+    
+    if not org_id:
+        raise HTTPException(
+            status_code=403,
+            detail="You must be part of an organization to access this resource"
+        )
+    
+    conn = get_db_connection()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Get organization info
+            cur.execute("""
+                SELECT id, name, description, owner_id
+                FROM organizations
+                WHERE id = %s
+            """, (org_id,))
+            
+            organization = cur.fetchone()
+            if not organization:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Organization not found"
+                )
+            
+            # Get organization owner info
+            owner_id = organization['owner_id']
+            cur.execute("""
+                SELECT name, email
+                FROM user_profiles
+                WHERE id = %s
+            """, (owner_id,))
+            
+            owner = cur.fetchone()
+            organization['owner'] = owner
+            
+            # Get shared menus 
+            # If user is a client, get all menus owned by the organization owner
+            # If user is an org owner, return their own menus
+            if role == 'client':
+                cur.execute("""
+                    SELECT 
+                        m.id, 
+                        m.nickname as name, 
+                        m.created_at as shared_at,
+                        up.name as owner_name,
+                        jsonb_array_length(
+                            CASE 
+                                WHEN jsonb_typeof(m.meal_plan_json) = 'string' 
+                                THEN jsonb_build_array(m.meal_plan_json::jsonb) 
+                                ELSE m.meal_plan_json::jsonb
+                            END
+                        ) as meal_count
+                    FROM menus m
+                    JOIN user_profiles up ON m.user_id = up.id
+                    WHERE m.user_id = %s AND m.shared_with_organization = TRUE
+                    ORDER BY m.created_at DESC
+                """, (owner_id,))
+            else:  # Owner
+                cur.execute("""
+                    SELECT 
+                        m.id, 
+                        m.nickname as name, 
+                        m.created_at as shared_at,
+                        up.name as owner_name,
+                        jsonb_array_length(
+                            CASE 
+                                WHEN jsonb_typeof(m.meal_plan_json) = 'string' 
+                                THEN jsonb_build_array(m.meal_plan_json::jsonb) 
+                                ELSE m.meal_plan_json::jsonb
+                            END
+                        ) as meal_count
+                    FROM menus m
+                    JOIN user_profiles up ON m.user_id = up.id
+                    WHERE m.user_id = %s AND m.shared_with_organization = TRUE
+                    ORDER BY m.created_at DESC
+                """, (user_id,))
+            
+            shared_menus = cur.fetchall()
+            
+            # Get shared recipes
+            # If user is a client, get all recipes owned by the organization owner
+            # If user is an org owner, return their own recipes
+            if role == 'client':
+                cur.execute("""
+                    SELECT 
+                        sr.id, 
+                        sr.recipe_name as name, 
+                        sr.created_at as shared_at,
+                        up.name as owner_name,
+                        sr.notes as description,
+                        COALESCE(sr.prep_time, 0) as prep_time
+                    FROM saved_recipes sr
+                    JOIN user_profiles up ON sr.user_id = up.id
+                    WHERE sr.user_id = %s AND sr.shared_with_organization = TRUE
+                    ORDER BY sr.created_at DESC
+                """, (owner_id,))
+            else:  # Owner
+                cur.execute("""
+                    SELECT 
+                        sr.id, 
+                        sr.recipe_name as name, 
+                        sr.created_at as shared_at,
+                        up.name as owner_name,
+                        sr.notes as description,
+                        COALESCE(sr.prep_time, 0) as prep_time
+                    FROM saved_recipes sr
+                    JOIN user_profiles up ON sr.user_id = up.id
+                    WHERE sr.user_id = %s AND sr.shared_with_organization = TRUE
+                    ORDER BY sr.created_at DESC
+                """, (user_id,))
+            
+            shared_recipes = cur.fetchall()
+            
+            return {
+                "organization": organization,
+                "shared_menus": shared_menus,
+                "shared_recipes": shared_recipes
+            }
+    finally:
+        conn.close()
+
+@router.get("/menus/{menu_id}")
+async def get_client_menu(
+    menu_id: int,
+    user = Depends(check_menu_access)
+):
+    """Get a shared menu for a client with all details"""
+    conn = get_db_connection()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Fetch the full menu details
+            cur.execute("""
+                SELECT 
+                    id AS menu_id, 
+                    meal_plan_json, 
+                    user_id, 
+                    created_at, 
+                    nickname
+                FROM menus 
+                WHERE id = %s
+            """, (menu_id,))
+            menu = cur.fetchone()
+        
+        if not menu:
+            raise HTTPException(status_code=404, detail="Menu not found")
+        
+        # Ensure meal_plan_json is parsed
+        menu['meal_plan'] = json.loads(menu['meal_plan_json']) if isinstance(menu['meal_plan_json'], str) else menu['meal_plan_json']
+        
+        return menu
+    except Exception as e:
+        logger.error(f"Error retrieving menu details: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+    finally:
+        conn.close()
+
+@router.get("/menus/{menu_id}/grocery-list")
+async def get_client_grocery_list(
+    menu_id: int,
+    user = Depends(check_menu_access)
+):
+    """Get a grocery list for a shared menu"""
+    conn = get_db_connection()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Fetch the meal_plan_json field
+            cur.execute("SELECT meal_plan_json FROM menus WHERE id=%s", (menu_id,))
+            row = cur.fetchone()
+
+        if not row:
+            raise HTTPException(status_code=404, detail="Menu not found")
+
+        # parse the JSON text into a Python dict
+        menu_data = row["meal_plan_json"]
+
+        # aggregate
+        grocery_list = aggregate_grocery_list(menu_data)
+        return {"groceryList": grocery_list}
+
+    except Exception as e:
+        logger.error(f"Error retrieving grocery list: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+    finally:
+        conn.close()
+
+@router.get("/recipes/{recipe_id}")
+async def get_client_recipe(
+    recipe_id: int,
+    user = Depends(check_recipe_access)
+):
+    """Get a shared recipe for a client with all details"""
+    conn = get_db_connection()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Fetch the full recipe details
+            cur.execute("""
+                SELECT 
+                    sr.id, 
+                    sr.recipe_name, 
+                    sr.notes, 
+                    sr.created_at,
+                    sr.macros,
+                    sr.ingredients,
+                    sr.instructions,
+                    sr.prep_time,
+                    sr.complexity_level,
+                    sr.servings,
+                    up.name as owner_name
+                FROM saved_recipes sr
+                JOIN user_profiles up ON sr.user_id = up.id
+                WHERE sr.id = %s
+            """, (recipe_id,))
+            
+            recipe = cur.fetchone()
+            
+            if not recipe:
+                raise HTTPException(status_code=404, detail="Recipe not found")
+                
+            return recipe
+    except Exception as e:
+        logger.error(f"Error retrieving recipe details: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+    finally:
+        conn.close()
+
+@router.patch("/toggle-menu-sharing/{menu_id}")
+async def toggle_menu_sharing_with_organization(
+    menu_id: int,
+    shared: bool = Body(..., embed=True),
+    user = Depends(get_user_from_token)
+):
+    """Toggle whether a menu is shared with the organization's clients"""
+    user_id = user.get('user_id')
+    
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            # Check if user owns the menu
+            cur.execute("""
+                SELECT 1 FROM menus WHERE id = %s AND user_id = %s
+            """, (menu_id, user_id))
+            
+            if not cur.fetchone():
+                raise HTTPException(
+                    status_code=403,
+                    detail="You can only share menus that you own"
+                )
+            
+            # Update sharing status
+            cur.execute("""
+                UPDATE menus 
+                SET shared_with_organization = %s
+                WHERE id = %s
+            """, (shared, menu_id))
+            
+            conn.commit()
+            
+            return {
+                "status": "success",
+                "message": f"Menu sharing {'enabled' if shared else 'disabled'}"
+            }
+    except Exception as e:
+        logger.error(f"Error updating menu sharing: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+    finally:
+        conn.close()
+
+@router.patch("/toggle-recipe-sharing/{recipe_id}")
+async def toggle_recipe_sharing_with_organization(
+    recipe_id: int,
+    shared: bool = Body(..., embed=True),
+    user = Depends(get_user_from_token)
+):
+    """Toggle whether a recipe is shared with the organization's clients"""
+    user_id = user.get('user_id')
+    
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            # Check if user owns the recipe
+            cur.execute("""
+                SELECT 1 FROM saved_recipes WHERE id = %s AND user_id = %s
+            """, (recipe_id, user_id))
+            
+            if not cur.fetchone():
+                raise HTTPException(
+                    status_code=403,
+                    detail="You can only share recipes that you own"
+                )
+            
+            # Update sharing status
+            cur.execute("""
+                UPDATE saved_recipes 
+                SET shared_with_organization = %s
+                WHERE id = %s
+            """, (shared, recipe_id))
+            
+            conn.commit()
+            
+            return {
+                "status": "success",
+                "message": f"Recipe sharing {'enabled' if shared else 'disabled'}"
+            }
+    except Exception as e:
+        logger.error(f"Error updating recipe sharing: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+    finally:
+        conn.close()

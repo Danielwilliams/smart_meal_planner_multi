@@ -30,6 +30,7 @@ import OrganizationDashboard from './pages/OrganizationDashboard';
 import ClientProfile from './pages/ClientProfile';
 import AcceptInvitation from './pages/AcceptInvitation';
 import ClientPreferencesPage from './pages/ClientPreferencesPage';
+import ClientDashboard from './pages/ClientDashboard';
 
 
 function App() {
@@ -62,6 +63,14 @@ function App() {
                 element={
                   <PrivateRoute>
                     <Home />
+                  </PrivateRoute>
+                } 
+              />
+              <Route 
+                path="/client-dashboard" 
+                element={
+                  <PrivateRoute>
+                    <ClientDashboard />
                   </PrivateRoute>
                 } 
               />

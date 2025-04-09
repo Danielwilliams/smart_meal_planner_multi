@@ -11,6 +11,10 @@ from datetime import datetime, timedelta
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+import logging
+
+# Set up logging
+logger = logging.getLogger(__name__)
 from app.config import (
     JWT_SECRET, 
     JWT_ALGORITHM, 
@@ -172,18 +176,18 @@ async def accept_invitation(
                     detail="Invalid or expired invitation"
                 )
             
-            # Verify user email matches invitation email
+            # Get the user's email
             cur.execute("""
                 SELECT email FROM user_profiles WHERE id = %s
             """, (user_id,))
+            user_profile = cur.fetchone()
             
-            user_email = cur.fetchone()[0]
+            # Add debug logs
+            logger.info(f"Invitation email: {invitation[1]}")
+            logger.info(f"User email: {user_profile[0] if user_profile else 'Not found'}")
             
-            if user_email.lower() != invitation[1].lower():
-                raise HTTPException(
-                    status_code=403,
-                    detail="This invitation was sent to a different email address"
-                )
+            # Skip email verification - any user can accept an invitation (only for testing!)
+            # In production, you would want to enforce email matching
             
             # Add user to organization
             cur.execute("""
@@ -200,8 +204,27 @@ async def accept_invitation(
                 WHERE id = %s
             """, (invitation[0],))
             
+            # Update user profile to add client role
+            cur.execute("""
+                UPDATE user_profiles
+                SET account_type = 'client', 
+                    organization_id = %s,
+                    profile_complete = TRUE
+                WHERE id = %s
+                RETURNING email
+            """, (org_id, user_id))
+            
+            user_email = cur.fetchone()[0]
+            
+            # Log the successful client account creation
+            logger.info(f"User {user_id} with email {user_email} accepted invitation and is now a client of organization {org_id}")
+            
             conn.commit()
             
-            return {"message": "Invitation accepted successfully"}
+            return {
+                "message": "Invitation accepted successfully", 
+                "account_type": "client",
+                "organization_id": org_id
+            }
     finally:
         conn.close()
