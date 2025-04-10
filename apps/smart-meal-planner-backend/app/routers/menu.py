@@ -8,6 +8,7 @@ from psycopg2.extras import RealDictCursor
 from ..db import get_db_connection
 from ..config import OPENAI_API_KEY
 from ..models.user import GenerateMealPlanRequest
+from ..models.menus import SaveMenuRequest
 from pydantic import BaseModel
 import logging
 from ..utils.grocery_aggregator import aggregate_grocery_list

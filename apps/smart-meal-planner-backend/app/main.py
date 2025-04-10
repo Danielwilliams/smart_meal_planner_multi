@@ -167,6 +167,12 @@ async def startup_event():
         from app.create_client_tables import create_tables as create_client_tables
         create_client_tables()
         logger.info("Client tables check completed")
+        
+        # Run database migrations to update schema if needed
+        logger.info("Running database migrations...")
+        from app.migrations import run_migrations
+        run_migrations()
+        logger.info("Database migrations completed")
     except Exception as e:
         logger.error(f"Error during application startup: {str(e)}")
         # Don't re-raise, just log the error
