@@ -68,6 +68,7 @@ from pydantic import BaseModel, Field, validator
 class GenerateMealPlanRequest(BaseModel):
     user_id: int
     duration_days: int = Field(default=7, ge=1, le=30)
+    for_client_id: Optional[int] = None  # ID of the client this menu is generated for
     
     # Explicitly define fields to match the desired output
     diet_type: Optional[str] = Field(default="Mixed")

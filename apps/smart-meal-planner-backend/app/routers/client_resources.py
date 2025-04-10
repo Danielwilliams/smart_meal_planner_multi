@@ -133,14 +133,14 @@ async def get_client_dashboard(
             organization['owner'] = owner
             
             # Get shared menus 
-            # If user is a client, get all menus owned by the organization owner
-            # If user is an org owner, return their own menus
+            # If user is a client, get menus shared directly with them
+            # If user is an org owner, return the menus they've shared with clients
             if role == 'client':
                 cur.execute("""
                     SELECT 
                         m.id, 
                         m.nickname as name, 
-                        m.created_at as shared_at,
+                        sm.created_at as shared_at,
                         up.name as owner_name,
                         jsonb_array_length(
                             CASE 
@@ -150,16 +150,17 @@ async def get_client_dashboard(
                             END
                         ) as meal_count
                     FROM menus m
+                    JOIN shared_menus sm ON m.id = sm.menu_id
                     JOIN user_profiles up ON m.user_id = up.id
-                    WHERE m.user_id = %s AND m.shared_with_organization = TRUE
-                    ORDER BY m.created_at DESC
-                """, (owner_id,))
+                    WHERE sm.shared_with = %s
+                    ORDER BY sm.created_at DESC
+                """, (user_id,))
             else:  # Owner
                 cur.execute("""
                     SELECT 
                         m.id, 
                         m.nickname as name, 
-                        m.created_at as shared_at,
+                        sm.created_at as shared_at,
                         up.name as owner_name,
                         jsonb_array_length(
                             CASE 
@@ -169,9 +170,10 @@ async def get_client_dashboard(
                             END
                         ) as meal_count
                     FROM menus m
+                    JOIN shared_menus sm ON m.id = sm.menu_id
                     JOIN user_profiles up ON m.user_id = up.id
-                    WHERE m.user_id = %s AND m.shared_with_organization = TRUE
-                    ORDER BY m.created_at DESC
+                    WHERE sm.created_by = %s
+                    ORDER BY sm.created_at DESC
                 """, (user_id,))
             
             shared_menus = cur.fetchall()
@@ -326,14 +328,16 @@ async def get_client_recipe(
 async def toggle_menu_sharing_with_organization(
     menu_id: int,
     shared: bool = Body(..., embed=True),
+    client_id: Optional[int] = Body(None, embed=True),
     user = Depends(get_user_from_token)
 ):
-    """Toggle whether a menu is shared with the organization's clients"""
+    """Toggle whether a menu is shared with a specific client"""
     user_id = user.get('user_id')
+    org_id = user.get('organization_id')
     
     conn = get_db_connection()
     try:
-        with conn.cursor() as cur:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
             # Check if user owns the menu
             cur.execute("""
                 SELECT 1 FROM menus WHERE id = %s AND user_id = %s
@@ -345,12 +349,71 @@ async def toggle_menu_sharing_with_organization(
                     detail="You can only share menus that you own"
                 )
             
-            # Update sharing status
-            cur.execute("""
-                UPDATE menus 
-                SET shared_with_organization = %s
-                WHERE id = %s
-            """, (shared, menu_id))
+            # If client_id is provided, share with specific client
+            if client_id:
+                # Check if client belongs to organization
+                cur.execute("""
+                    SELECT 1 FROM organization_clients 
+                    WHERE organization_id = %s AND client_id = %s AND status = 'active'
+                """, (org_id, client_id))
+                
+                if not cur.fetchone():
+                    raise HTTPException(
+                        status_code=404,
+                        detail="Client not found or not active in your organization"
+                    )
+                
+                if shared:
+                    # Check if already shared with this client
+                    cur.execute("""
+                        SELECT id FROM shared_menus 
+                        WHERE menu_id = %s AND shared_with = %s
+                    """, (menu_id, client_id))
+                    
+                    if not cur.fetchone():
+                        # Share with this client
+                        cur.execute("""
+                            INSERT INTO shared_menus (menu_id, shared_with, created_by, organization_id) 
+                            VALUES (%s, %s, %s, %s)
+                        """, (menu_id, client_id, user_id, org_id))
+                else:
+                    # Remove sharing with this client
+                    cur.execute("""
+                        DELETE FROM shared_menus 
+                        WHERE menu_id = %s AND shared_with = %s
+                    """, (menu_id, client_id))
+            else:
+                # If no client_id is provided, toggle sharing for all clients in the organization
+                if shared:
+                    # Get all active clients in the organization
+                    cur.execute("""
+                        SELECT client_id FROM organization_clients 
+                        WHERE organization_id = %s AND status = 'active'
+                    """, (org_id,))
+                    
+                    clients = cur.fetchall()
+                    
+                    for client in clients:
+                        client_id = client['client_id']
+                        
+                        # Check if already shared with this client
+                        cur.execute("""
+                            SELECT id FROM shared_menus 
+                            WHERE menu_id = %s AND shared_with = %s
+                        """, (menu_id, client_id))
+                        
+                        if not cur.fetchone():
+                            # Share with this client
+                            cur.execute("""
+                                INSERT INTO shared_menus (menu_id, shared_with, created_by, organization_id) 
+                                VALUES (%s, %s, %s, %s)
+                            """, (menu_id, client_id, user_id, org_id))
+                else:
+                    # Remove sharing with all clients
+                    cur.execute("""
+                        DELETE FROM shared_menus 
+                        WHERE menu_id = %s AND created_by = %s
+                    """, (menu_id, user_id))
             
             conn.commit()
             

@@ -829,14 +829,37 @@ const apiService = {
     }
   },
   
-  toggleMenuSharing: async (menuId, shared) => {
+  toggleMenuSharing: async (menuId, shared, clientId = null) => {
     try {
       const response = await axiosInstance.patch(`/client/toggle-menu-sharing/${menuId}`, {
-        shared
+        shared,
+        client_id: clientId
       });
       return response.data;
     } catch (err) {
       console.error(`Error toggling menu sharing for menu ${menuId}:`, err);
+      throw err;
+    }
+  },
+
+  // New function to share a menu directly with a client
+  shareMenuWithClient: async (menuId, clientId) => {
+    try {
+      const response = await axiosInstance.post(`/menu/share/${menuId}/client/${clientId}`);
+      return response.data;
+    } catch (err) {
+      console.error(`Error sharing menu ${menuId} with client ${clientId}:`, err);
+      throw err;
+    }
+  },
+
+  // Get menus created for a specific client
+  getMenusForClient: async (clientId) => {
+    try {
+      const response = await axiosInstance.get(`/menu/for-client/${clientId}`);
+      return response.data.menus;
+    } catch (err) {
+      console.error(`Error getting menus for client ${clientId}:`, err);
       throw err;
     }
   },

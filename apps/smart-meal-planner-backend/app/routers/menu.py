@@ -498,15 +498,16 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
 
             # Save to database
             cursor.execute("""
-                INSERT INTO menus (user_id, meal_plan_json, duration_days, meal_times, snacks_per_day)
-                VALUES (%s, %s, %s, %s, %s)
+                INSERT INTO menus (user_id, meal_plan_json, duration_days, meal_times, snacks_per_day, for_client_id)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 RETURNING id;
             """, (
                 req.user_id,
                 json.dumps(final_plan),
                 req.duration_days,
                 json.dumps(selected_meal_times),
-                req.snacks_per_day
+                req.snacks_per_day,
+                req.for_client_id
             ))
             
             menu_id = cursor.fetchone()["id"]
@@ -921,3 +922,195 @@ async def get_client_menus(
             return menus
     finally:
         conn.close()
+
+@router.post("/share/{menu_id}/client/{client_id}")
+async def share_menu_with_client(
+    menu_id: int,
+    client_id: int,
+    user = Depends(get_user_from_token)
+):
+    """Share a menu with a specific client"""
+    try:
+        user_id = user.get('user_id')
+        role = user.get('role', '')
+        org_id = user.get('organization_id')
+        
+        # Only organization owners can share menus
+        if role != 'owner':
+            raise HTTPException(
+                status_code=403, 
+                detail="Only organization owners can share menus"
+            )
+        
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        try:
+            # First check if the menu exists and belongs to this user
+            cursor.execute("""
+                SELECT id, user_id
+                FROM menus 
+                WHERE id = %s
+            """, (menu_id,))
+            
+            menu = cursor.fetchone()
+            
+            if not menu:
+                raise HTTPException(status_code=404, detail="Menu not found")
+                
+            if menu["user_id"] != user_id:
+                raise HTTPException(
+                    status_code=403, 
+                    detail="You can only share menus that you own"
+                )
+            
+            # Check if the client belongs to this organization
+            cursor.execute("""
+                SELECT id 
+                FROM organization_clients 
+                WHERE organization_id = %s AND client_id = %s AND status = 'active'
+            """, (org_id, client_id))
+            
+            client_record = cursor.fetchone()
+            if not client_record:
+                raise HTTPException(
+                    status_code=404, 
+                    detail="Client not found or not active in your organization"
+                )
+            
+            # Check if the menu is already shared with this client
+            cursor.execute("""
+                SELECT id FROM shared_menus 
+                WHERE menu_id = %s AND shared_with = %s
+            """, (menu_id, client_id))
+            
+            existing_share = cursor.fetchone()
+            
+            if existing_share:
+                # Menu is already shared with this client - update it to remove sharing
+                cursor.execute("""
+                    DELETE FROM shared_menus 
+                    WHERE id = %s
+                    RETURNING id
+                """, (existing_share["id"],))
+                conn.commit()
+                
+                return {
+                    "menu_id": menu_id,
+                    "client_id": client_id,
+                    "shared": False,
+                    "message": "Menu sharing removed"
+                }
+            else:
+                # Share the menu with this client
+                cursor.execute("""
+                    INSERT INTO shared_menus (menu_id, shared_with, created_by, organization_id) 
+                    VALUES (%s, %s, %s, %s)
+                    RETURNING id
+                """, (menu_id, client_id, user_id, org_id))
+                conn.commit()
+                
+                return {
+                    "menu_id": menu_id,
+                    "client_id": client_id,
+                    "shared": True,
+                    "message": "Menu shared successfully"
+                }
+                
+        finally:
+            cursor.close()
+            conn.close()
+            
+    except Exception as e:
+        logger.error(f"Error sharing menu with client: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/for-client/{client_id}")
+async def get_menus_for_client(
+    client_id: int,
+    user = Depends(get_user_from_token)
+):
+    """Get all menus created for a client by the organization and their sharing status"""
+    try:
+        # Only organization owners can access this endpoint
+        user_id = user.get('user_id')
+        org_id = user.get('organization_id')
+        role = user.get('role', '')
+        
+        if role != 'owner':
+            raise HTTPException(
+                status_code=403, 
+                detail="Only organization owners can access this endpoint"
+            )
+        
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        try:
+            # Check if the client belongs to this organization
+            cursor.execute("""
+                SELECT id 
+                FROM organization_clients 
+                WHERE organization_id = %s AND client_id = %s
+            """, (org_id, client_id))
+            
+            if not cursor.fetchone():
+                raise HTTPException(
+                    status_code=404, 
+                    detail="Client not found in your organization"
+                )
+            
+            # Get all menus created for this client by the organization owner
+            cursor.execute("""
+                SELECT 
+                    m.id as menu_id, 
+                    m.meal_plan_json, 
+                    m.created_at::TEXT AS created_at,
+                    COALESCE(m.nickname, '') AS nickname,
+                    m.user_id as owner_id,
+                    up.name as owner_name,
+                    (
+                        SELECT EXISTS(
+                            SELECT 1 FROM shared_menus sm 
+                            WHERE sm.menu_id = m.id AND sm.shared_with = %s
+                        )
+                    ) as is_shared,
+                    (
+                        SELECT sm.created_at::TEXT FROM shared_menus sm 
+                        WHERE sm.menu_id = m.id AND sm.shared_with = %s
+                        LIMIT 1
+                    ) as shared_at
+                FROM menus m
+                JOIN user_profiles up ON m.user_id = up.id
+                WHERE m.user_id = %s
+                  AND m.for_client_id = %s
+                ORDER BY m.created_at DESC;
+            """, (client_id, client_id, user_id, client_id))
+            
+            menus = cursor.fetchall()
+            
+            return {
+                "menus": [
+                    {
+                        "menu_id": m["menu_id"], 
+                        "meal_plan": m["meal_plan_json"], 
+                        "created_at": m["created_at"],
+                        "shared_at": m["shared_at"],
+                        "nickname": m["nickname"],
+                        "is_shared": m["is_shared"],
+                        "owner": {
+                            "id": m["owner_id"],
+                            "name": m["owner_name"]
+                        }
+                    } 
+                    for m in menus
+                ]
+            }
+            
+        finally:
+            cursor.close()
+            conn.close()
+            
+    except Exception as e:
+        logger.error(f"Error getting menus for client: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
