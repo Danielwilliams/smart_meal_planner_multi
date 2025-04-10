@@ -9,9 +9,9 @@ import {
   Button,
   CircularProgress,
   Alert,
-  Stepper,
-  Step,
-  StepLabel
+  Card,
+  CardContent,
+  Divider
 } from '@mui/material';
 import { useAuth } from '../context/AuthContext';
 import apiService from '../services/apiService';
@@ -25,6 +25,7 @@ function AcceptInvitation() {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
   const [organizationName, setOrganizationName] = useState('');
+  const [invitationEmail, setInvitationEmail] = useState('');
   
   const token = searchParams.get('token');
   const orgId = searchParams.get('org');
@@ -41,6 +42,12 @@ function AcceptInvitation() {
         // Fetch organization details
         const orgDetails = await apiService.getOrganizationDetails(orgId);
         setOrganizationName(orgDetails.name);
+        
+        // Check invitation validity and get associated email
+        const invitationCheck = await apiService.checkInvitation(token, orgId);
+        if (invitationCheck.valid) {
+          setInvitationEmail(invitationCheck.email);
+        }
         
         // If user is not authenticated, simply show info but don't try to accept
         if (!isAuthenticated) {
@@ -68,7 +75,7 @@ function AcceptInvitation() {
   };
 
   const handleSignUp = () => {
-    // Redirect to dedicated client signup
+    // Redirect directly to dedicated client signup
     navigate(`/client-signup?token=${token}&org=${orgId}`);
   };
 
@@ -81,6 +88,14 @@ function AcceptInvitation() {
     }
   };
 
+  // If invitation already has an associated email and user is not authenticated,
+  // automatically redirect to the client signup page
+  useEffect(() => {
+    if (!loading && !isAuthenticated && invitationEmail && !error) {
+      navigate(`/client-signup?token=${token}&org=${orgId}`);
+    }
+  }, [loading, isAuthenticated, invitationEmail, token, orgId, navigate, error]);
+
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="80vh">
@@ -91,11 +106,11 @@ function AcceptInvitation() {
 
   return (
     <Container maxWidth="md">
-      <Typography variant="h4" gutterBottom>
-        Organization Invitation
+      <Typography variant="h4" align="center" gutterBottom sx={{ mt: 4 }}>
+        Client Invitation
       </Typography>
 
-      <Paper sx={{ p: 4, mt: 2 }}>
+      <Paper elevation={3} sx={{ p: 4, mt: 2, borderRadius: 2 }}>
         {error ? (
           <>
             <Alert severity="error" sx={{ mb: 3 }}>
@@ -110,23 +125,44 @@ function AcceptInvitation() {
             <Alert severity="success" sx={{ mb: 3 }}>
               You have successfully joined {organizationName}!
             </Alert>
-            <Button variant="contained" onClick={handleGoToDashboard}>
+            <Typography paragraph>
+              You can now access all nutrition plans and resources provided by your nutrition coach.
+            </Typography>
+            <Button variant="contained" onClick={handleGoToDashboard} fullWidth>
               Go to Dashboard
             </Button>
           </>
         ) : (
           <>
-            <Typography variant="h5" gutterBottom>
+            <Typography variant="h5" align="center" gutterBottom>
               You've been invited to join {organizationName}
             </Typography>
+            
+            <Divider sx={{ my: 2 }} />
+            
+            <Card variant="outlined" sx={{ mb: 3, bgcolor: '#f8f9fa' }}>
+              <CardContent>
+                <Typography variant="subtitle1" gutterBottom fontWeight="bold">
+                  As a client of {organizationName}, you'll have access to:
+                </Typography>
+                <Box component="ul" sx={{ pl: 2 }}>
+                  <Typography component="li" variant="body2">Personalized meal plans</Typography>
+                  <Typography component="li" variant="body2">Nutrition-optimized recipes</Typography>
+                  <Typography component="li" variant="body2">Grocery shopping lists</Typography>
+                  <Typography component="li" variant="body2">Online grocery ordering integration</Typography>
+                </Box>
+              </CardContent>
+            </Card>
             
             {isAuthenticated ? (
               <>
                 <Typography paragraph>
-                  Click the button below to accept the invitation and join this organization.
+                  Click the button below to accept the invitation and join this organization as a client.
                 </Typography>
                 <Button 
                   variant="contained" 
+                  fullWidth
+                  size="large"
                   onClick={async () => {
                     setLoading(true);
                     try {
@@ -144,15 +180,24 @@ function AcceptInvitation() {
               </>
             ) : (
               <>
-                <Typography paragraph>
-                  You need to sign in or create an account to accept this invitation.
+                <Typography paragraph variant="h6" align="center">
+                  Create a client account to access your nutrition plan
                 </Typography>
-                <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
-                  <Button variant="contained" onClick={handleLogin}>
-                    Sign In
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
+                  <Button 
+                    variant="contained" 
+                    color="primary" 
+                    size="large"
+                    onClick={handleSignUp}
+                    fullWidth
+                  >
+                    Create Client Account
                   </Button>
-                  <Button variant="outlined" onClick={handleSignUp}>
-                    Create Account
+                  <Typography align="center" variant="body2" sx={{ mt: 1 }}>
+                    Already have an account? 
+                  </Typography>
+                  <Button variant="outlined" onClick={handleLogin}>
+                    Sign In with Existing Account
                   </Button>
                 </Box>
               </>

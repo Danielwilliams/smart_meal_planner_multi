@@ -14,7 +14,9 @@ import {
   CardContent,
   Alert,
   CircularProgress,
-  Divider
+  Divider,
+  useTheme,
+  Chip
 } from '@mui/material';
 import { Link as RouterLink, useNavigate, useLocation } from 'react-router-dom';
 import apiService from '../services/apiService';
@@ -26,6 +28,7 @@ function useQuery() {
 }
 
 const ClientSignupPage = () => {
+  const theme = useTheme();
   const query = useQuery();
   const navigate = useNavigate();
   const { login } = useAuth();
@@ -235,10 +238,11 @@ const ClientSignupPage = () => {
               type="submit"
               fullWidth
               variant="contained"
+              size="large"
               sx={{ mt: 3, mb: 2 }}
               disabled={loading}
             >
-              {loading ? <CircularProgress size={24} /> : "Create Account"}
+              {loading ? <CircularProgress size={24} /> : "Create Client Account"}
             </Button>
             <Box sx={{ mt: 2, textAlign: 'center' }}>
               <Typography variant="body2">
@@ -253,9 +257,11 @@ const ClientSignupPage = () => {
       case 1:
         return (
           <Box sx={{ mt: 3, textAlign: 'center' }}>
-            <Typography variant="h6" gutterBottom>
-              Account Created Successfully!
-            </Typography>
+            <Box sx={{ mb: 3, display: 'flex', justifyContent: 'center' }}>
+              <Alert severity="success" sx={{ display: 'inline-flex' }}>
+                Account Created Successfully!
+              </Alert>
+            </Box>
             <Typography variant="body1" gutterBottom>
               Your account has been created, but we need to verify your email and connect you to {orgName}.
             </Typography>
@@ -270,6 +276,8 @@ const ClientSignupPage = () => {
               color="primary"
               onClick={handleVerifyAndAccept}
               disabled={loading}
+              size="large"
+              fullWidth
               sx={{ mt: 2 }}
             >
               {loading ? <CircularProgress size={24} /> : "Connect to Organization"}
@@ -279,19 +287,44 @@ const ClientSignupPage = () => {
       case 2:
         return (
           <Box sx={{ mt: 3, textAlign: 'center' }}>
+            <Box sx={{ mb: 3, display: 'flex', justifyContent: 'center' }}>
+              <Alert severity="success" sx={{ display: 'inline-flex' }}>
+                Congratulations! You're all set! 
+              </Alert>
+            </Box>
             <Typography variant="h6" gutterBottom>
-              All Set! You're now connected to {orgName}
+              You're now connected to {orgName}
             </Typography>
             <Typography variant="body1" gutterBottom>
               Your client account has been set up successfully. You can now access your personalized nutrition resources.
             </Typography>
+            <Card variant="outlined" sx={{ my: 3, bgcolor: '#f8f9fa' }}>
+              <CardContent>
+                <Typography variant="subtitle1" gutterBottom>
+                  What's next?
+                </Typography>
+                <Box sx={{ textAlign: 'left' }}>
+                  <Typography component="div" variant="body2" sx={{ mb: 1 }}>
+                    • Check your dashboard for meal plans shared by your nutrition provider
+                  </Typography>
+                  <Typography component="div" variant="body2" sx={{ mb: 1 }}>
+                    • Set your nutrition preferences to get personalized recommendations
+                  </Typography>
+                  <Typography component="div" variant="body2">
+                    • Explore recipes and create shopping lists
+                  </Typography>
+                </Box>
+              </CardContent>
+            </Card>
             <Button
               variant="contained"
               color="primary"
               onClick={handleGoToDashboard}
+              size="large"
+              fullWidth
               sx={{ mt: 3 }}
             >
-              Go to Dashboard
+              Go to Client Dashboard
             </Button>
           </Box>
         );
@@ -303,7 +336,7 @@ const ClientSignupPage = () => {
   if (!tokenValid) {
     return (
       <Container maxWidth="sm" sx={{ mt: 8 }}>
-        <Paper elevation={3} sx={{ p: 4 }}>
+        <Paper elevation={3} sx={{ p: 4, borderRadius: 2 }}>
           <Typography variant="h5" component="h1" align="center" gutterBottom>
             Invalid Invitation
           </Typography>
@@ -326,7 +359,19 @@ const ClientSignupPage = () => {
   
   return (
     <Container maxWidth="sm" sx={{ mt: 8, mb: 8 }}>
-      <Paper elevation={3} sx={{ p: 4 }}>
+      <Paper elevation={3} sx={{ p: 4, borderRadius: 2 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 2 }}>
+          <Chip 
+            label="CLIENT REGISTRATION" 
+            sx={{ 
+              bgcolor: theme.palette.primary.main, 
+              color: 'white',
+              fontWeight: 'bold',
+              mb: 1
+            }} 
+          />
+        </Box>
+        
         <Typography variant="h5" component="h1" align="center" gutterBottom>
           Join {orgName} as a Client
         </Typography>
@@ -351,9 +396,9 @@ const ClientSignupPage = () => {
           </Alert>
         )}
         
-        <Card variant="outlined" sx={{ mb: 3 }}>
+        <Card variant="outlined" sx={{ mb: 3, bgcolor: '#f8f9fa' }}>
           <CardContent>
-            <Typography variant="subtitle1" gutterBottom>
+            <Typography variant="subtitle1" gutterBottom fontWeight="bold">
               As a client of {orgName}, you'll have access to:
             </Typography>
             <Box component="ul" sx={{ pl: 2 }}>
