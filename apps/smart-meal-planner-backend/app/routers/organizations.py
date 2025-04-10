@@ -101,15 +101,23 @@ async def get_user_organizations(user=Depends(get_user_from_token)):
 @router.get("/{org_id}")
 async def get_organization(
     org_id: int,
-    user=Depends(require_organization_member)
+    user=Depends(get_user_from_token, use_cache=False)
 ):
-    """Get organization details (must be owner or client)"""
-    # Ensure user belongs to this specific organization
-    if user.get('organization_id') != org_id:
-        raise HTTPException(
-            status_code=403,
-            detail="You don't have access to this organization"
-        )
+    """Get organization details (basic info is public for invitation flow)"""
+    # For non-authenticated requests or invitation flow, allow access to basic info
+    if not user:
+        # This is a public request, only return minimal information
+        is_public_request = True
+    else:
+        # For authenticated users, check permissions
+        is_public_request = False
+        # Only perform this check for authenticated users
+        if user.get('organization_id') != org_id:
+            # For normal authenticated users who don't belong to this org, restrict access
+            raise HTTPException(
+                status_code=403,
+                detail="You don't have access to this organization"
+            )
     
     conn = get_db_connection()
     try:
@@ -126,12 +134,20 @@ async def get_organization(
                     detail="Organization not found"
                 )
             
-            return {
-                "id": org[0],
-                "name": org[1],
-                "description": org[2],
-                "owner_id": org[3],
-                "created_at": org[4].isoformat()
-            }
+            # For public requests (invitation flow), only return name and id
+            if 'is_public_request' in locals() and is_public_request:
+                return {
+                    "id": org[0],
+                    "name": org[1]
+                }
+            else:
+                # For authenticated users, return full details
+                return {
+                    "id": org[0],
+                    "name": org[1],
+                    "description": org[2],
+                    "owner_id": org[3],
+                    "created_at": org[4].isoformat()
+                }
     finally:
         conn.close()

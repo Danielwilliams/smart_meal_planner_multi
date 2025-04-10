@@ -100,10 +100,13 @@ const ClientSignupPage = () => {
       }
       
       try {
+        console.log('Fetching organization details for:', orgId);
         const response = await apiService.getOrganizationDetails(orgId);
+        console.log('Organization details response:', response);
         setOrgName(response.name || 'Your nutrition provider');
       } catch (err) {
         console.error('Error fetching organization:', err);
+        // Always use a fallback name
         setOrgName('Your nutrition provider');
       }
     };

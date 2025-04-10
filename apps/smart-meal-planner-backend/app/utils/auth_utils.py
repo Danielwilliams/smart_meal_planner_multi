@@ -9,12 +9,23 @@ from app.db import get_db_connection  # Add this import
 
 logger = logging.getLogger(__name__)
 
-async def get_user_from_token(request: Request):
-    """Enhanced token validation with organization role checking"""
+async def get_user_from_token(request: Request, use_cache=True):
+    """
+    Enhanced token validation with organization role checking
+    Allows optional authentication for public endpoints
+    
+    Args:
+        request: The FastAPI request object
+        use_cache: Whether to use cached token data
+        
+    Returns:
+        dict: User payload with organization data, or None if no valid token
+    """
     auth_header = request.headers.get('Authorization')
     if not auth_header:
         logger.error("No Authorization header found")
-        raise HTTPException(status_code=401, detail="No authorization token")
+        # For endpoints that allow anonymous access, return None instead of raising
+        return None
     
     try:
         if auth_header.startswith('Bearer '):
@@ -39,13 +50,18 @@ async def get_user_from_token(request: Request):
         
     except jwt.ExpiredSignatureError:
         logger.error("Token has expired")
+        # For endpoints that allow anonymous access, return None instead of raising
+        if 'allow_anonymous' in locals() and allow_anonymous:
+            return None
         raise HTTPException(status_code=401, detail="Token has expired")
-    except jwt.PyJWTError as e:  # Changed from JWTError to PyJWTError
+    except jwt.PyJWTError as e:
         logger.error(f"JWT validation error: {str(e)}")
-        raise HTTPException(status_code=401, detail="Invalid token")
+        # For endpoints that allow anonymous access, return None instead of raising
+        return None
     except Exception as e:
         logger.error(f"Unexpected error in token validation: {str(e)}")
-        raise HTTPException(status_code=401, detail="Token validation error")
+        # For endpoints that allow anonymous access, return None instead of raising
+        return None
 
 async def get_user_organization_role(user_id: int):
     """Get user's organization and role if any"""

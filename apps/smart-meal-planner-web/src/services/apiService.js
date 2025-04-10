@@ -542,11 +542,18 @@ const apiService = {
 
   getOrganizationDetails: async (orgId) => {
     try {
+      console.log(`Fetching organization details for ID: ${orgId}`);
       const response = await axiosInstance.get(`/organizations/${orgId}`);
+      console.log('Organization API response:', response.data);
       return response.data;
     } catch (err) {
       console.error('Error fetching organization details:', err);
-      throw err;
+      // Instead of throwing, return a basic object with a default name
+      return { 
+        id: orgId,
+        name: 'Your Nutrition Provider',
+        error: true 
+      };
     }
   },  
 
