@@ -1,5 +1,5 @@
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
@@ -36,7 +36,51 @@ import ClientRegistrationRouter from './components/ClientRegistrationRouter';
 import TestInvitation from './TestInvitation';
 
 
+// Handler for direct client signup via hash routing
+function HashNavigationHandler() {
+  const navigate = useNavigate();
+  
+  useEffect(() => {
+    // Check if we're using hash routing for direct client signup
+    if (window.location.hash.startsWith('#/client-signup')) {
+      // Extract the query parameters after the hash
+      const hashParts = window.location.hash.split('?');
+      const queryParams = hashParts.length > 1 ? hashParts[1] : '';
+      
+      // Navigate to the client signup page with the parameters
+      navigate(`/client-signup?${queryParams}`, { replace: true });
+      
+      // Clean up the hash
+      window.location.hash = '';
+    }
+  }, [navigate]);
+  
+  return null;
+}
+
 function App() {
+  // Add a direct handler for hash-based navigation that might bypass React Router
+  useEffect(() => {
+    const handleDirectSignup = () => {
+      // If localStorage shows we're in direct client signup mode
+      if (localStorage.getItem('direct_client_signup') === 'true') {
+        const token = localStorage.getItem('invitation_token');
+        const orgId = localStorage.getItem('invitation_org_id');
+        
+        // Clear the flag
+        localStorage.removeItem('direct_client_signup');
+        
+        // Redirect directly to client signup
+        if (token && orgId) {
+          window.location.href = `/client-signup?token=${token}&org=${orgId}`;
+        }
+      }
+    };
+    
+    // Run once on initial load
+    handleDirectSignup();
+  }, []);
+  
   return (
     <GoogleReCaptchaProvider
       reCaptchaKey="6Lf2l8MqAAAAAC9fWHMdG8vFbwPfYHvE5jgxFCzT"
@@ -51,6 +95,7 @@ function App() {
         <ThemeProvider theme={theme}>
           <CssBaseline />
           <Router>
+            <HashNavigationHandler />
             <NavBar />
             <Routes>
               {/* Public Routes */}

@@ -39,9 +39,9 @@ class InviteRequest(BaseModel):
 
 async def send_invitation_email(email, token, org_id, user_exists, organization_name):
     """Send invitation email to client"""
-    # Use the dedicated client-invite HTML page to ensure a reliable redirect
-    # This ensures the user arrives at the client signup page consistently
-    invitation_link = f"{FRONTEND_URL}/client-invite.html?token={token}&org={org_id}"
+    # Use the standalone client page which provides a clearer user experience
+    # This avoids any routing issues entirely with a completely separate HTML page
+    invitation_link = f"{FRONTEND_URL}/client-standalone.html?token={token}&org={org_id}"
     
     # Log the invitation URL for debugging
     logger.info(f"Generated invitation link: {invitation_link}")
