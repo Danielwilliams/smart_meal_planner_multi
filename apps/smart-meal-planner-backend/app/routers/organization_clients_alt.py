@@ -88,10 +88,10 @@ async def add_client_to_organization_by_id(
                     detail="User is already a client of this organization"
                 )
             
-            # Add client to organization
+            # Add client to organization with active status
             cur.execute("""
-                INSERT INTO organization_clients (organization_id, client_id, role)
-                VALUES (%s, %s, %s)
+                INSERT INTO organization_clients (organization_id, client_id, role, status)
+                VALUES (%s, %s, %s, 'active')
             """, (org_id, client_id, role))
             
             conn.commit()
@@ -140,10 +140,10 @@ async def add_client_by_email(
                     detail="User is already a client of this organization"
                 )
             
-            # Add client to organization
+            # Add client to organization with active status
             cur.execute("""
-                INSERT INTO organization_clients (organization_id, client_id, role)
-                VALUES (%s, %s, %s)
+                INSERT INTO organization_clients (organization_id, client_id, role, status)
+                VALUES (%s, %s, %s, 'active')
             """, (org_id, client_id, client_data.role))
             
             conn.commit()

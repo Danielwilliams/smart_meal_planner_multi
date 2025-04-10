@@ -214,11 +214,33 @@ async def accept_invitation(
     user=Depends(get_user_from_token)
 ):
     """Accept an invitation to join an organization"""
+    # Check if user is not None
+    if not user:
+        logger.error(f"No authenticated user found when accepting invitation for org_id {org_id}")
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required to accept invitation"
+        )
+    
     user_id = user.get('user_id')
+    logger.info(f"Accept invitation called with token: {token[:10]}... org_id: {org_id}, user_id: {user_id}")
     
     conn = get_db_connection()
     try:
         with conn.cursor() as cur:
+            # Log user details for debugging
+            cur.execute("""
+                SELECT id, email, account_type, organization_id, profile_complete 
+                FROM user_profiles WHERE id = %s
+            """, (user_id,))
+            user_details = cur.fetchone()
+            if user_details:
+                logger.info(f"User details: id={user_details[0]}, email={user_details[1]}, "
+                           f"account_type={user_details[2]}, organization_id={user_details[3]}, "
+                           f"profile_complete={user_details[4]}")
+            else:
+                logger.error(f"User with ID {user_id} not found in database")
+            
             # Verify the invitation
             cur.execute("""
                 SELECT id, email FROM client_invitations
@@ -231,10 +253,13 @@ async def accept_invitation(
             invitation = cur.fetchone()
             
             if not invitation:
+                logger.error(f"Invalid invitation - token: {token[:10]}..., org_id: {org_id}")
                 raise HTTPException(
                     status_code=400,
                     detail="Invalid or expired invitation"
                 )
+            
+            logger.info(f"Valid invitation found - id: {invitation[0]}, email: {invitation[1]}")
             
             # Get the user's email
             cur.execute("""
@@ -246,45 +271,86 @@ async def accept_invitation(
             logger.info(f"Invitation email: {invitation[1]}")
             logger.info(f"User email: {user_profile[0] if user_profile else 'Not found'}")
             
-            # Skip email verification - any user can accept an invitation (only for testing!)
+            # Skip email verification for development - any user can accept an invitation
             # In production, you would want to enforce email matching
             
-            # Add user to organization
-            cur.execute("""
-                INSERT INTO organization_clients
-                (organization_id, client_id, role)
-                VALUES (%s, %s, 'client')
-                ON CONFLICT (organization_id, client_id) DO NOTHING
-            """, (org_id, user_id))
-            
-            # Update invitation status
-            cur.execute("""
-                UPDATE client_invitations
-                SET status = 'accepted'
-                WHERE id = %s
-            """, (invitation[0],))
-            
-            # Update user profile to add client role
-            cur.execute("""
-                UPDATE user_profiles
-                SET account_type = 'client', 
-                    organization_id = %s,
-                    profile_complete = TRUE
-                WHERE id = %s
-                RETURNING email
-            """, (org_id, user_id))
-            
-            user_email = cur.fetchone()[0]
-            
-            # Log the successful client account creation
-            logger.info(f"User {user_id} with email {user_email} accepted invitation and is now a client of organization {org_id}")
-            
-            conn.commit()
-            
-            return {
-                "message": "Invitation accepted successfully", 
-                "account_type": "client",
-                "organization_id": org_id
-            }
+            try:
+                # Add user to organization with active status
+                cur.execute("""
+                    INSERT INTO organization_clients
+                    (organization_id, client_id, role, status)
+                    VALUES (%s, %s, 'client', 'active')
+                    ON CONFLICT (organization_id, client_id) 
+                    DO UPDATE SET status = 'active'
+                    RETURNING id
+                """, (org_id, user_id))
+                
+                org_client_id = cur.fetchone()[0]
+                logger.info(f"User added to organization_clients - id: {org_client_id}")
+                
+                # Update invitation status
+                cur.execute("""
+                    UPDATE client_invitations
+                    SET status = 'accepted'
+                    WHERE id = %s
+                    RETURNING id
+                """, (invitation[0],))
+                
+                invitation_id = cur.fetchone()[0]
+                logger.info(f"Invitation status updated to accepted - id: {invitation_id}")
+                
+                # Update user profile to add client role
+                cur.execute("""
+                    UPDATE user_profiles
+                    SET account_type = 'client', 
+                        organization_id = %s,
+                        profile_complete = TRUE
+                    WHERE id = %s
+                    RETURNING email, id
+                """, (org_id, user_id))
+                
+                user_result = cur.fetchone()
+                user_email = user_result[0]
+                user_updated_id = user_result[1]
+                
+                logger.info(f"User profile updated - email: {user_email}, id: {user_updated_id}, "
+                           f"account_type: client, organization_id: {org_id}")
+                
+                conn.commit()
+                logger.info("Transaction committed successfully")
+                
+                # Verify the updates
+                cur.execute("""
+                    SELECT account_type, organization_id FROM user_profiles WHERE id = %s
+                """, (user_id,))
+                user_verify = cur.fetchone()
+                logger.info(f"After update verification - account_type: {user_verify[0]}, "
+                           f"organization_id: {user_verify[1]}")
+                
+                cur.execute("""
+                    SELECT status FROM organization_clients 
+                    WHERE organization_id = %s AND client_id = %s
+                """, (org_id, user_id))
+                client_verify = cur.fetchone()
+                logger.info(f"Organization client verification - status: {client_verify[0] if client_verify else 'Not found'}")
+                
+                return {
+                    "message": "Invitation accepted successfully", 
+                    "account_type": "client",
+                    "organization_id": org_id,
+                    "user_id": user_id
+                }
+            except Exception as e:
+                logger.error(f"Database error during invitation acceptance: {str(e)}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Error accepting invitation: {str(e)}"
+                )
+    except Exception as e:
+        logger.error(f"Unexpected error in accept_invitation: {str(e)}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"An unexpected error occurred: {str(e)}"
+        )
     finally:
         conn.close()

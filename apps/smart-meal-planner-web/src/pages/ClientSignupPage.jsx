@@ -228,23 +228,77 @@ const ClientSignupPage = () => {
         throw new Error('reCAPTCHA not initialized');
       }
       
+      console.log('Getting captcha token for client login...');
       const captchaToken = await executeRecaptcha('client_login');
       
+      console.log('Logging in with credentials...');
       // Log the user in with captcha token
-      await login({
+      const loginResponse = await login({
         email: signupData.email,
         password: signupData.password,
         captchaToken: captchaToken
       });
       
-      // Accept the invitation with the token and org ID
-      await apiService.acceptInvitation(token, orgId);
+      console.log('Login successful, response:', loginResponse);
       
-      // Move to final step
-      setActiveStep(2);
+      // Check if the token is in localStorage
+      const storedToken = localStorage.getItem('access_token');
+      console.log('Stored token after login:', storedToken ? 'Token exists' : 'No token found');
+      
+      // We need to make sure the user is logged in before accepting the invitation
+      // Longer delay to ensure the token is properly stored and any auth state is updated
+      console.log('Waiting for auth state to stabilize...');
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Verify token again after delay
+      const tokenAfterDelay = localStorage.getItem('access_token');
+      console.log('Token after delay:', tokenAfterDelay ? 'Token exists' : 'No token found');
+      
+      if (!tokenAfterDelay) {
+        throw new Error('Auth token not available after login. Please try again.');
+      }
+      
+      console.log('Accepting invitation with token and orgId:', { token, orgId });
+      
+      // Accept the invitation with the token and org ID
+      try {
+        const acceptResponse = await apiService.acceptInvitation(token, orgId);
+        console.log('Invitation accepted successfully:', acceptResponse);
+        
+        // If we get this far, update user account type in auth context
+        const userData = JSON.parse(localStorage.getItem('user') || '{}');
+        userData.account_type = 'client';
+        localStorage.setItem('user', JSON.stringify(userData));
+        
+        // Move to final step
+        setActiveStep(2);
+      } catch (acceptErr) {
+        console.error('Error accepting invitation:', acceptErr);
+        
+        // If specific error messages are provided by the API, display them
+        if (acceptErr.response?.data?.detail) {
+          setError(`Connection error: ${acceptErr.response.data.detail}`);
+          
+          // Special case for debugging
+          if (acceptErr.response?.status === 401) {
+            console.log('401 Unauthorized when accepting invitation. Token details:');
+            console.log('Current token in localStorage:', localStorage.getItem('access_token'));
+          }
+        } else {
+          setError('Failed to connect to organization. Please try again or contact support.');
+        }
+      }
     } catch (err) {
-      console.error('Error during login or invitation acceptance:', err);
-      setError(err.response?.data?.detail || 'Error accepting invitation. Please try again.');
+      console.error('Error during client connection process:', err);
+      
+      // More detailed error handling
+      if (err.response?.status === 401) {
+        setError('Authentication failed. Please try logging in again.');
+      } else if (err.response?.status === 404) {
+        setError('Invitation not found. It may have expired.');
+      } else {
+        setError(err.message || err.response?.data?.detail || 'Error accepting invitation. Please try again.');
+      }
     } finally {
       setLoading(false);
     }

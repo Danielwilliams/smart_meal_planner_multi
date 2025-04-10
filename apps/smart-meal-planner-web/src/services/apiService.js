@@ -50,17 +50,33 @@ axiosInstance.interceptors.response.use(
   }
 );
 
-// Updated interceptor with better token handling
+// Updated interceptor with improved token handling and logging
 axiosInstance.interceptors.request.use((config) => {
   const token = localStorage.getItem('access_token');
+  
   if (token) {
     // Make sure we always have the 'Bearer ' prefix
-    config.headers.Authorization = token.startsWith('Bearer ') 
+    const formattedToken = token.startsWith('Bearer ') 
       ? token 
       : `Bearer ${token}`;
+      
+    config.headers.Authorization = formattedToken;
+    
+    // Log token usage for debugging
+    if (config.url && config.url.includes('org-invitations/accept')) {
+      console.log('Setting auth header for invitation acceptance:', {
+        tokenExists: !!token,
+        tokenHasBearer: token.startsWith('Bearer '),
+        headerAfterFormat: config.headers.Authorization.substr(0, 15) + '...' // Don't log full token
+      });
+    }
+  } else if (config.url && config.url.includes('org-invitations/accept')) {
+    console.warn('No auth token found in localStorage when accepting invitation!');
   }
+  
   return config;
 }, (error) => {
+  console.error('Request interceptor error:', error);
   return Promise.reject(error);
 });
 
@@ -635,10 +651,45 @@ const apiService = {
   
   acceptInvitation: async (token, orgId) => {
     try {
-      const response = await axiosInstance.get(`/org-invitations/accept/${token}/${orgId}`);
+      console.log(`Accepting invitation with token: ${token} and orgId: ${orgId}`);
+      console.log('Using authorization token:', localStorage.getItem('access_token') ? 'Token exists' : 'No token found');
+      
+      // Verify the authorization header is being set correctly
+      const currentToken = localStorage.getItem('access_token');
+      if (currentToken) {
+        console.log('Token format check:', 
+          currentToken.startsWith('Bearer ') ? 'Has Bearer prefix' : 'Missing Bearer prefix');
+      }
+      
+      // Make the API call with explicit headers to ensure token is sent
+      const response = await axiosInstance.get(`/org-invitations/accept/${token}/${orgId}`, {
+        headers: {
+          'Authorization': currentToken && !currentToken.startsWith('Bearer ') 
+            ? `Bearer ${currentToken}` 
+            : currentToken
+        }
+      });
+      
+      console.log('Invitation accepted successfully. Response:', response.data);
+      
+      // Update user account type in local storage for immediate use
+      const userData = JSON.parse(localStorage.getItem('user') || '{}');
+      userData.account_type = 'client';
+      userData.organization_id = orgId;
+      localStorage.setItem('user', JSON.stringify(userData));
+      
       return response.data;
     } catch (err) {
-      console.error('Error accepting invitation:', err);
+      console.error('Error accepting invitation:', {
+        message: err.message,
+        status: err.response?.status,
+        data: err.response?.data,
+        config: err.config ? {
+          url: err.config.url,
+          method: err.config.method,
+          headers: err.config.headers
+        } : 'No config available'
+      });
       throw err;
     }
   },  
