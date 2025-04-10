@@ -39,12 +39,9 @@ class InviteRequest(BaseModel):
 
 async def send_invitation_email(email, token, org_id, user_exists, organization_name):
     """Send invitation email to client"""
-    # Create different links for existing vs new users
-    if user_exists:
-        invitation_link = f"{FRONTEND_URL}/accept-invitation?token={token}&org={org_id}"
-    else:
-        # Special signup flow for new clients
-        invitation_link = f"{FRONTEND_URL}/client-signup?token={token}&org={org_id}"
+    # Always send users directly to the client signup page
+    # This is more intuitive and clear that they're signing up as a client
+    invitation_link = f"{FRONTEND_URL}/client-signup?token={token}&org={org_id}"
     
     # Log the invitation URL for debugging
     logger.info(f"Generated invitation link: {invitation_link}")
@@ -55,49 +52,30 @@ async def send_invitation_email(email, token, org_id, user_exists, organization_
     msg['From'] = SMTP_USERNAME
     msg['To'] = email
     
-    # Customize message based on whether user already exists
-    if user_exists:
-        body = f"""
-        Hello!
-        
-        You've been invited by {organization_name} to access their nutrition services on Smart Meal Planner.
-        
-        Click the link below to log in and accept the invitation:
-        {invitation_link}
-        
-        As a client, you'll be able to:
-        • View meal plans created for you
-        • Access recipes shared by your nutrition expert
-        • Generate shopping lists
-        • Send grocery items to online grocery services
-        
-        This link will expire in 7 days.
-        
-        If you have any questions, please contact your nutrition provider directly.
-        
-        The Smart Meal Planner Team
-        """
-    else:
-        body = f"""
-        Hello!
-        
-        You've been invited by {organization_name} to access their nutrition services on Smart Meal Planner.
-        
-        Click the link below to create your client account:
-        {invitation_link}
-        
-        As a client, you'll be able to:
-        • View meal plans created for you
-        • Access recipes shared by your nutrition expert
-        • Generate shopping lists
-        • Send grocery items to online grocery services
-        
-        This link will expire in 7 days.
-        
-        If you have any questions, please contact your nutrition provider directly.
-        
-        The Smart Meal Planner Team
-        """
+    # One clear message regardless of user status
+    body = f"""
+    Hello!
+    
+    You've been invited by {organization_name} to join their nutrition services as a client on Smart Meal Planner.
+    
+    Click the link below to set up your client account:
+    {invitation_link}
+    
+    As a client, you'll be able to:
+    • View meal plans created for you
+    • Access recipes shared by your nutrition expert
+    • Generate shopping lists
+    • Send grocery items to online grocery services
+    
+    Important: This link takes you directly to the client registration page, making it clear
+    that you're signing up as a client of {organization_name}.
+    
+    This invitation link will expire in 7 days.
+    
+    If you have any questions, please contact your nutrition provider directly.
+    
+    The Smart Meal Planner Team
+    """
     
     msg.attach(MIMEText(body, 'plain'))
     

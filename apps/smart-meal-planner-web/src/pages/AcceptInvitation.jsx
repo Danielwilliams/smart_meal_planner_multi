@@ -88,13 +88,14 @@ function AcceptInvitation() {
     }
   };
 
-  // If invitation already has an associated email and user is not authenticated,
-  // automatically redirect to the client signup page
+  // Always redirect non-authenticated users to the client signup page
+  // This solves the issue of the accept-invitation endpoint not working correctly
   useEffect(() => {
-    if (!loading && !isAuthenticated && invitationEmail && !error) {
+    if (!loading && !isAuthenticated && !error) {
+      // Force redirect to client signup regardless of invitationEmail status
       navigate(`/client-signup?token=${token}&org=${orgId}`);
     }
-  }, [loading, isAuthenticated, invitationEmail, token, orgId, navigate, error]);
+  }, [loading, isAuthenticated, token, orgId, navigate, error]);
 
   if (loading) {
     return (
