@@ -52,6 +52,17 @@ const ClientSignupPage = () => {
     organization_id: orgId ? parseInt(orgId) : null
   });
   
+  // Prevent redirect to login page for this client signup
+  useEffect(() => {
+    // Add flag to localStorage to indicate we're in client signup flow
+    localStorage.setItem('in_client_signup', 'true');
+    
+    // Clean up function to remove the flag when component unmounts
+    return () => {
+      localStorage.removeItem('in_client_signup');
+    };
+  }, []);
+
   // Fetch organization name
   useEffect(() => {
     const fetchOrganizationDetails = async () => {
@@ -101,6 +112,21 @@ const ClientSignupPage = () => {
     
     fetchOrganizationDetails();
     checkInvitation();
+    
+    // Make sure we stay on this page
+    const preventRedirect = (e) => {
+      // If we're trying to navigate away, prevent it
+      if (window.location.pathname !== '/client-signup') {
+        e.preventDefault();
+      }
+    };
+    
+    // Add this to prevent navigation events
+    window.addEventListener('beforeunload', preventRedirect);
+    
+    return () => {
+      window.removeEventListener('beforeunload', preventRedirect);
+    };
   }, [token, orgId]);
   
   const handleChange = (e) => {
