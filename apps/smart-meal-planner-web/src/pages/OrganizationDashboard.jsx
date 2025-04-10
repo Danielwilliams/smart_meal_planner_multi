@@ -133,6 +133,7 @@ function OrganizationDashboard() {
   };
 
   const handleViewClient = (clientId) => {
+    // Go to the client profile which includes preferences, menus, etc.
     navigate(`/organization/clients/${clientId}`);
   };
 
@@ -241,15 +242,17 @@ function OrganizationDashboard() {
                       </Button>
                       <Button 
                         size="small" 
-                        onClick={() => handleCreateMenu(client.id)}
+                        onClick={() => handleViewClient(client.id)}
                       >
-                        Create Menu
+                        Manage Profile
                       </Button>
                       <Button 
                         size="small" 
-                        onClick={() => handleShareMenu(client.id)}
+                        color="primary"
+                        variant="contained"
+                        onClick={() => handleCreateMenu(client.id)}
                       >
-                        Share Menu
+                        Create Menu
                       </Button>
                     </CardActions>
                   </Card>

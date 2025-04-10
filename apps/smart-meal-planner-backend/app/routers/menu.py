@@ -1,7 +1,7 @@
 import json
 import time
 import re
-from fastapi import APIRouter, HTTPException, Query, Body
+from fastapi import APIRouter, HTTPException, Query, Body, Depends
 import openai
 from psycopg2.extras import RealDictCursor
 from ..db import get_db_connection
@@ -12,6 +12,7 @@ from ..utils.grocery_aggregator import aggregate_grocery_list
 from ..integration.kroger import add_to_kroger_cart
 from ..integration.walmart import add_to_cart as add_to_walmart_cart
 from ..db import track_recipe_interaction, is_recipe_saved
+from ..utils.auth_utils import get_user_from_token
 
 # Enhanced logging setup
 logging.basicConfig(level=logging.DEBUG)
