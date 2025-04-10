@@ -1,6 +1,7 @@
 import json
 import time
 import re
+import os
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, HTTPException, Query, Body, Depends
 import openai
@@ -455,11 +456,29 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
                 # Generate menu using OpenAI
                 MAX_RETRIES = 3
                 day_json = None
-
+                
+                # Select model based on request parameter
+                model_to_use = req.ai_model if req.ai_model else "default"
+                openai_model = "gpt-3.5-turbo"
+                
+                # Use different model based on selection
+                if model_to_use == "enhanced":
+                    openai_model = "gpt-4"
+                    logger.info(f"Using enhanced GPT-4 model for meal generation")
+                elif model_to_use == "local" and os.path.exists("./recipe-generation-model/pytorch_model.bin"):
+                    # Load custom model (not implemented in this version)
+                    openai_model = "gpt-3.5-turbo"
+                    logger.info(f"Local model selected but falling back to {openai_model}")
+                elif model_to_use == "hybrid":
+                    openai_model = "gpt-3.5-turbo-16k"
+                    logger.info(f"Using hybrid GPT-3.5-turbo-16k model for meal generation")
+                else:
+                    logger.info(f"Using default {openai_model} model for meal generation")
+                
                 for attempt in range(MAX_RETRIES):
                     try:
                         response = openai.ChatCompletion.create(
-                            model="gpt-3.5-turbo",
+                            model=openai_model,
                             messages=[{"role": "user", "content": day_prompt}],
                             max_tokens=3000,
                             temperature=0,
@@ -467,7 +486,7 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
                             request_timeout=300
                         )
                         ai_text = response.choices[0].message["content"].strip()
-                        logger.info(f"Received OpenAI response for day {day_number}")
+                        logger.info(f"Received OpenAI response for day {day_number} using model {openai_model}")
 
                         try:
                             # Enhanced JSON parsing
@@ -521,8 +540,8 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
 
             # Save to database
             cursor.execute("""
-                INSERT INTO menus (user_id, meal_plan_json, duration_days, meal_times, snacks_per_day, for_client_id)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                INSERT INTO menus (user_id, meal_plan_json, duration_days, meal_times, snacks_per_day, for_client_id, ai_model_used)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
                 RETURNING id;
             """, (
                 req.user_id,
@@ -530,7 +549,8 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
                 req.duration_days,
                 json.dumps(selected_meal_times),
                 req.snacks_per_day,
-                req.for_client_id
+                req.for_client_id,
+                req.ai_model
             ))
             
             menu_id = cursor.fetchone()["id"]

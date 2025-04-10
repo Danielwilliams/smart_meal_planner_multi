@@ -35,6 +35,7 @@ import '../styles/print.css';
 import RecipeSaveButton from '../components/RecipeSaveButton';
 import RecipeSaveDialog from '../components/RecipeSaveDialog';
 import MenuSharingModal from '../components/MenuSharingModal';
+import ModelSelectionDialog from '../components/ModelSelectionDialog';
 
 // Utility Functions
 function formatIngredient(ing) {
@@ -103,6 +104,10 @@ function MenuDisplayPage() {
   const [creatorName, setCreatorName] = useState('');
   const [isShared, setIsShared] = useState(false);
   const [accessLevel, setAccessLevel] = useState('owner');
+  
+  // Model selection dialog state
+  const [modelDialogOpen, setModelDialogOpen] = useState(false);
+  const [selectedModel, setSelectedModel] = useState('default');
 
   // Filter States
   const [mealTimeFilters, setMealTimeFilters] = useState({
@@ -261,17 +266,37 @@ function MenuDisplayPage() {
     }
   }, [user, selectedMenuId, queryMenuId]);
 
-  // Generate new menu
+  // Handler for model selection
+  const handleOpenModelDialog = () => {
+    setModelDialogOpen(true);
+  };
+
+  const handleModelSelect = (model) => {
+    setSelectedModel(model);
+    continueGenerateMenu();
+  };
+
+  // Generate new menu - split into two parts
   const handleGenerateMenu = async () => {
+    try {
+      if (durationDays < 1 || durationDays > 30) {
+        setError('Please enter a number of days between 1 and 30');
+        return;
+      }
+
+      // Open model selection dialog first
+      setModelDialogOpen(true);
+    } catch (err) {
+      console.error('Error in menu generation setup:', err);
+      setError('Failed to setup menu generation. Please try again.');
+    }
+  };
+
+  // Continue with menu generation after model selection
+  const continueGenerateMenu = async () => {
     try {
       setLoading(true);
       setError('');
-
-      if (durationDays < 1 || durationDays > 30) {
-        setError('Please enter a number of days between 1 and 30');
-        setLoading(false);
-        return;
-      }
 
       // Determine whose preferences to use
       const targetUserId = selectedClient ? selectedClient.id : user.userId;
@@ -295,7 +320,9 @@ function MenuDisplayPage() {
         calorie_goal: preferences.calorie_goal || 2000,
         macro_protein: preferences.macro_protein,
         macro_carbs: preferences.macro_carbs,
-        macro_fat: preferences.macro_fat
+        macro_fat: preferences.macro_fat,
+        // Add model selection information
+        ai_model: selectedModel
       };
 
       const newMenu = await apiService.generateMenu(menuRequest);
@@ -1040,6 +1067,13 @@ function MenuDisplayPage() {
         onClose={() => setSharingModalOpen(false)}
         menuId={selectedMenuId}
         menuTitle={menu?.nickname || (menu ? `Menu from ${new Date(menu.created_at).toLocaleDateString()}` : '')}
+      />
+      
+      {/* AI Model Selection Dialog */}
+      <ModelSelectionDialog
+        open={modelDialogOpen}
+        onClose={() => setModelDialogOpen(false)}
+        onModelSelect={handleModelSelect}
       />
 
       {menu && renderMenuItems()}

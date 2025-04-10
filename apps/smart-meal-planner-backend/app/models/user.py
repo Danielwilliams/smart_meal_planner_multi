@@ -97,6 +97,9 @@ class GenerateMealPlanRequest(BaseModel):
         }
     )
     prep_complexity: int = Field(default=50, ge=0, le=100)
+    
+    # AI model selection
+    ai_model: Optional[str] = Field(default="default")
 
     # Validator to convert string to list
     @validator('recipe_type', pre=True)

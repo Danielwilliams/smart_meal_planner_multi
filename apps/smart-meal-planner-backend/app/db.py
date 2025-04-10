@@ -161,15 +161,39 @@ def save_recipe(user_id, menu_id=None, recipe_id=None, recipe_name=None, day_num
             saved_id = cur.fetchone()[0]
             logger.info(f"Successfully saved/updated recipe with ID: {saved_id}")
             
-            # Also log this as an interaction for recommendation system
+            # Check if recipe_interactions table exists and create it if it doesn't
             try:
                 cur.execute("""
-                    INSERT INTO recipe_interactions
-                    (user_id, recipe_id, interaction_type, timestamp)
-                    VALUES (%s, %s, 'saved', CURRENT_TIMESTAMP)
-                """, (user_id, recipe_id or scraped_recipe_id or menu_id))
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables 
+                        WHERE table_schema = 'public' AND table_name = 'recipe_interactions'
+                    )
+                """)
+                
+                if not cur.fetchone()[0]:
+                    logger.info("Creating recipe_interactions table on the fly")
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS recipe_interactions (
+                            id SERIAL PRIMARY KEY,
+                            user_id INTEGER NOT NULL,
+                            recipe_id INTEGER,
+                            interaction_type VARCHAR(50) NOT NULL,
+                            rating INTEGER,
+                            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        )
+                    """)
+                
+                # Now try to log the interaction
+                try:
+                    cur.execute("""
+                        INSERT INTO recipe_interactions
+                        (user_id, recipe_id, interaction_type, timestamp)
+                        VALUES (%s, %s, 'saved', CURRENT_TIMESTAMP)
+                    """, (user_id, recipe_id or scraped_recipe_id or menu_id))
+                except Exception as e:
+                    logger.warning(f"Could not log recipe interaction: {e}")
             except Exception as e:
-                logger.warning(f"Could not log recipe interaction: {e}")
+                logger.warning(f"Could not check/create recipe_interactions table: {e}")
             
             conn.commit()
             return saved_id
@@ -226,8 +250,29 @@ def unsave_recipe(user_id, saved_id=None, menu_id=None, recipe_id=None, meal_tim
                 
                 logger.info(f"Successfully removed saved recipe with ID: {deleted_id}")
                 
-                # Log this as an "unsaved" interaction
+                # Check if recipe_interactions table exists and create it if it doesn't
                 try:
+                    cur.execute("""
+                        SELECT EXISTS (
+                            SELECT FROM information_schema.tables 
+                            WHERE table_schema = 'public' AND table_name = 'recipe_interactions'
+                        )
+                    """)
+                    
+                    if not cur.fetchone()[0]:
+                        logger.info("Creating recipe_interactions table on the fly")
+                        cur.execute("""
+                            CREATE TABLE IF NOT EXISTS recipe_interactions (
+                                id SERIAL PRIMARY KEY,
+                                user_id INTEGER NOT NULL,
+                                recipe_id INTEGER,
+                                interaction_type VARCHAR(50) NOT NULL,
+                                rating INTEGER,
+                                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                            )
+                        """)
+                    
+                    # Now try to log the interaction
                     reference_id = scraped_id_val or recipe_id_val or menu_id_val
                     cur.execute("""
                         INSERT INTO recipe_interactions

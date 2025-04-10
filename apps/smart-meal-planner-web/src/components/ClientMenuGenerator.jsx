@@ -14,6 +14,7 @@ import {
   Paper
 } from '@mui/material';
 import apiService from '../services/apiService';
+import ModelSelectionDialog from './ModelSelectionDialog';
 
 function ClientMenuGenerator({ client, onMenuGenerated }) {
   const [loading, setLoading] = useState(false);
