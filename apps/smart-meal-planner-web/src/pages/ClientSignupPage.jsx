@@ -35,9 +35,27 @@ const ClientSignupPage = () => {
   const { login } = useAuth();
   const { executeRecaptcha } = useGoogleReCaptcha();
   
-  // Get token and org from URL parameters
-  const token = query.get('token');
-  const orgId = query.get('org');
+  // Get token and org from URL parameters with multiple fallbacks
+  let token = query.get('token');
+  let orgId = query.get('org');
+  
+  // Check local storage as fallback for token and org (in case they were lost in redirects)
+  if (!token) {
+    token = localStorage.getItem('invitation_token');
+  } else {
+    // Store for persistence
+    localStorage.setItem('invitation_token', token);
+  }
+  
+  if (!orgId) {
+    orgId = localStorage.getItem('invitation_org_id');
+  } else {
+    // Store for persistence
+    localStorage.setItem('invitation_org_id', orgId);
+  }
+  
+  // Enable debug mode for this component
+  console.log("Client signup loaded with token:", token, "and orgId:", orgId);
   
   const [activeStep, setActiveStep] = useState(0);
   const [orgName, setOrgName] = useState('');
@@ -58,6 +76,37 @@ const ClientSignupPage = () => {
   useEffect(() => {
     // Add flag to localStorage to indicate we're in client signup flow
     localStorage.setItem('in_client_signup', 'true');
+    
+    // Immediately disable any automated navigation
+    const disableRedirects = () => {
+      history.pushState = (f => function pushState() {
+        const ret = f.apply(this, arguments);
+        window.dispatchEvent(new Event('pushstate'));
+        window.dispatchEvent(new Event('locationchange'));
+        return ret;
+      })(history.pushState);
+      
+      history.replaceState = (f => function replaceState() {
+        const ret = f.apply(this, arguments);
+        window.dispatchEvent(new Event('replacestate'));
+        window.dispatchEvent(new Event('locationchange'));
+        return ret;
+      })(history.replaceState);
+      
+      window.addEventListener('popstate', () => {
+        window.dispatchEvent(new Event('locationchange'));
+      });
+      
+      window.addEventListener('locationchange', function(e) {
+        const path = window.location.pathname;
+        if (path !== '/client-signup' && path !== '/join-as-client') {
+          console.log('Prevented redirect from client signup page');
+          window.history.pushState({}, '', '/client-signup' + window.location.search);
+        }
+      });
+    };
+    
+    disableRedirects();
     
     // Clean up function to remove the flag when component unmounts
     return () => {

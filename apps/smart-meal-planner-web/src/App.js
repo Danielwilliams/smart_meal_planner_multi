@@ -56,14 +56,17 @@ function App() {
               <Route path="/" element={<LandingPage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/signup" element={<SignUpPage />} />
-              {/* Ensure client signup is not wrapped in PrivateRoute */}
+              {/* Ensure client signup paths are available and prioritized */}
               <Route 
                 path="/client-signup" 
                 element={<ClientSignupPage />}
               />
-              {/* Add additional path for even more clarity */}
               <Route 
                 path="/join-as-client" 
+                element={<ClientSignupPage />}
+              />
+              <Route 
+                path="/client-registration" 
                 element={<ClientSignupPage />}
               />
               <Route path="/example-meal-plans" element={<ExampleMealPlansPage />} />

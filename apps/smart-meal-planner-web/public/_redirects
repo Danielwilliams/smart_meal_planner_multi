@@ -1,1 +1,6 @@
+# Direct invitation links to client signup page
+/accept-invitation /client-signup 301
+/join-as-client /client-signup 301
+
+# Handle all other routes with the SPA
 /* /index.html 200

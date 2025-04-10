@@ -39,9 +39,9 @@ class InviteRequest(BaseModel):
 
 async def send_invitation_email(email, token, org_id, user_exists, organization_name):
     """Send invitation email to client"""
-    # Always send users directly to the clear client signup URL path
-    # This is more intuitive and visually shows users they're joining as a client
-    invitation_link = f"{FRONTEND_URL}/join-as-client?token={token}&org={org_id}"
+    # Use the dedicated client-invite HTML page to ensure a reliable redirect
+    # This ensures the user arrives at the client signup page consistently
+    invitation_link = f"{FRONTEND_URL}/client-invite.html?token={token}&org={org_id}"
     
     # Log the invitation URL for debugging
     logger.info(f"Generated invitation link: {invitation_link}")
