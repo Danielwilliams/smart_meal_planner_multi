@@ -854,3 +854,69 @@ async def get_shared_menus(user_id: int):
         raise HTTPException(status_code=500, detail="Internal server error")
     finally:
         conn.close()
+
+# New endpoint for client menus
+@router.get("/client/{client_id}")
+async def get_client_menus(
+    client_id: int,
+    user=Depends(get_user_from_token)
+):
+    """Get menus for a specific client"""
+    # Check if user is organization owner or the client themselves
+    user_id = user.get('user_id')
+    org_id = user.get('organization_id')
+    
+    if user_id != client_id and user.get('role') != 'owner':
+        raise HTTPException(
+            status_code=403,
+            detail="You don't have permission to view this client's menus"
+        )
+    
+    conn = get_db_connection()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # If user is organization owner, get menus they created for this client
+            if user.get('role') == 'owner':
+                cur.execute("""
+                    SELECT 
+                        m.id as menu_id, 
+                        m.created_at,
+                        m.nickname,
+                        m.user_id,
+                        (SELECT count(*) FROM jsonb_array_elements(
+                            CASE 
+                                WHEN jsonb_typeof(m.meal_plan_json->'days') = 'array' 
+                                THEN m.meal_plan_json->'days' 
+                                ELSE '[]'::jsonb 
+                            END
+                        )) as days_count
+                    FROM menus m
+                    LEFT JOIN shared_menus sm ON m.id = sm.menu_id
+                    WHERE sm.shared_with = %s OR m.user_id = %s
+                    ORDER BY m.created_at DESC
+                """, (client_id, user_id))
+            else:
+                # If user is the client, get menus shared with them
+                cur.execute("""
+                    SELECT 
+                        m.id as menu_id, 
+                        m.created_at,
+                        m.nickname,
+                        m.user_id,
+                        (SELECT count(*) FROM jsonb_array_elements(
+                            CASE 
+                                WHEN jsonb_typeof(m.meal_plan_json->'days') = 'array' 
+                                THEN m.meal_plan_json->'days' 
+                                ELSE '[]'::jsonb 
+                            END
+                        )) as days_count
+                    FROM menus m
+                    JOIN shared_menus sm ON m.id = sm.menu_id
+                    WHERE sm.shared_with = %s
+                    ORDER BY m.created_at DESC
+                """, (client_id,))
+            
+            menus = cur.fetchall()
+            return menus
+    finally:
+        conn.close()

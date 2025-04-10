@@ -235,9 +235,9 @@ function OrganizationDashboard() {
                     <CardActions>
                       <Button 
                         size="small" 
-                        onClick={() => handleViewClient(client.id)}
+                        onClick={() => navigate(`/organization/clients/${client.id}/preferences`)}
                       >
-                        View Profile
+                        Set Preferences
                       </Button>
                       <Button 
                         size="small" 

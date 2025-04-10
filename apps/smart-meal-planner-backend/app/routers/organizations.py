@@ -7,6 +7,7 @@ from app.models.user import OrganizationCreate, Organization
 from app.db import get_db_connection
 from typing import List
 from app.utils.auth_middleware import require_organization_owner, require_organization_member
+from psycopg2.extras import RealDictCursor
 
 router = APIRouter(prefix="/organizations", tags=["Organizations"])
 
@@ -149,5 +150,111 @@ async def get_organization(
                     "owner_id": org[3],
                     "created_at": org[4].isoformat()
                 }
+    finally:
+        conn.close()
+
+@router.get("/clients/{client_id}")
+async def get_client_details(
+    client_id: int,
+    user=Depends(get_user_from_token)
+):
+    """Get detailed information about a client"""
+    user_id = user.get('user_id')
+    org_id = user.get('organization_id')
+    
+    # Check if user is organization owner or the client themselves
+    if user_id != int(client_id) and user.get('role') != 'owner':
+        raise HTTPException(
+            status_code=403,
+            detail="You don't have permission to view this client's details"
+        )
+    
+    conn = get_db_connection()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Get client details
+            cur.execute("""
+                SELECT 
+                    up.id, 
+                    up.email, 
+                    up.name, 
+                    up.account_type,
+                    up.profile_complete,
+                    oc.organization_id,
+                    oc.role,
+                    oc.status
+                FROM user_profiles up
+                LEFT JOIN organization_clients oc ON up.id = oc.client_id
+                WHERE up.id = %s
+            """, (client_id,))
+            
+            client = cur.fetchone()
+            if not client:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Client not found"
+                )
+            
+            # If requesting a client from a different organization, only the owner can view
+            if client['organization_id'] and client['organization_id'] != org_id and user.get('role') != 'owner':
+                raise HTTPException(
+                    status_code=403,
+                    detail="This client belongs to a different organization"
+                )
+            
+            return client
+    finally:
+        conn.close()
+
+@router.get("/clients/{client_id}")
+async def get_client_details(
+    client_id: int,
+    user=Depends(get_user_from_token)
+):
+    """Get detailed information about a client"""
+    user_id = user.get('user_id')
+    org_id = user.get('organization_id')
+    
+    # Check if user is organization owner or the client themselves
+    if user_id != client_id and user.get('role') != 'owner':
+        raise HTTPException(
+            status_code=403,
+            detail="You don't have permission to view this client's details"
+        )
+    
+    conn = get_db_connection()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Get client details
+            cur.execute("""
+                SELECT 
+                    up.id, 
+                    up.email, 
+                    up.name, 
+                    up.account_type,
+                    up.profile_complete,
+                    oc.organization_id,
+                    oc.role,
+                    oc.status
+                FROM user_profiles up
+                LEFT JOIN organization_clients oc ON up.id = oc.client_id
+                WHERE up.id = %s
+            """, (client_id,))
+            
+            client = cur.fetchone()
+            if not client:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Client not found"
+                )
+            
+            # If requesting a client from a different organization, only the owner can view
+            if client['organization_id'] != org_id and user.get('role') != 'owner':
+                raise HTTPException(
+                    status_code=403,
+                    detail="This client belongs to a different organization"
+                )
+            
+            return client
     finally:
         conn.close()
