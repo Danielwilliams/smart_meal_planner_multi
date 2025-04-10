@@ -92,13 +92,18 @@ const ClientInvitationConnect = () => {
       setLoading(true);
       
       // Accept the invitation
-      await apiService.acceptInvitation(token, orgId);
+      const response = await apiService.acceptInvitation(token, orgId);
+      console.log('Invitation accepted:', response);
       
       // Update user information locally
       const userData = JSON.parse(localStorage.getItem('user') || '{}');
       userData.account_type = 'client';
       userData.organization_id = parseInt(orgId);
       localStorage.setItem('user', JSON.stringify(userData));
+      
+      // Clear invitation tokens from localStorage since they're no longer needed
+      localStorage.removeItem('invitation_token');
+      localStorage.removeItem('invitation_org_id');
       
       setConnectionComplete(true);
     } catch (err) {

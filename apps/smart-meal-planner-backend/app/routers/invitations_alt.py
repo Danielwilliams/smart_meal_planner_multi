@@ -275,15 +275,30 @@ async def accept_invitation(
             # In production, you would want to enforce email matching
             
             try:
-                # Add user to organization with active status
+                # Check if the user is already in the organization
                 cur.execute("""
-                    INSERT INTO organization_clients
-                    (organization_id, client_id, role, status)
-                    VALUES (%s, %s, 'client', 'active')
-                    ON CONFLICT (organization_id, client_id) 
-                    DO UPDATE SET status = 'active'
-                    RETURNING id
+                    SELECT id FROM organization_clients
+                    WHERE organization_id = %s AND client_id = %s
                 """, (org_id, user_id))
+                
+                existing_record = cur.fetchone()
+                
+                if existing_record:
+                    # Update existing record
+                    cur.execute("""
+                        UPDATE organization_clients
+                        SET status = 'active', role = 'client'
+                        WHERE organization_id = %s AND client_id = %s
+                        RETURNING id
+                    """, (org_id, user_id))
+                else:
+                    # Insert new record
+                    cur.execute("""
+                        INSERT INTO organization_clients
+                        (organization_id, client_id, role, status)
+                        VALUES (%s, %s, 'client', 'active')
+                        RETURNING id
+                    """, (org_id, user_id))
                 
                 org_client_id = cur.fetchone()[0]
                 logger.info(f"User added to organization_clients - id: {org_client_id}")

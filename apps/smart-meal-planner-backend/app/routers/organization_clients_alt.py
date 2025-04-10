@@ -88,11 +88,27 @@ async def add_client_to_organization_by_id(
                     detail="User is already a client of this organization"
                 )
             
-            # Add client to organization with active status
+            # Check if the client is already in the organization
             cur.execute("""
-                INSERT INTO organization_clients (organization_id, client_id, role, status)
-                VALUES (%s, %s, %s, 'active')
-            """, (org_id, client_id, role))
+                SELECT id FROM organization_clients
+                WHERE organization_id = %s AND client_id = %s
+            """, (org_id, client_id))
+            
+            existing_record = cur.fetchone()
+            
+            if existing_record:
+                # Update existing record
+                cur.execute("""
+                    UPDATE organization_clients
+                    SET status = 'active', role = %s
+                    WHERE organization_id = %s AND client_id = %s
+                """, (role, org_id, client_id))
+            else:
+                # Insert new record
+                cur.execute("""
+                    INSERT INTO organization_clients (organization_id, client_id, role, status)
+                    VALUES (%s, %s, %s, 'active')
+                """, (org_id, client_id, role))
             
             conn.commit()
             return {"message": "Client added to organization successfully"}
@@ -140,11 +156,27 @@ async def add_client_by_email(
                     detail="User is already a client of this organization"
                 )
             
-            # Add client to organization with active status
+            # Check if the client is already in the organization
             cur.execute("""
-                INSERT INTO organization_clients (organization_id, client_id, role, status)
-                VALUES (%s, %s, %s, 'active')
-            """, (org_id, client_id, client_data.role))
+                SELECT id FROM organization_clients
+                WHERE organization_id = %s AND client_id = %s
+            """, (org_id, client_id))
+            
+            existing_record = cur.fetchone()
+            
+            if existing_record:
+                # Update existing record
+                cur.execute("""
+                    UPDATE organization_clients
+                    SET status = 'active', role = %s
+                    WHERE organization_id = %s AND client_id = %s
+                """, (client_data.role, org_id, client_id))
+            else:
+                # Insert new record
+                cur.execute("""
+                    INSERT INTO organization_clients (organization_id, client_id, role, status)
+                    VALUES (%s, %s, %s, 'active')
+                """, (org_id, client_id, client_data.role))
             
             conn.commit()
             return {
