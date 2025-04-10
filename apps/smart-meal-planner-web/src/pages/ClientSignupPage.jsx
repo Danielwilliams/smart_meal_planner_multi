@@ -19,6 +19,7 @@ import {
   Chip
 } from '@mui/material';
 import { Link as RouterLink, useNavigate, useLocation } from 'react-router-dom';
+import { useGoogleReCaptcha } from 'react-google-recaptcha-v3';
 import apiService from '../services/apiService';
 import { useAuth } from '../context/AuthContext';
 
@@ -32,6 +33,7 @@ const ClientSignupPage = () => {
   const query = useQuery();
   const navigate = useNavigate();
   const { login } = useAuth();
+  const { executeRecaptcha } = useGoogleReCaptcha();
   
   // Get token and org from URL parameters
   const token = query.get('token');
@@ -155,6 +157,14 @@ const ClientSignupPage = () => {
     try {
       setLoading(true);
       
+      // Execute reCAPTCHA and get token
+      if (!executeRecaptcha) {
+        throw new Error('reCAPTCHA not initialized');
+      }
+      
+      // Get captcha token
+      const captchaToken = await executeRecaptcha('client_signup');
+      
       console.log('Signing up client with data:', {
         name: signupData.name,
         email: signupData.email,
@@ -166,7 +176,9 @@ const ClientSignupPage = () => {
         name: signupData.name,
         email: signupData.email,
         password: signupData.password,
-        account_type: 'client'
+        account_type: 'client',
+        captchaToken: captchaToken,        // Add the captcha token
+        organization_id: signupData.organization_id  // Make sure organization ID is included
       });
       
       // Move to next step
@@ -183,10 +195,18 @@ const ClientSignupPage = () => {
     try {
       setLoading(true);
       
-      // Log the user in
+      // Execute reCAPTCHA and get token for login
+      if (!executeRecaptcha) {
+        throw new Error('reCAPTCHA not initialized');
+      }
+      
+      const captchaToken = await executeRecaptcha('client_login');
+      
+      // Log the user in with captcha token
       await login({
         email: signupData.email,
-        password: signupData.password
+        password: signupData.password,
+        captchaToken: captchaToken
       });
       
       // Accept the invitation with the token and org ID
