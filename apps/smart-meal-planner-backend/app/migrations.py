@@ -2,9 +2,20 @@
 Database migration functions to update the schema when needed
 """
 import logging
-from .db import get_db_connection
+import psycopg2
+from app.config import DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, DB_PORT
 
 logger = logging.getLogger(__name__)
+
+def get_db_connection():
+    """Get a direct database connection for migrations"""
+    return psycopg2.connect(
+        dbname=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD,
+        host=DB_HOST,
+        port=DB_PORT
+    )
 
 def run_migrations():
     """
