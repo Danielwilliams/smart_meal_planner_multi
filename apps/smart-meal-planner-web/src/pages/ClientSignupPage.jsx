@@ -72,33 +72,23 @@ const ClientSignupPage = () => {
     organization_id: orgId ? parseInt(orgId) : null
   });
   
-  // Prevent redirect to login page for this client signup
+  // Just set a flag for PrivateRoute to check
   useEffect(() => {
     // Add flag to localStorage to indicate we're in client signup flow
     localStorage.setItem('in_client_signup', 'true');
     
-    // Add a simpler navigation guard
-    const checkLocation = () => {
-      // If we're about to leave the client signup page, log it
-      if (window.location.pathname !== '/client-signup' && 
-          window.location.pathname !== '/join-as-client' &&
-          window.location.pathname !== '/client-registration') {
-        console.log('Client signup page detected navigation to:', window.location.pathname);
-        
-        // Optionally force back to client signup if this happens
-        // window.location.href = '/client-signup' + window.location.search;
-      }
-    };
+    // Store invitation parameters for better persistence
+    if (token) localStorage.setItem('invitation_token', token);
+    if (orgId) localStorage.setItem('invitation_org_id', orgId);
     
-    // Check periodically to ensure we stay on the client signup page
-    const intervalId = setInterval(checkLocation, 1000);
+    // Log information for debugging
+    console.log('ClientSignupPage loaded with token:', token, 'and orgId:', orgId);
     
     // Clean up function to remove the flag when component unmounts
     return () => {
       localStorage.removeItem('in_client_signup');
-      clearInterval(intervalId);
     };
-  }, []);
+  }, [token, orgId]);
 
   // Fetch organization name
   useEffect(() => {
