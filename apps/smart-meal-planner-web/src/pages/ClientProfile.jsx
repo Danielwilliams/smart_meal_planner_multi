@@ -93,11 +93,11 @@ function ClientProfile() {
   };
 
   const handleViewMenu = (menuId) => {
-    navigate(`/menu/${menuId}`);
+    navigate(`/menu?menuId=${menuId}`);
   };
 
   const handleShareMenu = (menuId) => {
-    navigate(`/menu/${menuId}/share`);
+    navigate(`/menu?menuId=${menuId}&share=true`);
   };
 
   const handleViewCart = () => {
