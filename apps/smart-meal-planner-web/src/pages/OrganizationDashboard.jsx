@@ -137,11 +137,13 @@ function OrganizationDashboard() {
   };
 
   const handleCreateMenu = (clientId) => {
-    navigate(`/menu?clientId=${clientId}`);
+    // Navigate to client profile page to use the menu generator for this client
+    navigate(`/organization/clients/${clientId}`);
   };
 
   const handleShareMenu = (clientId) => {
-    navigate(`/menu?clientId=${clientId}`);
+    // Navigate to client profile page, then tab to the menus section
+    navigate(`/organization/clients/${clientId}`, { state: { initialTab: 1 } });
   };
 
   if (loading || orgLoading) {

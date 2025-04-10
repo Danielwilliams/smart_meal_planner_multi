@@ -46,11 +46,63 @@ async def get_client_dashboard(
     org_id = user.get('organization_id')
     role = user.get('role')
     
+    # Add debug logging
+    logger.info(f"Dashboard accessed by user_id={user_id}, org_id={org_id}, role={role}")
+    
     if not org_id:
+        logger.error(f"User {user_id} tried to access client dashboard without organization association")
         raise HTTPException(
             status_code=403,
             detail="You must be part of an organization to access this resource"
         )
+        
+    if not role:
+        # Fix role if missing - check organization_clients table
+        conn = get_db_connection()
+        try:
+            with conn.cursor() as cur:
+                # Check if user is a client of any organization
+                cur.execute("""
+                    SELECT role, status FROM organization_clients
+                    WHERE client_id = %s AND organization_id = %s
+                """, (user_id, org_id))
+                client_record = cur.fetchone()
+                
+                if client_record:
+                    role = client_record[0]
+                    status = client_record[1]
+                    logger.info(f"Found client role from DB: role={role}, status={status}")
+                    
+                    # Update user object with role
+                    user['role'] = role
+                    
+                    # Check if status is active
+                    if status != 'active':
+                        logger.error(f"User {user_id} has inactive status: {status}")
+                        raise HTTPException(
+                            status_code=403,
+                            detail="Your client account is not active. Please contact your organization."
+                        )
+                else:
+                    # Check if user is an organization owner
+                    cur.execute("""
+                        SELECT id FROM organizations 
+                        WHERE owner_id = %s AND id = %s
+                    """, (user_id, org_id))
+                    
+                    org_owner = cur.fetchone()
+                    if org_owner:
+                        role = 'owner'
+                        user['role'] = role
+                        logger.info(f"Found user is organization owner: {user_id}")
+                    else:
+                        logger.error(f"User {user_id} has no valid role for org {org_id}")
+                        raise HTTPException(
+                            status_code=403,
+                            detail="You don't have a valid role in this organization"
+                        )
+        finally:
+            conn.close()
     
     conn = get_db_connection()
     try:

@@ -1,6 +1,6 @@
 // src/pages/ClientProfile.jsx
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import {
   Container,
   Typography,
@@ -32,6 +32,7 @@ import ClientMenuGenerator from '../components/ClientMenuGenerator';
 function ClientProfile() {
   const { clientId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   
   const [client, setClient] = useState(null);
@@ -39,7 +40,8 @@ function ClientProfile() {
   const [clientPreferences, setClientPreferences] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [tabValue, setTabValue] = useState(0);
+  // If initial tab is passed in location state, use it, otherwise default to 0
+  const [tabValue, setTabValue] = useState(location.state?.initialTab || 0);
   const [menuGenerated, setMenuGenerated] = useState(false);
 
   useEffect(() => {
