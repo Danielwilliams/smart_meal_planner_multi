@@ -28,6 +28,8 @@ from app.routers import organization_clients
 from app.routers import invitations
 from app.routers import recipe_admin  # Add recipe admin router
 from app.routers import scraped_recipes  # Add scraped recipes router
+from app.routers import ai_status  # Add AI status router
+from app.routers import custom_menu  # Add custom menu router
 
 # Import the alternate routers with fixed paths
 from app.routers import organization_clients_alt
@@ -128,6 +130,8 @@ def create_app() -> FastAPI:
     
     app.include_router(recipe_admin.router)
     app.include_router(scraped_recipes.router)
+    app.include_router(ai_status.router)
+    app.include_router(custom_menu.router)
 
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request, exc):

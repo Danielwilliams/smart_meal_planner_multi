@@ -916,6 +916,81 @@ const apiService = {
       console.error(`Error toggling recipe sharing for recipe ${recipeId}:`, err);
       throw err;
     }
+  },
+
+  // AI Model Status Endpoints
+  getAIModelStatus: async () => {
+    try {
+      const response = await axiosInstance.get('/ai/model-status');
+      return response.data;
+    } catch (err) {
+      console.error('Error fetching AI model status:', err);
+      return {
+        isAvailable: false,
+        message: 'Error checking AI status'
+      };
+    }
+  },
+
+  getTrainingStatus: async () => {
+    try {
+      const response = await axiosInstance.get('/ai/training-status');
+      return response.data;
+    } catch (err) {
+      console.error('Error fetching training status:', err);
+      throw err;
+    }
+  },
+
+  triggerModelTraining: async (force = false) => {
+    try {
+      const response = await axiosInstance.post(`/ai/trigger-training?force=${force}`);
+      return response.data;
+    } catch (err) {
+      console.error('Error triggering model training:', err);
+      throw err;
+    }
+  },
+
+  // Custom Menu Endpoints
+  generateCustomMenu: async (menuData) => {
+    try {
+      const response = await axiosInstance.post('/custom-menu/generate', menuData);
+      return response.data;
+    } catch (err) {
+      console.error('Error generating custom menu:', err);
+      throw err;
+    }
+  },
+
+  generateCustomMenuForClient: async (clientId, menuData) => {
+    try {
+      const response = await axiosInstance.post(`/custom-menu/generate-for-client/${clientId}`, menuData);
+      return response.data;
+    } catch (err) {
+      console.error(`Error generating custom menu for client ${clientId}:`, err);
+      throw err;
+    }
+  },
+
+  addRecipeToCustomMenu: async (menuId, recipe) => {
+    try {
+      const response = await axiosInstance.post(`/custom-menu/${menuId}/add-recipe`, recipe);
+      return response.data;
+    } catch (err) {
+      console.error(`Error adding recipe to menu ${menuId}:`, err);
+      throw err;
+    }
+  },
+
+  suggestCustomMeal: async () => {
+    try {
+      const response = await axiosInstance.get('/custom-menu/suggest-meal');
+      return response.data;
+    } catch (err) {
+      console.error('Error suggesting custom meal:', err);
+      throw err;
+    }
   }
 }; // Close the apiService object here
 
