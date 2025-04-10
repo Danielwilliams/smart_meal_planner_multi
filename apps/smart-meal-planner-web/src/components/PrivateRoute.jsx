@@ -14,11 +14,17 @@ function PrivateRoute({ children }) {
   // Check if token and org parameters are present (invitation parameters)
   const hasInvitationParams = searchParams.get('token') && searchParams.get('org');
   
+  // Check if we have stored invitation parameters
+  const hasStoredInvitationParams = 
+    localStorage.getItem('invitation_token') && 
+    localStorage.getItem('invitation_org_id');
+  
   // Check if the current path is part of the client invitation flow
   const isClientInvitationFlow = 
     location.pathname === '/client-signup' || 
     location.pathname === '/accept-invitation' ||
-    location.pathname === '/join-as-client';
+    location.pathname === '/join-as-client' ||
+    location.pathname === '/client-registration';
 
   if (loading) {
     return (
@@ -37,7 +43,8 @@ function PrivateRoute({ children }) {
   // 1. We're in client signup flow
   // 2. We're on client invitation pages
   // 3. We have invitation parameters in the URL
-  if (!isAuthenticated && (inClientSignup || isClientInvitationFlow || hasInvitationParams)) {
+  // 4. We have stored invitation parameters
+  if (!isAuthenticated && (inClientSignup || isClientInvitationFlow || hasInvitationParams || hasStoredInvitationParams)) {
     console.log('Allowing access to protected route without authentication due to client invitation flow');
     return children;
   }

@@ -38,6 +38,18 @@
       border-radius: 4px;
     }
   </style>
+</head>
+<body>
+  <h1>Client Invitation</h1>
+  <p>You've been invited to join as a client. Redirecting to signup page...</p>
+  <div id="loader" class="loader"></div>
+  <div id="error" style="display: none;">
+    <p style="color: red;">Error: Missing invitation parameters.</p>
+    <p>Please check your invitation link or contact your provider.</p>
+    <a href="/" class="button">Go to Home Page</a>
+  </div>
+  <p>If you are not automatically redirected, <a href="#" id="manual-redirect">click here</a>.</p>
+
   <script>
     // Extract token and org parameters from URL
     function getParameterByName(name, url) {
@@ -50,17 +62,19 @@
       return decodeURIComponent(results[2].replace(/\+/g, ' '));
     }
     
+    // Get invitation parameters
+    const token = getParameterByName('token');
+    const orgId = getParameterByName('org');
+    
+    // Store parameters in localStorage for persistence
+    if (token) localStorage.setItem('invitation_token', token);
+    if (orgId) localStorage.setItem('invitation_org_id', orgId);
+    
     // Function to redirect to the client signup page
     function redirectToClientSignup() {
-      const token = getParameterByName('token');
-      const orgId = getParameterByName('org');
-      
       if (token && orgId) {
         // Construct the client signup URL with parameters
-        const clientSignupUrl = '/client-signup?token=' + token + '&org=' + orgId;
-        
-        // Redirect to the client signup page
-        window.location.href = clientSignupUrl;
+        window.location.href = '/client-signup?token=' + token + '&org=' + orgId;
       } else {
         // Show error message if parameters are missing
         document.getElementById('loader').style.display = 'none';
@@ -68,22 +82,16 @@
       }
     }
     
+    // Add click handler for manual redirect link
+    document.getElementById('manual-redirect').addEventListener('click', function(e) {
+      e.preventDefault();
+      redirectToClientSignup();
+    });
+    
     // Redirect automatically when page loads
     window.onload = function() {
-      // Set a short timeout to ensure the page has fully loaded
-      setTimeout(redirectToClientSignup, 500);
+      redirectToClientSignup();
     };
   </script>
-</head>
-<body>
-  <h1>Client Invitation</h1>
-  <p>You've been invited to join as a client. Redirecting to signup page...</p>
-  <div id="loader" class="loader"></div>
-  <div id="error" style="display: none;">
-    <p style="color: red;">Error: Missing invitation parameters.</p>
-    <p>Please check your invitation link or contact your provider.</p>
-    <a href="/" class="button">Go to Home Page</a>
-  </div>
-  <p>If you are not automatically redirected, <a href="#" onclick="redirectToClientSignup(); return false;">click here</a>.</p>
 </body>
 </html>

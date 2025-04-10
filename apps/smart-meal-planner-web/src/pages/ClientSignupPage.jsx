@@ -77,40 +77,26 @@ const ClientSignupPage = () => {
     // Add flag to localStorage to indicate we're in client signup flow
     localStorage.setItem('in_client_signup', 'true');
     
-    // Immediately disable any automated navigation
-    const disableRedirects = () => {
-      history.pushState = (f => function pushState() {
-        const ret = f.apply(this, arguments);
-        window.dispatchEvent(new Event('pushstate'));
-        window.dispatchEvent(new Event('locationchange'));
-        return ret;
-      })(history.pushState);
-      
-      history.replaceState = (f => function replaceState() {
-        const ret = f.apply(this, arguments);
-        window.dispatchEvent(new Event('replacestate'));
-        window.dispatchEvent(new Event('locationchange'));
-        return ret;
-      })(history.replaceState);
-      
-      window.addEventListener('popstate', () => {
-        window.dispatchEvent(new Event('locationchange'));
-      });
-      
-      window.addEventListener('locationchange', function(e) {
-        const path = window.location.pathname;
-        if (path !== '/client-signup' && path !== '/join-as-client') {
-          console.log('Prevented redirect from client signup page');
-          window.history.pushState({}, '', '/client-signup' + window.location.search);
-        }
-      });
+    // Add a simpler navigation guard
+    const checkLocation = () => {
+      // If we're about to leave the client signup page, log it
+      if (window.location.pathname !== '/client-signup' && 
+          window.location.pathname !== '/join-as-client' &&
+          window.location.pathname !== '/client-registration') {
+        console.log('Client signup page detected navigation to:', window.location.pathname);
+        
+        // Optionally force back to client signup if this happens
+        // window.location.href = '/client-signup' + window.location.search;
+      }
     };
     
-    disableRedirects();
+    // Check periodically to ensure we stay on the client signup page
+    const intervalId = setInterval(checkLocation, 1000);
     
     // Clean up function to remove the flag when component unmounts
     return () => {
       localStorage.removeItem('in_client_signup');
+      clearInterval(intervalId);
     };
   }, []);
 

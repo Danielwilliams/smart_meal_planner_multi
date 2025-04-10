@@ -32,6 +32,7 @@ import AcceptInvitation from './pages/AcceptInvitation';
 import ClientPreferencesPage from './pages/ClientPreferencesPage';
 import ClientDashboard from './pages/ClientDashboard';
 import ClientSignupPage from './pages/ClientSignupPage';
+import ClientRegistrationRouter from './components/ClientRegistrationRouter';
 import TestInvitation from './TestInvitation';
 
 
@@ -56,18 +57,18 @@ function App() {
               <Route path="/" element={<LandingPage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/signup" element={<SignUpPage />} />
-              {/* Ensure client signup paths are available and prioritized */}
+              {/* Ensure client signup paths are available and prioritized - use dedicated router */}
               <Route 
                 path="/client-signup" 
-                element={<ClientSignupPage />}
+                element={<ClientRegistrationRouter />}
               />
               <Route 
                 path="/join-as-client" 
-                element={<ClientSignupPage />}
+                element={<ClientRegistrationRouter />}
               />
               <Route 
                 path="/client-registration" 
-                element={<ClientSignupPage />}
+                element={<ClientRegistrationRouter />}
               />
               <Route path="/example-meal-plans" element={<ExampleMealPlansPage />} />
               <Route path="/verify-email" element={<VerifyEmailPage />} />
