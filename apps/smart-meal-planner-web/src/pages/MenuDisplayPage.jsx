@@ -89,7 +89,8 @@ function MenuDisplayPage() {
   // State management
   const [menu, setMenu] = useState(null);
   const [menuHistory, setMenuHistory] = useState([]);
-  const [selectedMenuId, setSelectedMenuId] = useState(paramMenuId || null);
+  const queryMenuId = searchParams.get('menuId');
+  const [selectedMenuId, setSelectedMenuId] = useState(queryMenuId || paramMenuId || null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [printMode, setPrintMode] = useState(false);
@@ -118,18 +119,31 @@ function MenuDisplayPage() {
   // Check for client ID in URL params
   useEffect(() => {
     const clientId = searchParams.get('clientId');
+    console.log('Client ID from URL:', clientId);
+    console.log('Menu ID from URL:', queryMenuId);
+    
     if (clientId) {
       setClientMode(true);
       // Fetch client data if in client mode
       apiService.getClientDetails(clientId)
         .then(client => {
+          console.log('Client details fetched:', client);
           setSelectedClient(client);
-          // If a specific menuId isn't provided, get the client's latest menu
-          if (!selectedMenuId) {
+          
+          // If a specific menuId is provided, try to load it
+          if (queryMenuId) {
+            console.log('Using menu ID from query params:', queryMenuId);
+            setSelectedMenuId(queryMenuId);
+          } 
+          // Otherwise get the client's latest menu
+          else if (!selectedMenuId) {
+            console.log('Fetching client menus since no menuId provided');
             apiService.getClientMenus(clientId)
               .then(menus => {
+                console.log('Client menus retrieved:', menus);
                 if (menus && menus.length > 0) {
                   const latestMenu = menus[0];
+                  console.log('Setting latest menu:', latestMenu.menu_id);
                   setMenu(latestMenu);
                   setSelectedMenuId(latestMenu.menu_id);
                 }
@@ -139,7 +153,7 @@ function MenuDisplayPage() {
         })
         .catch(err => console.error('Error fetching client details:', err));
     }
-  }, [searchParams, selectedMenuId]);
+  }, [searchParams, selectedMenuId, queryMenuId]);
 
   // Check if share mode is active
   useEffect(() => {
@@ -237,10 +251,15 @@ function MenuDisplayPage() {
     }
   };
 
-  // Initial data fetch
+  // Initial data fetch - also respond to changes in URL query parameters
   useEffect(() => {
-    fetchMenuData();
-  }, [user, selectedMenuId]);
+    // If the queryMenuId changes in the URL, update the selectedMenuId
+    if (queryMenuId && queryMenuId !== selectedMenuId) {
+      setSelectedMenuId(queryMenuId);
+    } else {
+      fetchMenuData();
+    }
+  }, [user, selectedMenuId, queryMenuId]);
 
   // Generate new menu
   const handleGenerateMenu = async () => {

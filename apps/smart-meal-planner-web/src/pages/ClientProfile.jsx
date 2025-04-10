@@ -93,11 +93,13 @@ function ClientProfile() {
   };
 
   const handleViewMenu = (menuId) => {
-    navigate(`/menu?menuId=${menuId}`);
+    // Direct to MenuDisplayPage with menuId as a query parameter - using the correct route
+    navigate(`/menu?menuId=${menuId}&clientId=${clientId}`);
   };
 
   const handleShareMenu = (menuId) => {
-    navigate(`/menu?menuId=${menuId}&share=true`);
+    // Direct to MenuDisplayPage with share=true flag - using the correct route
+    navigate(`/menu?menuId=${menuId}&clientId=${clientId}&share=true`);
   };
 
   const handleViewCart = () => {
