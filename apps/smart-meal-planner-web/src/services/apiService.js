@@ -268,6 +268,26 @@ const apiService = {
       throw err;
     }
   },
+  
+  async generateMenuForClient(clientId, menuRequest) {
+    try {
+      const resp = await axiosInstance.post(`/menu/generate-for-client/${clientId}`, menuRequest);
+      return resp.data;
+    } catch (err) {
+      console.error(`Error generating menu for client ${clientId}:`, err);
+      throw err;
+    }
+  },
+  
+  async generateAndShareMenu(clientId, menuRequest) {
+    try {
+      const resp = await axiosInstance.post(`/menu/generate-and-share/${clientId}`, menuRequest);
+      return resp.data;
+    } catch (err) {
+      console.error(`Error generating and sharing menu for client ${clientId}:`, err);
+      throw err;
+    }
+  },
 
   // Grocery List Endpoints
   async getLatestGroceryList(userId) {
@@ -697,8 +717,7 @@ const apiService = {
   // Menu Sharing
   shareMenuWithClient: async (menuId, clientId, permissionLevel = 'read') => {
     try {
-      const response = await axiosInstance.post(`/menu/${menuId}/share`, {
-        client_id: clientId,
+      const response = await axiosInstance.post(`/menu/share/${menuId}/client/${clientId}`, {
         permission_level: permissionLevel
       });
       return response.data;
@@ -860,6 +879,29 @@ const apiService = {
       return response.data.menus;
     } catch (err) {
       console.error(`Error getting menus for client ${clientId}:`, err);
+      throw err;
+    }
+  },
+  
+  getMenuSharingDetails: async (menuId) => {
+    try {
+      const response = await axiosInstance.get(`/menu/${menuId}/sharing`);
+      return response.data;
+    } catch (err) {
+      console.error(`Error getting menu sharing details for menu ${menuId}:`, err);
+      throw err;
+    }
+  },
+  
+  removeMenuSharing: async (menuId, clientId) => {
+    try {
+      // We're using our share endpoint but with shared=false to remove sharing
+      const response = await axiosInstance.post(`/menu/share/${menuId}/client/${clientId}`, {
+        shared: false
+      });
+      return response.data;
+    } catch (err) {
+      console.error(`Error removing menu sharing for menu ${menuId} and client ${clientId}:`, err);
       throw err;
     }
   },

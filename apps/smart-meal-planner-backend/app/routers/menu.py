@@ -1,18 +1,37 @@
 import json
 import time
 import re
+from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, HTTPException, Query, Body, Depends
 import openai
 from psycopg2.extras import RealDictCursor
 from ..db import get_db_connection
 from ..config import OPENAI_API_KEY
 from ..models.user import GenerateMealPlanRequest
+from pydantic import BaseModel
 import logging
 from ..utils.grocery_aggregator import aggregate_grocery_list
 from ..integration.kroger import add_to_kroger_cart
 from ..integration.walmart import add_to_cart as add_to_walmart_cart
 from ..db import track_recipe_interaction, is_recipe_saved
 from ..utils.auth_utils import get_user_from_token
+from datetime import datetime
+
+# Model for menu sharing requests
+class ShareMenuRequest(BaseModel):
+    permission_level: str = "read"  # Default permission level
+
+# Model for menu sharing response
+class MenuSharingDetail(BaseModel):
+    id: int
+    client_id: int
+    client_name: str
+    shared_at: datetime
+    permission_level: str
+
+class MenuSharingResponse(BaseModel):
+    menu_id: int
+    shared_with: List[MenuSharingDetail]
 
 # Enhanced logging setup
 logging.basicConfig(level=logging.DEBUG)
@@ -94,7 +113,10 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
         cursor = conn.cursor(cursor_factory=RealDictCursor)
 
         try:
-            # Fetch user preferences
+            # Determine which user's preferences to use
+            preference_user_id = req.for_client_id if req.for_client_id else req.user_id
+            
+            # Fetch user preferences (use client's preferences if for_client_id is provided)
             cursor.execute("""
                 SELECT 
                     recipe_type,
@@ -113,7 +135,7 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
                 FROM user_profiles
                 WHERE id = %s
                 LIMIT 1
-            """, (req.user_id,))
+            """, (preference_user_id,))
             
             user_row = cursor.fetchone()
             logger.debug(f"Fetched user preferences: {user_row}")
@@ -1113,4 +1135,366 @@ async def get_menus_for_client(
             
     except Exception as e:
         logger.error(f"Error getting menus for client: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/generate-for-client/{client_id}")
+async def generate_meal_plan_for_client(
+    client_id: int,
+    req: GenerateMealPlanRequest,
+    user = Depends(get_user_from_token)
+):
+    """Generate a meal plan for a specific client using their preferences"""
+    try:
+        # Verify user is an organization owner
+        user_id = user.get('user_id')
+        org_id = user.get('organization_id')
+        role = user.get('role', '')
+        
+        if role != 'owner':
+            raise HTTPException(
+                status_code=403, 
+                detail="Only organization owners can generate menus for clients"
+            )
+        
+        # Verify client belongs to this organization
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        try:
+            cursor.execute("""
+                SELECT id 
+                FROM organization_clients 
+                WHERE organization_id = %s AND client_id = %s AND status = 'active'
+            """, (org_id, client_id))
+            
+            client_record = cursor.fetchone()
+            if not client_record:
+                raise HTTPException(
+                    status_code=404, 
+                    detail="Client not found or not active in your organization"
+                )
+                
+            # Set the client_id in the request
+            req.for_client_id = client_id
+            req.user_id = user_id
+            
+            # Call the existing meal plan generation function
+            return generate_meal_plan_variety(req)
+            
+        finally:
+            cursor.close()
+            conn.close()
+            
+    except Exception as e:
+        logger.error(f"Error generating menu for client: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/generate-and-share/{client_id}")
+async def generate_and_share_menu(
+    client_id: int,
+    req: GenerateMealPlanRequest,
+    user = Depends(get_user_from_token)
+):
+    """Generate a meal plan for a client and immediately share it with them"""
+    try:
+        # Call the generate_meal_plan_for_client function
+        result = await generate_meal_plan_for_client(client_id, req, user)
+        
+        # Get the menu_id from the result
+        menu_id = result.get("menu_id")
+        
+        # Now share this menu with the client automatically
+        user_id = user.get('user_id')
+        org_id = user.get('organization_id')
+        
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        try:
+            # Share the menu with this client
+            cursor.execute("""
+                INSERT INTO shared_menus (menu_id, shared_with, created_by, organization_id, permission_level) 
+                VALUES (%s, %s, %s, %s, 'read')
+                RETURNING id
+            """, (menu_id, client_id, user_id, org_id))
+            conn.commit()
+            
+            return {
+                "menu_id": menu_id,
+                "client_id": client_id,
+                "meal_plan": result.get("meal_plan"),
+                "shared": True,
+                "message": "Menu generated and shared successfully"
+            }
+                
+        finally:
+            cursor.close()
+            conn.close()
+            
+    except Exception as e:
+        logger.error(f"Error generating and sharing menu: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+        
+@router.get("/{menu_id}/sharing")
+async def get_menu_sharing_details(
+    menu_id: int,
+    user = Depends(get_user_from_token)
+):
+    """Get details about who a menu is shared with"""
+    try:
+        # Verify user owns the menu
+        user_id = user.get('user_id')
+        org_id = user.get('organization_id')
+        role = user.get('role', '')
+        
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        try:
+            # First check if user owns the menu or has it shared with them
+            if role == 'owner':
+                cursor.execute("""
+                    SELECT id FROM menus 
+                    WHERE id = %s AND user_id = %s
+                """, (menu_id, user_id))
+                
+                if not cursor.fetchone():
+                    raise HTTPException(
+                        status_code=403,
+                        detail="You can only view sharing details for menus you own"
+                    )
+                    
+                # Get all clients the menu is shared with
+                cursor.execute("""
+                    SELECT 
+                        sm.id,
+                        sm.shared_with AS client_id,
+                        sm.created_at AS shared_at,
+                        up.name AS client_name,
+                        COALESCE(sm.permission_level, 'read') AS permission_level
+                    FROM shared_menus sm
+                    JOIN user_profiles up ON sm.shared_with = up.id
+                    WHERE sm.menu_id = %s
+                    ORDER BY sm.created_at DESC
+                """, (menu_id,))
+                
+                shared_with = cursor.fetchall()
+                
+                return {
+                    "menu_id": menu_id,
+                    "shared_with": shared_with
+                }
+                
+            else:  # Client
+                # Check if the menu is shared with this client
+                cursor.execute("""
+                    SELECT id FROM shared_menus 
+                    WHERE menu_id = %s AND shared_with = %s
+                """, (menu_id, user_id))
+                
+                if not cursor.fetchone():
+                    raise HTTPException(
+                        status_code=403,
+                        detail="You don't have access to this menu's sharing details"
+                    )
+                
+                # For clients, only show that the menu is shared with them
+                cursor.execute("""
+                    SELECT 
+                        sm.id,
+                        sm.shared_with AS client_id,
+                        sm.created_at AS shared_at,
+                        up.name AS client_name,
+                        COALESCE(sm.permission_level, 'read') AS permission_level
+                    FROM shared_menus sm
+                    JOIN user_profiles up ON sm.shared_with = up.id
+                    WHERE sm.menu_id = %s AND sm.shared_with = %s
+                """, (menu_id, user_id))
+                
+                shared_with = cursor.fetchall()
+                
+                return {
+                    "menu_id": menu_id,
+                    "shared_with": shared_with
+                }
+                
+        finally:
+            cursor.close()
+            conn.close()
+            
+    except Exception as e:
+        logger.error(f"Error getting menu sharing details: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/share/{menu_id}/client/{client_id}")
+async def share_menu_with_client(
+    menu_id: int,
+    client_id: int,
+    permission_level: str = "read",
+    user = Depends(get_user_from_token)
+):
+    """Share a menu with a specific client"""
+    try:
+        # Verify user owns the menu
+        user_id = user.get('user_id')
+        org_id = user.get('organization_id')
+        role = user.get('role', '')
+        
+        if role != 'owner':
+            raise HTTPException(
+                status_code=403, 
+                detail="Only organization owners can share menus with clients"
+            )
+        
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        try:
+            # First verify menu exists and belongs to the user
+            cursor.execute("""
+                SELECT id FROM menus 
+                WHERE id = %s AND user_id = %s
+            """, (menu_id, user_id))
+            
+            menu = cursor.fetchone()
+            if not menu:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Menu not found or you don't have permission to share it"
+                )
+            
+            # Verify client exists and belongs to this organization
+            cursor.execute("""
+                SELECT id 
+                FROM organization_clients 
+                WHERE organization_id = %s AND client_id = %s AND status = 'active'
+            """, (org_id, client_id))
+            
+            client = cursor.fetchone()
+            if not client:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Client not found or not active in your organization"
+                )
+            
+            # Check if menu is already shared with this client
+            cursor.execute("""
+                SELECT id FROM shared_menus 
+                WHERE menu_id = %s AND shared_with = %s
+            """, (menu_id, client_id))
+            
+            existing_share = cursor.fetchone()
+            
+            if existing_share:
+                # Update existing share
+                cursor.execute("""
+                    UPDATE shared_menus 
+                    SET permission_level = %s,
+                        created_at = CURRENT_TIMESTAMP
+                    WHERE id = %s
+                    RETURNING id
+                """, (permission_level, existing_share['id']))
+                
+                share_id = cursor.fetchone()['id']
+                message = "Menu sharing updated successfully"
+            else:
+                # Create new share
+                cursor.execute("""
+                    INSERT INTO shared_menus (menu_id, shared_with, created_by, organization_id, permission_level) 
+                    VALUES (%s, %s, %s, %s, %s)
+                    RETURNING id
+                """, (menu_id, client_id, user_id, org_id, permission_level))
+                
+                share_id = cursor.fetchone()['id']
+                message = "Menu shared successfully"
+            
+            conn.commit()
+            
+            return {
+                "share_id": share_id,
+                "menu_id": menu_id,
+                "client_id": client_id,
+                "message": message
+            }
+            
+        finally:
+            cursor.close()
+            conn.close()
+            
+    except Exception as e:
+        logger.error(f"Error sharing menu with client: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/share/{share_id}")
+async def unshare_menu(
+    share_id: int,
+    user = Depends(get_user_from_token)
+):
+    """Remove menu sharing"""
+    try:
+        # Verify user has permission
+        user_id = user.get('user_id')
+        org_id = user.get('organization_id')
+        role = user.get('role', '')
+        
+        if role != 'owner':
+            raise HTTPException(
+                status_code=403, 
+                detail="Only organization owners can unshare menus"
+            )
+        
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        try:
+            # Get the share record with menu details
+            cursor.execute("""
+                SELECT sm.*, m.user_id as menu_owner_id
+                FROM shared_menus sm
+                JOIN menus m ON sm.menu_id = m.id
+                WHERE sm.id = %s
+            """, (share_id,))
+            
+            share = cursor.fetchone()
+            
+            if not share:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Share record not found"
+                )
+            
+            # Check if user owns the menu or is from the same organization
+            if share['menu_owner_id'] != user_id and share['organization_id'] != org_id:
+                raise HTTPException(
+                    status_code=403,
+                    detail="You don't have permission to remove this share"
+                )
+            
+            # Delete the share
+            cursor.execute("""
+                DELETE FROM shared_menus
+                WHERE id = %s
+                RETURNING id
+            """, (share_id,))
+            
+            deleted = cursor.fetchone()
+            
+            if not deleted:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Share record not found"
+                )
+            
+            conn.commit()
+            
+            return {
+                "message": "Menu share removed successfully"
+            }
+            
+        finally:
+            cursor.close()
+            conn.close()
+            
+    except Exception as e:
+        logger.error(f"Error unsharing menu: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

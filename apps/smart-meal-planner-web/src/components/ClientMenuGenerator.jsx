@@ -61,8 +61,7 @@ function ClientMenuGenerator({ client, onMenuGenerated }) {
       
       // Prepare the menu request using client preferences
       const menuRequest = {
-        user_id: client.id,
-        client_id: client.id,
+        user_id: client.id,  // This will be overridden by the backend
         duration_days: durationDays,
         diet_type: clientPreferences.diet_type || '',
         dietary_preferences: clientPreferences.dietary_restrictions ? 
@@ -86,8 +85,9 @@ function ClientMenuGenerator({ client, onMenuGenerated }) {
         }
       };
       
-      // Call the API to generate the menu
-      const newMenu = await apiService.generateMenu(menuRequest);
+      // Call the API to generate the menu for this specific client
+      // This will store the menu with the organization as the owner but with a reference to the client
+      const newMenu = await apiService.generateMenuForClient(client.id, menuRequest);
       
       // Set success message
       setSuccess('Menu generated successfully!');
