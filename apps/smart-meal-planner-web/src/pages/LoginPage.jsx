@@ -95,19 +95,11 @@ function LoginPage() {
 
       console.log('Login Response:', response);
 
-      // If this is an invitation login flow, accept the invitation after successful login
+      // If this is an invitation login flow, redirect to the connect-to-organization page
       if (isInvitation && invitationToken && organizationId) {
-        try {
-          await apiService.acceptInvitation(invitationToken, organizationId);
-          // After accepting invitation, always go to client dashboard
-          navigate('/client-dashboard');
-          return; // Exit early since we've already navigated
-        } catch (err) {
-          console.error('Error accepting invitation:', err);
-          setError('There was a problem accepting your invitation.');
-          setLoading(false);
-          return; // Exit early on error
-        }
+        // Instead of accepting invitation here, redirect to the dedicated connection page
+        navigate(`/connect-to-organization?token=${invitationToken}&org=${organizationId}`);
+        return; // Exit early since we've already navigated
       }
 
       // Standard redirect flow (if not handling invitation)

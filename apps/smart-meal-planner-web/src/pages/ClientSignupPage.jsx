@@ -62,6 +62,7 @@ const ClientSignupPage = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [tokenValid, setTokenValid] = useState(true);
+  const [invitationAccepted, setInvitationAccepted] = useState(false);
   const [signupData, setSignupData] = useState({
     name: '',
     email: '',
@@ -219,85 +220,36 @@ const ClientSignupPage = () => {
     }
   };
   
-  const handleVerifyAndAccept = async () => {
+  const handleAcceptInvitation = async () => {
     try {
       setLoading(true);
-      
-      // Execute reCAPTCHA and get token for login
-      if (!executeRecaptcha) {
-        throw new Error('reCAPTCHA not initialized');
-      }
-      
-      console.log('Getting captcha token for client login...');
-      const captchaToken = await executeRecaptcha('client_login');
-      
-      console.log('Logging in with credentials...');
-      // Log the user in with captcha token
-      const loginResponse = await login({
-        email: signupData.email,
-        password: signupData.password,
-        captchaToken: captchaToken
-      });
-      
-      console.log('Login successful, response:', loginResponse);
-      
-      // Check if the token is in localStorage
-      const storedToken = localStorage.getItem('access_token');
-      console.log('Stored token after login:', storedToken ? 'Token exists' : 'No token found');
-      
-      // We need to make sure the user is logged in before accepting the invitation
-      // Longer delay to ensure the token is properly stored and any auth state is updated
-      console.log('Waiting for auth state to stabilize...');
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Verify token again after delay
-      const tokenAfterDelay = localStorage.getItem('access_token');
-      console.log('Token after delay:', tokenAfterDelay ? 'Token exists' : 'No token found');
-      
-      if (!tokenAfterDelay) {
-        throw new Error('Auth token not available after login. Please try again.');
-      }
       
       console.log('Accepting invitation with token and orgId:', { token, orgId });
       
       // Accept the invitation with the token and org ID
-      try {
-        const acceptResponse = await apiService.acceptInvitation(token, orgId);
-        console.log('Invitation accepted successfully:', acceptResponse);
-        
-        // If we get this far, update user account type in auth context
-        const userData = JSON.parse(localStorage.getItem('user') || '{}');
-        userData.account_type = 'client';
-        localStorage.setItem('user', JSON.stringify(userData));
-        
-        // Move to final step
-        setActiveStep(2);
-      } catch (acceptErr) {
-        console.error('Error accepting invitation:', acceptErr);
-        
-        // If specific error messages are provided by the API, display them
-        if (acceptErr.response?.data?.detail) {
-          setError(`Connection error: ${acceptErr.response.data.detail}`);
-          
-          // Special case for debugging
-          if (acceptErr.response?.status === 401) {
-            console.log('401 Unauthorized when accepting invitation. Token details:');
-            console.log('Current token in localStorage:', localStorage.getItem('access_token'));
-          }
-        } else {
-          setError('Failed to connect to organization. Please try again or contact support.');
-        }
-      }
-    } catch (err) {
-      console.error('Error during client connection process:', err);
+      const acceptResponse = await apiService.acceptInvitation(token, orgId);
+      console.log('Invitation accepted successfully:', acceptResponse);
       
-      // More detailed error handling
+      // Update user account type in auth context
+      const userData = JSON.parse(localStorage.getItem('user') || '{}');
+      userData.account_type = 'client';
+      userData.organization_id = orgId;
+      localStorage.setItem('user', JSON.stringify(userData));
+      
+      setInvitationAccepted(true);
+      setActiveStep(2);
+    } catch (err) {
+      console.error('Error accepting invitation:', err);
+      
+      // Detailed error handling
       if (err.response?.status === 401) {
-        setError('Authentication failed. Please try logging in again.');
+        setError('Authentication required. Please verify your email and log in first.');
       } else if (err.response?.status === 404) {
         setError('Invitation not found. It may have expired.');
+      } else if (err.response?.data?.detail) {
+        setError(`Error: ${err.response.data.detail}`);
       } else {
-        setError(err.message || err.response?.data?.detail || 'Error accepting invitation. Please try again.');
+        setError('Failed to connect to organization. Please try again or contact support.');
       }
     } finally {
       setLoading(false);
@@ -390,25 +342,38 @@ const ClientSignupPage = () => {
                 Account Created Successfully!
               </Alert>
             </Box>
-            <Typography variant="body1" gutterBottom>
-              Your account has been created, but we need to verify your email and connect you to {orgName}.
+            <Typography variant="body1" gutterBottom sx={{ fontWeight: 'bold' }}>
+              Important: Please verify your email first
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-              Please check your email for a verification link. Once verified, you can log in and access your nutrition plans.
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-              For this demonstration, we'll skip email verification and connect you directly.
-            </Typography>
+            <Box sx={{ bgcolor: '#f8f9fa', p: 3, borderRadius: 1, mb: 3 }}>
+              <Typography variant="body1" gutterBottom>
+                We've sent a verification link to your email. Please complete these steps:
+              </Typography>
+              <Box sx={{ textAlign: 'left', mt: 2 }}>
+                <Typography component="div" variant="body2" sx={{ mb: 1 }}>
+                  1. Check your email for a verification link from Smart Meal Planner
+                </Typography>
+                <Typography component="div" variant="body2" sx={{ mb: 1 }}>
+                  2. Click the verification link to activate your account
+                </Typography>
+                <Typography component="div" variant="body2" sx={{ mb: 1 }}>
+                  3. Return to the login page and sign in with your credentials
+                </Typography>
+                <Typography component="div" variant="body2" sx={{ mb: 1 }}>
+                  4. After signing in, you'll be prompted to connect to {orgName}
+                </Typography>
+              </Box>
+            </Box>
             <Button
               variant="contained"
               color="primary"
-              onClick={handleVerifyAndAccept}
-              disabled={loading}
+              component={RouterLink}
+              to="/login"
               size="large"
               fullWidth
               sx={{ mt: 2 }}
             >
-              {loading ? <CircularProgress size={24} /> : "Connect to Organization"}
+              Go to Login Page
             </Button>
           </Box>
         );

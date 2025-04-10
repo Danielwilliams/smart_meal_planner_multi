@@ -32,6 +32,7 @@ import AcceptInvitation from './pages/AcceptInvitation';
 import ClientPreferencesPage from './pages/ClientPreferencesPage';
 import ClientDashboard from './pages/ClientDashboard';
 import ClientSignupPage from './pages/ClientSignupPage';
+import ClientInvitationConnect from './pages/ClientInvitationConnect';
 import TestInvitation from './TestInvitation';
 
 
@@ -68,6 +69,7 @@ function App() {
               />
               <Route path="/example-meal-plans" element={<ExampleMealPlansPage />} />
               <Route path="/verify-email" element={<VerifyEmailPage />} />
+              <Route path="/connect-to-organization" element={<ClientInvitationConnect />} />
               <Route path="/test-invitation" element={<TestInvitation />} />
               <Route path="/accept-invitation" element={<AcceptInvitation />} />
               

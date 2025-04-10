@@ -24,7 +24,8 @@ function PrivateRoute({ children }) {
     location.pathname === '/client-signup' || 
     location.pathname === '/accept-invitation' ||
     location.pathname === '/join-as-client' ||
-    location.pathname === '/client-registration';
+    location.pathname === '/client-registration' ||
+    location.pathname === '/connect-to-organization';
 
   if (loading) {
     return (

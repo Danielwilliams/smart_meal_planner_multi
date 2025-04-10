@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Card, CardContent, Typography, CircularProgress, Box, Button } from '@mui/material';
+import { Card, CardContent, Typography, CircularProgress, Box, Button, ButtonGroup, Alert } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorIcon from '@mui/icons-material/Error';
 import apiService from '../services/apiService';
@@ -10,6 +10,7 @@ const VerifyEmailPage = () => {
   const navigate = useNavigate();
   const [status, setStatus] = useState('loading');
   const [message, setMessage] = useState('');
+  const [hasInvitation, setHasInvitation] = useState(false);
   
   useEffect(() => {
     const verifyEmail = async () => {
@@ -25,6 +26,14 @@ const VerifyEmailPage = () => {
         const response = await apiService.verifyEmail(token);
         setStatus('success');
         setMessage(response.message);
+        
+        // Check if there's a pending invitation in localStorage
+        const invitationToken = localStorage.getItem('invitation_token');
+        const orgId = localStorage.getItem('invitation_org_id');
+        
+        if (invitationToken && orgId) {
+          setHasInvitation(true);
+        }
       } catch (err) {
         setStatus('error');
         setMessage(err.response?.data?.detail || 'Error verifying email');
@@ -64,13 +73,37 @@ const VerifyEmailPage = () => {
               <Typography color="text.secondary" paragraph>
                 {message}
               </Typography>
-              <Button 
-                variant="contained" 
-                onClick={() => navigate('/login')}
-                sx={{ mt: 2 }}
-              >
-                Proceed to Login
-              </Button>
+              
+              {hasInvitation && (
+                <Alert severity="info" sx={{ my: 2, textAlign: 'left' }}>
+                  You have a pending invitation to join an organization. Please login to complete the connection.
+                </Alert>
+              )}
+              
+              <ButtonGroup orientation="vertical" fullWidth sx={{ mt: 2 }}>
+                <Button 
+                  variant="contained" 
+                  onClick={() => navigate('/login')}
+                  color="primary"
+                >
+                  Proceed to Login
+                </Button>
+                
+                {hasInvitation && (
+                  <Button 
+                    variant="outlined"
+                    onClick={() => {
+                      const token = localStorage.getItem('invitation_token');
+                      const orgId = localStorage.getItem('invitation_org_id');
+                      navigate(`/login?invitation=true&token=${token}&org=${orgId}`);
+                    }}
+                    sx={{ mt: 1 }}
+                    color="secondary"
+                  >
+                    Login & Connect to Organization
+                  </Button>
+                )}
+              </ButtonGroup>
             </>
           )}
           
