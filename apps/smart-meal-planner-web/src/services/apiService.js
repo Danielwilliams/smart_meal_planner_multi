@@ -5,7 +5,7 @@ const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://smartmealpla
 
 const axiosInstance = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 300000,  
+  timeout: 600000, // Increased to 10 minutes (600,000 ms)
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json'
@@ -261,30 +261,51 @@ const apiService = {
 
   async generateMenu(menuRequest) {
     try {
-      const resp = await axiosInstance.post('/menu/generate', menuRequest);
+      console.log('Generating menu with request:', menuRequest);
+      const resp = await axiosInstance.post('/menu/generate', menuRequest, {
+        timeout: 900000 // 15 minutes timeout for menu generation
+      });
+      console.log('Menu generation successful');
       return resp.data;
     } catch (err) {
       console.error('Menu generation error:', err);
+      if (err.code === 'ECONNABORTED') {
+        throw new Error('Menu generation timed out. Please try again or generate a shorter menu.');
+      }
       throw err;
     }
   },
   
   async generateMenuForClient(clientId, menuRequest) {
     try {
-      const resp = await axiosInstance.post(`/menu/generate-for-client/${clientId}`, menuRequest);
+      console.log(`Generating menu for client ${clientId} with request:`, menuRequest);
+      const resp = await axiosInstance.post(`/menu/generate-for-client/${clientId}`, menuRequest, {
+        timeout: 900000 // 15 minutes timeout for menu generation
+      });
+      console.log('Client menu generation successful');
       return resp.data;
     } catch (err) {
       console.error(`Error generating menu for client ${clientId}:`, err);
+      if (err.code === 'ECONNABORTED') {
+        throw new Error('Menu generation timed out. Please try again or generate a shorter menu.');
+      }
       throw err;
     }
   },
   
   async generateAndShareMenu(clientId, menuRequest) {
     try {
-      const resp = await axiosInstance.post(`/menu/generate-and-share/${clientId}`, menuRequest);
+      console.log(`Generating and sharing menu for client ${clientId} with request:`, menuRequest);
+      const resp = await axiosInstance.post(`/menu/generate-and-share/${clientId}`, menuRequest, {
+        timeout: 900000 // 15 minutes timeout for menu generation
+      });
+      console.log('Client menu generation and sharing successful');
       return resp.data;
     } catch (err) {
       console.error(`Error generating and sharing menu for client ${clientId}:`, err);
+      if (err.code === 'ECONNABORTED') {
+        throw new Error('Menu generation timed out. Please try again or generate a shorter menu.');
+      }
       throw err;
     }
   },
