@@ -110,6 +110,8 @@ function ClientMenuGenerator({ client, onMenuGenerated }) {
         ai_model: model
       };
       
+      console.log('Generating menu with model:', model);
+      
       // Call the API to generate the menu for this specific client
       // This will store the menu with the organization as the owner but with a reference to the client
       const newMenu = await apiService.generateMenuForClient(client.id, finalRequest);
@@ -123,7 +125,15 @@ function ClientMenuGenerator({ client, onMenuGenerated }) {
       }
     } catch (err) {
       console.error('Error generating menu:', err);
-      setError('Failed to generate menu. Please try again.');
+      
+      // Display a more specific error message for timeouts
+      if (err.message && err.message.includes('timed out')) {
+        setError('Menu generation timed out. This may happen with longer menus or complex requirements. Try reducing the number of days or try again.');
+      } else if (err.response && err.response.status === 504) {
+        setError('The server took too long to respond. Try generating a shorter menu or try again later.');
+      } else {
+        setError(`Failed to generate menu: ${err.message || 'Please try again.'}`);
+      }
     } finally {
       setLoading(false);
     }

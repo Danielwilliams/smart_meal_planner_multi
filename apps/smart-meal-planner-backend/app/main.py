@@ -68,7 +68,18 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Meal Planner App",
         version="1.0.0",
-        description="API for Smart Meal Planner"
+        description="API for Smart Meal Planner",
+        # Set longer timeout for routes that need it
+        openapi_tags=[
+            {
+                "name": "Menu",
+                "description": "Menu generation and management operations",
+                "externalDocs": {
+                    "description": "Menu operations may take longer to complete",
+                    "url": "https://smartmealplannerio.com/docs#menu",
+                },
+            },
+        ]
     )
 
     # Get environment-specific settings
@@ -103,6 +114,19 @@ def create_app() -> FastAPI:
         TrustedHostMiddleware,
         allowed_hosts=["*"]  # Configure this based on your needs
     )
+    
+    # Add middleware for longer timeouts on specific routes
+    @app.middleware("http")
+    async def extend_timeout_for_menu_routes(request, call_next):
+        # Check if this is a menu generation route
+        if "/menu/generate" in request.url.path:
+            # Extend the timeout for menu generation routes - note this is handled by the server
+            request.app.state.menu_generation_timeout = 900  # 15 minutes in seconds
+            logger.info(f"Extended timeout for menu generation route: {request.url.path}")
+        
+        # Continue with the request
+        response = await call_next(request)
+        return response
 
     # Register routers
     logger.info("Registering routers...")

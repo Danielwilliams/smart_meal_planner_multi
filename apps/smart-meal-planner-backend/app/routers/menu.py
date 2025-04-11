@@ -483,7 +483,7 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
                             max_tokens=3000,
                             temperature=0,
                             top_p=1,
-                            request_timeout=300
+                            request_timeout=600  # Increased to 10 minutes (600 seconds)
                         )
                         ai_text = response.choices[0].message["content"].strip()
                         logger.info(f"Received OpenAI response for day {day_number} using model {openai_model}")

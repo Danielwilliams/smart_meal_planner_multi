@@ -325,7 +325,10 @@ function MenuDisplayPage() {
         ai_model: selectedModel
       };
 
+      console.log(`Generating menu with model: ${selectedModel}, days: ${durationDays}`);
       const newMenu = await apiService.generateMenu(menuRequest);
+      console.log('Menu generation successful');
+      
       const updatedHistory = await apiService.getMenuHistory(user.userId);
       
       setMenuHistory(updatedHistory);
@@ -350,7 +353,15 @@ function MenuDisplayPage() {
       }
     } catch (err) {
       console.error('Menu generation error:', err);
-      setError('Failed to generate menu. Please try again.');
+      
+      // Display a more specific error message for timeouts
+      if (err.message && err.message.includes('timed out')) {
+        setError('Menu generation timed out. Try reducing the number of days or using a different AI model.');
+      } else if (err.response && err.response.status === 504) {
+        setError('The server took too long to respond. Try generating a shorter menu or try again later.');
+      } else {
+        setError(`Failed to generate menu: ${err.message || 'Please try again.'}`);
+      }
     } finally {
       setLoading(false);
     }
