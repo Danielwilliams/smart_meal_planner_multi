@@ -23,6 +23,9 @@ function ClientMenuGenerator({ client, onMenuGenerated }) {
   const [clientPreferences, setClientPreferences] = useState(null);
   const [durationDays, setDurationDays] = useState(7);
   const [loadingPreferences, setLoadingPreferences] = useState(false);
+  const [modelDialogOpen, setModelDialogOpen] = useState(false);
+  const [selectedModel, setSelectedModel] = useState('default');
+  const [menuRequest, setMenuRequest] = useState(null);
 
   // Fetch client preferences
   useEffect(() => {
@@ -44,7 +47,10 @@ function ClientMenuGenerator({ client, onMenuGenerated }) {
     fetchClientPreferences();
   }, [client]);
 
-  const handleGenerateMenu = async () => {
+  // This function is now simpler - it's just used to validate inputs and prepare the request
+  const handleGenerateMenu = () => {
+    console.log("handleGenerateMenu called");
+    
     if (!client || !client.id) {
       setError('Client information is missing');
       return;
@@ -55,40 +61,58 @@ function ClientMenuGenerator({ client, onMenuGenerated }) {
       return;
     }
     
+    // Prepare the menu request using client preferences
+    const request = {
+      user_id: client.id,  // This will be overridden by the backend
+      duration_days: durationDays,
+      diet_type: clientPreferences.diet_type || '',
+      dietary_preferences: clientPreferences.dietary_restrictions ? 
+        clientPreferences.dietary_restrictions.split(',').map(item => item.trim()) : [],
+      disliked_foods: clientPreferences.disliked_ingredients ? 
+        clientPreferences.disliked_ingredients.split(',').map(item => item.trim()) : [],
+      meal_times: Object.keys(clientPreferences.meal_times || {}).filter(
+        time => clientPreferences.meal_times[time] && time !== 'snacks'
+      ),
+      snacks_per_day: clientPreferences.meal_times?.snacks ? clientPreferences.snacks_per_day || 0 : 0,
+      servings_per_meal: clientPreferences.servings_per_meal || 1,
+      calorie_goal: clientPreferences.calorie_goal || 2000,
+      macro_protein: clientPreferences.macro_protein || 40,
+      macro_carbs: clientPreferences.macro_carbs || 30,
+      macro_fat: clientPreferences.macro_fat || 30,
+      prep_complexity: clientPreferences.prep_complexity || 50,
+      appliances: clientPreferences.appliances || {
+        airFryer: false,
+        instapot: false,
+        crockpot: false
+      }
+    };
+    
+    // Save the request data
+    setMenuRequest(request);
+    console.log("Menu request prepared:", request);
+    console.log("Opening model dialog");
+    
+    // The dialog open is now handled in the button click handler
+  };
+  
+  // This function will be called after model selection
+  const continueGenerateMenu = async (model) => {
+    if (!menuRequest) return;
+    
     try {
       setLoading(true);
       setError('');
       setSuccess('');
       
-      // Prepare the menu request using client preferences
-      const menuRequest = {
-        user_id: client.id,  // This will be overridden by the backend
-        duration_days: durationDays,
-        diet_type: clientPreferences.diet_type || '',
-        dietary_preferences: clientPreferences.dietary_restrictions ? 
-          clientPreferences.dietary_restrictions.split(',').map(item => item.trim()) : [],
-        disliked_foods: clientPreferences.disliked_ingredients ? 
-          clientPreferences.disliked_ingredients.split(',').map(item => item.trim()) : [],
-        meal_times: Object.keys(clientPreferences.meal_times || {}).filter(
-          time => clientPreferences.meal_times[time] && time !== 'snacks'
-        ),
-        snacks_per_day: clientPreferences.meal_times?.snacks ? clientPreferences.snacks_per_day || 0 : 0,
-        servings_per_meal: clientPreferences.servings_per_meal || 1,
-        calorie_goal: clientPreferences.calorie_goal || 2000,
-        macro_protein: clientPreferences.macro_protein || 40,
-        macro_carbs: clientPreferences.macro_carbs || 30,
-        macro_fat: clientPreferences.macro_fat || 30,
-        prep_complexity: clientPreferences.prep_complexity || 50,
-        appliances: clientPreferences.appliances || {
-          airFryer: false,
-          instapot: false,
-          crockpot: false
-        }
+      // Add the selected model to the request
+      const finalRequest = {
+        ...menuRequest,
+        ai_model: model
       };
       
       // Call the API to generate the menu for this specific client
       // This will store the menu with the organization as the owner but with a reference to the client
-      const newMenu = await apiService.generateMenuForClient(client.id, menuRequest);
+      const newMenu = await apiService.generateMenuForClient(client.id, finalRequest);
       
       // Set success message
       setSuccess('Menu generated successfully!');
@@ -104,6 +128,12 @@ function ClientMenuGenerator({ client, onMenuGenerated }) {
       setLoading(false);
     }
   };
+  
+  // Handle model selection from dialog
+  const handleModelSelect = (model) => {
+    setSelectedModel(model);
+    continueGenerateMenu(model);
+  };
 
   if (loadingPreferences) {
     return (
@@ -113,6 +143,8 @@ function ClientMenuGenerator({ client, onMenuGenerated }) {
     );
   }
 
+  console.log('Model dialog state:', { modelDialogOpen, selectedModel });
+  
   return (
     <Paper sx={{ p: 3, mb: 3 }}>
       <Typography variant="h6" gutterBottom>
@@ -152,7 +184,11 @@ function ClientMenuGenerator({ client, onMenuGenerated }) {
       
       <Button
         variant="contained"
-        onClick={handleGenerateMenu}
+        onClick={() => {
+          console.log('Generate Menu button clicked');
+          handleGenerateMenu(); // First prepare the request data
+          setModelDialogOpen(true); // Then open the model selection dialog
+        }}
         disabled={loading || !clientPreferences}
         fullWidth
       >
@@ -165,6 +201,19 @@ function ClientMenuGenerator({ client, onMenuGenerated }) {
           'Generate Menu'
         )}
       </Button>
+      
+      {/* AI Model Selection Dialog */}
+      <ModelSelectionDialog
+        open={modelDialogOpen}
+        onClose={() => {
+          console.log('Closing model dialog');
+          setModelDialogOpen(false);
+        }}
+        onModelSelect={(model) => {
+          console.log('Model selected:', model);
+          handleModelSelect(model);
+        }}
+      />
     </Paper>
   );
 }

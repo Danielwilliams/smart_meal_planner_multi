@@ -251,8 +251,6 @@ function ClientProfile() {
         </Grid>
       )}
 
-// Continuing the ClientProfile.jsx file
-
       {/* Menus Tab */}
       {tabValue === 1 && (
         <>
