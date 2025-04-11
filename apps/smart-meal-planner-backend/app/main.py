@@ -114,19 +114,6 @@ def create_app() -> FastAPI:
         TrustedHostMiddleware,
         allowed_hosts=["*"]  # Configure this based on your needs
     )
-    
-    # Add middleware for longer timeouts on specific routes
-    @app.middleware("http")
-    async def extend_timeout_for_menu_routes(request, call_next):
-        # Check if this is a menu generation route
-        if "/menu/generate" in request.url.path:
-            # Extend the timeout for menu generation routes - note this is handled by the server
-            request.app.state.menu_generation_timeout = 900  # 15 minutes in seconds
-            logger.info(f"Extended timeout for menu generation route: {request.url.path}")
-        
-        # Continue with the request
-        response = await call_next(request)
-        return response
 
     # Register routers
     logger.info("Registering routers...")
@@ -173,6 +160,18 @@ def create_app() -> FastAPI:
 
 # Define app BEFORE using @app.on_event
 app = create_app()
+
+# Add middleware for longer timeouts on specific routes
+@app.middleware("http")
+async def extend_timeout_for_menu_routes(request, call_next):
+    # Check if this is a menu generation route
+    if "/menu/generate" in request.url.path:
+        # Log extended timeout for menu generation routes
+        logger.info(f"Processing menu generation route with extended timeout: {request.url.path}")
+    
+    # Continue with the request
+    response = await call_next(request)
+    return response
 
 # Now we can use @app.on_event
 @app.on_event("startup")
