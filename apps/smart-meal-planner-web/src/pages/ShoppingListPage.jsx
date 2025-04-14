@@ -49,6 +49,51 @@ function ShoppingListPage() {
     selectedMenuId, 
     isClientSourced 
   });
+  
+  // Helper function to format categories for display
+  const formatCategoriesForDisplay = (groceryItems) => {
+    // If already in expected format (object with category keys)
+    if (!Array.isArray(groceryItems) && typeof groceryItems === 'object') {
+      console.log('Grocery list already in category format:', groceryItems);
+      return groceryItems;
+    }
+    
+    // If empty or invalid
+    if (!groceryItems || !Array.isArray(groceryItems) || groceryItems.length === 0) {
+      console.log('Empty or invalid grocery items:', groceryItems);
+      return {};
+    }
+    
+    console.log('Formatting grocery items for display:', groceryItems);
+    
+    // Process the flat list into categories
+    const categorized = {};
+    
+    groceryItems.forEach(item => {
+      // Get the item name (handle both string and object formats)
+      const itemName = typeof item === 'string' ? item : item.name || '';
+      if (!itemName) return;
+      
+      // Determine category based on keywords
+      const normalizedName = itemName.toLowerCase();
+      const category = Object.keys(CATEGORY_MAPPING).find(cat => 
+        CATEGORY_MAPPING[cat].some(keyword => 
+          normalizedName.includes(keyword.toLowerCase())
+        )
+      ) || 'Other';
+      
+      // Create category array if it doesn't exist
+      if (!categorized[category]) {
+        categorized[category] = [];
+      }
+      
+      // Add the item to its category
+      categorized[category].push(itemName);
+    });
+    
+    console.log('Categorized items for display:', categorized);
+    return categorized;
+  };
 
   // Check for new user flow from navigation state
   const { isNewUser, showWalkthrough } = location.state || {};
@@ -627,7 +672,7 @@ const categorizeItems = (mealPlanData) => {
 
       {groceryList && groceryList.length > 0 ? (
         <ShoppingList 
-          categories={categorizeItems(groceryList)} 
+          categories={formatCategoriesForDisplay(groceryList)} 
           selectedStore={selectedStore} 
           onAddToCart={handleAddToCart} 
           onAddToMixedCart={handleAddToMixedCart} 

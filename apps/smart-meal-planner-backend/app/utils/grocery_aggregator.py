@@ -226,18 +226,82 @@ def combine_amount_and_unit(amount_float: float, unit: str, name: str) -> str:
 def aggregate_grocery_list(menu_dict: Dict[str, Any]):
     """
     Enhanced grocery list aggregation with smarter quantity handling
+    and improved format detection for different menu types
     """
-    aggregated = {}
-    days = menu_dict.get("days", [])
+    import logging
+    logger = logging.getLogger(__name__)
     
+    logger.info(f"Aggregating grocery list from input type: {type(menu_dict)}")
+    aggregated = {}
+    
+    # Parse JSON if it's a string
+    if isinstance(menu_dict, str):
+        try:
+            menu_dict = json.loads(menu_dict)
+            logger.info("Successfully parsed menu_dict from JSON string")
+        except json.JSONDecodeError:
+            logger.error("Failed to parse menu_dict as JSON")
+            return []
+    
+    # Check for nested meal_plan or meal_plan_json fields
+    if isinstance(menu_dict, dict):
+        if 'meal_plan' in menu_dict:
+            menu_dict = menu_dict['meal_plan']
+        elif 'meal_plan_json' in menu_dict:
+            if isinstance(menu_dict['meal_plan_json'], str):
+                try:
+                    menu_dict = json.loads(menu_dict['meal_plan_json'])
+                except json.JSONDecodeError:
+                    logger.error("Failed to parse meal_plan_json as JSON")
+                    return []
+            else:
+                menu_dict = menu_dict['meal_plan_json']
+    
+    # Verify we have a days array
+    if not menu_dict or not isinstance(menu_dict, dict) or not 'days' in menu_dict:
+        logger.warning("No 'days' array found in menu_dict")
+        return []
+    
+    days = menu_dict.get("days", [])
+    if not days or not isinstance(days, list):
+        logger.warning("Days is not a valid list")
+        return []
+    
+    # Process each day, meal, and snack
     for day in days:
-        # Process meals and snacks with consistent logic
+        # Process meals with consistent logic
         for section in ['meals', 'snacks']:
             for item in day.get(section, []):
-                for ing in item.get("ingredients", []):
-                    name, amount, unit = standardize_ingredient(ing)
-                    key = (name, unit)
+                # Handle different formats of ingredients
+                ingredients = item.get("ingredients", [])
+                
+                # If ingredients isn't a list, try to convert it
+                if not isinstance(ingredients, list):
+                    if isinstance(ingredients, str):
+                        # Try to parse JSON if it's a string
+                        try:
+                            ingredients = json.loads(ingredients)
+                        except json.JSONDecodeError:
+                            # If not valid JSON, treat as a single ingredient
+                            ingredients = [ingredients]
+                    else:
+                        # Treat as a single ingredient
+                        ingredients = [ingredients]
+                
+                # Process each ingredient based on its format
+                for ing in ingredients:
+                    if isinstance(ing, str):
+                        # String format like "1 cup flour"
+                        name, amount, unit = standardize_ingredient(ing)
+                    else:
+                        # Dictionary format like {"name": "flour", "quantity": "1 cup"}
+                        name, amount, unit = standardize_ingredient(ing)
                     
+                    # Skip empty ingredients
+                    if not name:
+                        continue
+                    
+                    key = (name, unit)
                     if amount is not None:
                         current = aggregated.get(key, 0.0)
                         aggregated[key] = current + amount
@@ -250,4 +314,5 @@ def aggregate_grocery_list(menu_dict: Dict[str, Any]):
         line = combine_amount_and_unit(total_amt, unit, name)
         results.append({"name": line, "quantity": ""})
     
+    logger.info(f"Generated grocery list with {len(results)} items")
     return results

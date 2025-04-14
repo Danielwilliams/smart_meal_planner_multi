@@ -422,11 +422,30 @@ const apiService = {
 
   async getGroceryListByMenuId(menuId) {
     try {
+      console.log(`Fetching grocery list for menu ${menuId}`);
       const resp = await axiosInstance.get(`/menu/${menuId}/grocery-list`);
+      console.log('Grocery list response:', resp.data);
+      
+      // Ensure we return in the expected format with groceryList property
+      if (resp.data && !resp.data.groceryList && Array.isArray(resp.data)) {
+        console.log('Converting array response to groceryList format');
+        return { groceryList: resp.data };
+      }
+      
       return resp.data;
     } catch (err) {
       console.error("Fetch grocery list error:", err.response?.data || err.message);
-      throw err;
+      
+      // Try the client endpoint as fallback
+      try {
+        console.log(`Trying client endpoint for grocery list for menu ${menuId}`);
+        const clientResp = await axiosInstance.get(`/client/menus/${menuId}/grocery-list`);
+        console.log('Client grocery list response:', clientResp.data);
+        return clientResp.data;
+      } catch (clientErr) {
+        console.error("Client grocery list endpoint also failed:", clientErr);
+        throw err; // Throw the original error
+      }
     }
   },
 
@@ -512,6 +531,48 @@ const apiService = {
       throw err;
     }
   },
+  
+  async clearStoreItems(userId, store) {
+    try {
+      console.log(`Clearing ${store} items for user ${userId}`);
+      const resp = await axiosInstance.delete(`/cart/internal/${userId}/clear_store/${store}`);
+      return resp.data;
+    } catch (err) {
+      console.error("Clear store items error:", err);
+      throw err;
+    }
+  },
+  
+  async removeCartItem(userId, itemName, store) {
+    try {
+      console.log(`Removing ${itemName} from ${store} for user ${userId}`);
+      const resp = await axiosInstance.delete(`/cart/internal/${userId}/remove_item`, {
+        data: {
+          item_name: itemName,
+          store
+        }
+      });
+      return resp.data;
+    } catch (err) {
+      console.error("Remove cart item error:", err);
+      throw err;
+    }
+  },
+  
+  async updateCartItemQuantity(userId, itemName, store, quantity) {
+    try {
+      console.log(`Updating quantity for ${itemName} in ${store} to ${quantity}`);
+      const resp = await axiosInstance.patch(`/cart/internal/${userId}/update_quantity`, {
+        item_name: itemName,
+        store,
+        quantity
+      });
+      return resp.data;
+    } catch (err) {
+      console.error("Update item quantity error:", err);
+      throw err;
+    }
+  },
 
   // Store-Specific Search Endpoints
   async searchKrogerItems(items) {
@@ -547,15 +608,78 @@ const apiService = {
   // Kroger-Specific Operations
   async addToKrogerCart(items) {
     try {
-      const resp = await axiosInstance.post('/kroger/cart/add', {
-        items: items.map(item => ({
-          upc: item.upc,
-          quantity: 1
-        }))
+      console.log('Adding items to Kroger cart:', items);
+      
+      // Prepare items for Kroger API
+      const krogerItems = items.map(item => ({
+        upc: item.upc,
+        quantity: item.quantity || 1
+      }));
+      
+      // Set a longer timeout for this specific request
+      const response = await axiosInstance.post('/kroger/cart/add', {
+        items: krogerItems
+      }, {
+        timeout: 60000 // 60 seconds timeout for Kroger (their API can be slow)
       });
-      return resp.data;
+      
+      return response.data;
     } catch (err) {
       console.error("Kroger cart add error:", err);
+      
+      // Improved error handling with comprehensive logging
+      console.log('Kroger error details:', {
+        message: err.message,
+        code: err.code,
+        response: err.response?.data,
+        status: err.response?.status
+      });
+      
+      // Try to refresh token on auth errors
+      if (err.response?.status === 401 || 
+          (err.response?.data?.error && err.response?.data?.error.includes('Token')) ||
+          (err.message && err.message.includes('token'))) {
+        
+        try {
+          // Try to refresh the token
+          console.log('Attempting to refresh Kroger token...');
+          await this.refreshKrogerToken();
+          
+          // If refresh succeeds, suggest retry
+          return {
+            success: false,
+            token_refreshed: true,
+            message: "Kroger token refreshed, please try again"
+          };
+        } catch (refreshError) {
+          console.error('Token refresh failed:', refreshError);
+          return {
+            success: false,
+            needs_reconnect: true,
+            message: "Your Kroger session has expired. Please reconnect your account."
+          };
+        }
+      }
+      
+      // Check for auth errors that need reconnection
+      if (err.response?.data?.needs_reconnect) {
+        console.log('Kroger auth error detected, needs reconnection');
+        return {
+          success: false,
+          needs_reconnect: true,
+          message: "Your Kroger session has expired. Please reconnect your account."
+        };
+      }
+      
+      // Check for timeout error
+      if (err.code === 'ECONNABORTED') {
+        return {
+          success: false,
+          message: "Request timed out. The operation may have still succeeded. Please check your Kroger cart."
+        };
+      }
+      
+      // Check for redirect needed
       if (err.response?.data?.redirect) {
         return {
           success: false,
@@ -563,7 +687,12 @@ const apiService = {
           message: "Kroger authentication required"
         };
       }
-      throw err;
+      
+      // Return the error in a way the component can handle
+      return {
+        success: false,
+        message: err.response?.data?.detail || err.message || "Failed to add items to Kroger cart"
+      };
     }
   },
 
@@ -584,6 +713,18 @@ const apiService = {
       return resp.data;
     } catch (err) {
       console.error("Kroger login URL error:", err);
+      throw err;
+    }
+  },
+  
+  async refreshKrogerToken() {
+    try {
+      console.log('Attempting to refresh Kroger token');
+      const resp = await axiosInstance.post('/kroger/refresh-token');
+      console.log('Kroger token refresh response:', resp.data);
+      return resp.data;
+    } catch (err) {
+      console.error("Kroger token refresh error:", err);
       throw err;
     }
   },

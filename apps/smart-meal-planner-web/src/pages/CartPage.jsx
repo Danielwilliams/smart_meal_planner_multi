@@ -176,12 +176,51 @@ const handleStoreSearch = async (store) => {
 
       const response = await addFunction(items);
 
+      // For successful response
       if (response.success) {
         setSnackbarMessage(`Items added to ${store} cart successfully`);
         setSnackbarOpen(true);
         await loadInternalCart();
         clearSearchResults(store);
+        return;
       }
+      
+      // Special handling for Kroger-specific responses
+      if (store === 'kroger') {
+        // Handle token refresh
+        if (response.token_refreshed) {
+          setSnackbarMessage("Kroger authentication refreshed. Please try again.");
+          setSnackbarOpen(true);
+          // Retry the search
+          await handleStoreSearch('kroger');
+          return;
+        }
+        
+        // Handle reconnection needed
+        if (response.needs_reconnect) {
+          setError("Your Kroger session has expired. Please reconnect your account.");
+          // Get a new Kroger login URL
+          try {
+            const loginData = await apiService.getKrogerLoginUrl();
+            if (loginData.url) {
+              window.location.href = loginData.url;
+              return;
+            }
+          } catch (loginErr) {
+            console.error("Failed to get Kroger login URL:", loginErr);
+          }
+          return;
+        }
+        
+        // Handle redirect needed
+        if (response.redirect) {
+          window.location.href = response.redirect;
+          return;
+        }
+      }
+      
+      // Handle any other error response
+      setError(response.message || "Failed to add items to cart");
     } catch (err) {
       handleError(err);
     } finally {
