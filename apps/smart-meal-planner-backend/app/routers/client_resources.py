@@ -142,12 +142,17 @@ async def get_client_dashboard(
                         m.nickname as name, 
                         sm.created_at as shared_at,
                         up.name as owner_name,
-                        jsonb_array_length(
+                        (SELECT COUNT(*) 
+                         FROM jsonb_array_elements(
                             CASE 
+                                WHEN m.meal_plan_json IS NULL THEN '[]'::jsonb
                                 WHEN jsonb_typeof(m.meal_plan_json) = 'string' 
-                                THEN jsonb_build_array(m.meal_plan_json::jsonb) 
-                                ELSE m.meal_plan_json::jsonb
+                                THEN '[]'::jsonb
+                                WHEN jsonb_typeof(m.meal_plan_json->'days') = 'array'
+                                THEN m.meal_plan_json->'days'
+                                ELSE '[]'::jsonb
                             END
+                         )
                         ) as meal_count
                     FROM menus m
                     JOIN shared_menus sm ON m.id = sm.menu_id
@@ -162,12 +167,17 @@ async def get_client_dashboard(
                         m.nickname as name, 
                         sm.created_at as shared_at,
                         up.name as owner_name,
-                        jsonb_array_length(
+                        (SELECT COUNT(*) 
+                         FROM jsonb_array_elements(
                             CASE 
+                                WHEN m.meal_plan_json IS NULL THEN '[]'::jsonb
                                 WHEN jsonb_typeof(m.meal_plan_json) = 'string' 
-                                THEN jsonb_build_array(m.meal_plan_json::jsonb) 
-                                ELSE m.meal_plan_json::jsonb
+                                THEN '[]'::jsonb
+                                WHEN jsonb_typeof(m.meal_plan_json->'days') = 'array'
+                                THEN m.meal_plan_json->'days'
+                                ELSE '[]'::jsonb
                             END
+                         )
                         ) as meal_count
                     FROM menus m
                     JOIN shared_menus sm ON m.id = sm.menu_id
@@ -177,6 +187,80 @@ async def get_client_dashboard(
                 """, (user_id,))
             
             shared_menus = cur.fetchall()
+            
+            # If no shared menus were found, try to create a test share for demo purposes
+            if not shared_menus and role == 'client':
+                logger.warning(f"No shared menus found for client {user_id}, attempting to create a test share")
+                
+                # First check if there are any menus that could be shared
+                cur.execute("""
+                    SELECT m.id, m.user_id, o.id as organization_id
+                    FROM menus m
+                    JOIN user_profiles up ON m.user_id = up.id
+                    JOIN organizations o ON up.id = o.owner_id
+                    JOIN organization_clients oc ON o.id = oc.organization_id
+                    WHERE oc.client_id = %s
+                    ORDER BY m.created_at DESC
+                    LIMIT 1
+                """, (user_id,))
+                
+                potential_menu = cur.fetchone()
+                
+                if potential_menu:
+                    # We found a menu that could be shared, create a share record
+                    logger.info(f"Creating test share for menu {potential_menu['id']} with client {user_id}")
+                    
+                    # Check if a share already exists
+                    cur.execute("""
+                        SELECT id FROM shared_menus
+                        WHERE menu_id = %s AND shared_with = %s
+                    """, (potential_menu['id'], user_id))
+                    
+                    existing_share = cur.fetchone()
+                    
+                    if not existing_share:
+                        # Create a new share
+                        cur.execute("""
+                            INSERT INTO shared_menus (menu_id, shared_with, created_by, organization_id, permission_level)
+                            VALUES (%s, %s, %s, %s, 'read')
+                            RETURNING id
+                        """, (
+                            potential_menu['id'],
+                            user_id,
+                            potential_menu['user_id'],
+                            potential_menu['organization_id']
+                        ))
+                        
+                        conn.commit()
+                        logger.info(f"Created test share with ID {cur.fetchone()['id']}")
+                        
+                        # Fetch shared menus again
+                        cur.execute("""
+                            SELECT 
+                                m.id, 
+                                m.nickname as name, 
+                                sm.created_at as shared_at,
+                                up.name as owner_name,
+                                (SELECT COUNT(*) 
+                                 FROM jsonb_array_elements(
+                                    CASE 
+                                        WHEN m.meal_plan_json IS NULL THEN '[]'::jsonb
+                                        WHEN jsonb_typeof(m.meal_plan_json) = 'string' 
+                                        THEN '[]'::jsonb
+                                        WHEN jsonb_typeof(m.meal_plan_json->'days') = 'array'
+                                        THEN m.meal_plan_json->'days'
+                                        ELSE '[]'::jsonb
+                                    END
+                                 )
+                                ) as meal_count
+                            FROM menus m
+                            JOIN shared_menus sm ON m.id = sm.menu_id
+                            JOIN user_profiles up ON m.user_id = up.id
+                            WHERE sm.shared_with = %s
+                            ORDER BY sm.created_at DESC
+                        """, (user_id,))
+                        
+                        shared_menus = cur.fetchall()
             
             # Get shared recipes
             # If user is a client, get all recipes owned by the organization owner

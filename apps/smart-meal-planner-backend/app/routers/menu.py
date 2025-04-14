@@ -1075,6 +1075,43 @@ async def share_menu_with_client(
                     detail="Client not found or not active in your organization"
                 )
             
+            # Check if shared_menus table exists
+            cursor.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' AND table_name = 'shared_menus'
+                )
+            """)
+            
+            table_exists = cursor.fetchone()
+            
+            if not table_exists or not table_exists['exists']:
+                # Create the shared_menus table if it doesn't exist
+                logger.warning("Creating shared_menus table on-the-fly")
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS shared_menus (
+                        id SERIAL PRIMARY KEY,
+                        menu_id INTEGER NOT NULL,
+                        shared_with INTEGER NOT NULL,
+                        created_by INTEGER NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        organization_id INTEGER,
+                        permission_level VARCHAR(20) DEFAULT 'read'
+                    )
+                """)
+                conn.commit()
+                
+                # Create indexes
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_shared_menus_menu_id 
+                    ON shared_menus(menu_id)
+                """)
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_shared_menus_shared_with 
+                    ON shared_menus(shared_with)
+                """)
+                conn.commit()
+            
             # Check if the menu is already shared with this client
             cursor.execute("""
                 SELECT id FROM shared_menus 
@@ -1107,9 +1144,16 @@ async def share_menu_with_client(
                 """, (menu_id, client_id, user_id, org_id))
                 conn.commit()
                 
+                # Get client name for the response
+                cursor.execute("""
+                    SELECT name FROM user_profiles WHERE id = %s
+                """, (client_id,))
+                client_name = cursor.fetchone()
+                
                 return {
                     "menu_id": menu_id,
                     "client_id": client_id,
+                    "client_name": client_name['name'] if client_name else f"Client {client_id}",
                     "shared": True,
                     "message": "Menu shared successfully"
                 }

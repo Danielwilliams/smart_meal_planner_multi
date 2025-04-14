@@ -856,14 +856,37 @@ const apiService = {
     try {
       const userData = JSON.parse(localStorage.getItem('user') || '{}');
       const userId = userData.userId;
+      const role = userData.role || null;
+      const organizationId = userData.organizationId || userData.organization_id || null;
       
-      console.log('Getting shared menus for user:', userId, 'User data:', userData);
+      console.log('Getting shared menus for user:', {
+        userId,
+        role,
+        organizationId,
+        accountType: userData.account_type,
+        fullUserData: userData
+      });
       
       if (!userId) {
         console.warn('User ID not found in local storage');
         return [];
       }
       
+      // Try the client dashboard endpoint first
+      try {
+        console.log('Attempting to fetch client dashboard data');
+        const dashboardResponse = await axiosInstance.get('/client/dashboard');
+        console.log('Client dashboard response:', dashboardResponse.data);
+        
+        // If we get a successful response, extract the shared menus
+        if (dashboardResponse.data && dashboardResponse.data.shared_menus) {
+          return dashboardResponse.data.shared_menus;
+        }
+      } catch (dashboardErr) {
+        console.warn('Could not fetch client dashboard, falling back to shared menus endpoint:', dashboardErr);
+      }
+      
+      // Fall back to the regular shared menus endpoint
       const response = await axiosInstance.get(`/menu/shared/${userId}`);
       console.log('Shared menus response:', response.data);
       return response.data;

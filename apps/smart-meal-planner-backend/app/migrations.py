@@ -30,6 +30,7 @@ def run_migrations():
     create_recipe_interactions_table()
     check_saved_recipes_table()
     add_ai_model_used_to_menus()
+    create_shared_menus_table()
     
     logger.info("Database migrations completed successfully")
 
@@ -63,41 +64,6 @@ def add_for_client_id_to_menus():
         if conn:
             conn.rollback()
         logger.error(f"Error adding for_client_id column: {str(e)}")
-        # Don't re-raise, just log the error
-    finally:
-        if conn:
-            conn.close()
-            
-def add_ai_model_used_to_menus():
-    """
-    Add the ai_model_used column to the menus table if it doesn't exist
-    """
-    conn = None
-    try:
-        conn = get_db_connection()
-        with conn.cursor() as cursor:
-            # Check if the column already exists
-            cursor.execute("""
-                SELECT column_name 
-                FROM information_schema.columns 
-                WHERE table_name = 'menus' AND column_name = 'ai_model_used';
-            """)
-            
-            if not cursor.fetchone():
-                logger.info("Adding ai_model_used column to menus table")
-                cursor.execute("""
-                    ALTER TABLE menus 
-                    ADD COLUMN ai_model_used VARCHAR(50) DEFAULT 'default';
-                """)
-                conn.commit()
-                logger.info("ai_model_used column added successfully")
-            else:
-                logger.info("ai_model_used column already exists in menus table")
-                
-    except Exception as e:
-        if conn:
-            conn.rollback()
-        logger.error(f"Error adding ai_model_used column: {str(e)}")
         # Don't re-raise, just log the error
     finally:
         if conn:
@@ -157,41 +123,6 @@ def create_ai_model_tables():
         if conn:
             conn.rollback()
         logger.error(f"Error creating AI model tables: {str(e)}")
-        # Don't re-raise, just log the error
-    finally:
-        if conn:
-            conn.close()
-            
-def add_ai_model_used_to_menus():
-    """
-    Add the ai_model_used column to the menus table if it doesn't exist
-    """
-    conn = None
-    try:
-        conn = get_db_connection()
-        with conn.cursor() as cursor:
-            # Check if the column already exists
-            cursor.execute("""
-                SELECT column_name 
-                FROM information_schema.columns 
-                WHERE table_name = 'menus' AND column_name = 'ai_model_used';
-            """)
-            
-            if not cursor.fetchone():
-                logger.info("Adding ai_model_used column to menus table")
-                cursor.execute("""
-                    ALTER TABLE menus 
-                    ADD COLUMN ai_model_used VARCHAR(50) DEFAULT 'default';
-                """)
-                conn.commit()
-                logger.info("ai_model_used column added successfully")
-            else:
-                logger.info("ai_model_used column already exists in menus table")
-                
-    except Exception as e:
-        if conn:
-            conn.rollback()
-        logger.error(f"Error adding ai_model_used column: {str(e)}")
         # Don't re-raise, just log the error
     finally:
         if conn:
@@ -283,41 +214,6 @@ def create_recipe_component_tables():
     finally:
         if conn:
             conn.close()
-            
-def add_ai_model_used_to_menus():
-    """
-    Add the ai_model_used column to the menus table if it doesn't exist
-    """
-    conn = None
-    try:
-        conn = get_db_connection()
-        with conn.cursor() as cursor:
-            # Check if the column already exists
-            cursor.execute("""
-                SELECT column_name 
-                FROM information_schema.columns 
-                WHERE table_name = 'menus' AND column_name = 'ai_model_used';
-            """)
-            
-            if not cursor.fetchone():
-                logger.info("Adding ai_model_used column to menus table")
-                cursor.execute("""
-                    ALTER TABLE menus 
-                    ADD COLUMN ai_model_used VARCHAR(50) DEFAULT 'default';
-                """)
-                conn.commit()
-                logger.info("ai_model_used column added successfully")
-            else:
-                logger.info("ai_model_used column already exists in menus table")
-                
-    except Exception as e:
-        if conn:
-            conn.rollback()
-        logger.error(f"Error adding ai_model_used column: {str(e)}")
-        # Don't re-raise, just log the error
-    finally:
-        if conn:
-            conn.close()
 
 def create_recipe_interactions_table():
     """
@@ -368,41 +264,6 @@ def create_recipe_interactions_table():
         if conn:
             conn.rollback()
         logger.error(f"Error creating recipe_interactions table: {str(e)}")
-        # Don't re-raise, just log the error
-    finally:
-        if conn:
-            conn.close()
-            
-def add_ai_model_used_to_menus():
-    """
-    Add the ai_model_used column to the menus table if it doesn't exist
-    """
-    conn = None
-    try:
-        conn = get_db_connection()
-        with conn.cursor() as cursor:
-            # Check if the column already exists
-            cursor.execute("""
-                SELECT column_name 
-                FROM information_schema.columns 
-                WHERE table_name = 'menus' AND column_name = 'ai_model_used';
-            """)
-            
-            if not cursor.fetchone():
-                logger.info("Adding ai_model_used column to menus table")
-                cursor.execute("""
-                    ALTER TABLE menus 
-                    ADD COLUMN ai_model_used VARCHAR(50) DEFAULT 'default';
-                """)
-                conn.commit()
-                logger.info("ai_model_used column added successfully")
-            else:
-                logger.info("ai_model_used column already exists in menus table")
-                
-    except Exception as e:
-        if conn:
-            conn.rollback()
-        logger.error(f"Error adding ai_model_used column: {str(e)}")
         # Don't re-raise, just log the error
     finally:
         if conn:
@@ -486,6 +347,66 @@ def check_saved_recipes_table():
         if conn:
             conn.close()
             
+def create_shared_menus_table():
+    """
+    Create shared_menus table if it doesn't exist
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            # Check if the table exists
+            cursor.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' AND table_name = 'shared_menus'
+                )
+            """)
+            
+            if not cursor.fetchone()[0]:
+                logger.info("Creating shared_menus table")
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS shared_menus (
+                        id SERIAL PRIMARY KEY,
+                        menu_id INTEGER NOT NULL,
+                        shared_with INTEGER NOT NULL,
+                        created_by INTEGER NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        organization_id INTEGER,
+                        permission_level VARCHAR(20) DEFAULT 'read'
+                    )
+                """)
+                
+                # Create indexes for better performance
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_shared_menus_menu_id 
+                    ON shared_menus(menu_id)
+                """)
+                
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_shared_menus_shared_with 
+                    ON shared_menus(shared_with)
+                """)
+                
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_shared_menus_created_by 
+                    ON shared_menus(created_by)
+                """)
+                
+                conn.commit()
+                logger.info("shared_menus table created successfully")
+            else:
+                logger.info("shared_menus table already exists")
+                
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        logger.error(f"Error creating shared_menus table: {str(e)}")
+        # Don't re-raise, just log the error
+    finally:
+        if conn:
+            conn.close()
+
 def add_ai_model_used_to_menus():
     """
     Add the ai_model_used column to the menus table if it doesn't exist
