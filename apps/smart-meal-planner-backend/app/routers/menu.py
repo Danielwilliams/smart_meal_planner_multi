@@ -13,6 +13,9 @@ from ..models.menus import SaveMenuRequest
 from pydantic import BaseModel
 import logging
 from ..utils.grocery_aggregator import aggregate_grocery_list
+
+# Setup logger
+logger = logging.getLogger(__name__)
 from ..integration.kroger import add_to_kroger_cart
 from ..integration.walmart import add_to_cart as add_to_walmart_cart
 from ..db import track_recipe_interaction, is_recipe_saved
@@ -672,7 +675,7 @@ def get_grocery_list(menu_id: int):
         cursor = conn.cursor(cursor_factory=RealDictCursor)
 
         cursor.execute("""
-            SELECT meal_plan_json
+            SELECT meal_plan_json, meal_plan
             FROM menus
             WHERE id = %s;
         """, (menu_id,))
@@ -681,9 +684,40 @@ def get_grocery_list(menu_id: int):
         if not menu:
             raise HTTPException(status_code=404, detail="No grocery list found for this menu.")
 
+        # Log menu data for debugging
+        logging.info(f"Menu {menu_id} data retrieved: meal_plan_json exists: {menu.get('meal_plan_json') is not None}, meal_plan exists: {menu.get('meal_plan') is not None}")
+        
+        # Try to use meal_plan_json first, then fall back to meal_plan if needed
+        menu_data = menu.get("meal_plan_json")
+        if not menu_data and menu.get("meal_plan"):
+            menu_data = menu.get("meal_plan")
+            logging.info(f"Using meal_plan instead of meal_plan_json for menu {menu_id}")
+        
         # Generate grocery list using the menu plan
-        grocery_list = aggregate_grocery_list(menu["meal_plan_json"])
-
+        grocery_list = aggregate_grocery_list(menu_data)
+        
+        # If grocery list is empty, try a different approach
+        if not grocery_list and menu_data:
+            logging.info(f"First attempt produced empty grocery list for menu {menu_id}, trying alternate approach")
+            
+            # If we have a JSON string, try to parse it
+            if isinstance(menu_data, str):
+                try:
+                    parsed_data = json.loads(menu_data)
+                    grocery_list = aggregate_grocery_list(parsed_data)
+                except json.JSONDecodeError:
+                    logging.error(f"Failed to parse menu data as JSON for menu {menu_id}")
+            
+            # If we have a dict already, try wrapping it
+            elif isinstance(menu_data, dict):
+                grocery_list = aggregate_grocery_list({"meal_plan_json": menu_data})
+        
+        # Still empty? Try one more time with the full menu object
+        if not grocery_list:
+            logging.info(f"Second attempt produced empty grocery list for menu {menu_id}, trying with full menu object")
+            grocery_list = aggregate_grocery_list(menu)
+        
+        logging.info(f"Generated grocery list with {len(grocery_list)} items for menu {menu_id}")
         return {"menu_id": menu_id, "groceryList": grocery_list}
 
     finally:

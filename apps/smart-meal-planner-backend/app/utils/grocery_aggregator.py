@@ -307,6 +307,28 @@ def aggregate_grocery_list(menu_dict: Dict[str, Any]):
                         aggregated[key] = current + amount
                     elif key not in aggregated:
                         aggregated[key] = None
+                
+                # Check if this item is a snack in the simplified format (no ingredients array)
+                # This handles the format in menu 391 where snacks look like {title: "Almonds", quantity: "1/4 cup"...}
+                if section == 'snacks' and not ingredients and item.get('title') and item.get('quantity'):
+                    title = item.get('title', '')
+                    quantity = item.get('quantity', '')
+                    logger.info(f"Processing simple snack: {title} - {quantity}")
+                    
+                    # Directly use the title as name and quantity as amount
+                    simplified_ing = f"{quantity} {title}"
+                    name, amount, unit = standardize_ingredient(simplified_ing)
+                    
+                    # Skip empty ingredients
+                    if not name:
+                        continue
+                    
+                    key = (name, unit)
+                    if amount is not None:
+                        current = aggregated.get(key, 0.0)
+                        aggregated[key] = current + amount
+                    elif key not in aggregated:
+                        aggregated[key] = None
 
     # Generate final list with smart formatting
     results = []

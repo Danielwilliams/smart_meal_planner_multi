@@ -281,17 +281,25 @@ const categorizeItems = (mealPlanData) => {
     // If it's already a direct list of ingredients
     console.log("Data is an array, using directly");
     ingredientsList = mealPlanData;
-  } else if (mealPlanData && mealPlanData.meal_plan) {
+  } else if (mealPlanData && (mealPlanData.meal_plan || mealPlanData.meal_plan_json)) {
     // If it's a structured meal plan object
-    console.log("Found meal_plan property, processing structured data");
+    console.log("Found meal_plan or meal_plan_json property, processing structured data");
     
     let mealPlan;
     try {
-      mealPlan = typeof mealPlanData.meal_plan === 'string' 
-        ? JSON.parse(mealPlanData.meal_plan) 
-        : mealPlanData.meal_plan;
+      // Try meal_plan first, then meal_plan_json
+      if (mealPlanData.meal_plan) {
+        mealPlan = typeof mealPlanData.meal_plan === 'string' 
+          ? JSON.parse(mealPlanData.meal_plan) 
+          : mealPlanData.meal_plan;
+      } else if (mealPlanData.meal_plan_json) {
+        mealPlan = typeof mealPlanData.meal_plan_json === 'string' 
+          ? JSON.parse(mealPlanData.meal_plan_json) 
+          : mealPlanData.meal_plan_json;
+      }
+      console.log("Parsed meal plan data:", mealPlan);
     } catch (e) {
-      console.error("Error parsing meal_plan:", e);
+      console.error("Error parsing meal plan:", e);
       mealPlan = { days: [] };
     }
 
@@ -319,6 +327,7 @@ const categorizeItems = (mealPlanData) => {
         // Process snacks
         if (day.snacks && Array.isArray(day.snacks)) {
           day.snacks.forEach(snack => {
+            // Handle both snack formats (object with ingredients or simple object)
             if (snack.ingredients && Array.isArray(snack.ingredients)) {
               console.log(`Found ${snack.ingredients.length} ingredients in snack: ${snack.title || 'Unnamed'}`);
               
@@ -328,6 +337,13 @@ const categorizeItems = (mealPlanData) => {
               }).filter(ing => ing.length > 0);
               
               ingredientsList.push(...processedIngredients);
+            } else if (snack.title && snack.quantity) {
+              // This is for snacks in the format { title, quantity, ... } without ingredients array
+              console.log(`Found simple snack: ${snack.title}`);
+              const snackItem = `${snack.quantity || ''} ${snack.title || ''}`.trim();
+              if (snackItem.length > 0) {
+                ingredientsList.push(snackItem);
+              }
             }
           });
         }
