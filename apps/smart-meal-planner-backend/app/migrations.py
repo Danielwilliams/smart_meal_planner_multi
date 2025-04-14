@@ -31,6 +31,7 @@ def run_migrations():
     check_saved_recipes_table()
     add_ai_model_used_to_menus()
     create_shared_menus_table()
+    add_prep_time_to_saved_recipes()
     
     logger.info("Database migrations completed successfully")
 
@@ -437,6 +438,55 @@ def add_ai_model_used_to_menus():
         if conn:
             conn.rollback()
         logger.error(f"Error adding ai_model_used column: {str(e)}")
+        # Don't re-raise, just log the error
+    finally:
+        if conn:
+            conn.close()
+
+def add_prep_time_to_saved_recipes():
+    """
+    Add the prep_time column to the saved_recipes table if it doesn't exist
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            # Check if the table exists
+            cursor.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' AND table_name = 'saved_recipes'
+                )
+            """)
+            
+            if not cursor.fetchone()[0]:
+                logger.warning("saved_recipes table doesn't exist - skipping prep_time column addition")
+                return
+                
+            # Check if the column already exists
+            cursor.execute("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_schema = 'public'
+                  AND table_name = 'saved_recipes' 
+                  AND column_name = 'prep_time'
+            """)
+            
+            if not cursor.fetchone():
+                logger.info("Adding prep_time column to saved_recipes table")
+                cursor.execute("""
+                    ALTER TABLE saved_recipes 
+                    ADD COLUMN prep_time INTEGER DEFAULT 0
+                """)
+                conn.commit()
+                logger.info("prep_time column added successfully to saved_recipes table")
+            else:
+                logger.info("prep_time column already exists in saved_recipes table")
+                
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        logger.error(f"Error adding prep_time column to saved_recipes: {str(e)}")
         # Don't re-raise, just log the error
     finally:
         if conn:
