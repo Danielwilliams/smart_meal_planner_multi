@@ -241,11 +241,22 @@ const apiService = {
 
   getMenuDetails: async (menuId) => {
     try {
+      console.log(`Fetching menu details for ID: ${menuId}`);
       const resp = await axiosInstance.get(`/menu/${menuId}`);
       return resp.data;
     } catch (err) {
       console.error('Error fetching menu details:', err.response?.data || err.message);
-      throw err;
+      
+      // If we get a 404 or other error, try the client endpoint as fallback
+      try {
+        console.log(`Trying client menu endpoint for ID: ${menuId}`);
+        const clientResp = await axiosInstance.get(`/client/menus/${menuId}`);
+        console.log("Client menu fetch successful:", clientResp.data);
+        return clientResp.data;
+      } catch (clientErr) {
+        console.error('Client menu endpoint also failed:', clientErr);
+        throw err; // Throw original error
+      }
     }
   },
   

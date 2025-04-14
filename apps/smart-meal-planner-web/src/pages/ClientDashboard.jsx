@@ -59,8 +59,11 @@ const ClientDashboard = () => {
   }, []);
 
   const handleViewMenu = (menuId) => {
-    // Use the MenuDisplayPage component with the client menu ID
-    navigate(`/menu-display?menuId=${menuId}`);
+    // Use the regular menu display path with menuId parameter
+    console.log(`Navigating to menu display with menu ID: ${menuId}`);
+    // Check if user is client
+    const isClient = user?.role === 'client' || user?.account_type === 'client';
+    navigate(`/menu-display/${menuId}${isClient ? '?source=client' : ''}`);
   };
   
   const handleViewGroceryList = (menuId) => {
@@ -198,31 +201,33 @@ const ClientDashboard = () => {
             {sharedMenus.map((menu) => (
               <Grid item xs={12} sm={6} md={4} key={menu.id}>
                 <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-                  <CardMedia
-                    component="img"
-                    height="140"
-                    image={menu.image_url || "https://via.placeholder.com/300x140?text=Meal+Plan"}
-                    alt={menu.nickname || "Meal Plan"}
-                  />
                   <CardContent sx={{ flexGrow: 1 }}>
                     <Typography variant="h6" component="h3" gutterBottom>
-                      {menu.nickname || "Meal Plan"}
+                      {menu.name || menu.nickname || "Meal Plan"}
                     </Typography>
                     
                     <Box sx={{ display: 'flex', mb: 1 }}>
                       <Chip 
                         size="small" 
-                        label={`${menu.duration || 7} days`} 
+                        label={`${menu.meal_count || menu.duration || 0} meals`} 
                         color="primary" 
                         variant="outlined" 
                         sx={{ mr: 1 }} 
                       />
-                      {menu.shared_on && (
+                      {(menu.shared_at || menu.shared_on) && (
                         <Chip 
                           size="small" 
-                          label={`Shared: ${new Date(menu.shared_on).toLocaleDateString()}`} 
+                          label={`Shared: ${new Date(menu.shared_at || menu.shared_on || Date.now()).toLocaleDateString()}`} 
                           color="secondary" 
                           variant="outlined" 
+                        />
+                      )}
+                      {menu.owner_name && (
+                        <Chip 
+                          size="small" 
+                          label={`By: ${menu.owner_name}`} 
+                          variant="outlined" 
+                          sx={{ ml: 1 }} 
                         />
                       )}
                     </Box>

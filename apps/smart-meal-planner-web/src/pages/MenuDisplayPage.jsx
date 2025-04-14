@@ -207,27 +207,72 @@ function MenuDisplayPage() {
     try {
       setLoading(true);
       setError('');
+      
+      // Check if this is a client-sourced menu
+      const isClientSourced = searchParams.get('source') === 'client';
+      console.log(`Is client-sourced menu: ${isClientSourced}`, searchParams.toString());
 
-      // Fetch menu history
-      const history = await apiService.getMenuHistory(user.userId);
-      setMenuHistory(history);
+      // Fetch menu history (skip for client-sourced menu)
+      if (!isClientSourced) {
+        const history = await apiService.getMenuHistory(user.userId);
+        setMenuHistory(history);
+      }
 
       // If we have a specific menu ID, fetch that menu
       if (selectedMenuId) {
-        const menuDetails = await apiService.getMenuDetails(selectedMenuId);
-        setMenu(menuDetails);
+        console.log(`Fetching menu with ID: ${selectedMenuId}`);
         
-        // Initialize selected days
-        if (menuDetails.meal_plan?.days) {
-          const initialSelectedDays = {};
-          menuDetails.meal_plan.days.forEach(day => {
-            initialSelectedDays[day.dayNumber] = true;
-          });
-          setSelectedDays(initialSelectedDays);
+        let menuDetails;
+        try {
+          // Try to fetch as client menu first if this is a client-sourced menu
+          if (isClientSourced) {
+            console.log("Trying to fetch as client menu");
+            menuDetails = await apiService.getClientMenu(selectedMenuId);
+          } else {
+            menuDetails = await apiService.getMenuDetails(selectedMenuId);
+          }
+          
+          console.log("Menu details fetched:", menuDetails);
+          setMenu(menuDetails);
+          
+          // Initialize selected days
+          if (menuDetails.meal_plan?.days) {
+            const initialSelectedDays = {};
+            menuDetails.meal_plan.days.forEach(day => {
+              initialSelectedDays[day.dayNumber] = true;
+            });
+            setSelectedDays(initialSelectedDays);
+          }
+        } catch (menuErr) {
+          console.error("Error fetching menu details:", menuErr);
+          
+          // Try alternate endpoint as fallback
+          try {
+            if (isClientSourced) {
+              menuDetails = await apiService.getMenuDetails(selectedMenuId);
+            } else {
+              menuDetails = await apiService.getClientMenu(selectedMenuId);
+            }
+            
+            console.log("Menu details fetched from fallback:", menuDetails);
+            setMenu(menuDetails);
+            
+            // Initialize selected days
+            if (menuDetails.meal_plan?.days) {
+              const initialSelectedDays = {};
+              menuDetails.meal_plan.days.forEach(day => {
+                initialSelectedDays[day.dayNumber] = true;
+              });
+              setSelectedDays(initialSelectedDays);
+            }
+          } catch (fallbackErr) {
+            console.error("Fallback menu fetch also failed:", fallbackErr);
+            throw menuErr; // Re-throw original error for handling
+          }
         }
       } 
-      // Otherwise fetch the latest menu
-      else if (history && history.length > 0) {
+      // Otherwise fetch the latest menu (not for client-sourced menus)
+      else if (!isClientSourced && menuHistory && menuHistory.length > 0) {
         const latestMenu = await apiService.getLatestMenu(user.userId);
         setMenu(latestMenu);
         setSelectedMenuId(latestMenu.menu_id);
@@ -248,6 +293,8 @@ function MenuDisplayPage() {
         setError('No menus found. Generate your first menu!');
       } else if (err.response?.status === 401) {
         navigate('/login');
+      } else if (err.response?.status === 422) {
+        setError('Menu format error. Please try a different menu.');
       } else {
         setError('Failed to load menus. Please try again.');
       }

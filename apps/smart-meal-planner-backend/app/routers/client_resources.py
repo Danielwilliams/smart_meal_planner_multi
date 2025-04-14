@@ -333,20 +333,42 @@ async def get_client_menu(
         # Ensure meal_plan_json is parsed
         try:
             if isinstance(menu['meal_plan_json'], str):
-                menu['meal_plan'] = json.loads(menu['meal_plan_json'])
+                try:
+                    menu['meal_plan'] = json.loads(menu['meal_plan_json'])
+                except json.JSONDecodeError:
+                    logger.error(f"Invalid JSON in meal_plan_json, creating empty structure")
+                    menu['meal_plan'] = {"days": []}
             else:
                 menu['meal_plan'] = menu['meal_plan_json']
+            
+            # Check if meal_plan is None
+            if menu['meal_plan'] is None:
+                logger.warning("meal_plan is None, creating empty structure")
+                menu['meal_plan'] = {"days": []}
                 
             # Make sure days are properly formatted
             if 'days' not in menu['meal_plan']:
                 if isinstance(menu['meal_plan'], list):
                     # Convert list of days to proper format
+                    logger.info("Converting list of days to proper format")
                     menu['meal_plan'] = {"days": menu['meal_plan']}
                 else:
                     # Create an empty structure
+                    logger.warning("meal_plan did not have 'days' property, creating empty structure")
                     menu['meal_plan'] = {"days": []}
             
-        except (json.JSONDecodeError, TypeError) as e:
+            # Add menu_id for consistency
+            if 'menu_id' in menu and 'id' not in menu:
+                menu['id'] = menu['menu_id']
+            elif 'id' in menu and 'menu_id' not in menu:
+                menu['menu_id'] = menu['id']
+            
+            # Check that days array exists and is valid
+            if not isinstance(menu['meal_plan']['days'], list):
+                logger.warning("meal_plan.days is not a list, creating empty array")
+                menu['meal_plan']['days'] = []
+            
+        except Exception as e:
             logger.error(f"Error parsing meal_plan_json: {str(e)}")
             # Provide a default empty structure
             menu['meal_plan'] = {"days": []}
