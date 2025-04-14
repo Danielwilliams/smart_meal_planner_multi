@@ -760,11 +760,26 @@ const apiService = {
 
   getClientMenus: async (clientId) => {
     try {
+      console.log(`Fetching menus for client ID: ${clientId}`);
       const response = await axiosInstance.get(`/menu/client/${clientId}`);
+      console.log('Client menus response:', response.data);
       return response.data;
     } catch (err) {
       console.error('Error fetching client menus:', err);
-      throw err;
+      // Log detailed error information
+      if (err.response) {
+        console.error('Response error details:', {
+          status: err.response.status,
+          data: err.response.data,
+          headers: err.response.headers
+        });
+      } else if (err.request) {
+        console.error('Request was made but no response:', err.request);
+      } else {
+        console.error('Error setting up request:', err.message);
+      }
+      // Return empty array instead of throwing to prevent UI crashes
+      return [];
     }
   },
 
@@ -842,15 +857,30 @@ const apiService = {
       const userData = JSON.parse(localStorage.getItem('user') || '{}');
       const userId = userData.userId;
       
+      console.log('Getting shared menus for user:', userId, 'User data:', userData);
+      
       if (!userId) {
         console.warn('User ID not found in local storage');
         return [];
       }
       
       const response = await axiosInstance.get(`/menu/shared/${userId}`);
+      console.log('Shared menus response:', response.data);
       return response.data;
     } catch (err) {
       console.error('Error fetching shared menus:', err);
+      // Log detailed error information
+      if (err.response) {
+        console.error('Response error details:', {
+          status: err.response.status,
+          data: err.response.data,
+          headers: err.response.headers
+        });
+      } else if (err.request) {
+        console.error('Request was made but no response:', err.request);
+      } else {
+        console.error('Error setting up request:', err.message);
+      }
       return [];
     }
   },

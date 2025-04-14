@@ -875,12 +875,40 @@ async def get_shared_menus(user_id: int):
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         
+        # First check if the shared_menus table exists
+        cursor.execute("""
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_name = 'shared_menus'
+            )
+        """)
+        
+        table_exists = cursor.fetchone()
+        
+        if not table_exists or not table_exists['exists']:
+            logger.warning("shared_menus table does not exist")
+            # Create the shared_menus table if it doesn't exist
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS shared_menus (
+                    id SERIAL PRIMARY KEY,
+                    menu_id INTEGER NOT NULL,
+                    shared_with INTEGER NOT NULL,
+                    created_by INTEGER NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    organization_id INTEGER,
+                    permission_level VARCHAR(20) DEFAULT 'read'
+                )
+            """)
+            conn.commit()
+            return []
+        
+        # If the table exists, proceed with fetching shared menus
         cursor.execute("""
             SELECT 
                 m.id as menu_id, 
                 m.meal_plan_json, 
                 m.user_id, 
-                m.created_at, 
+                m.created_at::TEXT as created_at, 
                 m.nickname,
                 sm.permission_level,
                 up.name as shared_by_name
@@ -892,11 +920,18 @@ async def get_shared_menus(user_id: int):
         """, (user_id,))
         
         shared_menus = cursor.fetchall()
+        logger.info(f"Found {len(shared_menus)} shared menus for user {user_id}")
+        
+        # Convert datetime objects to strings for JSON serialization
+        for menu in shared_menus:
+            if 'created_at' in menu and not isinstance(menu['created_at'], str):
+                menu['created_at'] = menu['created_at'].isoformat()
+        
         return shared_menus
         
     except Exception as e:
-        logger.error(f"Error fetching shared menus: {str(e)}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        logger.error(f"Error fetching shared menus: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error fetching shared menus: {str(e)}")
     finally:
         conn.close()
 
@@ -942,24 +977,43 @@ async def get_client_menus(
                 """, (client_id, user_id))
             else:
                 # If user is the client, get menus shared with them
+                # First check if the shared_menus table exists
                 cur.execute("""
-                    SELECT 
-                        m.id as menu_id, 
-                        m.created_at,
-                        m.nickname,
-                        m.user_id,
-                        (SELECT count(*) FROM jsonb_array_elements(
-                            CASE 
-                                WHEN jsonb_typeof(m.meal_plan_json->'days') = 'array' 
-                                THEN m.meal_plan_json->'days' 
-                                ELSE '[]'::jsonb 
-                            END
-                        )) as days_count
-                    FROM menus m
-                    JOIN shared_menus sm ON m.id = sm.menu_id
-                    WHERE sm.shared_with = %s
-                    ORDER BY m.created_at DESC
-                """, (client_id,))
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables 
+                        WHERE table_name = 'shared_menus'
+                    )
+                """)
+                
+                table_exists = cur.fetchone()
+                
+                if table_exists and table_exists['exists']:
+                    # If the shared_menus table exists, use it to find shared menus
+                    cur.execute("""
+                        SELECT 
+                            m.id as menu_id, 
+                            m.created_at,
+                            m.nickname,
+                            m.user_id,
+                            (SELECT count(*) FROM jsonb_array_elements(
+                                CASE 
+                                    WHEN jsonb_typeof(m.meal_plan_json->'days') = 'array' 
+                                    THEN m.meal_plan_json->'days' 
+                                    ELSE '[]'::jsonb 
+                                END
+                            )) as days_count,
+                            up.name as shared_by_name,
+                            sm.permission_level
+                        FROM menus m
+                        JOIN shared_menus sm ON m.id = sm.menu_id
+                        JOIN user_profiles up ON m.user_id = up.id
+                        WHERE sm.shared_with = %s
+                        ORDER BY m.created_at DESC
+                    """, (client_id,))
+                else:
+                    # If the table doesn't exist, log a warning and return an empty result
+                    logger.warning("shared_menus table does not exist")
+                    cur.execute("SELECT 1 as menu_id LIMIT 0")  # Empty result
             
             menus = cur.fetchall()
             return menus
