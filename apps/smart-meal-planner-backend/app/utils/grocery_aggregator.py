@@ -215,6 +215,10 @@ def combine_amount_and_unit(amount_float: float, unit: str, name: str) -> str:
         fraction = Fraction(amount_float).limit_denominator(16)
         quantity_str = str(fraction)
         
+        # Check for simple whole numbers to make them cleaner
+        if fraction.denominator == 1:
+            quantity_str = str(fraction.numerator)
+        
         # Build the string
         if unit and unit.lower() not in ['piece', 'pieces']:
             return f"{quantity_str} {unit} {name}"
@@ -225,43 +229,13 @@ def combine_amount_and_unit(amount_float: float, unit: str, name: str) -> str:
 
 def aggregate_grocery_list(menu_dict: Dict[str, Any]):
     """
-    Enhanced grocery list aggregation with smarter quantity handling
-    and improved format detection for different menu types
+    Flexible grocery list aggregation with format detection for all menu types
     """
     import logging
     logger = logging.getLogger(__name__)
     
     logger.info(f"Aggregating grocery list from input type: {type(menu_dict)}")
     aggregated = {}
-    
-    # Special case for menu 393 - check if we have that specific menu_id
-    if isinstance(menu_dict, dict) and menu_dict.get('id') == 393:
-        logger.info("Special handling for menu 393 detected by ID")
-        # Use hardcoded ingredient list
-        return [
-            {"name": "Eggs", "quantity": "3"},
-            {"name": "Avocado", "quantity": "1 medium"},
-            {"name": "Chicken Breast", "quantity": "200g"},
-            {"name": "Mixed Salad Greens", "quantity": "2 cups"},
-            {"name": "Olive Oil", "quantity": "1 tbsp"},
-            {"name": "Steak", "quantity": "200g"},
-            {"name": "Sweet Potato", "quantity": "1 medium"},
-            {"name": "Greek Yogurt", "quantity": "1 cup"},
-            {"name": "Honey", "quantity": "1 tbsp"},
-            {"name": "Spinach", "quantity": "1 cup"},
-            {"name": "Tomatoes", "quantity": "1/2 cup"},
-            {"name": "Mozzarella Cheese", "quantity": "1/4 cup"},
-            {"name": "Quinoa", "quantity": "1/2 cup"},
-            {"name": "Black Beans", "quantity": "1/2 cup"},
-            {"name": "Corn", "quantity": "1/2 cup"},
-            {"name": "Lime Juice", "quantity": "1 tbsp"},
-            {"name": "Tofu", "quantity": "1/2 cup"},
-            {"name": "Broccoli", "quantity": "1 cup"},
-            {"name": "Carrots", "quantity": "1/2 cup"},
-            {"name": "Soy Sauce", "quantity": "1 tbsp"},
-            {"name": "Sesame Oil", "quantity": "1 tsp"},
-            {"name": "Almonds", "quantity": "1/4 cup"}
-        ]
     
     # If null, return empty list
     if menu_dict is None:
@@ -277,94 +251,114 @@ def aggregate_grocery_list(menu_dict: Dict[str, Any]):
             logger.error("Failed to parse menu_dict as JSON")
             return []
     
-    # Check for nested meal_plan or meal_plan_json fields
-    if isinstance(menu_dict, dict):
-        # Debug all keys for troubleshooting
-        logger.info(f"Menu dict keys at top level: {list(menu_dict.keys())}")
+    # General function to extract ingredients from any nested structure
+    def extract_ingredients_deep(obj, aggregated_dict, path=""):
+        """Recursively extract ingredients from any object structure"""
+        if obj is None:
+            return
+            
+        # If we have an array, process each item
+        if isinstance(obj, list):
+            for i, item in enumerate(obj):
+                extract_ingredients_deep(item, aggregated_dict, f"{path}[{i}]")
+            return
+            
+        # If not a dict, nothing to extract
+        if not isinstance(obj, dict):
+            return
+            
+        # Log the path for debugging deep structures
+        logger.debug(f"Scanning path: {path}, keys: {list(obj.keys())}")
         
-        if 'meal_plan' in menu_dict:
-            logger.info("Found meal_plan field in menu_dict")
-            if isinstance(menu_dict['meal_plan'], str):
-                try:
-                    parsed_meal_plan = json.loads(menu_dict['meal_plan'])
-                    logger.info("Successfully parsed meal_plan as JSON")
-                    menu_dict = parsed_meal_plan
-                except json.JSONDecodeError:
-                    logger.error("Failed to parse meal_plan as JSON")
-                    menu_dict = menu_dict['meal_plan']
-            else:
-                menu_dict = menu_dict['meal_plan']
-        elif 'meal_plan_json' in menu_dict:
-            logger.info("Found meal_plan_json field in menu_dict")
-            if isinstance(menu_dict['meal_plan_json'], str):
-                try:
-                    parsed_meal_plan_json = json.loads(menu_dict['meal_plan_json'])
-                    logger.info("Successfully parsed meal_plan_json as JSON")
-                    menu_dict = parsed_meal_plan_json
-                except json.JSONDecodeError:
-                    logger.error("Failed to parse meal_plan_json as JSON")
-                    return []
-            else:
-                menu_dict = menu_dict['meal_plan_json']
-    
-    # Special case for directly encoded ingredients
-    if isinstance(menu_dict, dict) and 'ingredients' in menu_dict:
-        logger.info("Found ingredients directly in menu_dict")
-        ingredients = menu_dict['ingredients']
-        if isinstance(ingredients, list):
-            logger.info(f"Processing {len(ingredients)} direct ingredients")
-            results = []
-            for ing in ingredients:
+        # Extract from ingredients array directly
+        if 'ingredients' in obj and isinstance(obj['ingredients'], list):
+            logger.info(f"Found ingredients array at {path} with {len(obj['ingredients'])} items")
+            
+            for ing in obj['ingredients']:
                 if isinstance(ing, str):
-                    results.append({"name": ing, "quantity": ""})
-                elif isinstance(ing, dict):
-                    name = ing.get('name', '')
-                    quantity = ing.get('quantity', '') or ing.get('amount', '')
-                    results.append({"name": f"{quantity} {name}".strip(), "quantity": ""})
-            return results
-    
-    # If we still don't have a proper structure, return an empty list
-    if not isinstance(menu_dict, dict):
-        logger.warning(f"Menu dict is not a proper dictionary after processing: {type(menu_dict)}")
-        return []
-    
-    # Special handling for menu that has days array directly
-    days = menu_dict.get("days", [])
-    if not days and isinstance(menu_dict, dict):
-        # Log all keys to help debug
-        logger.info(f"Menu dict keys: {list(menu_dict.keys())}")
-        # If no days array, check if it might be directly in the structure
-        if "meals" in menu_dict or "snacks" in menu_dict:
-            logger.info("Found meals or snacks directly in menu_dict without days array")
-            days = [menu_dict]  # Treat the whole dict as a single day
-    
-    # Verify we have a days array
-    if not days or not isinstance(days, list):
-        logger.warning("Days is not a valid list")
+                    # String format like "1 cup flour"
+                    name, amount, unit = standardize_ingredient(ing)
+                else:
+                    # Dictionary format
+                    name, amount, unit = standardize_ingredient(ing)
+                
+                # Skip empty ingredients
+                if not name:
+                    continue
+                    
+                key = (name, unit)
+                if amount is not None:
+                    current = aggregated_dict.get(key, 0.0)
+                    aggregated_dict[key] = current + amount
+                elif key not in aggregated_dict:
+                    aggregated_dict[key] = None
         
-        # Last resort - look for any direct recipe references
-        if isinstance(menu_dict, dict) and 'recipes' in menu_dict:
-            logger.info("Found recipes array directly in menu_dict")
-            recipes = menu_dict['recipes']
-            if isinstance(recipes, list):
-                logger.info(f"Processing {len(recipes)} recipes")
-                results = []
-                for recipe in recipes:
-                    if isinstance(recipe, dict) and 'ingredients' in recipe:
-                        recipe_ingredients = recipe['ingredients']
-                        if isinstance(recipe_ingredients, list):
-                            for ing in recipe_ingredients:
-                                if isinstance(ing, str):
-                                    results.append({"name": ing, "quantity": ""})
-                                elif isinstance(ing, dict):
-                                    name = ing.get('name', '')
-                                    quantity = ing.get('quantity', '') or ing.get('amount', '')
-                                    results.append({"name": f"{quantity} {name}".strip(), "quantity": ""})
-                return results
+        # Handle snack-specific format (title and quantity without ingredients)
+        if 'title' in obj and not 'ingredients' in obj:
+            title = obj.get('title', '')
+            quantity = obj.get('quantity', '') or obj.get('amount', '')
+            
+            if title:
+                logger.info(f"Found simple item with title at {path}: {title}")
+                # Format as "quantity title" and standardize
+                ingredient_str = f"{quantity} {title}".strip()
+                name, amount, unit = standardize_ingredient(ingredient_str)
+                
+                if name:
+                    key = (name, unit)
+                    if amount is not None:
+                        current = aggregated_dict.get(key, 0.0)
+                        aggregated_dict[key] = current + amount
+                    elif key not in aggregated_dict:
+                        aggregated_dict[key] = None
         
-        return []
+        # Recursively process all nested objects
+        for key, value in obj.items():
+            if isinstance(value, (dict, list)):
+                new_path = f"{path}.{key}" if path else key
+                extract_ingredients_deep(value, aggregated_dict, new_path)
     
-    logger.info(f"Processing {len(days)} days from menu plan")
+    # First, check for nested meal_plan or meal_plan_json fields
+    if isinstance(menu_dict, dict):
+        processed = False
+        
+        # Try known paths for meal plan data
+        for field in ['meal_plan', 'meal_plan_json']:
+            if field in menu_dict:
+                logger.info(f"Found {field} field in menu_dict")
+                plan_data = menu_dict[field]
+                
+                # Parse if it's a string
+                if isinstance(plan_data, str):
+                    try:
+                        plan_data = json.loads(plan_data)
+                        logger.info(f"Successfully parsed {field} as JSON")
+                        # Recursively extract from this data
+                        extract_ingredients_deep(plan_data, aggregated)
+                        processed = True
+                    except json.JSONDecodeError:
+                        logger.error(f"Failed to parse {field} as JSON")
+                else:
+                    # Process object directly
+                    extract_ingredients_deep(plan_data, aggregated)
+                    processed = True
+        
+        # If we didn't find any specific meal plan fields, try the whole object
+        if not processed:
+            logger.info("No specific meal plan fields found, scanning entire object")
+            extract_ingredients_deep(menu_dict, aggregated)
+    else:
+        # If not a dict but something else (like a list), try to process it
+        extract_ingredients_deep(menu_dict, aggregated)
+    
+    # Generate final list with smart formatting
+    results = []
+    for (name, unit), total_amt in aggregated.items():
+        line = combine_amount_and_unit(total_amt, unit, name)
+        results.append({"name": line, "quantity": ""})
+    
+    logger.info(f"Generated grocery list with {len(results)} items")
+    return results
     
     # Process each day, meal, and snack
     for day in days:

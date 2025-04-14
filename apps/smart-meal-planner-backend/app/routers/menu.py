@@ -721,10 +721,27 @@ def get_grocery_list(menu_id: int):
             # Try to use the entire menu object
             menu_data = menu
             
-        # Generate grocery list using the menu plan
-        grocery_list = aggregate_grocery_list(menu_data)
+        # Try to normalize the menu data for ingredient extraction
+        try:
+            # Handle any menu data format - normalize it first
+            logging.info(f"Normalizing menu data for extraction")
+            
+            # If menu_data is a string, try to parse it 
+            if isinstance(menu_data, str):
+                try:
+                    menu_data = json.loads(menu_data)
+                except json.JSONDecodeError:
+                    logging.error(f"Failed to parse menu_data as JSON string")
+            
+            # For consistent handling, always try the grocery aggregator first
+            grocery_list = aggregate_grocery_list(menu_data)
+            
+        except Exception as e:
+            logging.error(f"Error during extraction: {str(e)}")
+            # Fall back to regular aggregator with raw data
+            grocery_list = aggregate_grocery_list(menu_data)
         
-        # If grocery list is empty, try a different approach
+        # If grocery list is empty, try different approaches
         if not grocery_list and menu_data:
             logging.info(f"First attempt produced empty grocery list for menu {menu_id}, trying alternate approach")
             
@@ -747,33 +764,9 @@ def get_grocery_list(menu_id: int):
             logging.info(f"Second attempt produced empty grocery list for menu {menu_id}, trying with full menu object")
             grocery_list = aggregate_grocery_list(menu)
             
-        # Add special fallback for menu 393
-        if not grocery_list and menu_id == 393:
-            logging.info("Using hardcoded fallback for menu 393")
-            grocery_list = [
-                {"name": "Eggs", "quantity": "3"},
-                {"name": "Avocado", "quantity": "1 medium"},
-                {"name": "Chicken Breast", "quantity": "200g"},
-                {"name": "Mixed Salad Greens", "quantity": "2 cups"},
-                {"name": "Olive Oil", "quantity": "1 tbsp"},
-                {"name": "Steak", "quantity": "200g"},
-                {"name": "Sweet Potato", "quantity": "1 medium"},
-                {"name": "Greek Yogurt", "quantity": "1 cup"},
-                {"name": "Honey", "quantity": "1 tbsp"},
-                {"name": "Spinach", "quantity": "1 cup"},
-                {"name": "Tomatoes", "quantity": "1/2 cup"},
-                {"name": "Mozzarella Cheese", "quantity": "1/4 cup"},
-                {"name": "Quinoa", "quantity": "1/2 cup"},
-                {"name": "Black Beans", "quantity": "1/2 cup"},
-                {"name": "Corn", "quantity": "1/2 cup"},
-                {"name": "Lime Juice", "quantity": "1 tbsp"},
-                {"name": "Tofu", "quantity": "1/2 cup"},
-                {"name": "Broccoli", "quantity": "1 cup"},
-                {"name": "Carrots", "quantity": "1/2 cup"},
-                {"name": "Soy Sauce", "quantity": "1 tbsp"},
-                {"name": "Sesame Oil", "quantity": "1 tsp"},
-                {"name": "Almonds", "quantity": "1/4 cup"}
-            ]
+        # No fallback, improve the algorithm instead
+        if not grocery_list:
+            logging.warning(f"All extraction attempts for menu {menu_id} failed to produce a grocery list")
         
         # Log the final grocery list
         grocery_item_count = len(grocery_list) if grocery_list else 0

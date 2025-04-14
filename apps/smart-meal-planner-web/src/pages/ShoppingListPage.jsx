@@ -212,7 +212,7 @@ function ShoppingListPage() {
           // Extract ingredients from the meal plan
           let allIngredients = [];
           
-          // Handle menu 391 structure
+          // Handle menu structure with days array
           if (mealPlanData && mealPlanData.days && Array.isArray(mealPlanData.days)) {
             console.log(`Processing ${mealPlanData.days.length} days of meal data`);
             
@@ -278,6 +278,151 @@ function ShoppingListPage() {
                 });
               }
             });
+          }
+          
+          // General deep scanning for any menu with missing ingredients
+          if (allIngredients.length === 0) {
+            console.log(`Using deep scan to find ingredients in any structure`);
+            
+            // Define deep scanning function for any menu
+            const deepScanForIngredients = (obj, path = '') => {
+              if (!obj || typeof obj !== 'object') return;
+              
+              if (Array.isArray(obj)) {
+                // If array, check each element
+                obj.forEach((item, idx) => {
+                  deepScanForIngredients(item, `${path}[${idx}]`);
+                });
+                return;
+              }
+              
+              // Log structure to help debugging
+              console.log(`Scanning at path: ${path || 'root'}, keys: ${Object.keys(obj).join(', ')}`);
+              
+              // Look for ingredients arrays
+              if ('ingredients' in obj && Array.isArray(obj.ingredients)) {
+                console.log(`Found ingredients array at ${path} with ${obj.ingredients.length} items`);
+                
+                obj.ingredients.forEach((ing, idx) => {
+                  if (typeof ing === 'string') {
+                    console.log(`Found string ingredient: ${ing}`);
+                    allIngredients.push(ing);
+                  } else if (ing && typeof ing === 'object') {
+                    const name = ing.name || '';
+                    const quantity = ing.quantity || ing.amount || '';
+                    
+                    if (name) {
+                      const ingredientText = `${quantity} ${name}`.trim();
+                      console.log(`Found object ingredient: ${ingredientText}`);
+                      allIngredients.push(ingredientText);
+                    }
+                  }
+                });
+              }
+              
+              // Look for title and quantity/amount (simple format)
+              if (obj.title && !obj.ingredients) {
+                const title = obj.title || '';
+                const quantity = obj.quantity || obj.amount || '';
+                
+                if (title) {
+                  const ingredientText = `${quantity} ${title}`.trim();
+                  console.log(`Found simple item with title: ${ingredientText}`);
+                  allIngredients.push(ingredientText);
+                }
+              }
+              
+              // Recursively scan all properties that are objects
+              Object.keys(obj).forEach(key => {
+                if (obj[key] && typeof obj[key] === 'object') {
+                  deepScanForIngredients(obj[key], path ? `${path}.${key}` : key);
+                }
+              });
+            };
+            
+            // Scan mealPlanData
+            deepScanForIngredients(mealPlanData);
+            
+            // If that didn't work, try the entire menuDetails object
+            if (allIngredients.length === 0 && menuDetails) {
+              console.log(`No ingredients found in meal plan data, scanning full menuDetails`);
+              deepScanForIngredients(menuDetails);
+            }
+            
+            // Last resort: try to find days array in any nested location
+            if (allIngredients.length === 0) {
+              console.log("Last resort: looking for days array in any nested location");
+              
+              // Extract from any structure in the menu payload
+              try {
+                // Look for days array in nested objects
+                const findDaysArray = (obj) => {
+                  if (!obj) return null;
+                  if (obj.days && Array.isArray(obj.days)) return obj.days;
+                  
+                  if (typeof obj === 'object') {
+                    for (const key in obj) {
+                      if (obj[key] && typeof obj[key] === 'object') {
+                        const found = findDaysArray(obj[key]);
+                        if (found) return found;
+                      }
+                    }
+                  }
+                  return null;
+                };
+                
+                const days = findDaysArray(menuDetails);
+                if (days) {
+                  console.log(`Found days array with ${days.length} days`);
+                  
+                  // Process each day
+                  days.forEach(day => {
+                    // Process meals
+                    if (day.meals && Array.isArray(day.meals)) {
+                      day.meals.forEach(meal => {
+                        // Extract from ingredients if available
+                        if (meal.ingredients && Array.isArray(meal.ingredients)) {
+                          meal.ingredients.forEach(ing => {
+                            if (typeof ing === 'object' && ing.name) {
+                              const ingredient = `${ing.quantity || ''} ${ing.name}`.trim();
+                              allIngredients.push(ingredient);
+                            } else if (typeof ing === 'string') {
+                              allIngredients.push(ing);
+                            }
+                          });
+                        }
+                      });
+                    }
+                    
+                    // Process snacks 
+                    if (day.snacks && Array.isArray(day.snacks)) {
+                      day.snacks.forEach(snack => {
+                        if (typeof snack === 'object') {
+                          // If it has a title but no ingredients, it might be a simple item
+                          if (snack.title && !snack.ingredients) {
+                            const ingredient = `${snack.quantity || ''} ${snack.title}`.trim();
+                            allIngredients.push(ingredient);
+                          } 
+                          // If it has ingredients, process them
+                          else if (snack.ingredients && Array.isArray(snack.ingredients)) {
+                            snack.ingredients.forEach(ing => {
+                              if (typeof ing === 'object' && ing.name) {
+                                const ingredient = `${ing.quantity || ''} ${ing.name}`.trim();
+                                allIngredients.push(ingredient);
+                              } else if (typeof ing === 'string') {
+                                allIngredients.push(ing);
+                              }
+                            });
+                          }
+                        }
+                      });
+                    }
+                  });
+                }
+              } catch (e) {
+                console.error("Last resort extraction failed:", e);
+              }
+            }
           }
           
           if (allIngredients.length > 0) {

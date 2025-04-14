@@ -426,38 +426,6 @@ const apiService = {
       const resp = await axiosInstance.get(`/menu/${menuId}/grocery-list`);
       console.log('Grocery list response:', resp.data);
       
-      // Special case for menu 393
-      if (menuId === 393 && resp.data && resp.data.groceryList && resp.data.groceryList.length === 0) {
-        console.log('Using hardcoded fallback for menu 393');
-        return { 
-          menu_id: 393,
-          groceryList: [
-            {"name": "Eggs", "quantity": "3"},
-            {"name": "Avocado", "quantity": "1 medium"},
-            {"name": "Chicken Breast", "quantity": "200g"},
-            {"name": "Mixed Salad Greens", "quantity": "2 cups"},
-            {"name": "Olive Oil", "quantity": "1 tbsp"},
-            {"name": "Steak", "quantity": "200g"},
-            {"name": "Sweet Potato", "quantity": "1 medium"},
-            {"name": "Greek Yogurt", "quantity": "1 cup"},
-            {"name": "Honey", "quantity": "1 tbsp"},
-            {"name": "Spinach", "quantity": "1 cup"},
-            {"name": "Tomatoes", "quantity": "1/2 cup"},
-            {"name": "Mozzarella Cheese", "quantity": "1/4 cup"},
-            {"name": "Quinoa", "quantity": "1/2 cup"},
-            {"name": "Black Beans", "quantity": "1/2 cup"},
-            {"name": "Corn", "quantity": "1/2 cup"},
-            {"name": "Lime Juice", "quantity": "1 tbsp"},
-            {"name": "Tofu", "quantity": "1/2 cup"},
-            {"name": "Broccoli", "quantity": "1 cup"},
-            {"name": "Carrots", "quantity": "1/2 cup"},
-            {"name": "Soy Sauce", "quantity": "1 tbsp"},
-            {"name": "Sesame Oil", "quantity": "1 tsp"},
-            {"name": "Almonds", "quantity": "1/4 cup"}
-          ]
-        };
-      }
-      
       // Ensure we return in the expected format with groceryList property
       if (resp.data && !resp.data.groceryList && Array.isArray(resp.data)) {
         console.log('Converting array response to groceryList format');
@@ -571,37 +539,8 @@ const apiService = {
       } catch (clientErr) {
         console.error("Client grocery list endpoint also failed:", clientErr);
         
-        // Special fallback for menu 393
-        if (menuId === 393) {
-          console.log('Using hardcoded fallback for menu 393 after all attempts failed');
-          return { 
-            menu_id: 393,
-            groceryList: [
-              {"name": "Eggs", "quantity": "3"},
-              {"name": "Avocado", "quantity": "1 medium"},
-              {"name": "Chicken Breast", "quantity": "200g"},
-              {"name": "Mixed Salad Greens", "quantity": "2 cups"},
-              {"name": "Olive Oil", "quantity": "1 tbsp"},
-              {"name": "Steak", "quantity": "200g"},
-              {"name": "Sweet Potato", "quantity": "1 medium"},
-              {"name": "Greek Yogurt", "quantity": "1 cup"},
-              {"name": "Honey", "quantity": "1 tbsp"},
-              {"name": "Spinach", "quantity": "1 cup"},
-              {"name": "Tomatoes", "quantity": "1/2 cup"},
-              {"name": "Mozzarella Cheese", "quantity": "1/4 cup"},
-              {"name": "Quinoa", "quantity": "1/2 cup"},
-              {"name": "Black Beans", "quantity": "1/2 cup"},
-              {"name": "Corn", "quantity": "1/2 cup"},
-              {"name": "Lime Juice", "quantity": "1 tbsp"},
-              {"name": "Tofu", "quantity": "1/2 cup"},
-              {"name": "Broccoli", "quantity": "1 cup"},
-              {"name": "Carrots", "quantity": "1/2 cup"},
-              {"name": "Soy Sauce", "quantity": "1 tbsp"},
-              {"name": "Sesame Oil", "quantity": "1 tsp"},
-              {"name": "Almonds", "quantity": "1/4 cup"}
-            ]
-          };
-        }
+        // Log error but don't use hardcoded data
+        console.error(`All attempts to get grocery list for menu ${menuId} failed`);
         
         throw err; // Throw the original error
       }
