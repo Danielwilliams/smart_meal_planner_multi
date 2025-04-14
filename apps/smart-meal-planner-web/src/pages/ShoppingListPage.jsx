@@ -125,6 +125,8 @@ function ShoppingListPage() {
         console.log(`Strategy 1: Fetching grocery list for menu ${selectedMenuId}`);
         const groceryListResponse = await apiService.getGroceryListByMenuId(selectedMenuId);
         
+        console.log("Raw grocery list response:", groceryListResponse);
+        
         if (groceryListResponse && groceryListResponse.groceryList && groceryListResponse.groceryList.length > 0) {
           console.log("Grocery list fetched successfully:", groceryListResponse.groceryList);
           fetchedGroceryList = groceryListResponse.groceryList;
@@ -151,7 +153,7 @@ function ShoppingListPage() {
             success = true;
           }
           // Otherwise need to extract from menu plan
-          else if (menuDetails && menuDetails.meal_plan) {
+          else if (menuDetails && (menuDetails.meal_plan || menuDetails.meal_plan_json)) {
             console.log("Extracting grocery list from client menu meal plan");
             try {
               // Get client grocery list API if we have the menu
@@ -187,6 +189,104 @@ function ShoppingListPage() {
           success = fetchedGroceryList.length > 0;
         } catch (regularMenuErr) {
           console.log("Strategy 3 failed:", regularMenuErr.message);
+        }
+      }
+      
+      // Strategy 4: Manual extraction directly from meal_plan_json
+      if (!success && menuDetails && menuDetails.meal_plan_json) {
+        try {
+          console.log(`Strategy 4: Manual extraction from meal_plan_json for menu ${selectedMenuId}`);
+          
+          // Parse meal_plan_json if it's a string
+          let mealPlanData = menuDetails.meal_plan_json;
+          if (typeof mealPlanData === 'string') {
+            try {
+              mealPlanData = JSON.parse(mealPlanData);
+            } catch (e) {
+              console.error("Failed to parse meal_plan_json:", e);
+            }
+          }
+          
+          console.log("Trying to extract ingredients from meal plan data:", mealPlanData);
+          
+          // Extract ingredients from the meal plan
+          let allIngredients = [];
+          
+          // Handle menu 391 structure
+          if (mealPlanData && mealPlanData.days && Array.isArray(mealPlanData.days)) {
+            console.log(`Processing ${mealPlanData.days.length} days of meal data`);
+            
+            mealPlanData.days.forEach((day, dayIndex) => {
+              console.log(`Processing day ${dayIndex + 1}`);
+              
+              // Process meals
+              if (day.meals && Array.isArray(day.meals)) {
+                day.meals.forEach((meal, mealIndex) => {
+                  console.log(`Processing meal ${mealIndex + 1}: ${meal.title || 'Unnamed'}`);
+                  
+                  if (meal.ingredients && Array.isArray(meal.ingredients)) {
+                    meal.ingredients.forEach(ing => {
+                      let ingredientText = '';
+                      if (typeof ing === 'string') {
+                        ingredientText = ing;
+                      } else {
+                        // Try to construct from name and quantity
+                        const name = ing.name || '';
+                        const quantity = ing.quantity || ing.amount || '';
+                        ingredientText = `${quantity} ${name}`.trim();
+                      }
+                      
+                      if (ingredientText) {
+                        allIngredients.push(ingredientText);
+                      }
+                    });
+                  }
+                });
+              }
+              
+              // Process snacks
+              if (day.snacks && Array.isArray(day.snacks)) {
+                day.snacks.forEach((snack, snackIndex) => {
+                  console.log(`Processing snack ${snackIndex + 1}: ${snack.title || 'Unnamed'}`);
+                  
+                  if (snack.ingredients && Array.isArray(snack.ingredients)) {
+                    snack.ingredients.forEach(ing => {
+                      let ingredientText = '';
+                      if (typeof ing === 'string') {
+                        ingredientText = ing;
+                      } else {
+                        // Try to construct from name and quantity
+                        const name = ing.name || '';
+                        const quantity = ing.quantity || ing.amount || '';
+                        ingredientText = `${quantity} ${name}`.trim();
+                      }
+                      
+                      if (ingredientText) {
+                        allIngredients.push(ingredientText);
+                      }
+                    });
+                  } else if (snack.title) {
+                    // Handle snacks without ingredients array
+                    const title = snack.title || '';
+                    const quantity = snack.quantity || snack.amount || '';
+                    const ingredientText = `${quantity} ${title}`.trim();
+                    
+                    if (ingredientText) {
+                      allIngredients.push(ingredientText);
+                    }
+                  }
+                });
+              }
+            });
+          }
+          
+          if (allIngredients.length > 0) {
+            console.log("Manually extracted ingredients:", allIngredients);
+            fetchedGroceryList = allIngredients;
+            success = true;
+          }
+        } catch (extractionErr) {
+          console.error("Strategy 4 manual extraction failed:", extractionErr);
         }
       }
       
