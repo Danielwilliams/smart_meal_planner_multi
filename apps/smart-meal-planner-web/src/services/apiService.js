@@ -260,8 +260,25 @@ const apiService = {
   },
 
   async generateMenu(menuRequest) {
+    // Store the latest menu ID before generation to help with recovery
+    let latestMenuIdBeforeGeneration = null;
+    
     try {
       console.log('Generating menu with request:', menuRequest);
+      
+      // Attempt to get latest menu ID before generation
+      try {
+        if (menuRequest.user_id) {
+          const menuHistory = await this.getMenuHistory(menuRequest.user_id);
+          if (menuHistory && menuHistory.length > 0) {
+            latestMenuIdBeforeGeneration = menuHistory[0].menu_id;
+            console.log(`Latest menu ID before generation: ${latestMenuIdBeforeGeneration}`);
+          }
+        }
+      } catch (e) {
+        console.warn("Could not fetch latest menu ID before generation:", e);
+      }
+      
       const resp = await axiosInstance.post('/menu/generate', menuRequest, {
         timeout: 900000 // 15 minutes timeout for menu generation
       });
@@ -269,19 +286,49 @@ const apiService = {
       return resp.data;
     } catch (err) {
       console.error('Menu generation error:', err);
-      if (err.code === 'ECONNABORTED') {
+      
+      // Special handling for timeouts - they could be partial successes
+      if (err.code === 'ECONNABORTED' || (err.response && err.response.status === 504)) {
+        console.log("Timeout detected, checking if menu was partially created...");
+        
+        // Check if a new menu was created despite the timeout
+        try {
+          if (menuRequest.user_id) {
+            const menuHistory = await this.getMenuHistory(menuRequest.user_id);
+            
+            if (menuHistory && menuHistory.length > 0 && 
+                (latestMenuIdBeforeGeneration === null || 
+                 menuHistory[0].menu_id !== latestMenuIdBeforeGeneration)) {
+              // We have a new menu that was created!
+              console.log("Found newly created menu despite timeout:", menuHistory[0]);
+              
+              // Return the menu with a special flag
+              return {
+                ...menuHistory[0],
+                _partial_success: true,
+                message: "Menu was created but connection timed out during retrieval."
+              };
+            }
+          }
+        } catch (recoveryErr) {
+          console.error("Error checking for partial success:", recoveryErr);
+        }
+        
         throw new Error('Menu generation timed out. Please try again or generate a shorter menu.');
       }
+      
       throw err;
     }
   },
   
   async generateMenuForClient(clientId, menuRequest) {
+    // Store the latest menu ID before generation to help with recovery
+    let latestMenuIdBeforeGeneration = null;
+    
     try {
       console.log(`Generating menu for client ${clientId} with request:`, menuRequest);
       
-      // Attempt to get the latest menu ID before generation to help with recovery
-      let latestMenuIdBeforeGeneration = null;
+      // Attempt to get the latest menu ID before generation
       try {
         const clientMenus = await this.getClientMenus(clientId);
         if (clientMenus && clientMenus.length > 0) {
@@ -311,7 +358,8 @@ const apiService = {
           const clientMenus = await this.getClientMenus(clientId);
           
           if (clientMenus && clientMenus.length > 0 && 
-              clientMenus[0].menu_id !== latestMenuIdBeforeGeneration) {
+              (latestMenuIdBeforeGeneration === null || 
+               clientMenus[0].menu_id !== latestMenuIdBeforeGeneration)) {
             // We have a new menu that was created!
             console.log("Found newly created menu despite timeout:", clientMenus[0]);
             
