@@ -354,6 +354,39 @@ function MenuDisplayPage() {
     } catch (err) {
       console.error('Menu generation error:', err);
       
+      // Check if we already have a menu ID, it might be a partial success
+      if (err.message && err.message.includes('unexpected')) {
+        // Try to fetch the latest menu - the menu might have been saved successfully
+        try {
+          console.log("Attempting to fetch latest menu despite error...");
+          const latestMenu = await apiService.getLatestMenu(user.userId);
+          if (latestMenu && (latestMenu.menu_id || (latestMenu.meal_plan && latestMenu.meal_plan.days))) {
+            console.log("Found latest menu despite error:", latestMenu);
+            
+            // Update state with the found menu
+            setMenu(latestMenu);
+            setSelectedMenuId(latestMenu.menu_id);
+            
+            // Fetch updated history
+            const updatedHistory = await apiService.getMenuHistory(user.userId);
+            setMenuHistory(updatedHistory);
+            
+            updateUserProgress({ has_generated_menu: true });
+            
+            // Show a warning instead of an error
+            setError('');
+            setSnackbarMessage('Menu was generated but had a minor loading issue. It has been loaded successfully.');
+            setSnackbarOpen(true);
+            
+            // Exit the error handler since we recovered
+            setLoading(false);
+            return;
+          }
+        } catch (recoveryErr) {
+          console.error("Error during recovery attempt:", recoveryErr);
+        }
+      }
+      
       // Display a more specific error message for timeouts
       if (err.message && err.message.includes('timed out')) {
         setError('Menu generation timed out. Try reducing the number of days or using a different AI model.');

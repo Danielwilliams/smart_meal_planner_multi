@@ -279,16 +279,56 @@ const apiService = {
   async generateMenuForClient(clientId, menuRequest) {
     try {
       console.log(`Generating menu for client ${clientId} with request:`, menuRequest);
+      
+      // Attempt to get the latest menu ID before generation to help with recovery
+      let latestMenuIdBeforeGeneration = null;
+      try {
+        const clientMenus = await this.getClientMenus(clientId);
+        if (clientMenus && clientMenus.length > 0) {
+          latestMenuIdBeforeGeneration = clientMenus[0].menu_id;
+          console.log(`Latest menu ID before generation: ${latestMenuIdBeforeGeneration}`);
+        }
+      } catch (e) {
+        console.warn("Could not fetch latest menu ID before generation:", e);
+      }
+      
+      // Generate the menu
       const resp = await axiosInstance.post(`/menu/generate-for-client/${clientId}`, menuRequest, {
         timeout: 900000 // 15 minutes timeout for menu generation
       });
+      
       console.log('Client menu generation successful');
       return resp.data;
     } catch (err) {
       console.error(`Error generating menu for client ${clientId}:`, err);
-      if (err.code === 'ECONNABORTED') {
+      
+      // Special handling for timeouts - they could be partial successes
+      if (err.code === 'ECONNABORTED' || (err.response && err.response.status === 504)) {
+        console.log("Timeout detected, checking if menu was partially created...");
+        
+        // Check if a new menu was created despite the timeout
+        try {
+          const clientMenus = await this.getClientMenus(clientId);
+          
+          if (clientMenus && clientMenus.length > 0 && 
+              clientMenus[0].menu_id !== latestMenuIdBeforeGeneration) {
+            // We have a new menu that was created!
+            console.log("Found newly created menu despite timeout:", clientMenus[0]);
+            
+            // Return the menu with a special flag
+            return {
+              ...clientMenus[0],
+              _partial_success: true,
+              message: "Menu was created but connection timed out during retrieval."
+            };
+          }
+        } catch (recoveryErr) {
+          console.error("Error checking for partial success:", recoveryErr);
+        }
+        
         throw new Error('Menu generation timed out. Please try again or generate a shorter menu.');
       }
+      
       throw err;
     }
   },

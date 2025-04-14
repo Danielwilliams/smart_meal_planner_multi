@@ -116,15 +116,49 @@ function ClientMenuGenerator({ client, onMenuGenerated }) {
       // This will store the menu with the organization as the owner but with a reference to the client
       const newMenu = await apiService.generateMenuForClient(client.id, finalRequest);
       
-      // Set success message
-      setSuccess('Menu generated successfully!');
-      
-      // Call the callback if provided
-      if (onMenuGenerated) {
-        onMenuGenerated(newMenu);
+      // Check if we got a valid menu response
+      if (newMenu && (newMenu.menu_id || (newMenu.meal_plan && newMenu.meal_plan.days))) {
+        // Set success message
+        setSuccess('Menu generated successfully!');
+        
+        // Call the callback if provided
+        if (onMenuGenerated) {
+          onMenuGenerated(newMenu);
+        }
+      } else {
+        // Handle the case where we got a response but not a valid menu
+        console.warn('Menu generation response did not contain expected data:', newMenu);
+        throw new Error('Menu response format was unexpected. The menu may have been generated but couldn\'t be loaded.');
       }
     } catch (err) {
       console.error('Error generating menu:', err);
+      
+      // Check if we already have a menu with a valid ID in local state
+      // This can happen if the generation was actually successful but had a connection issue after
+      if (err.message && err.message.includes('unexpected') && onMenuGenerated) {
+        // Try to fetch the latest menu for this client - the menu might have been saved successfully
+        try {
+          console.log("Attempting to fetch latest menu despite error...");
+          const latestMenus = await apiService.getClientMenus(client.id);
+          if (latestMenus && latestMenus.length > 0) {
+            // Get the most recent menu
+            const latestMenu = latestMenus[0];
+            console.log("Found latest menu despite error:", latestMenu);
+            
+            // Set success with warning
+            setSuccess('Menu was generated but had a minor loading issue. The menu is available in the client\'s menu list.');
+            
+            // Call the callback with the latest menu
+            onMenuGenerated(latestMenu);
+            
+            // Exit the error handler since we recovered
+            setLoading(false);
+            return;
+          }
+        } catch (recoveryErr) {
+          console.error("Error during recovery attempt:", recoveryErr);
+        }
+      }
       
       // Display a more specific error message for timeouts
       if (err.message && err.message.includes('timed out')) {
