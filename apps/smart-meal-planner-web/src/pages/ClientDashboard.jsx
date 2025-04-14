@@ -59,7 +59,8 @@ const ClientDashboard = () => {
   }, []);
 
   const handleViewMenu = (menuId) => {
-    navigate(`/menu/${menuId}`);
+    // Use the MenuDisplayPage component with the client menu ID
+    navigate(`/menu-display?menuId=${menuId}`);
   };
   
   const handleViewGroceryList = (menuId) => {

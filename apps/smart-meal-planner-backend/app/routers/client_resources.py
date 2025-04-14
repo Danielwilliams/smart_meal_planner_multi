@@ -320,7 +320,8 @@ async def get_client_menu(
                     meal_plan_json, 
                     user_id, 
                     created_at, 
-                    nickname
+                    nickname,
+                    ai_model_used
                 FROM menus 
                 WHERE id = %s
             """, (menu_id,))
@@ -330,7 +331,25 @@ async def get_client_menu(
             raise HTTPException(status_code=404, detail="Menu not found")
         
         # Ensure meal_plan_json is parsed
-        menu['meal_plan'] = json.loads(menu['meal_plan_json']) if isinstance(menu['meal_plan_json'], str) else menu['meal_plan_json']
+        try:
+            if isinstance(menu['meal_plan_json'], str):
+                menu['meal_plan'] = json.loads(menu['meal_plan_json'])
+            else:
+                menu['meal_plan'] = menu['meal_plan_json']
+                
+            # Make sure days are properly formatted
+            if 'days' not in menu['meal_plan']:
+                if isinstance(menu['meal_plan'], list):
+                    # Convert list of days to proper format
+                    menu['meal_plan'] = {"days": menu['meal_plan']}
+                else:
+                    # Create an empty structure
+                    menu['meal_plan'] = {"days": []}
+            
+        except (json.JSONDecodeError, TypeError) as e:
+            logger.error(f"Error parsing meal_plan_json: {str(e)}")
+            # Provide a default empty structure
+            menu['meal_plan'] = {"days": []}
         
         return menu
     except Exception as e:

@@ -880,7 +880,25 @@ const apiService = {
         
         // If we get a successful response, extract the shared menus
         if (dashboardResponse.data && dashboardResponse.data.shared_menus) {
-          return dashboardResponse.data.shared_menus;
+          // Process shared menus to ensure dates are valid
+          const processedMenus = dashboardResponse.data.shared_menus.map(menu => {
+            // Check if shared_at is valid date and format it if needed
+            if (menu.shared_at) {
+              try {
+                const date = new Date(menu.shared_at);
+                if (!isNaN(date.getTime())) {
+                  menu.shared_at = date.toISOString();
+                }
+              } catch (e) {
+                // If date parsing fails, use current time
+                menu.shared_at = new Date().toISOString();
+              }
+            } else {
+              menu.shared_at = new Date().toISOString();
+            }
+            return menu;
+          });
+          return processedMenus;
         }
       } catch (dashboardErr) {
         console.warn('Could not fetch client dashboard, falling back to shared menus endpoint:', dashboardErr);
@@ -889,6 +907,29 @@ const apiService = {
       // Fall back to the regular shared menus endpoint
       const response = await axiosInstance.get(`/menu/shared/${userId}`);
       console.log('Shared menus response:', response.data);
+      
+      // Process shared menus to ensure dates are valid
+      if (Array.isArray(response.data)) {
+        const processedMenus = response.data.map(menu => {
+          // Check if shared_at is valid date and format it if needed
+          if (menu.shared_at) {
+            try {
+              const date = new Date(menu.shared_at);
+              if (!isNaN(date.getTime())) {
+                menu.shared_at = date.toISOString();
+              }
+            } catch (e) {
+              // If date parsing fails, use current time
+              menu.shared_at = new Date().toISOString();
+            }
+          } else {
+            menu.shared_at = new Date().toISOString();
+          }
+          return menu;
+        });
+        return processedMenus;
+      }
+      
       return response.data;
     } catch (err) {
       console.error('Error fetching shared menus:', err);
@@ -982,10 +1023,24 @@ const apiService = {
   
   getClientMenu: async (menuId) => {
     try {
+      console.log(`Fetching client menu ${menuId}`);
       const response = await axiosInstance.get(`/client/menus/${menuId}`);
       return response.data;
     } catch (err) {
       console.error(`Error fetching client menu ${menuId}:`, err);
+      
+      // If we get a 422 error, try the regular menu endpoint as fallback
+      if (err.response && (err.response.status === 422 || err.response.status === 404)) {
+        console.log(`Falling back to regular menu endpoint for menu ${menuId}`);
+        try {
+          const regularMenuResponse = await axiosInstance.get(`/menu/${menuId}`);
+          return regularMenuResponse.data;
+        } catch (fallbackErr) {
+          console.error(`Fallback also failed for menu ${menuId}:`, fallbackErr);
+          throw fallbackErr;
+        }
+      }
+      
       throw err;
     }
   },
