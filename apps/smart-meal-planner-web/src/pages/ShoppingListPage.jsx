@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { 
   Container, 
   Typography, 
@@ -24,17 +24,31 @@ function ShoppingListPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-
+  const { menuId: urlMenuId } = useParams(); // Get menuId from URL path
+  const [searchParams] = useSearchParams(); // Get query parameters
+  
+  // Check for menuId in various places
+  const queryMenuId = searchParams.get('menuId');
+  const isClientSourced = searchParams.get('source') === 'client';
+  
   // State management
   const [groceryList, setGroceryList] = useState([]);
   const [menuHistory, setMenuHistory] = useState([]);
-  const [selectedMenuId, setSelectedMenuId] = useState(null);
+  const [selectedMenuId, setSelectedMenuId] = useState(urlMenuId || queryMenuId || null);
   const [selectedStore, setSelectedStore] = useState('mixed');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [storeSearchResults, setStoreSearchResults] = useState({});
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
+
+  // Debug log
+  console.log("ShoppingListPage params:", { 
+    urlMenuId, 
+    queryMenuId, 
+    selectedMenuId, 
+    isClientSourced 
+  });
 
   // Check for new user flow from navigation state
   const { isNewUser, showWalkthrough } = location.state || {};
@@ -51,25 +65,74 @@ function ShoppingListPage() {
     setLoading(true);
     setError('');
 
-    const history = await apiService.getMenuHistory(user.userId);
-    setMenuHistory(history);
+    // If we have a menuId from URL, use that directly
+    if (selectedMenuId) {
+      console.log(`Using menu ID from URL: ${selectedMenuId}`);
+      
+      try {
+        // Try getting grocery list directly first
+        console.log(`Fetching grocery list for menu ${selectedMenuId}`);
+        const groceryListResponse = await apiService.getGroceryListByMenuId(selectedMenuId);
+        
+        if (groceryListResponse && groceryListResponse.groceryList) {
+          setGroceryList(groceryListResponse.groceryList);
+          console.log("Grocery list fetched successfully:", groceryListResponse.groceryList);
+        } else {
+          // If no grocery list found, try fetching the menu and generating the list
+          console.log("No grocery list found, fetching menu details to generate list");
+          
+          // Try client endpoint first if this is client-sourced
+          let menuDetails;
+          try {
+            if (isClientSourced) {
+              menuDetails = await apiService.getClientMenu(selectedMenuId);
+            } else {
+              menuDetails = await apiService.getMenuDetails(selectedMenuId);
+            }
+          } catch (menuErr) {
+            // If that fails, try the other endpoint
+            console.log("Primary menu fetch failed, trying alternate endpoint");
+            if (isClientSourced) {
+              menuDetails = await apiService.getMenuDetails(selectedMenuId);
+            } else {
+              menuDetails = await apiService.getClientMenu(selectedMenuId);
+            }
+          }
+          
+          console.log("Menu details for grocery list generation:", menuDetails);
+          
+          // Generate grocery list from menu details
+          const categorizedItems = categorizeItems(menuDetails);
+          const newGroceryList = Object.values(categorizedItems).flat();
+          setGroceryList(newGroceryList);
+          console.log("Generated grocery list:", newGroceryList);
+        }
+      } catch (specificMenuErr) {
+        console.error(`Error fetching specific menu ${selectedMenuId}:`, specificMenuErr);
+        setError(`Error loading grocery list for menu ${selectedMenuId}`);
+      }
+    } else {
+      // No specific menu ID, get the latest one
+      const history = await apiService.getMenuHistory(user.userId);
+      setMenuHistory(history);
 
-    if (history && history.length > 0) {
-      const latestMenuId = history[0].menu_id;
-      
-      // Fetch the full menu details
-      const fullMenuDetails = await apiService.getMenuDetails(latestMenuId);
-      
-      console.log('Full Menu Details:', fullMenuDetails);
-      
-      // Use the categorizeItems method to generate grocery list
-      const categorizedItems = categorizeItems(fullMenuDetails);
-      const groceryList = Object.values(categorizedItems).flat();
-      
-      console.log("🔎 Grocery List:", groceryList);
+      if (history && history.length > 0) {
+        const latestMenuId = history[0].menu_id;
+        
+        // Fetch the full menu details
+        const fullMenuDetails = await apiService.getMenuDetails(latestMenuId);
+        
+        console.log('Full Menu Details:', fullMenuDetails);
+        
+        // Use the categorizeItems method to generate grocery list
+        const categorizedItems = categorizeItems(fullMenuDetails);
+        const groceryList = Object.values(categorizedItems).flat();
+        
+        console.log("🔎 Grocery List:", groceryList);
 
-      setGroceryList(groceryList);
-      setSelectedMenuId(latestMenuId);
+        setGroceryList(groceryList);
+        setSelectedMenuId(latestMenuId);
+      }
     }
     
   } catch (err) {
@@ -106,7 +169,7 @@ function ShoppingListPage() {
   // Initial data fetch
   useEffect(() => {
     fetchShoppingListData();
-  }, [user]);
+  }, [user, selectedMenuId]);
 
 const categorizeItems = (mealPlanData) => {
   let ingredientsList = [];

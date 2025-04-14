@@ -67,7 +67,9 @@ const ClientDashboard = () => {
   };
   
   const handleViewGroceryList = (menuId) => {
-    navigate(`/grocery-list/${menuId}`);
+    console.log(`Navigating to grocery list with menu ID: ${menuId}`);
+    // Use the shopping-list path which is the component that handles grocery lists
+    navigate(`/shopping-list/${menuId}?source=client`);
   };
 
   const handleBrowseRecipes = () => {

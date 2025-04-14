@@ -107,7 +107,47 @@ function App() {
                 } 
               />
               <Route 
+                path="/menu/:menuId" 
+                element={
+                  <PrivateRoute>
+                    <MenuDisplayPage />
+                  </PrivateRoute>
+                } 
+              />
+              <Route 
+                path="/menu-display" 
+                element={
+                  <PrivateRoute>
+                    <MenuDisplayPage />
+                  </PrivateRoute>
+                } 
+              />
+              <Route 
+                path="/menu-display/:menuId" 
+                element={
+                  <PrivateRoute>
+                    <MenuDisplayPage />
+                  </PrivateRoute>
+                } 
+              />
+              <Route 
                 path="/shopping-list" 
+                element={
+                  <PrivateRoute>
+                    <ShoppingListPage />
+                  </PrivateRoute>
+                } 
+              />
+              <Route 
+                path="/shopping-list/:menuId" 
+                element={
+                  <PrivateRoute>
+                    <ShoppingListPage />
+                  </PrivateRoute>
+                } 
+              />
+              <Route 
+                path="/grocery-list/:menuId" 
                 element={
                   <PrivateRoute>
                     <ShoppingListPage />
