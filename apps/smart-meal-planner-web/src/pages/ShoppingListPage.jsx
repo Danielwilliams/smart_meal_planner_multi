@@ -64,52 +64,94 @@ function ShoppingListPage() {
   try {
     setLoading(true);
     setError('');
+    setGroceryList([]); // Reset grocery list to avoid showing old data
 
     // If we have a menuId from URL, use that directly
     if (selectedMenuId) {
       console.log(`Using menu ID from URL: ${selectedMenuId}`);
       
+      // Try both endpoints to get the data we need
+      let fetchedGroceryList = [];
+      let menuDetails = null;
+      let success = false;
+      
+      // Strategy 1: Try direct grocery list API
       try {
-        // Try getting grocery list directly first
-        console.log(`Fetching grocery list for menu ${selectedMenuId}`);
+        console.log(`Strategy 1: Fetching grocery list for menu ${selectedMenuId}`);
         const groceryListResponse = await apiService.getGroceryListByMenuId(selectedMenuId);
         
-        if (groceryListResponse && groceryListResponse.groceryList) {
-          setGroceryList(groceryListResponse.groceryList);
+        if (groceryListResponse && groceryListResponse.groceryList && groceryListResponse.groceryList.length > 0) {
           console.log("Grocery list fetched successfully:", groceryListResponse.groceryList);
-        } else {
-          // If no grocery list found, try fetching the menu and generating the list
-          console.log("No grocery list found, fetching menu details to generate list");
+          fetchedGroceryList = groceryListResponse.groceryList;
+          success = true;
+        } else if (groceryListResponse && Array.isArray(groceryListResponse)) {
+          console.log("Grocery list returned as direct array:", groceryListResponse);
+          fetchedGroceryList = groceryListResponse;
+          success = true;
+        }
+      } catch (groceryErr) {
+        console.log("Strategy 1 failed:", groceryErr.message);
+      }
+      
+      // Strategy 2: If first attempt failed, try client menu endpoint
+      if (!success) {
+        try {
+          console.log(`Strategy 2: Fetching client menu ${selectedMenuId}`);
+          menuDetails = await apiService.getClientMenu(selectedMenuId);
+          console.log("Client menu fetched successfully:", menuDetails);
           
-          // Try client endpoint first if this is client-sourced
-          let menuDetails;
-          try {
-            if (isClientSourced) {
-              menuDetails = await apiService.getClientMenu(selectedMenuId);
-            } else {
-              menuDetails = await apiService.getMenuDetails(selectedMenuId);
-            }
-          } catch (menuErr) {
-            // If that fails, try the other endpoint
-            console.log("Primary menu fetch failed, trying alternate endpoint");
-            if (isClientSourced) {
-              menuDetails = await apiService.getMenuDetails(selectedMenuId);
-            } else {
-              menuDetails = await apiService.getClientMenu(selectedMenuId);
+          // Check if API returned a grocery list directly
+          if (menuDetails && menuDetails.groceryList && menuDetails.groceryList.length > 0) {
+            fetchedGroceryList = menuDetails.groceryList;
+            success = true;
+          }
+          // Otherwise need to extract from menu plan
+          else if (menuDetails && menuDetails.meal_plan) {
+            console.log("Extracting grocery list from client menu meal plan");
+            try {
+              // Get client grocery list API if we have the menu
+              const clientGroceryList = await apiService.getClientGroceryList(selectedMenuId);
+              if (clientGroceryList && clientGroceryList.groceryList) {
+                fetchedGroceryList = clientGroceryList.groceryList;
+                success = true;
+                console.log("Client grocery list API succeeded:", fetchedGroceryList);
+              }
+            } catch (clientGroceryErr) {
+              console.log("Client grocery list API failed, falling back to extraction from meal plan");
+              // Extract from menu details
+              const categorizedItems = categorizeItems(menuDetails);
+              fetchedGroceryList = Object.values(categorizedItems).flat();
+              success = fetchedGroceryList.length > 0;
             }
           }
-          
-          console.log("Menu details for grocery list generation:", menuDetails);
-          
-          // Generate grocery list from menu details
-          const categorizedItems = categorizeItems(menuDetails);
-          const newGroceryList = Object.values(categorizedItems).flat();
-          setGroceryList(newGroceryList);
-          console.log("Generated grocery list:", newGroceryList);
+        } catch (clientMenuErr) {
+          console.log("Strategy 2 failed:", clientMenuErr.message);
         }
-      } catch (specificMenuErr) {
-        console.error(`Error fetching specific menu ${selectedMenuId}:`, specificMenuErr);
-        setError(`Error loading grocery list for menu ${selectedMenuId}`);
+      }
+      
+      // Strategy 3: Try regular menu endpoint
+      if (!success) {
+        try {
+          console.log(`Strategy 3: Fetching regular menu ${selectedMenuId}`);
+          menuDetails = await apiService.getMenuDetails(selectedMenuId);
+          console.log("Regular menu fetched successfully:", menuDetails);
+          
+          // Extract from menu details
+          const categorizedItems = categorizeItems(menuDetails);
+          fetchedGroceryList = Object.values(categorizedItems).flat();
+          success = fetchedGroceryList.length > 0;
+        } catch (regularMenuErr) {
+          console.log("Strategy 3 failed:", regularMenuErr.message);
+        }
+      }
+      
+      // If we got data from any strategy, use it
+      if (success && fetchedGroceryList.length > 0) {
+        console.log("Final grocery list:", fetchedGroceryList);
+        setGroceryList(fetchedGroceryList);
+      } else {
+        console.error("All strategies failed or returned empty data");
+        setError(`No grocery items found for menu ${selectedMenuId}. The menu might not have any ingredients.`);
       }
     } else {
       // No specific menu ID, get the latest one
@@ -130,8 +172,14 @@ function ShoppingListPage() {
         
         console.log("🔎 Grocery List:", groceryList);
 
-        setGroceryList(groceryList);
-        setSelectedMenuId(latestMenuId);
+        if (groceryList.length > 0) {
+          setGroceryList(groceryList);
+          setSelectedMenuId(latestMenuId);
+        } else {
+          setError('No grocery items found in this menu. Try generating a new menu with recipes.');
+        }
+      } else {
+        setError('No menus found. Generate a menu first!');
       }
     }
     
@@ -142,8 +190,10 @@ function ShoppingListPage() {
       setError('No grocery lists found. Generate a menu first!');
     } else if (err.response?.status === 401) {
       navigate('/login');
+    } else if (err.response?.status === 422) {
+      setError('The menu format is not compatible with grocery lists. Try a different menu.');
     } else {
-      setError('Failed to load grocery list. Please try again.');
+      setError(`Failed to load grocery list: ${err.message || 'Unknown error'}`);
     }
   } finally {
     setLoading(false);
@@ -173,27 +223,50 @@ function ShoppingListPage() {
 
 const categorizeItems = (mealPlanData) => {
   let ingredientsList = [];
+  console.log("Categorizing items from data:", mealPlanData);
+
+  // Handle case where we get a groceryList array directly
+  if (mealPlanData && mealPlanData.groceryList && Array.isArray(mealPlanData.groceryList)) {
+    console.log("Using groceryList property directly:", mealPlanData.groceryList);
+    return { "All Items": mealPlanData.groceryList };
+  }
 
   // First, determine the structure of the input data
   if (Array.isArray(mealPlanData)) {
     // If it's already a direct list of ingredients
+    console.log("Data is an array, using directly");
     ingredientsList = mealPlanData;
   } else if (mealPlanData && mealPlanData.meal_plan) {
     // If it's a structured meal plan object
-    const mealPlan = typeof mealPlanData.meal_plan === 'string' 
-      ? JSON.parse(mealPlanData.meal_plan) 
-      : mealPlanData.meal_plan;
+    console.log("Found meal_plan property, processing structured data");
+    
+    let mealPlan;
+    try {
+      mealPlan = typeof mealPlanData.meal_plan === 'string' 
+        ? JSON.parse(mealPlanData.meal_plan) 
+        : mealPlanData.meal_plan;
+    } catch (e) {
+      console.error("Error parsing meal_plan:", e);
+      mealPlan = { days: [] };
+    }
 
     // Extract ingredients from days, meals, and snacks
-    if (mealPlan.days) {
+    if (mealPlan && mealPlan.days && Array.isArray(mealPlan.days)) {
+      console.log(`Processing ${mealPlan.days.length} days of meals`);
+      
       mealPlan.days.forEach(day => {
         // Process meals
         if (day.meals && Array.isArray(day.meals)) {
           day.meals.forEach(meal => {
             if (meal.ingredients && Array.isArray(meal.ingredients)) {
-              ingredientsList.push(...meal.ingredients.map(ing => 
-                `${ing.quantity || ''} ${ing.name || ''}`.trim()
-              ));
+              console.log(`Found ${meal.ingredients.length} ingredients in meal: ${meal.title || 'Unnamed'}`);
+              
+              const processedIngredients = meal.ingredients.map(ing => {
+                if (typeof ing === 'string') return ing.trim();
+                return `${ing.quantity || ''} ${ing.name || ''}`.trim();
+              }).filter(ing => ing.length > 0);
+              
+              ingredientsList.push(...processedIngredients);
             }
           });
         }
@@ -202,14 +275,52 @@ const categorizeItems = (mealPlanData) => {
         if (day.snacks && Array.isArray(day.snacks)) {
           day.snacks.forEach(snack => {
             if (snack.ingredients && Array.isArray(snack.ingredients)) {
-              ingredientsList.push(...snack.ingredients.map(ing => 
-                `${ing.quantity || ''} ${ing.name || ''}`.trim()
-              ));
+              console.log(`Found ${snack.ingredients.length} ingredients in snack: ${snack.title || 'Unnamed'}`);
+              
+              const processedIngredients = snack.ingredients.map(ing => {
+                if (typeof ing === 'string') return ing.trim();
+                return `${ing.quantity || ''} ${ing.name || ''}`.trim();
+              }).filter(ing => ing.length > 0);
+              
+              ingredientsList.push(...processedIngredients);
             }
           });
         }
       });
     }
+  }
+  
+  // If ingredientsList is still empty but we have a groceryList somewhere in the data
+  if (ingredientsList.length === 0 && typeof mealPlanData === 'object') {
+    // Try to find a groceryList in a nested property
+    const findGroceryList = (obj, depth = 0) => {
+      if (depth > 3) return null; // Limit depth to avoid infinite recursion
+      
+      if (obj && obj.groceryList && Array.isArray(obj.groceryList)) {
+        return obj.groceryList;
+      }
+      
+      for (const key in obj) {
+        if (typeof obj[key] === 'object' && obj[key] !== null) {
+          const result = findGroceryList(obj[key], depth + 1);
+          if (result) return result;
+        }
+      }
+      
+      return null;
+    };
+    
+    const foundList = findGroceryList(mealPlanData);
+    if (foundList) {
+      console.log("Found groceryList in nested property:", foundList);
+      ingredientsList = foundList;
+    }
+  }
+  
+  console.log(`Final ingredients list has ${ingredientsList.length} items`);
+  if (ingredientsList.length === 0) {
+    // Return a default empty category to prevent errors
+    return { "No Items Found": [] };
   }
 
   // Categorization logic
@@ -514,13 +625,19 @@ const categorizeItems = (mealPlanData) => {
         )}
       </Box>
 
-      {groceryList.length > 0 && (
+      {groceryList && groceryList.length > 0 ? (
         <ShoppingList 
           categories={categorizeItems(groceryList)} 
           selectedStore={selectedStore} 
           onAddToCart={handleAddToCart} 
           onAddToMixedCart={handleAddToMixedCart} 
         />
+      ) : (
+        !loading && (
+          <Alert severity="info" sx={{ mt: 3 }}>
+            No grocery items found for this menu. The menu might not have any ingredients listed, or there might be an issue with the menu data.
+          </Alert>
+        )
       )}
 
       <Snackbar

@@ -1058,11 +1058,39 @@ const apiService = {
   
   getClientGroceryList: async (menuId) => {
     try {
+      console.log(`Fetching client grocery list for menu ${menuId}`);
       const response = await axiosInstance.get(`/client/menus/${menuId}/grocery-list`);
-      return response.data;
+      
+      // Check if we got valid data
+      if (response.data && response.data.groceryList) {
+        console.log(`Successfully retrieved grocery list with ${response.data.groceryList.length} items`);
+        return response.data;
+      }
+      
+      console.log("Response didn't contain expected groceryList property:", response.data);
+      
+      // Try the regular grocery list endpoint as fallback
+      try {
+        console.log("Trying regular grocery list endpoint as fallback");
+        const regularResponse = await axiosInstance.get(`/menu/${menuId}/grocery-list`);
+        return regularResponse.data;
+      } catch (fallbackErr) {
+        console.error("Fallback grocery list endpoint also failed:", fallbackErr);
+        // Return the original data we got even if it's not what we expected
+        return response.data;
+      }
     } catch (err) {
       console.error(`Error fetching client grocery list for menu ${menuId}:`, err);
-      throw err;
+      
+      // Try the regular grocery list endpoint as fallback
+      try {
+        console.log("Client endpoint failed, trying regular grocery list endpoint");
+        const regularResponse = await axiosInstance.get(`/menu/${menuId}/grocery-list`);
+        return regularResponse.data;
+      } catch (fallbackErr) {
+        console.error("Fallback grocery list endpoint also failed:", fallbackErr);
+        throw err; // Throw the original error
+      }
     }
   },
   
