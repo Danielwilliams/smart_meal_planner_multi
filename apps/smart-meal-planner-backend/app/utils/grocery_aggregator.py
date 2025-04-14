@@ -154,6 +154,9 @@ def standardize_ingredient(ing: Any):
     """
     Enhanced ingredient standardization with more robust parsing
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
     def parse_complex_ingredient(ing_str: str):
         """
         Parse ingredients with multiple quantity components
@@ -175,6 +178,7 @@ def standardize_ingredient(ing: Any):
         return total_amount, clean_name
 
     if isinstance(ing, str):
+        logger.debug(f"Standardizing string ingredient: {ing}")
         # Try complex parsing first
         amount, name = parse_complex_ingredient(ing)
         
@@ -186,20 +190,41 @@ def standardize_ingredient(ing: Any):
         unit = sanitize_unit(raw_unit) if 'raw_unit' in locals() else ''
         return (sanitize_name(name), amount, unit)
     
-    # Existing dictionary handling remains the same
+    # Dictionary handling with better name detection
     elif isinstance(ing, dict):
-        name = ing.get('ingredient', '')
-        amount = safe_convert_to_float(ing.get('amount', ing.get('quantity')))
+        logger.debug(f"Standardizing dict ingredient: {ing}")
+        
+        # Look for name in various fields
+        name = ing.get('name', '')
+        if not name:
+            name = ing.get('ingredient', '')
+        
+        # Log the name we found
+        logger.debug(f"Found ingredient name: {name}")
+        
+        # Look for quantity in various fields
+        quantity = ing.get('quantity', None)
+        if quantity is None:
+            quantity = ing.get('amount', None)
+        
+        # Log the quantity we found
+        logger.debug(f"Found ingredient quantity: {quantity}")
+        
+        # Convert quantity to float
+        amount = safe_convert_to_float(quantity)
+        
+        # Look for unit in various fields
         unit = ing.get('unit', '')
         
         # Remove piece units
-        if unit.lower() in ['piece', 'pieces']:
+        if unit and unit.lower() in ['piece', 'pieces']:
             unit = ''
         else:
             unit = sanitize_unit(unit)
             
         return (sanitize_name(name), amount, unit)
     
+    logger.warning(f"Unexpected ingredient type: {type(ing)}")
     return (str(ing).lower(), None, "")
 
 
@@ -274,24 +299,39 @@ def aggregate_grocery_list(menu_dict: Dict[str, Any]):
         if 'ingredients' in obj and isinstance(obj['ingredients'], list):
             logger.info(f"Found ingredients array at {path} with {len(obj['ingredients'])} items")
             
-            for ing in obj['ingredients']:
+            for i, ing in enumerate(obj['ingredients']):
+                logger.info(f"Processing ingredient {i} at {path}: {ing}")
+                
+                # Handle different ingredient formats
                 if isinstance(ing, str):
                     # String format like "1 cup flour"
+                    logger.info(f"Ingredient {i} is a string: {ing}")
                     name, amount, unit = standardize_ingredient(ing)
                 else:
                     # Dictionary format
+                    if isinstance(ing, dict):
+                        logger.info(f"Ingredient {i} is a dict with keys: {list(ing.keys())}")
+                        if 'name' in ing:
+                            logger.info(f"Ingredient has name: {ing['name']}")
+                        if 'quantity' in ing:
+                            logger.info(f"Ingredient has quantity: {ing['quantity']}")
                     name, amount, unit = standardize_ingredient(ing)
+                
+                logger.info(f"Standardized to name='{name}', amount={amount}, unit='{unit}'")
                 
                 # Skip empty ingredients
                 if not name:
+                    logger.warning(f"Skipping ingredient {i} with empty name")
                     continue
                     
                 key = (name, unit)
                 if amount is not None:
                     current = aggregated_dict.get(key, 0.0)
                     aggregated_dict[key] = current + amount
+                    logger.info(f"Added amount {amount} to {name}, total now: {aggregated_dict[key]}")
                 elif key not in aggregated_dict:
                     aggregated_dict[key] = None
+                    logger.info(f"Added {name} without amount")
         
         # Handle snack-specific format (title and quantity without ingredients)
         if 'title' in obj and not 'ingredients' in obj:

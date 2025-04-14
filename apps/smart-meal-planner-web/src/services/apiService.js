@@ -440,86 +440,134 @@ const apiService = {
         try {
           console.log(`Fetching full menu details for ${menuId}`);
           const menuDetails = await this.getMenuDetails(menuId);
+          console.log('Menu details:', menuDetails);
           
-          // Handle specific formats we know about
-          if (menuDetails && menuDetails.meal_plan_json) {
-            console.log('Menu has meal_plan_json, trying to extract ingredients');
-            let mealPlanData = menuDetails.meal_plan_json;
+          // Define a deep scan function to find ingredients anywhere in the menu structure
+          const deepScanForIngredients = (obj) => {
+            console.log('Deep scanning for ingredients in object type:', typeof obj);
             
-            // Parse if it's a string
+            const ingredients = [];
+            
+            // Function to process any ingredient object or string
+            const processIngredient = (ing) => {
+              if (typeof ing === 'string') {
+                ingredients.push({ name: ing, quantity: '' });
+                console.log('Added string ingredient:', ing);
+              } else if (typeof ing === 'object' && ing !== null) {
+                // Look for name in common fields
+                const name = ing.name || ing.ingredient || '';
+                // Look for quantity in common fields
+                const quantity = ing.quantity || ing.amount || '';
+                
+                if (name) {
+                  ingredients.push({ 
+                    name: quantity ? `${quantity} ${name}` : name, 
+                    quantity: '' 
+                  });
+                  console.log('Added object ingredient:', quantity ? `${quantity} ${name}` : name);
+                }
+              }
+            };
+            
+            // Recursive function to search through any object structure
+            const searchObject = (node, path = '') => {
+              if (!node) return;
+              
+              // Handle arrays
+              if (Array.isArray(node)) {
+                node.forEach((item, idx) => searchObject(item, `${path}[${idx}]`));
+                return;
+              }
+              
+              // Handle objects
+              if (typeof node === 'object' && node !== null) {
+                // Log keys for debugging
+                console.log(`Checking node at ${path} with keys:`, Object.keys(node));
+                
+                // Check for ingredients array directly
+                if ('ingredients' in node && Array.isArray(node.ingredients)) {
+                  console.log(`Found ingredients array at ${path} with ${node.ingredients.length} items`);
+                  node.ingredients.forEach(ing => processIngredient(ing));
+                }
+                
+                // Look for title/quantity pairs (simple snack format)
+                if ('title' in node && !('ingredients' in node)) {
+                  console.log(`Found simple item at ${path} with title: ${node.title}`);
+                  processIngredient({
+                    name: node.title,
+                    quantity: node.quantity || node.amount || ''
+                  });
+                }
+                
+                // Recursively process all properties
+                Object.keys(node).forEach(key => {
+                  if (typeof node[key] === 'object' && node[key] !== null) {
+                    searchObject(node[key], path ? `${path}.${key}` : key);
+                  }
+                });
+              }
+            };
+            
+            // Start search from root object
+            searchObject(obj);
+            return ingredients;
+          };
+          
+          // Try meal_plan_json first
+          if (menuDetails && menuDetails.meal_plan_json) {
+            console.log('Found meal_plan_json, attempting to extract ingredients');
+            
+            let mealPlanData = menuDetails.meal_plan_json;
+            // Parse if string
             if (typeof mealPlanData === 'string') {
               try {
                 mealPlanData = JSON.parse(mealPlanData);
+                console.log('Successfully parsed meal_plan_json');
               } catch (e) {
                 console.error('Failed to parse meal_plan_json:', e);
               }
             }
             
-            // Simple extraction from structure
-            if (mealPlanData && mealPlanData.days && Array.isArray(mealPlanData.days)) {
-              const extractedIngredients = [];
-              
-              mealPlanData.days.forEach(day => {
-                // Extract from meals
-                if (day.meals && Array.isArray(day.meals)) {
-                  day.meals.forEach(meal => {
-                    if (meal.ingredients && Array.isArray(meal.ingredients)) {
-                      meal.ingredients.forEach(ing => {
-                        if (typeof ing === 'string') {
-                          extractedIngredients.push({ name: ing, quantity: '' });
-                        } else if (typeof ing === 'object' && ing !== null) {
-                          const name = ing.name || '';
-                          const quantity = ing.quantity || ing.amount || '';
-                          if (name) {
-                            extractedIngredients.push({ 
-                              name: quantity ? `${quantity} ${name}` : name, 
-                              quantity: '' 
-                            });
-                          }
-                        }
-                      });
-                    }
-                  });
-                }
-                
-                // Extract from snacks
-                if (day.snacks && Array.isArray(day.snacks)) {
-                  day.snacks.forEach(snack => {
-                    if (snack.ingredients && Array.isArray(snack.ingredients)) {
-                      snack.ingredients.forEach(ing => {
-                        if (typeof ing === 'string') {
-                          extractedIngredients.push({ name: ing, quantity: '' });
-                        } else if (typeof ing === 'object' && ing !== null) {
-                          const name = ing.name || '';
-                          const quantity = ing.quantity || ing.amount || '';
-                          if (name) {
-                            extractedIngredients.push({ 
-                              name: quantity ? `${quantity} ${name}` : name, 
-                              quantity: '' 
-                            });
-                          }
-                        }
-                      });
-                    } else if (snack.title) {
-                      // Simple snack format
-                      const title = snack.title || '';
-                      const quantity = snack.quantity || snack.amount || '';
-                      if (title) {
-                        extractedIngredients.push({ 
-                          name: quantity ? `${quantity} ${title}` : title, 
-                          quantity: '' 
-                        });
-                      }
-                    }
-                  });
-                }
-              });
-              
-              if (extractedIngredients.length > 0) {
-                console.log('Successfully extracted ingredients from meal plan:', extractedIngredients);
-                return { groceryList: extractedIngredients };
+            // Deep scan for ingredients
+            const extractedIngredients = deepScanForIngredients(mealPlanData);
+            
+            if (extractedIngredients.length > 0) {
+              console.log(`Found ${extractedIngredients.length} ingredients in meal_plan_json`);
+              return { groceryList: extractedIngredients };
+            }
+          }
+          
+          // Try meal_plan next if meal_plan_json didn't work
+          if (menuDetails && menuDetails.meal_plan) {
+            console.log('Found meal_plan, attempting to extract ingredients');
+            
+            let mealPlanData = menuDetails.meal_plan;
+            // Parse if string
+            if (typeof mealPlanData === 'string') {
+              try {
+                mealPlanData = JSON.parse(mealPlanData);
+                console.log('Successfully parsed meal_plan');
+              } catch (e) {
+                console.error('Failed to parse meal_plan:', e);
               }
             }
+            
+            // Deep scan for ingredients
+            const extractedIngredients = deepScanForIngredients(mealPlanData);
+            
+            if (extractedIngredients.length > 0) {
+              console.log(`Found ${extractedIngredients.length} ingredients in meal_plan`);
+              return { groceryList: extractedIngredients };
+            }
+          }
+          
+          // Last resort: scan the entire menu object
+          console.log('No ingredients found in specific fields, scanning entire menu object');
+          const extractedIngredients = deepScanForIngredients(menuDetails);
+          
+          if (extractedIngredients.length > 0) {
+            console.log(`Found ${extractedIngredients.length} ingredients in full menu`);
+            return { groceryList: extractedIngredients };
           }
         } catch (menuErr) {
           console.error('Failed to get menu details or extract ingredients:', menuErr);
@@ -535,6 +583,82 @@ const apiService = {
         console.log(`Trying client endpoint for grocery list for menu ${menuId}`);
         const clientResp = await axiosInstance.get(`/client/menus/${menuId}/grocery-list`);
         console.log('Client grocery list response:', clientResp.data);
+        
+        // Check if client response has empty grocery list
+        if (clientResp.data && (!clientResp.data.groceryList || 
+            (clientResp.data.groceryList && clientResp.data.groceryList.length === 0))) {
+          
+          // Try to get the client menu and extract ingredients
+          try {
+            console.log(`Client grocery list is empty, fetching client menu ${menuId}`);
+            const clientMenu = await this.getClientMenu(menuId);
+            console.log('Client menu:', clientMenu);
+            
+            // Create extraction function for client menu
+            const extractFromClientMenu = (obj) => {
+              const ingredients = [];
+              
+              const scan = (node) => {
+                if (!node) return;
+                
+                if (Array.isArray(node)) {
+                  node.forEach(item => scan(item));
+                  return;
+                }
+                
+                if (typeof node === 'object' && node !== null) {
+                  // Check for ingredients array
+                  if (node.ingredients && Array.isArray(node.ingredients)) {
+                    node.ingredients.forEach(ing => {
+                      if (typeof ing === 'string') {
+                        ingredients.push({ name: ing, quantity: '' });
+                      } else if (typeof ing === 'object' && ing !== null) {
+                        const name = ing.name || '';
+                        const quantity = ing.quantity || ing.amount || '';
+                        if (name) {
+                          ingredients.push({ 
+                            name: quantity ? `${quantity} ${name}` : name, 
+                            quantity: '' 
+                          });
+                        }
+                      }
+                    });
+                  }
+                  
+                  // Check for simple item format
+                  if (node.title && !node.ingredients) {
+                    const title = node.title;
+                    const quantity = node.quantity || node.amount || '';
+                    ingredients.push({ 
+                      name: quantity ? `${quantity} ${title}` : title, 
+                      quantity: '' 
+                    });
+                  }
+                  
+                  // Recursively process all properties
+                  Object.keys(node).forEach(key => {
+                    if (typeof node[key] === 'object' && node[key] !== null) {
+                      scan(node[key]);
+                    }
+                  });
+                }
+              };
+              
+              scan(obj);
+              return ingredients;
+            };
+            
+            const clientIngredients = extractFromClientMenu(clientMenu);
+            
+            if (clientIngredients.length > 0) {
+              console.log(`Extracted ${clientIngredients.length} ingredients from client menu`);
+              return { groceryList: clientIngredients };
+            }
+          } catch (clientMenuErr) {
+            console.error('Failed to extract ingredients from client menu:', clientMenuErr);
+          }
+        }
+        
         return clientResp.data;
       } catch (clientErr) {
         console.error("Client grocery list endpoint also failed:", clientErr);

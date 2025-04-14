@@ -764,19 +764,115 @@ def get_grocery_list(menu_id: int):
             logging.info(f"Second attempt produced empty grocery list for menu {menu_id}, trying with full menu object")
             grocery_list = aggregate_grocery_list(menu)
             
-        # No fallback, improve the algorithm instead
+        # Log debugging info for troubleshooting
         if not grocery_list:
             logging.warning(f"All extraction attempts for menu {menu_id} failed to produce a grocery list")
+            
+            # As a last resort, try a direct parse of raw menu data to extract ingredients
+            try:
+                logging.info(f"Attempting direct scan of menu data as last resort for menu {menu_id}")
+                
+                # Function to scan any object structure for ingredients
+                def scan_for_ingredients(obj, depth=0, path=""):
+                    """Recursively scan any object structure for ingredients"""
+                    if depth > 10:  # Prevent infinite recursion
+                        return []
+                        
+                    found_ingredients = []
+                    
+                    # Handle arrays
+                    if isinstance(obj, list):
+                        for idx, item in enumerate(obj):
+                            found_ingredients.extend(scan_for_ingredients(item, depth + 1, f"{path}[{idx}]"))
+                        return found_ingredients
+                    
+                    # Handle dictionaries
+                    if isinstance(obj, dict):
+                        # Check for ingredients array
+                        if 'ingredients' in obj and isinstance(obj['ingredients'], list):
+                            logging.info(f"Found ingredients array at {path} with {len(obj['ingredients'])} items")
+                            
+                            for ing in obj['ingredients']:
+                                if isinstance(ing, dict) and 'name' in ing:
+                                    name = ing.get('name', '')
+                                    quantity = ing.get('quantity', '') or ing.get('amount', '')
+                                    if name:
+                                        found_ingredients.append({
+                                            "name": f"{quantity} {name}".strip(),
+                                            "quantity": ""
+                                        })
+                                        logging.info(f"Extracted ingredient: {quantity} {name}")
+                                elif isinstance(ing, str):
+                                    found_ingredients.append({
+                                        "name": ing,
+                                        "quantity": ""
+                                    })
+                                    logging.info(f"Extracted string ingredient: {ing}")
+                        
+                        # Recursively check all nested objects
+                        for key, value in obj.items():
+                            if isinstance(value, (dict, list)):
+                                found_ingredients.extend(scan_for_ingredients(value, depth + 1, f"{path}.{key}"))
+                    
+                    return found_ingredients
+                
+                # Try to extract using direct scan
+                direct_ingredients = scan_for_ingredients(menu_data)
+                
+                if direct_ingredients:
+                    logging.info(f"Direct scan found {len(direct_ingredients)} ingredients")
+                    grocery_list = direct_ingredients
+                else:
+                    # If menu_data didn't work, try scanning the whole menu object
+                    logging.info("Trying to scan entire menu object")
+                    direct_ingredients = scan_for_ingredients(menu)
+                    if direct_ingredients:
+                        logging.info(f"Full menu scan found {len(direct_ingredients)} ingredients")
+                        grocery_list = direct_ingredients
+            except Exception as scan_error:
+                logging.error(f"Error during direct scan: {str(scan_error)}")
+                # If all attempts fail, at least return an empty list
+                grocery_list = []
+        
+        # Make sure grocery_list isn't None
+        if grocery_list is None:
+            grocery_list = []
+            
+        # Ensure all items have proper format
+        formatted_grocery_list = []
+        for item in grocery_list:
+            if isinstance(item, dict) and 'name' in item:
+                # Already in correct format
+                formatted_grocery_list.append(item)
+            elif isinstance(item, str):
+                # Convert string to object format
+                formatted_grocery_list.append({
+                    "name": item,
+                    "quantity": ""
+                })
+            else:
+                # Try to extract name from unknown format
+                try:
+                    name = str(item)
+                    formatted_grocery_list.append({
+                        "name": name,
+                        "quantity": ""
+                    })
+                except:
+                    # Skip invalid items
+                    continue
         
         # Log the final grocery list
-        grocery_item_count = len(grocery_list) if grocery_list else 0
+        grocery_item_count = len(formatted_grocery_list)
         logging.info(f"Generated grocery list with {grocery_item_count} items for menu {menu_id}")
         
-        # Extra debugging for menu 393
-        if menu_id == 393:
-            logging.info(f"FINAL GROCERY LIST FOR MENU 393: {grocery_list}")
+        # Log a sample of items for debugging
+        if formatted_grocery_list:
+            sample_size = min(5, len(formatted_grocery_list))
+            sample = formatted_grocery_list[:sample_size]
+            logging.info(f"Sample of grocery list items: {sample}")
         
-        return {"menu_id": menu_id, "groceryList": grocery_list}
+        return {"menu_id": menu_id, "groceryList": formatted_grocery_list}
 
     finally:
         cursor.close()
