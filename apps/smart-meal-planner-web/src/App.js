@@ -76,6 +76,8 @@ function App() {
               <Route path="/kroger/callback" element={<KrogerAuthCallback />} />
               <Route path="/kroger-callback" element={<KrogerAuthCallback />} />
               <Route path="/kroger-auth-callback" element={<KrogerAuthCallback />} />
+              {/* These routes are to catch potential redirects from registered URIs */}
+              <Route path="/callback" element={<KrogerAuthCallback />} />
               
               {/* Protected Routes */}
               <Route 

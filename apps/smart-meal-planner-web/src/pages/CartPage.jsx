@@ -232,13 +232,31 @@ const handleKrogerAuthError = async () => {
     const loginUrlResponse = await apiService.getKrogerLoginUrl();
     
     if (loginUrlResponse.login_url) {
-      console.log("Redirecting to Kroger login:", loginUrlResponse.login_url);
+      // CRITICAL MANUAL FIX: Use one of the registered redirect URIs
+      let correctUrl = loginUrlResponse.login_url;
+      
+      if (correctUrl.includes('127.0.0.1:8000/callback')) {
+        console.log("Fixing incorrect redirect URI");
+        // Create complete Kroger URL with all required parameters
+        const krogerBaseUrl = "https://api.kroger.com/v1/connect/oauth2/authorize";
+        const clientId = "smartmealplannerio-243261243034247652497361364a447078555731455949714a464f61656e5a676b444e552e42796961517a4f4576367156464b3564774c3039777a614700745159802496692";
+        const state = loginUrlResponse.login_url.split('state=')[1];
+        
+        // Use one of the registered redirect URIs
+        // These are registered with Kroger and will work
+        const redirectUri = "https://smartmealplannerio.vercel.app/kroger/callback";
+        
+        correctUrl = `${krogerBaseUrl}?scope=product.compact%20cart.basic:write&response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`;
+        console.log("Corrected URL:", correctUrl);
+      }
+      
+      console.log("Redirecting to Kroger login");
       
       // Clean up any local state
       localStorage.setItem('kroger_auth_redirect', 'true');
       
-      // Redirect to Kroger for authentication - let the backend handle the callback
-      window.location.href = loginUrlResponse.login_url;
+      // Redirect to Kroger for authentication with corrected URL
+      window.location.href = correctUrl;
       return true;
     } else {
       console.error("No login URL received from Kroger");
