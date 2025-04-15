@@ -44,5 +44,3 @@ function KrogerAuthCallback() {
 }
 
 export default KrogerAuthCallback;
-
-export default KrogerAuthCallback;
