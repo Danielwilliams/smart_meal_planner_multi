@@ -52,16 +52,19 @@ function KrogerAuthCallback() {
             const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://smartmealplannermulti-production.up.railway.app';
             const postUrl = `${API_BASE_URL}/kroger/auth-callback`;
             
+            // Use application/x-www-form-urlencoded content type as per OAuth 2.0 standards
             const response = await fetch(postUrl, {
               method: 'POST',
               credentials: 'include',
               headers: {
                 'Accept': 'application/json',
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/x-www-form-urlencoded'
               },
-              body: JSON.stringify({
+              body: new URLSearchParams({
                 code: code,
-                redirect_uri: 'https://smart-meal-planner-multi.vercel.app/kroger/callback'
+                redirect_uri: 'https://smart-meal-planner-multi.vercel.app/kroger/callback',
+                grant_type: 'authorization_code',
+                state: 'from-frontend'
               })
             });
             
@@ -93,9 +96,17 @@ function KrogerAuthCallback() {
               console.log("Trying axiosInstance from apiService");
               const { axiosInstance } = await import('../services/apiService');
               
-              const response = await axiosInstance.post('/kroger/auth-callback', {
-                code: code,
-                redirect_uri: 'https://smart-meal-planner-multi.vercel.app/kroger/callback'
+              // Use URLSearchParams to ensure proper format for OAuth 2.0
+              const params = new URLSearchParams();
+              params.append('code', code);
+              params.append('redirect_uri', 'https://smart-meal-planner-multi.vercel.app/kroger/callback');
+              params.append('grant_type', 'authorization_code');
+              params.append('state', 'from-frontend');
+              
+              const response = await axiosInstance.post('/kroger/auth-callback', params, {
+                headers: {
+                  'Content-Type': 'application/x-www-form-urlencoded'
+                }
               });
               
               console.log("Axios response:", response.data);

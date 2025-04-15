@@ -1018,13 +1018,18 @@ const apiService = {
     try {
       console.log(`Exchanging code ${code.substring(0, 10)}... with backend`);
       
-      // Changed from GET to POST to match the backend's expected method
-      // Also changed from /kroger/callback to /kroger/auth-callback to match the actual endpoint
-      const resp = await axiosInstance.post('/kroger/auth-callback', {
-        code,
-        redirect_uri: 'https://smart-meal-planner-multi.vercel.app/kroger/callback',
-        state: 'from-frontend'
-      }, {
+      // Using URLSearchParams for proper OAuth 2.0 format
+      const params = new URLSearchParams();
+      params.append('code', code);
+      params.append('redirect_uri', 'https://smart-meal-planner-multi.vercel.app/kroger/callback');
+      params.append('grant_type', 'authorization_code');
+      params.append('state', 'from-frontend');
+      
+      // POST with application/x-www-form-urlencoded content type as per OAuth standards
+      const resp = await axiosInstance.post('/kroger/auth-callback', params, {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
         // Adding a longer timeout for this request
         timeout: 10000
       });
@@ -1042,10 +1047,12 @@ const apiService = {
       if (err.response?.status === 405) {
         try {
           console.log('POST failed with 405, trying GET as fallback');
+          // As a last resort, try GET with the params in the URL
           const getResp = await axiosInstance.get('/kroger/auth-callback', {
             params: { 
               code,
               redirect_uri: 'https://smart-meal-planner-multi.vercel.app/kroger/callback',
+              grant_type: 'authorization_code',
               state: 'from-frontend' 
             },
             timeout: 10000
