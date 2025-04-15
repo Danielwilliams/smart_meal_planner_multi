@@ -84,14 +84,13 @@ function CartPage() {
     }
   }, [user?.userId]);
   
-  // Check for returning from Kroger auth and process stored code if available
+  // Only process Kroger auth code if returning from OAuth redirect
   useEffect(() => {
-    const krogerConnected = localStorage.getItem('kroger_connected');
-    const reconnectAttempted = localStorage.getItem('kroger_reconnect_attempted');
+    // Check if we have an auth code from a redirect
     const krogerAuthCode = sessionStorage.getItem('kroger_auth_code');
     const krogerAuthRedirectUri = sessionStorage.getItem('kroger_auth_redirect_uri');
     
-    // Process Kroger auth code if we have one
+    // Process Kroger auth code ONLY if we have one (coming back from redirect)
     if (krogerAuthCode) {
       (async () => {
         try {
@@ -373,17 +372,52 @@ function CartPage() {
 
   const handleStoreSearch = async (store) => {
     try {
-      // Add credential check for Kroger
+      // Only check Kroger credentials if this is a Kroger search
       if (store === 'kroger') {
-        const credentialsValid = await checkKrogerCredentials();
-        if (!credentialsValid) {
+        // First, check if we have any items to search
+        const storeItems = internalCart[store].map(item => item.name);
+        if (storeItems.length === 0) {
+          setError(`No items assigned to ${store}`);
+          return;
+        }
+        
+        // Now check Kroger credentials before proceeding
+        console.log("Checking Kroger credentials before search");
+        
+        try {
+          // First check with the backend API
+          const status = await krogerAuthService.checkKrogerStatus();
+          console.log("Kroger status check result:", status);
+          
+          // If not connected, show reconnect dialog
+          if (!status.is_connected) {
+            console.log("Kroger not connected, showing reconnect dialog");
+            showKrogerError(
+              "Kroger Connection Required",
+              "You need to connect your Kroger account before searching for items.",
+              true
+            );
+            return;
+          }
+          
+          // If we get here, we're good to proceed with the search
+          console.log("Kroger credentials verified, proceeding with search");
+        } catch (err) {
+          console.error("Error checking Kroger credentials:", err);
+          showKrogerError(
+            "Kroger Connection Error",
+            "There was a problem checking your Kroger connection. Please try reconnecting your account.",
+            true
+          );
           return;
         }
       }
       
+      // Start the search process
       setLoading(prev => ({ ...prev, search: true }));
       setError(null);
       
+      // Get store items to search
       const storeItems = internalCart[store].map(item => item.name);
       setLastSearchedItems(storeItems);
       
@@ -392,13 +426,15 @@ function CartPage() {
         return;
       }
 
+      // Choose the appropriate search function
       const searchFunction = store === 'kroger' 
         ? apiService.searchKrogerItems 
         : apiService.searchWalmartItems;
 
+      // Execute the search
       const response = await searchFunction(storeItems);
 
-      // Check for store selection needed
+      // Handle store selection if needed
       if (!response.success) {
         if (response.needs_setup) {
           // Show store selector instead of redirecting to preferences
@@ -414,6 +450,7 @@ function CartPage() {
         return;
       }
 
+      // Update search results
       setSearchResults(prev => ({
         ...prev,
         [store]: response.results
@@ -422,7 +459,7 @@ function CartPage() {
     } catch (err) {
       console.error(`Failed to search ${store} items:`, err);
       
-      // Check if this is a Kroger auth error
+      // Handle specific Kroger auth errors
       if (store === 'kroger' && 
           (err.response?.status === 401 || 
            (err.response?.data?.error && 
@@ -470,78 +507,23 @@ function CartPage() {
 
   const handleReconnectKroger = async () => {
     try {
+      // Close any open error dialog
       setShowErrorDialog(false);
-      setSnackbarMessage("Reconnecting to Kroger...");
+      
+      // Show connecting message
+      setSnackbarMessage("Redirecting to Kroger login...");
       setSnackbarOpen(true);
       
-      // Flag to track if we've tried manual reconnection
-      let manualReconnectAttempted = false;
+      console.log('Initiating Kroger reconnection through krogerAuthService');
       
-      // First, try direct reconnect with krogerAuthService
-      try {
-        console.log('Calling krogerAuthService.reconnectKroger directly');
-        
-        // Set a flag in localStorage to detect successful redirects later
-        localStorage.setItem('kroger_reconnect_pending', 'true');
-        localStorage.setItem('kroger_reconnect_timestamp', Date.now().toString());
-        
-        const result = await krogerAuthService.reconnectKroger();
-        console.log('Reconnect result:', result);
-        
-        // If successful, the browser should have already redirected
-        // If we're still here, it means the redirect didn't happen
-        if (!result.success) {
-          throw new Error("Redirect failed");
-        }
-      } catch (reconnectError) {
-        console.error("First reconnect method failed:", reconnectError);
-        manualReconnectAttempted = true;
-        
-        // Fallback approach: try using apiService directly
-        try {
-          console.log('Trying fallback: apiService.reconnectKroger');
-          const apiResult = await apiService.reconnectKroger();
-          
-          if (apiResult && apiResult.success) {
-            console.log('apiService reconnect successful, should have redirected');
-            return; // Should have redirected
-          } else {
-            throw new Error("API service reconnect failed");
-          }
-        } catch (apiError) {
-          console.error("Second reconnect method failed:", apiError);
-          
-          // Final fallback: manual construction of Kroger OAuth URL
-          try {
-            console.log('Trying final fallback: manual Kroger OAuth URL');
-            
-            // These are the critical Kroger OAuth parameters
-            const clientId = 'smartmealplannerio-243261243034247652497361364a447078555731455949714a464f61656e5a676b444e552e42796961517a4f4576367156464b3564774c3039777a614700745159802496692';
-            const redirectUri = 'https://smart-meal-planner-multi.vercel.app/kroger/callback';
-            const scope = 'product.compact cart.basic:write';
-            
-            // Generate a random state
-            const state = Math.random().toString(36).substring(2, 15);
-            
-            // Construct the URL manually
-            const manualUrl = `https://api.kroger.com/v1/connect/oauth2/authorize?scope=${encodeURIComponent(scope)}&response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`;
-            
-            console.log('Manually redirecting to:', manualUrl);
-            window.location.href = manualUrl;
-            return; // Should redirect
-          } catch (manualError) {
-            console.error("Final manual reconnect failed:", manualError);
-            throw manualError;
-          }
-        }
+      // Use the krogerAuthService to handle the reconnection
+      const result = await krogerAuthService.reconnectKroger();
+      
+      // If we're still here (not redirected), show an error
+      if (!result.success) {
+        console.error("Reconnection initiation failed");
+        setError("Failed to initiate Kroger reconnection. Please try again.");
       }
-      
-      // If we get here, we failed to redirect
-      console.error("All reconnect methods failed to redirect");
-      setError("Failed to initiate Kroger reconnection. Please try again.");
-      
-      // Wait a bit before allowing new attempts
-      await new Promise(resolve => setTimeout(resolve, 1000));
     } catch (err) {
       console.error("Kroger reconnect error:", err);
       setError("Failed to reconnect to Kroger. Please try again.");
