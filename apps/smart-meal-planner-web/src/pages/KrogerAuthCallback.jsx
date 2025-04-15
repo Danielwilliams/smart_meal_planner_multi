@@ -1,4 +1,4 @@
-// src/pages/KrogerAuthCallback.jsx
+// src/pages/KrogerAuthCallback.jsx - Handles Kroger OAuth callbacks at /kroger/callback
 import React, { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { 

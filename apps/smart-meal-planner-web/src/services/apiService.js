@@ -1002,7 +1002,12 @@ const apiService = {
 
   async getKrogerLoginUrl() {
     try {
-      const resp = await axiosInstance.get('/kroger/login-url');
+      // Include the production redirect URI explicitly in the request
+      const resp = await axiosInstance.get('/kroger/login-url', {
+        params: {
+          redirect_uri: 'https://smart-meal-planner-multi.vercel.app/kroger/callback'
+        }
+      });
       return resp.data;
     } catch (err) {
       console.error("Kroger login URL error:", err);
@@ -1013,7 +1018,10 @@ const apiService = {
   async exchangeKrogerAuthCode(code) {
     try {
       console.log('Exchanging Kroger auth code for tokens');
-      const resp = await axiosInstance.post('/kroger/exchange-token', { code });
+      const resp = await axiosInstance.post('/kroger/exchange-token', { 
+        code,
+        redirect_uri: 'https://smart-meal-planner-multi.vercel.app/kroger/callback'
+      });
       console.log('Kroger token exchange successful');
       
       // Mark Kroger as connected in localStorage for immediate UI feedback

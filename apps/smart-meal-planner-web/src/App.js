@@ -33,6 +33,7 @@ import ClientPreferencesPage from './pages/ClientPreferencesPage';
 import ClientDashboard from './pages/ClientDashboard';
 import ClientSignupPage from './pages/ClientSignupPage';
 import ClientInvitationConnect from './pages/ClientInvitationConnect';
+import KrogerAuthCallback from './pages/KrogerAuthCallback';
 import TestInvitation from './TestInvitation';
 
 
@@ -72,6 +73,7 @@ function App() {
               <Route path="/connect-to-organization" element={<ClientInvitationConnect />} />
               <Route path="/test-invitation" element={<TestInvitation />} />
               <Route path="/accept-invitation" element={<AcceptInvitation />} />
+              <Route path="/kroger/callback" element={<KrogerAuthCallback />} />
               
               {/* Protected Routes */}
               <Route 
