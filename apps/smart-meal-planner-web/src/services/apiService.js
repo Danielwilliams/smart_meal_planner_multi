@@ -1002,12 +1002,30 @@ const apiService = {
 
   async getKrogerLoginUrl() {
     try {
-      // Include the production redirect URI explicitly in the request
+      // Try to get the login URL from the backend first
       const resp = await axiosInstance.get('/kroger/login-url', {
         params: {
           redirect_uri: 'https://smart-meal-planner-multi.vercel.app/kroger/callback'
         }
       });
+      
+      // IMPORTANT TEMPORARY WORKAROUND: 
+      // If the backend is still using the wrong redirect URI, construct the correct URL manually
+      // This allows the frontend to work correctly even if the backend hasn't been updated yet
+      if (resp.data && resp.data.login_url && resp.data.login_url.includes('127.0.0.1:8000/callback')) {
+        console.log('Backend returned incorrect redirect URI, applying frontend fix');
+        
+        // Extract the base part of the URL
+        const originalUrl = resp.data.login_url;
+        const correctedUrl = originalUrl.replace(
+          'http://127.0.0.1:8000/callback', 
+          'https://smart-meal-planner-multi.vercel.app/kroger/callback'
+        );
+        
+        console.log('Corrected Kroger login URL:', correctedUrl);
+        return { login_url: correctedUrl };
+      }
+      
       return resp.data;
     } catch (err) {
       console.error("Kroger login URL error:", err);
@@ -1812,4 +1830,5 @@ const apiService = {
   }
 }; // Close the apiService object here
 
+export { axiosInstance };
 export default apiService;

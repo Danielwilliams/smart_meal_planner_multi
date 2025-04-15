@@ -237,15 +237,33 @@ const handleStoreSearch = async (store) => {
       return;
     }
     
-    // For Kroger, check credentials first
+    // For Kroger, perform more robust handling
     if (store === 'kroger') {
+      // Check if we have a saved location ID before proceeding
+      const savedLocationId = localStorage.getItem('kroger_store_location_id');
+      console.log("Kroger search with saved location ID:", savedLocationId);
+      
+      // Check credentials first
       const hasCredentials = await checkKrogerCredentials();
       if (!hasCredentials) {
+        console.log("No Kroger credentials found");
         const handled = await handleKrogerAuthError();
         if (!handled) {
           setError("Kroger account not connected. Please connect your account first.");
         }
         return;
+      }
+      
+      // If we have a saved location ID, ensure it's set in the backend before searching
+      if (savedLocationId) {
+        try {
+          console.log("Preemptively setting Kroger location before search");
+          await apiService.updateKrogerLocation(savedLocationId);
+          // No need to wait for response - we want to continue with the search
+        } catch (locErr) {
+          console.warn("Failed to preemptively set location:", locErr);
+          // Continue with the search anyway - the API will tell us if location is needed
+        }
       }
     }
     

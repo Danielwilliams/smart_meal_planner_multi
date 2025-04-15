@@ -26,7 +26,7 @@ import {
   MyLocation as LocationIcon,
   AccessTime as TimeIcon 
 } from '@mui/icons-material';
-import apiService from '../services/apiService';
+import apiService, { axiosInstance } from '../services/apiService';
 
 export const StoreSelector = ({ 
   open, 
@@ -142,8 +142,8 @@ const searchStores = async () => {
     onClose();
   };
 
-  // Add a handler for store selection with proper error handling
-  const handleStoreSelect = (storeId) => {
+  // Improved handler for store selection with multiple fallbacks
+  const handleStoreSelect = async (storeId) => {
     if (!storeId) {
       console.error('No store ID provided for selection');
       setError('Unable to select store: Missing store ID');
@@ -156,11 +156,31 @@ const searchStores = async () => {
     handleClose();
     
     // Set the location in localStorage right away (before API call completes)
+    // This ensures client-side caching works even if the API call fails
     localStorage.setItem('kroger_store_location_id', storeId);
     localStorage.setItem('kroger_store_configured', 'true');
     
-    // Call the parent component's handler
-    onStoreSelect(storeId);
+    try {
+      // Try to update the store location in the backend first
+      console.log("Persisting store selection to backend...");
+      await apiService.updateKrogerLocation(storeId);
+      
+      // IMPORTANT: Additional fallback - some API implementations require a second call
+      // to fully persist the location. This is a shotgun approach that ensures it's saved.
+      try {
+        await axiosInstance.post('/kroger/direct-store-update', { store_id: storeId });
+      } catch (directErr) {
+        console.log("Direct store update not available or failed, continuing anyway");
+      }
+      
+      // Call the parent component's handler
+      onStoreSelect(storeId);
+    } catch (err) {
+      console.error("Failed to save store selection to backend:", err);
+      // Still call the parent handler since we've cached the selection locally
+      // and it might work with the cached value
+      onStoreSelect(storeId);
+    }
   };
 
   return (
