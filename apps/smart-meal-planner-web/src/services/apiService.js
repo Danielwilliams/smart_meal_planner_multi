@@ -805,8 +805,22 @@ const apiService = {
       const savedKrogerStoreId = localStorage.getItem('kroger_store_location_id');
       console.log("Saved Kroger store location ID:", savedKrogerStoreId);
       
+      // Check if we have a locally stored token
+      const localToken = localStorage.getItem('kroger_access_token');
+      
+      // If we have a local token, try to send it with the request
+      let requestConfig = {};
+      if (localToken) {
+        console.log("Using locally stored Kroger token for search");
+        requestConfig = {
+          headers: {
+            'X-Kroger-Token': localToken
+          }
+        };
+      }
+      
       // Make the API request
-      let response = await axiosInstance.post('/kroger/search', { items });
+      let response = await axiosInstance.post('/kroger/search', { items }, requestConfig);
       console.log("Kroger search response:", response.data);
       
       // If the search was successful, mark the store as configured
@@ -825,7 +839,7 @@ const apiService = {
           
           // Retry the search with updated location
           console.log("Retrying Kroger search after location update");
-          const retryResponse = await axiosInstance.post('/kroger/search', { items });
+          const retryResponse = await axiosInstance.post('/kroger/search', { items }, requestConfig);
           
           if (retryResponse.data && retryResponse.data.success) {
             console.log("Retry successful after location update");
@@ -886,6 +900,10 @@ const apiService = {
         if (err.response.status === 401) {
           errorResponse.auth_error = true;
           errorResponse.message = "Authentication error. Please reconnect your Kroger account.";
+          
+          // Clear any invalid tokens
+          localStorage.removeItem('kroger_access_token');
+          localStorage.removeItem('kroger_refresh_token');
         }
         
         // Include any messages from the server response
@@ -1033,21 +1051,48 @@ const apiService = {
     }
   },
   
-  async exchangeKrogerAuthCode(code) {
+  async exchangeKrogerAuthCode(code, redirectUri = null) {
     try {
       console.log('Exchanging Kroger auth code for tokens');
-      const resp = await axiosInstance.post('/kroger/exchange-token', { 
-        code,
-        redirect_uri: 'https://smart-meal-planner-multi.vercel.app/kroger/callback'
-      });
-      console.log('Kroger token exchange successful');
       
-      // Mark Kroger as connected in localStorage for immediate UI feedback
-      localStorage.setItem('kroger_connected', 'true');
+      // Use the provided redirect URI or fall back to the production URL
+      const finalRedirectUri = redirectUri || 'https://smart-meal-planner-multi.vercel.app/kroger/callback';
       
-      return resp.data;
+      // First try the official endpoint
+      try {
+        const resp = await axiosInstance.post('/kroger/exchange-token', { 
+          code,
+          redirect_uri: finalRedirectUri
+        });
+        console.log('Kroger token exchange successful');
+        
+        // Mark Kroger as connected in localStorage for immediate UI feedback
+        localStorage.setItem('kroger_connected', 'true');
+        
+        return resp.data;
+      } catch (mainError) {
+        console.error("Primary token exchange method failed:", mainError);
+        
+        // Try a direct exchange as fallback (if backend supports it)
+        try {
+          console.log("Attempting fallback token exchange...");
+          const fallbackResp = await axiosInstance.post('/kroger/direct-token-exchange', { 
+            code,
+            redirect_uri: finalRedirectUri
+          });
+          
+          console.log('Fallback Kroger token exchange successful');
+          localStorage.setItem('kroger_connected', 'true');
+          
+          return fallbackResp.data;
+        } catch (fallbackError) {
+          console.error("Fallback token exchange failed:", fallbackError);
+          throw mainError; // Throw the original error
+        }
+      }
     } catch (err) {
       console.error("Kroger token exchange error:", err);
+      localStorage.setItem('kroger_connected', 'false');
       throw err;
     }
   },
@@ -1055,12 +1100,56 @@ const apiService = {
   async refreshKrogerToken() {
     try {
       console.log('Attempting to refresh Kroger token');
-      const resp = await axiosInstance.post('/kroger/refresh-token');
+      
+      // Check if we have a local refresh token to use
+      const localRefreshToken = localStorage.getItem('kroger_refresh_token');
+      
+      let resp;
+      if (localRefreshToken) {
+        // If we have a local refresh token, include it in the request
+        resp = await axiosInstance.post('/kroger/refresh-token', {
+          refresh_token: localRefreshToken
+        });
+      } else {
+        // Otherwise use the standard endpoint
+        resp = await axiosInstance.post('/kroger/refresh-token');
+      }
+      
       console.log('Kroger token refresh response:', resp.data);
+      
+      // If we get new tokens in the response, update localStorage
+      if (resp.data.access_token) {
+        localStorage.setItem('kroger_access_token', resp.data.access_token);
+        if (resp.data.refresh_token) {
+          localStorage.setItem('kroger_refresh_token', resp.data.refresh_token);
+        }
+      }
+      
       return resp.data;
     } catch (err) {
       console.error("Kroger token refresh error:", err);
       throw err;
+    }
+  },
+  
+  async syncKrogerTokens(tokens) {
+    try {
+      console.log('Syncing Kroger tokens to server');
+      const resp = await axiosInstance.post('/kroger/sync-tokens', tokens);
+      console.log('Token sync response:', resp.data);
+      return resp.data;
+    } catch (err) {
+      console.error("Token sync error:", err);
+      
+      // Try fallback approach with direct token update
+      try {
+        console.log('Attempting fallback token sync');
+        await axiosInstance.post('/kroger/update-tokens', tokens);
+        return { success: true, message: "Tokens synced using fallback method" };
+      } catch (fallbackErr) {
+        console.error("Fallback token sync also failed:", fallbackErr);
+        throw err; // Throw the original error
+      }
     }
   },
 

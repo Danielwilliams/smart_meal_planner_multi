@@ -20,24 +20,54 @@ function KrogerAuthCallback() {
   
   useEffect(() => {
     const code = searchParams.get('code');
+    const redirectUri = searchParams.get('redirect_uri') || 'https://smart-meal-planner-multi.vercel.app/kroger/callback';
+    
     if (!code) {
       setStatus('error');
       setMessage('No authorization code provided. Please try connecting your Kroger account again.');
       return;
     }
     
+    // Log information about the callback
+    console.log('Kroger auth callback received:', {
+      code: `${code.substring(0, 10)}...`,
+      redirectUri,
+      state: searchParams.get('state')
+    });
+    
     const doExchange = async () => {
       try {
         setStatus('loading');
-        const resp = await apiService.exchangeKrogerAuthCode(code);
+        
+        // First try to exchange the code using our API service
+        const resp = await apiService.exchangeKrogerAuthCode(code, redirectUri);
+        console.log('Kroger token exchange response:', resp);
         
         // Store success in localStorage for immediate UI feedback
         localStorage.setItem('kroger_connected', 'true');
+        
+        // If we get an access token directly in the response, save it to localStorage
+        // This is a temporary measure until the backend properly stores tokens
+        if (resp.access_token) {
+          localStorage.setItem('kroger_access_token', resp.access_token);
+          if (resp.refresh_token) {
+            localStorage.setItem('kroger_refresh_token', resp.refresh_token);
+          }
+        }
         
         setStatus('success');
         setMessage('Successfully connected to your Kroger account!');
       } catch (err) {
         console.error('Kroger auth error:', err);
+        
+        // If the exchange failed, show detailed error information
+        const errorDetails = {
+          message: err.message,
+          responseStatus: err.response?.status,
+          responseData: err.response?.data,
+        };
+        console.error('Detailed error information:', errorDetails);
+        
         setStatus('error');
         setMessage(err.response?.data?.message || err.message || 'Failed to connect to Kroger. Please try again.');
       }

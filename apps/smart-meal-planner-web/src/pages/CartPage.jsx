@@ -151,6 +151,7 @@ const checkKrogerCredentials = async () => {
     
     // First check if we have a local indicator of connection
     const localConnected = localStorage.getItem('kroger_connected') === 'true';
+    const hasLocalToken = !!localStorage.getItem('kroger_access_token');
     
     // Always verify with the server
     const status = await apiService.getKrogerConnectionStatus();
@@ -159,25 +160,50 @@ const checkKrogerCredentials = async () => {
     console.log("Kroger connection status:", { 
       localConnected, 
       serverConnected,
+      hasLocalToken,
       fullStatus: status
     });
     
     // Update local storage to match server status
     localStorage.setItem('kroger_connected', serverConnected ? 'true' : 'false');
     
+    // If server says we're not connected but we have local tokens, try to restore the connection
+    if (!serverConnected && hasLocalToken) {
+      try {
+        console.log("Server reports not connected but we have local tokens - attempting to restore connection");
+        // Make a backend call to sync tokens from localStorage to server
+        await apiService.syncKrogerTokens({
+          access_token: localStorage.getItem('kroger_access_token'),
+          refresh_token: localStorage.getItem('kroger_refresh_token') || ''
+        });
+        
+        // Check connection again after sync
+        const updatedStatus = await apiService.getKrogerConnectionStatus();
+        if (updatedStatus.is_connected) {
+          console.log("Successfully restored Kroger connection from local tokens");
+          return true;
+        }
+      } catch (syncErr) {
+        console.error("Failed to sync local tokens to server:", syncErr);
+      }
+    }
+    
     // If we have a store location ID but we're not connected, clear it
-    if (!serverConnected && localStorage.getItem('kroger_store_location_id')) {
+    if (!serverConnected && !hasLocalToken && localStorage.getItem('kroger_store_location_id')) {
       console.log("Clearing invalid Kroger store location");
       localStorage.removeItem('kroger_store_location_id');
       localStorage.removeItem('kroger_store_configured');
     }
     
-    return serverConnected;
+    // Determine final connection status
+    const isConnected = serverConnected || (localConnected && hasLocalToken);
+    return isConnected;
   } catch (err) {
     console.error("Error checking Kroger credentials:", err);
     
-    // If we can't reach the server, fall back to local storage value
-    const fallbackConnected = localStorage.getItem('kroger_connected') === 'true';
+    // If we can't reach the server, fall back to local token check
+    const hasLocalToken = !!localStorage.getItem('kroger_access_token');
+    const fallbackConnected = localStorage.getItem('kroger_connected') === 'true' && hasLocalToken;
     console.log("Using fallback Kroger connection status:", fallbackConnected);
     
     return fallbackConnected;
@@ -186,12 +212,36 @@ const checkKrogerCredentials = async () => {
 
 const handleKrogerAuthError = async () => {
   try {
-    // Try refreshing the token first
+    // Check for locally stored tokens first
+    const hasLocalTokens = !!localStorage.getItem('kroger_access_token');
+    
+    if (hasLocalTokens) {
+      try {
+        console.log("Found local Kroger tokens, attempting to sync with server");
+        await apiService.syncKrogerTokens({
+          access_token: localStorage.getItem('kroger_access_token'),
+          refresh_token: localStorage.getItem('kroger_refresh_token') || ''
+        });
+        
+        // Check if sync worked
+        const status = await apiService.getKrogerConnectionStatus();
+        if (status.is_connected) {
+          console.log("Successfully restored Kroger connection from local tokens");
+          setSnackbarMessage("Kroger connection restored. Please try again.");
+          setSnackbarOpen(true);
+          return true;
+        }
+      } catch (syncErr) {
+        console.error("Failed to sync local tokens:", syncErr);
+      }
+    }
+    
+    // Try refreshing the token
     try {
       console.log("Attempting to refresh Kroger token");
       const refreshResponse = await apiService.refreshKrogerToken();
       
-      if (refreshResponse.success) {
+      if (refreshResponse.success || refreshResponse.access_token) {
         console.log("Kroger token refresh successful");
         setSnackbarMessage("Kroger authentication refreshed. Please try again.");
         setSnackbarOpen(true);
@@ -207,8 +257,14 @@ const handleKrogerAuthError = async () => {
     
     if (loginUrlResponse.login_url) {
       console.log("Redirecting to Kroger login:", loginUrlResponse.login_url);
-      // Save current cart state to localStorage before redirecting
+      
+      // Clear any existing tokens before redirecting
+      localStorage.removeItem('kroger_access_token');
+      localStorage.removeItem('kroger_refresh_token');
+      
+      // Save state to indicate we're redirecting for auth
       localStorage.setItem('kroger_auth_redirect', 'true');
+      
       // Redirect to Kroger for authentication
       window.location.href = loginUrlResponse.login_url;
       return true;
