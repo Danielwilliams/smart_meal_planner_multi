@@ -1020,28 +1020,34 @@ const apiService = {
 
   async getKrogerLoginUrl() {
     try {
-      // Try to get the login URL from the backend first
+      // Simple approach matching the single-user app
+      const frontendUrl = window.location.origin;
+      const currentHost = window.location.hostname;
+      
+      // For production, use the vercel domain
+      let redirectUri;
+      if (currentHost.includes('vercel.app')) {
+        redirectUri = 'https://smart-meal-planner-multi.vercel.app/kroger-callback';
+      } else {
+        // For local development
+        redirectUri = `${frontendUrl}/kroger-callback`;
+      }
+      
+      console.log(`Getting Kroger login URL with redirect: ${redirectUri}`);
+      
+      // Get the login URL with the correct redirect URI
       const resp = await axiosInstance.get('/kroger/login-url', {
-        params: {
-          redirect_uri: 'https://smart-meal-planner-multi.vercel.app/kroger/callback'
-        }
+        params: { redirect_uri: redirectUri }
       });
       
-      // IMPORTANT TEMPORARY WORKAROUND: 
-      // If the backend is still using the wrong redirect URI, construct the correct URL manually
-      // This allows the frontend to work correctly even if the backend hasn't been updated yet
+      // If we still have the wrong URI in the response, fix it
       if (resp.data && resp.data.login_url && resp.data.login_url.includes('127.0.0.1:8000/callback')) {
-        console.log('Backend returned incorrect redirect URI, applying frontend fix');
-        
-        // Extract the base part of the URL
-        const originalUrl = resp.data.login_url;
-        const correctedUrl = originalUrl.replace(
+        console.log('Fixing incorrect redirect URI in login URL');
+        const fixedUrl = resp.data.login_url.replace(
           'http://127.0.0.1:8000/callback', 
-          'https://smart-meal-planner-multi.vercel.app/kroger/callback'
+          redirectUri
         );
-        
-        console.log('Corrected Kroger login URL:', correctedUrl);
-        return { login_url: correctedUrl };
+        return { login_url: fixedUrl };
       }
       
       return resp.data;

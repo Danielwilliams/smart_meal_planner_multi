@@ -74,6 +74,7 @@ function App() {
               <Route path="/test-invitation" element={<TestInvitation />} />
               <Route path="/accept-invitation" element={<AcceptInvitation />} />
               <Route path="/kroger/callback" element={<KrogerAuthCallback />} />
+              <Route path="/kroger-callback" element={<KrogerAuthCallback />} />
               
               {/* Protected Routes */}
               <Route 
