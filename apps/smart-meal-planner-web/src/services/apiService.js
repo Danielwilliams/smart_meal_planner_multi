@@ -1103,6 +1103,25 @@ const apiService = {
     }
   },
 
+  // Special endpoint that can process a Kroger auth code
+  async handleKrogerAuthCode(code, redirectUri) {
+    try {
+      console.log(`Handling Kroger auth code: ${code.substring(0, 10)}...`);
+      
+      const response = await axiosInstance.get('/kroger/code-handler', {
+        params: {
+          code,
+          redirect_uri: redirectUri || 'https://smart-meal-planner-multi.vercel.app/kroger/callback'
+        }
+      });
+      
+      return response.data;
+    } catch (err) {
+      console.error('Error handling Kroger auth code:', err);
+      throw err;
+    }
+  },
+  
   // Add a new function to refresh token explicitly
   async refreshKrogerTokenExplicit() {
     try {

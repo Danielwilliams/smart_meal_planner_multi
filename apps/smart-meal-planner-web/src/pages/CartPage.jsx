@@ -84,12 +84,108 @@ function CartPage() {
     }
   }, [user?.userId]);
   
-  // Check for returning from Kroger auth
+  // Check for returning from Kroger auth and process stored code if available
   useEffect(() => {
     const krogerConnected = localStorage.getItem('kroger_connected');
     const reconnectAttempted = localStorage.getItem('kroger_reconnect_attempted');
+    const krogerAuthCode = sessionStorage.getItem('kroger_auth_code');
+    const krogerAuthRedirectUri = sessionStorage.getItem('kroger_auth_redirect_uri');
     
-    if (krogerConnected === 'true' || reconnectAttempted) {
+    // Process Kroger auth code if we have one
+    if (krogerAuthCode) {
+      (async () => {
+        try {
+          console.log(`Processing Kroger auth code from session storage: ${krogerAuthCode.substring(0, 10)}...`);
+          setSnackbarMessage("Processing Kroger connection...");
+          setSnackbarOpen(true);
+          
+          // Call backend API directly with code from session storage
+          const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://smartmealplannermulti-production.up.railway.app';
+          
+          // Try to call the backend directly with window.location to let the backend handle the redirect
+          const fullUrl = `${API_BASE_URL}/kroger/code-handler?code=${encodeURIComponent(krogerAuthCode)}&redirect_uri=${encodeURIComponent(krogerAuthRedirectUri || 'https://smart-meal-planner-multi.vercel.app/kroger/callback')}`;
+          
+          console.log("Navigating to backend code handler:", fullUrl);
+          
+          // Create an invisible iframe to load the URL
+          const iframe = document.createElement('iframe');
+          iframe.style.display = 'none';
+          iframe.src = fullUrl;
+          
+          // Set a timeout to handle success/failure
+          const timeoutId = setTimeout(() => {
+            document.body.removeChild(iframe);
+            
+            // Wait a moment and check connection status
+            setTimeout(async () => {
+              try {
+                const status = await krogerAuthService.checkKrogerStatus();
+                if (status && status.is_connected) {
+                  setSnackbarMessage("Successfully connected to Kroger!");
+                  setSnackbarOpen(true);
+                } else {
+                  showKrogerError(
+                    "Kroger Connection Issue",
+                    "We couldn't verify your Kroger connection. Please try reconnecting again.",
+                    true
+                  );
+                }
+              } catch (err) {
+                console.error("Error checking connection status:", err);
+                showKrogerError(
+                  "Kroger Connection Issue",
+                  "We couldn't verify your Kroger connection. Please try reconnecting again.",
+                  true
+                );
+              }
+            }, 2000);
+          }, 5000);
+          
+          // Add event listeners for success/failure
+          iframe.onload = () => {
+            clearTimeout(timeoutId);
+            document.body.removeChild(iframe);
+            setSnackbarMessage("Kroger connection processed!");
+            setSnackbarOpen(true);
+            
+            // Clear session storage
+            sessionStorage.removeItem('kroger_auth_code');
+            sessionStorage.removeItem('kroger_auth_redirect_uri');
+            sessionStorage.removeItem('kroger_auth_timestamp');
+          };
+          
+          iframe.onerror = () => {
+            clearTimeout(timeoutId);
+            document.body.removeChild(iframe);
+            showKrogerError(
+              "Kroger Connection Issue",
+              "We couldn't verify your Kroger connection. Please try reconnecting again.",
+              true
+            );
+            
+            // Clear session storage
+            sessionStorage.removeItem('kroger_auth_code');
+            sessionStorage.removeItem('kroger_auth_redirect_uri');
+            sessionStorage.removeItem('kroger_auth_timestamp');
+          };
+          
+          document.body.appendChild(iframe);
+        } catch (err) {
+          console.error("Error processing stored Kroger auth code:", err);
+          
+          // Clean up session storage on error
+          sessionStorage.removeItem('kroger_auth_code');
+          sessionStorage.removeItem('kroger_auth_redirect_uri');
+          sessionStorage.removeItem('kroger_auth_timestamp');
+          
+          showKrogerError(
+            "Kroger Connection Issue",
+            "An error occurred while processing your Kroger connection. Please try reconnecting again.",
+            true
+          );
+        }
+      })();
+    } else if (krogerConnected === 'true' || reconnectAttempted) {
       // Clear the flags
       localStorage.removeItem('kroger_reconnect_attempted');
       localStorage.removeItem('kroger_reconnect_timestamp');

@@ -34,134 +34,24 @@ function KrogerAuthCallback() {
     
     // Handle Kroger auth code
     if (code) {
-      const processKrogerAuthCode = async () => {
-        try {
-          console.log(`Processing Kroger auth code: ${code.substring(0, 10)}...`);
-          
-          // Forward to backend with the correct URI
-          const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://smartmealplannermulti-production.up.railway.app';
-          const authCallbackUrl = `${API_BASE_URL}/kroger/auth-callback?code=${encodeURIComponent(code)}&redirect_uri=${encodeURIComponent('https://smart-meal-planner-multi.vercel.app/kroger/callback')}`;
-          
-          // First try the fetch API to get the response
-          console.log("Sending code to backend:", authCallbackUrl);
-          
-          try {
-            console.log("Using POST method with fetch API");
-            
-            // Make a POST request to the auth-callback endpoint instead of GET
-            const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://smartmealplannermulti-production.up.railway.app';
-            const postUrl = `${API_BASE_URL}/kroger/auth-callback`;
-            
-            // Use application/x-www-form-urlencoded content type as per OAuth 2.0 standards
-            const response = await fetch(postUrl, {
-              method: 'POST',
-              credentials: 'include',
-              headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/x-www-form-urlencoded'
-              },
-              body: new URLSearchParams({
-                code: code,
-                redirect_uri: 'https://smart-meal-planner-multi.vercel.app/kroger/callback',
-                grant_type: 'authorization_code',
-                state: 'from-frontend'
-              })
-            });
-            
-            if (!response.ok) {
-              throw new Error(`Backend responded with status ${response.status}`);
-            }
-            
-            const data = await response.json();
-            console.log("Backend auth response:", data);
-            
-            // Mark as connected in localStorage
-            localStorage.setItem('kroger_connected', 'true');
-            
-            // Set success state
-            setStatus('success');
-            setMessage(data.message || 'Kroger account connected successfully!');
-            
-            // Redirect to cart page after short delay
-            setTimeout(() => {
-              navigate('/cart');
-            }, 2000);
-            
-            return;
-          } catch (fetchError) {
-            console.error("Error using fetch API:", fetchError);
-            
-            // Try one more approach with axios
-            try {
-              console.log("Trying axiosInstance from apiService");
-              const { axiosInstance } = await import('../services/apiService');
-              
-              // Use URLSearchParams to ensure proper format for OAuth 2.0
-              const params = new URLSearchParams();
-              params.append('code', code);
-              params.append('redirect_uri', 'https://smart-meal-planner-multi.vercel.app/kroger/callback');
-              params.append('grant_type', 'authorization_code');
-              params.append('state', 'from-frontend');
-              
-              const response = await axiosInstance.post('/kroger/auth-callback', params, {
-                headers: {
-                  'Content-Type': 'application/x-www-form-urlencoded'
-                }
-              });
-              
-              console.log("Axios response:", response.data);
-              
-              // Mark as connected in localStorage
-              localStorage.setItem('kroger_connected', 'true');
-              
-              // Set success state
-              setStatus('success');
-              setMessage(response.data.message || 'Kroger account connected successfully!');
-              
-              // Redirect to cart page after short delay
-              setTimeout(() => {
-                navigate('/cart');
-              }, 2000);
-              
-              return;
-            } catch (axiosError) {
-              console.error("Error using axios:", axiosError);
-              
-              // Last resort: use the apiService directly
-              try {
-                console.log("Trying apiService.exchangeKrogerAuthCode");
-                const apiService = await import('../services/apiService').then(m => m.default);
-                
-                const result = await apiService.exchangeKrogerAuthCode(code);
-                console.log("apiService response:", result);
-                
-                // Mark as connected in localStorage
-                localStorage.setItem('kroger_connected', 'true');
-                
-                // Set success state
-                setStatus('success');
-                setMessage(result.message || 'Kroger account connected successfully!');
-                
-                // Redirect to cart page after short delay
-                setTimeout(() => {
-                  navigate('/cart');
-                }, 2000);
-                
-                return;
-              } catch (apiServiceError) {
-                console.error("All auth methods failed:", apiServiceError);
-                throw apiServiceError; // Re-throw to be caught by outer catch
-              }
-            }
-          }
-        } catch (err) {
-          console.error("Error processing auth code:", err);
-          setStatus('error');
-          setError(`Failed to process authentication: ${err.message}`);
-        }
-      };
+      // Store code in session storage for backend to use on next page
+      sessionStorage.setItem('kroger_auth_code', code);
+      sessionStorage.setItem('kroger_auth_redirect_uri', 'https://smart-meal-planner-multi.vercel.app/kroger/callback');
+      sessionStorage.setItem('kroger_auth_timestamp', Date.now().toString());
       
-      processKrogerAuthCode();
+      // Mark as connected in localStorage - we'll verify this later
+      localStorage.setItem('kroger_connected', 'true');
+      
+      // Set success state
+      setStatus('success');
+      setMessage('Kroger authorization received! Redirecting to cart...');
+      
+      // Redirect to cart page after short delay
+      // The cart page will handle the actual token exchange
+      setTimeout(() => {
+        navigate('/cart');
+      }, 1500);
+      
       return;
     }
     
@@ -176,7 +66,7 @@ function KrogerAuthCallback() {
       // Redirect to cart page after short delay
       setTimeout(() => {
         navigate('/cart');
-      }, 2000);
+      }, 1500);
     } else if (errorMsg) {
       setStatus('error');
       setError(`Connection failed: ${errorMsg}`);
