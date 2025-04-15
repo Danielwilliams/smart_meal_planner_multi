@@ -136,6 +136,116 @@ async def test_kroger_login(
             "message": f"Unexpected error: {str(e)}"
         }
 
+@router.get("/test-token")
+async def test_token_generation(
+    current_user: Any = Depends(get_current_user)
+):
+    """
+    Test Kroger token generation directly using environment variables
+    """
+    try:
+        logger.info("Testing Kroger token generation")
+        
+        # Get credentials from environment
+        client_id = KROGER_CLIENT_ID
+        client_secret = KROGER_CLIENT_SECRET
+        
+        if not client_id or not client_secret:
+            return {
+                "success": False,
+                "message": "Missing Kroger API credentials in environment variables",
+                "environment": {
+                    "KROGER_CLIENT_ID_exists": bool(client_id),
+                    "KROGER_CLIENT_SECRET_exists": bool(client_secret),
+                    "KROGER_REDIRECT_URI": KROGER_REDIRECT_URI,
+                }
+            }
+        
+        # Create basic auth header
+        auth_string = f"{client_id}:{client_secret}"
+        basic_auth = base64.b64encode(auth_string.encode('utf-8')).decode('utf-8')
+        
+        # Prepare request
+        token_url = "https://api.kroger.com/v1/connect/oauth2/token"
+        
+        headers = {
+            'Authorization': f'Basic {basic_auth}',
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Accept': 'application/json'
+        }
+        
+        # Using the most basic scope
+        data = {
+            'grant_type': 'client_credentials',
+            'scope': 'product.compact'
+        }
+        
+        # Make the request with extensive logging
+        logger.info(f"Sending token request to: {token_url}")
+        logger.debug(f"Headers: Authorization: Basic ***")
+        logger.debug(f"Data: {data}")
+        
+        try:
+            response = requests.post(
+                token_url, 
+                headers=headers, 
+                data=data,
+                timeout=10
+            )
+            
+            logger.info(f"Token request status: {response.status_code}")
+            logger.debug(f"Response headers: {dict(response.headers)}")
+            
+            if response.status_code == 200:
+                token_data = response.json()
+                token = token_data.get('access_token', '')
+                return {
+                    "success": True,
+                    "message": "Token generated successfully",
+                    "token_info": {
+                        "length": len(token),
+                        "first_10_chars": token[:10] + "...",
+                        "expires_in": token_data.get('expires_in'),
+                        "token_type": token_data.get('token_type'),
+                    }
+                }
+            else:
+                # Try to parse error data
+                error_data = {}
+                try:
+                    error_data = response.json()
+                except:
+                    error_data = {"text": response.text}
+                
+                return {
+                    "success": False,
+                    "message": "Failed to generate token",
+                    "status_code": response.status_code,
+                    "error_data": error_data,
+                    "request_info": {
+                        "url": token_url,
+                        "grant_type": data['grant_type'],
+                        "scope": data['scope']
+                    }
+                }
+        except Exception as req_err:
+            return {
+                "success": False,
+                "message": f"Request error: {str(req_err)}",
+                "request_info": {
+                    "url": token_url,
+                    "grant_type": data['grant_type'],
+                    "scope": data['scope']
+                }
+            }
+    
+    except Exception as e:
+        logger.error(f"Test token generation error: {str(e)}", exc_info=True)
+        return {
+            "success": False,
+            "message": f"Unexpected error: {str(e)}"
+        }
+
         
 
 @router.get("/login-url")

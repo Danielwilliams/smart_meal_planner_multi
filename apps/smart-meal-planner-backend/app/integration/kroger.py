@@ -316,13 +316,26 @@ def add_to_kroger_cart(access_token: str, location_id: str, items: List[Dict[str
         }
 
 class KrogerIntegration:
-    def __init__(self):
-        # Use Certification environment base URL
-        self.base_url = "https://api-ce.kroger.com/v1"
+    def __init__(self, user_id=None, access_token=None):
+        # Use environment variable for base URL with fallback to certification environment
+        self.base_url = os.getenv("KROGER_BASE_URL", "https://api-ce.kroger.com/v1")
         
-        # Load credentials from environment
+        # Log initialization
+        logger.info(f"Initializing KrogerIntegration with base_url: {self.base_url}")
+        
+        # Get credentials from environment - mandatory for API access
         self.client_id = os.getenv("KROGER_CLIENT_ID")
         self.client_secret = os.getenv("KROGER_CLIENT_SECRET")
+        
+        # Log credential status (not the actual values)
+        logger.debug(f"Client ID exists: {bool(self.client_id)}")
+        logger.debug(f"Client Secret exists: {bool(self.client_secret)}")
+        
+        # Store user_id for operations that need it
+        self.user_id = user_id
+        
+        # Store access token if provided (for operations that use an existing token)
+        self.access_token = access_token
 
     def get_access_token(self) -> Dict[str, Any]:
         try:
@@ -346,10 +359,10 @@ class KrogerIntegration:
                 'Accept': 'application/json'
             }
             
-            # Use both product.compact AND location scope to ensure we can search stores
+            # Try with a simpler scope set that should work with Kroger API
             data = {
                 'grant_type': 'client_credentials',
-                'scope': 'product.compact chain.locations.read location'
+                'scope': 'product.compact'  # Start with just this scope
             }
             
             logger.info(f"Sending token request to: {token_url}")
@@ -406,15 +419,26 @@ class KrogerIntegration:
         Find nearby Kroger stores using Certification environment
         """
         try:
+            # Debug logging for environment setup
+            logger.info("=====================================================")
+            logger.info(f"KROGER STORE SEARCH with ZIP: {zip_code}, radius: {radius}")
+            logger.debug(f"KROGER_BASE_URL: {KROGER_BASE_URL}")
+            logger.debug(f"Client ID exists: {bool(KROGER_CLIENT_ID)}")
+            logger.debug(f"Client Secret exists: {bool(KROGER_CLIENT_SECRET)}")
+            
             # Get access token first with the correct scope for locations
             token_result = self.get_access_token()
             
             if not token_result.get("success"):
-                logger.error("Failed to obtain access token")
+                logger.error(f"Failed to obtain access token: {token_result.get('message')}")
                 return token_result
             
             access_token = token_result["access_token"]
             locations_url = f"{self.base_url}/locations"
+            
+            # Log token length for debugging (don't log the actual token)
+            logger.debug(f"Access token length: {len(access_token)}")
+            logger.debug(f"Access token first 10 chars: {access_token[:10]}...")
             
             headers = {
                 "Accept": "application/json",
@@ -427,51 +451,115 @@ class KrogerIntegration:
                 "filter.radiusInMiles": radius
             }
             
-            logger.info(f"Searching stores near ZIP: {zip_code}")
-            logger.debug(f"Request Headers: {headers}")
-            logger.debug(f"Request URL: {locations_url}")
+            # Detailed pre-request logging
+            logger.info(f"Sending request to: {locations_url}")
             logger.debug(f"Request Params: {params}")
             
-            response = requests.get(
-                locations_url, 
-                headers=headers, 
-                params=params,
-                timeout=10
-            )
+            try:
+                response = requests.get(
+                    locations_url, 
+                    headers=headers, 
+                    params=params,
+                    timeout=15  # Increased timeout
+                )
+            except requests.exceptions.RequestException as req_err:
+                logger.error(f"Request error during store lookup: {str(req_err)}")
+                return {
+                    "success": False,
+                    "message": f"Connection error: {str(req_err)}"
+                }
             
+            # Enhanced response logging
             logger.info(f"Store Lookup Status: {response.status_code}")
-            logger.debug(f"Response Headers: {response.headers}")
-            logger.debug(f"Response Content: {response.text[:200]}...")  # Log first 200 chars of response
+            logger.debug(f"Response Headers: {dict(response.headers)}")
+            
+            # Log the entire response content for debugging
+            try:
+                logger.debug(f"Response Content: {response.text}")
+            except Exception as log_err:
+                logger.debug(f"Could not log response content: {str(log_err)}")
             
             if response.status_code == 200:
-                data = response.json()
+                # Try to parse the JSON response with error handling
+                try:
+                    data = response.json()
+                except Exception as json_err:
+                    logger.error(f"Failed to parse JSON response: {str(json_err)}")
+                    return {
+                        "success": False,
+                        "message": "Failed to parse response from Kroger API"
+                    }
+                
                 stores = data.get('data', [])
                 
                 logger.info(f"Found {len(stores)} stores")
                 
-                return {
-                    "success": True,
-                    "stores": [
-                        {
-                            "name": store.get('name'),
-                            "location_id": store.get('locationId'),  # CRITICAL: Include locationId
-                            "address": store.get('address', {}).get('addressLine1'),
-                            "city": store.get('address', {}).get('city'),
-                            "state": store.get('address', {}).get('state'),
-                            "zipCode": store.get('address', {}).get('zipCode'),
+                # Map the stores with detailed error handling
+                mapped_stores = []
+                for store in stores:
+                    try:
+                        mapped_store = {
+                            "name": store.get('name', 'Unknown Store'),
+                            "location_id": store.get('locationId', ''),  # CRITICAL: Include locationId
+                            "address": store.get('address', {}).get('addressLine1', 'No address'),
+                            "city": store.get('address', {}).get('city', ''),
+                            "state": store.get('address', {}).get('state', ''),
+                            "zipCode": store.get('address', {}).get('zipCode', ''),
                             "distance": store.get('distance', 0.0)  # Add default value
                         }
-                        for store in stores
-                    ]
+                        mapped_stores.append(mapped_store)
+                    except Exception as store_err:
+                        logger.error(f"Error mapping store: {str(store_err)}")
+                        # Continue processing other stores
+                
+                return {
+                    "success": True,
+                    "stores": mapped_stores
                 }
+            elif response.status_code == 400:
+                # Parse error details from response
+                try:
+                    error_data = response.json()
+                    error_msg = error_data.get('error_description', error_data.get('message', 'Invalid request'))
+                    logger.error(f"Bad request error: {error_msg}")
+                    
+                    # Check if it's a scope issue
+                    if 'scope' in error_msg.lower():
+                        return {
+                            "success": False,
+                            "message": "API permission error. The application doesn't have proper permissions to search stores."
+                        }
+                    
+                    return {
+                        "success": False,
+                        "message": f"Request error: {error_msg}"
+                    }
+                except Exception:
+                    logger.error(f"Bad request with unparseable error: {response.text}")
+                    return {
+                        "success": False,
+                        "message": f"Invalid request: {response.text}"
+                    }
             elif response.status_code == 401:
                 # Handle authentication error specifically
                 logger.error("Authentication error when searching for Kroger stores")
-                return {
-                    "success": False,
-                    "needs_reconnect": True,
-                    "message": "Your Kroger authentication has expired. Please reconnect your account."
-                }
+                
+                try:
+                    error_info = response.json()
+                    error_detail = error_info.get('error_description', 'Authentication failed')
+                    logger.error(f"Auth error details: {error_detail}")
+                    
+                    return {
+                        "success": False,
+                        "needs_reconnect": True,
+                        "message": f"Authentication error: {error_detail}"
+                    }
+                except Exception:
+                    return {
+                        "success": False,
+                        "needs_reconnect": True,
+                        "message": "Your Kroger authentication has expired. Please reconnect your account."
+                    }
             else:
                 logger.error(f"Store lookup failed. Status: {response.status_code}")
                 logger.error(f"Response Content: {response.text}")

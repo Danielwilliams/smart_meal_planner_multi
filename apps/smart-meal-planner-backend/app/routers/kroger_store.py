@@ -137,6 +137,83 @@ async def find_nearby_stores(
             "success": False,
             "message": f"Failed to find Kroger stores: {str(e)}"
         }
+        
+# Add a debugging endpoint to test Kroger API directly
+@router.get("/test-api")
+async def test_kroger_api(user = Depends(get_user_from_token)):
+    """Test endpoint to diagnose Kroger API issues"""
+    try:
+        logger.info("Testing Kroger API connection")
+        
+        # Check environment variables
+        env_info = {
+            "KROGER_BASE_URL": os.getenv("KROGER_BASE_URL", "Not set"),
+            "KROGER_CLIENT_ID_exists": bool(os.getenv("KROGER_CLIENT_ID")),
+            "KROGER_CLIENT_SECRET_exists": bool(os.getenv("KROGER_CLIENT_SECRET")),
+            "KROGER_REDIRECT_URI": os.getenv("KROGER_REDIRECT_URI", "Not set"),
+        }
+        
+        # Try to get an access token first
+        kroger = KrogerIntegration()
+        token_result = kroger.get_access_token()
+        
+        if not token_result.get("success"):
+            return {
+                "success": False,
+                "message": "Failed to get Kroger access token",
+                "details": token_result.get("message"),
+                "environment": env_info
+            }
+            
+        # If we got a token, try a simple API call to locations endpoint
+        try:
+            access_token = token_result["access_token"]
+            locations_url = f"{os.getenv('KROGER_BASE_URL', 'https://api-ce.kroger.com/v1')}/locations"
+            
+            headers = {
+                "Accept": "application/json",
+                "Authorization": f"Bearer {access_token}"
+            }
+            
+            params = {
+                "filter.limit": 1  # Just get one location to test the API
+            }
+            
+            response = requests.get(
+                locations_url, 
+                headers=headers, 
+                params=params,
+                timeout=10
+            )
+            
+            # Return detailed information about the API call
+            return {
+                "success": response.status_code == 200,
+                "status_code": response.status_code,
+                "response_data": response.json() if response.status_code == 200 else response.text,
+                "environment": env_info,
+                "token_info": {
+                    "length": len(access_token),
+                    "first_10_chars": access_token[:10] + "..."
+                }
+            }
+        except Exception as api_err:
+            return {
+                "success": False,
+                "message": f"Error testing API: {str(api_err)}",
+                "environment": env_info,
+                "token_info": {
+                    "success": token_result.get("success"),
+                    "length": len(token_result.get("access_token", "")) if token_result.get("access_token") else 0
+                }
+            }
+            
+    except Exception as e:
+        logger.error(f"Error in test-api endpoint: {str(e)}", exc_info=True)
+        return {
+            "success": False,
+            "message": f"Unexpected error: {str(e)}"
+        }
 
         
 @router.post("/store-location")
