@@ -1010,6 +1010,22 @@ const apiService = {
     }
   },
   
+  async exchangeKrogerAuthCode(code) {
+    try {
+      console.log('Exchanging Kroger auth code for tokens');
+      const resp = await axiosInstance.post('/kroger/exchange-token', { code });
+      console.log('Kroger token exchange successful');
+      
+      // Mark Kroger as connected in localStorage for immediate UI feedback
+      localStorage.setItem('kroger_connected', 'true');
+      
+      return resp.data;
+    } catch (err) {
+      console.error("Kroger token exchange error:", err);
+      throw err;
+    }
+  },
+  
   async refreshKrogerToken() {
     try {
       console.log('Attempting to refresh Kroger token');

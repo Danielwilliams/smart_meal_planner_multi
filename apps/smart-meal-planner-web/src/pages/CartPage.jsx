@@ -68,6 +68,33 @@ function CartPage() {
       loadInternalCart();
     }
   }, [user?.userId]);
+  
+  // Check for Kroger auth redirect return
+  useEffect(() => {
+    const checkKrogerRedirect = async () => {
+      const wasRedirected = localStorage.getItem('kroger_auth_redirect') === 'true';
+      const isConnected = localStorage.getItem('kroger_connected') === 'true';
+      
+      if (wasRedirected && isConnected) {
+        console.log("Detected return from Kroger auth redirect");
+        localStorage.removeItem('kroger_auth_redirect');
+        
+        // Display success message
+        setSnackbarMessage("Successfully connected to Kroger!");
+        setSnackbarOpen(true);
+        
+        // If we have kroger items, try searching for them again
+        if (internalCart.kroger && internalCart.kroger.length > 0) {
+          console.log("Auto-retrying Kroger search after successful auth");
+          setTimeout(() => {
+            handleStoreSearch('kroger');
+          }, 1000); // Small delay to ensure UI is updated first
+        }
+      }
+    };
+    
+    checkKrogerRedirect();
+  }, []);
 
   const loadInternalCart = async () => {
     try {
@@ -120,35 +147,76 @@ function CartPage() {
 
 const checkKrogerCredentials = async () => {
   try {
+    console.log("Checking Kroger connection status");
+    
+    // First check if we have a local indicator of connection
+    const localConnected = localStorage.getItem('kroger_connected') === 'true';
+    
+    // Always verify with the server
     const status = await apiService.getKrogerConnectionStatus();
-    return status.is_connected;
+    const serverConnected = status.is_connected;
+    
+    console.log("Kroger connection status:", { 
+      localConnected, 
+      serverConnected,
+      fullStatus: status
+    });
+    
+    // Update local storage to match server status
+    localStorage.setItem('kroger_connected', serverConnected ? 'true' : 'false');
+    
+    // If we have a store location ID but we're not connected, clear it
+    if (!serverConnected && localStorage.getItem('kroger_store_location_id')) {
+      console.log("Clearing invalid Kroger store location");
+      localStorage.removeItem('kroger_store_location_id');
+      localStorage.removeItem('kroger_store_configured');
+    }
+    
+    return serverConnected;
   } catch (err) {
     console.error("Error checking Kroger credentials:", err);
-    return false;
+    
+    // If we can't reach the server, fall back to local storage value
+    const fallbackConnected = localStorage.getItem('kroger_connected') === 'true';
+    console.log("Using fallback Kroger connection status:", fallbackConnected);
+    
+    return fallbackConnected;
   }
 };
 
-const handleKrogerAuthError = async (error) => {
+const handleKrogerAuthError = async () => {
   try {
     // Try refreshing the token first
-    const refreshResponse = await apiService.refreshKrogerToken();
-    
-    if (refreshResponse.success) {
-      setSnackbarMessage("Kroger authentication refreshed. Please try again.");
-      setSnackbarOpen(true);
-      return true;
+    try {
+      console.log("Attempting to refresh Kroger token");
+      const refreshResponse = await apiService.refreshKrogerToken();
+      
+      if (refreshResponse.success) {
+        console.log("Kroger token refresh successful");
+        setSnackbarMessage("Kroger authentication refreshed. Please try again.");
+        setSnackbarOpen(true);
+        return true;
+      }
+    } catch (refreshErr) {
+      console.log("Token refresh failed, will try reconnection", refreshErr);
     }
     
-    // If refresh failed, try to get login URL to reconnect
+    // If refresh failed or wasn't successful, get login URL to reconnect
+    console.log("Getting Kroger login URL for reconnection");
     const loginUrlResponse = await apiService.getKrogerLoginUrl();
     
     if (loginUrlResponse.login_url) {
+      console.log("Redirecting to Kroger login:", loginUrlResponse.login_url);
+      // Save current cart state to localStorage before redirecting
+      localStorage.setItem('kroger_auth_redirect', 'true');
       // Redirect to Kroger for authentication
       window.location.href = loginUrlResponse.login_url;
       return true;
+    } else {
+      console.error("No login URL received from Kroger");
+      setError("Unable to get Kroger login URL. Please try again later.");
+      return false;
     }
-    
-    return false;
   } catch (err) {
     console.error("Kroger auth error handling failed:", err);
     setError("Unable to reconnect Kroger account. Please try again later.");

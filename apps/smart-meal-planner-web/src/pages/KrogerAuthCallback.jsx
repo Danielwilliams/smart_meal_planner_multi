@@ -1,40 +1,104 @@
-// meal_planner_frontend/web/src/pages/KrogerAuthCallback.jsx
+// src/pages/KrogerAuthCallback.jsx
 import React, { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { Box, Typography } from '@mui/material';
+import { useSearchParams, useNavigate } from 'react-router-dom';
+import { 
+  Box, 
+  Typography, 
+  CircularProgress, 
+  Alert,
+  Button,
+  Container,
+  Paper
+} from '@mui/material';
 import apiService from '../services/apiService';
 
 function KrogerAuthCallback() {
   const [searchParams] = useSearchParams();
-  const [message, setMessage] = useState('Exchanging token...');
+  const navigate = useNavigate();
+  const [status, setStatus] = useState('loading'); // loading, success, error
+  const [message, setMessage] = useState('Connecting to Kroger...');
   
   useEffect(() => {
     const code = searchParams.get('code');
     if (!code) {
-      setMessage('No code provided');
+      setStatus('error');
+      setMessage('No authorization code provided. Please try connecting your Kroger account again.');
       return;
     }
-    // Option 1: direct exchange from frontend:
-    // Option 2: call your backend /kroger/callback?code=..., let backend do the exchange
-    // For now, let's do a simple approach:
+    
     const doExchange = async () => {
       try {
+        setStatus('loading');
         const resp = await apiService.exchangeKrogerAuthCode(code);
-        setMessage(`Success! Access token: ${resp.access_token}`);
+        
+        // Store success in localStorage for immediate UI feedback
+        localStorage.setItem('kroger_connected', 'true');
+        
+        setStatus('success');
+        setMessage('Successfully connected to your Kroger account!');
       } catch (err) {
-        setMessage(`Error exchanging code: ${err.message}`);
+        console.error('Kroger auth error:', err);
+        setStatus('error');
+        setMessage(err.response?.data?.message || err.message || 'Failed to connect to Kroger. Please try again.');
       }
     };
+    
     doExchange();
   }, [searchParams]);
 
+  const handleReturnToCart = () => {
+    navigate('/cart');
+  };
+
   return (
-    <Box sx={{ p: 2 }}>
-      <Typography variant="h5">Kroger Authorization</Typography>
-      <Typography variant="body1" sx={{ mt: 2 }}>
-        {message}
-      </Typography>
-    </Box>
+    <Container maxWidth="sm" sx={{ mt: 4 }}>
+      <Paper elevation={3} sx={{ p: 4, textAlign: 'center' }}>
+        <Typography variant="h5" gutterBottom>
+          Kroger Account Connection
+        </Typography>
+        
+        {status === 'loading' && (
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', my: 4 }}>
+            <CircularProgress sx={{ mb: 2 }} />
+            <Typography>{message}</Typography>
+          </Box>
+        )}
+        
+        {status === 'success' && (
+          <>
+            <Alert severity="success" sx={{ my: 2 }}>
+              {message}
+            </Alert>
+            <Box sx={{ mt: 3 }}>
+              <Button 
+                variant="contained" 
+                color="primary" 
+                onClick={handleReturnToCart}
+              >
+                Return to Cart
+              </Button>
+            </Box>
+          </>
+        )}
+        
+        {status === 'error' && (
+          <>
+            <Alert severity="error" sx={{ my: 2 }}>
+              {message}
+            </Alert>
+            <Box sx={{ mt: 3 }}>
+              <Button 
+                variant="contained" 
+                color="primary" 
+                onClick={handleReturnToCart}
+              >
+                Return to Cart
+              </Button>
+            </Box>
+          </>
+        )}
+      </Paper>
+    </Container>
   );
 }
 
