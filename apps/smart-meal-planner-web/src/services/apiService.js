@@ -13,6 +13,50 @@ const axiosInstance = axios.create({
   withCredentials: false
 });
 
+// Track if a token refresh is in progress
+let isRefreshingKrogerToken = false;
+let krogerRefreshSubscribers = [];
+
+// Function to add callbacks to be executed after token refresh
+function subscribeToTokenRefresh(callback) {
+  krogerRefreshSubscribers.push(callback);
+}
+
+// Function to execute all callbacks after token refresh
+function onKrogerTokenRefreshed() {
+  krogerRefreshSubscribers.forEach(callback => callback());
+  krogerRefreshSubscribers = [];
+}
+
+// Function to handle Kroger token refresh
+async function refreshKrogerToken() {
+  if (isRefreshingKrogerToken) {
+    // Return a promise that resolves when the refresh is done
+    return new Promise(resolve => {
+      subscribeToTokenRefresh(() => {
+        resolve();
+      });
+    });
+  }
+
+  isRefreshingKrogerToken = true;
+  console.log('Attempting to refresh Kroger token...');
+
+  try {
+    const response = await axiosInstance.post('/kroger/refresh-token');
+    console.log('Kroger token refresh succeeded:', response.data);
+    
+    isRefreshingKrogerToken = false;
+    onKrogerTokenRefreshed();
+    return true;
+  } catch (error) {
+    console.error('Kroger token refresh failed:', error);
+    isRefreshingKrogerToken = false;
+    krogerRefreshSubscribers = []; // Clear subscribers on error
+    return false;
+  }
+}
+
 // Request interceptor
 axiosInstance.interceptors.request.use(
   config => {
