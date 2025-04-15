@@ -109,10 +109,22 @@ const refreshKrogerTokenInternal = async () => {
       const loginResponse = await authAxios.get('/kroger/login-url');
       if (loginResponse.data && loginResponse.data.login_url) {
         hasAttemptedReconnect = true;
+        
+        let loginUrl = loginResponse.data.login_url;
+        
+        // Fix redirect URI if needed
+        if (loginUrl.includes('127.0.0.1:8000/callback')) {
+          console.log('Fixing redirect URI in login URL during refresh');
+          loginUrl = loginUrl.replace(
+            'http://127.0.0.1:8000/callback',
+            'https://smart-meal-planner-multi.vercel.app/kroger/callback'
+          );
+        }
+        
         return {
           success: false,
           needs_reconnect: true,
-          login_url: loginResponse.data.login_url,
+          login_url: loginUrl,
           message: 'Reconnection required'
         };
       }
@@ -178,10 +190,21 @@ const addToKrogerCart = async (items) => {
         const loginResponse = await authAxios.get('/kroger/login-url');
         
         if (loginResponse.data && loginResponse.data.login_url) {
+          let loginUrl = loginResponse.data.login_url;
+          
+          // Fix redirect URI if needed
+          if (loginUrl.includes('127.0.0.1:8000/callback')) {
+            console.log('Fixing redirect URI in login URL');
+            loginUrl = loginUrl.replace(
+              'http://127.0.0.1:8000/callback',
+              'https://smart-meal-planner-multi.vercel.app/kroger/callback'
+            );
+          }
+          
           return {
             success: false,
             needs_reconnect: true,
-            login_url: loginResponse.data.login_url,
+            login_url: loginUrl,
             message: 'Kroger authentication required - please reconnect'
           };
         }
@@ -228,8 +251,18 @@ const reconnectKroger = async () => {
       // Reset the reconnect flag since we're starting a new flow
       hasAttemptedReconnect = false;
       
+      // Fix redirect URI if needed
+      let loginUrl = response.data.login_url;
+      if (loginUrl.includes('127.0.0.1:8000/callback')) {
+        console.log('Fixing redirect URI in login URL');
+        loginUrl = loginUrl.replace(
+          'http://127.0.0.1:8000/callback',
+          'https://smart-meal-planner-multi.vercel.app/kroger/callback'
+        );
+      }
+      
       // Navigate to Kroger login page
-      window.location.href = response.data.login_url;
+      window.location.href = loginUrl;
       return { success: true };
     }
     

@@ -17,12 +17,34 @@ function KrogerAuthCallback() {
     const params = new URLSearchParams(location.search);
     const success = params.get('success');
     const errorMsg = params.get('error');
+    const code = params.get('code');
     
-    console.log("KrogerAuthCallback params:", { success, error: errorMsg });
+    console.log("KrogerAuthCallback params:", { success, error: errorMsg, hasCode: !!code });
+    
+    // If we have a code parameter, we need to forward it to the backend
+    if (code) {
+      // Forward to backend with the correct URI
+      const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://smart-meal-planner-multi-production.up.railway.app';
+      const redirectUrl = `${API_BASE_URL}/kroger/auth-callback?code=${encodeURIComponent(code)}&redirect_uri=${encodeURIComponent('https://smart-meal-planner-multi.vercel.app/kroger/callback')}`;
+      
+      console.log("Redirecting to backend:", redirectUrl);
+      
+      // Create a link and click it - this ensures a proper GET request
+      const link = document.createElement('a');
+      link.href = redirectUrl;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      return; // Don't proceed with rest of function
+    }
     
     if (success === 'true') {
       setStatus('success');
       setMessage('Kroger account connected successfully!');
+      
+      // Mark as connected in localStorage
+      localStorage.setItem('kroger_connected', 'true');
       
       // Redirect to cart page after short delay
       setTimeout(() => {
