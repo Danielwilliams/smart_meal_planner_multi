@@ -86,9 +86,11 @@ function CartPage() {
   
   // Only process Kroger auth code if returning from OAuth redirect
   useEffect(() => {
-    // Check if we have an auth code from a redirect
+    // Check if we have an auth code from a redirect or other Kroger-related flags
     const krogerAuthCode = sessionStorage.getItem('kroger_auth_code');
     const krogerAuthRedirectUri = sessionStorage.getItem('kroger_auth_redirect_uri');
+    const krogerConnected = localStorage.getItem('kroger_connected');
+    const reconnectAttempted = localStorage.getItem('kroger_reconnect_attempted');
     
     // Process Kroger auth code ONLY if we have one (coming back from redirect)
     if (krogerAuthCode) {
