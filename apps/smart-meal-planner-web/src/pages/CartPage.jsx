@@ -212,36 +212,12 @@ const checkKrogerCredentials = async () => {
 
 const handleKrogerAuthError = async () => {
   try {
-    // Check for locally stored tokens first
-    const hasLocalTokens = !!localStorage.getItem('kroger_access_token');
-    
-    if (hasLocalTokens) {
-      try {
-        console.log("Found local Kroger tokens, attempting to sync with server");
-        await apiService.syncKrogerTokens({
-          access_token: localStorage.getItem('kroger_access_token'),
-          refresh_token: localStorage.getItem('kroger_refresh_token') || ''
-        });
-        
-        // Check if sync worked
-        const status = await apiService.getKrogerConnectionStatus();
-        if (status.is_connected) {
-          console.log("Successfully restored Kroger connection from local tokens");
-          setSnackbarMessage("Kroger connection restored. Please try again.");
-          setSnackbarOpen(true);
-          return true;
-        }
-      } catch (syncErr) {
-        console.error("Failed to sync local tokens:", syncErr);
-      }
-    }
-    
-    // Try refreshing the token
+    // Try refreshing the token first
     try {
       console.log("Attempting to refresh Kroger token");
       const refreshResponse = await apiService.refreshKrogerToken();
       
-      if (refreshResponse.success || refreshResponse.access_token) {
+      if (refreshResponse.success) {
         console.log("Kroger token refresh successful");
         setSnackbarMessage("Kroger authentication refreshed. Please try again.");
         setSnackbarOpen(true);
@@ -258,14 +234,10 @@ const handleKrogerAuthError = async () => {
     if (loginUrlResponse.login_url) {
       console.log("Redirecting to Kroger login:", loginUrlResponse.login_url);
       
-      // Clear any existing tokens before redirecting
-      localStorage.removeItem('kroger_access_token');
-      localStorage.removeItem('kroger_refresh_token');
-      
-      // Save state to indicate we're redirecting for auth
+      // Clean up any local state
       localStorage.setItem('kroger_auth_redirect', 'true');
       
-      // Redirect to Kroger for authentication
+      // Redirect to Kroger for authentication - let the backend handle the callback
       window.location.href = loginUrlResponse.login_url;
       return true;
     } else {

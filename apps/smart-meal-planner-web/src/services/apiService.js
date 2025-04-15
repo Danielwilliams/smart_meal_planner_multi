@@ -1020,35 +1020,13 @@ const apiService = {
 
   async getKrogerLoginUrl() {
     try {
-      // Simple approach matching the single-user app
-      const frontendUrl = window.location.origin;
-      const currentHost = window.location.hostname;
+      // CRITICAL: Let the backend handle the redirect URI completely
+      // This matches the single-user app exactly by not specifying a redirect_uri parameter
+      console.log('Getting Kroger login URL using backend-determined redirect URI');
       
-      // For production, use the vercel domain
-      let redirectUri;
-      if (currentHost.includes('vercel.app')) {
-        redirectUri = 'https://smart-meal-planner-multi.vercel.app/kroger-callback';
-      } else {
-        // For local development
-        redirectUri = `${frontendUrl}/kroger-callback`;
-      }
-      
-      console.log(`Getting Kroger login URL with redirect: ${redirectUri}`);
-      
-      // Get the login URL with the correct redirect URI
-      const resp = await axiosInstance.get('/kroger/login-url', {
-        params: { redirect_uri: redirectUri }
-      });
-      
-      // If we still have the wrong URI in the response, fix it
-      if (resp.data && resp.data.login_url && resp.data.login_url.includes('127.0.0.1:8000/callback')) {
-        console.log('Fixing incorrect redirect URI in login URL');
-        const fixedUrl = resp.data.login_url.replace(
-          'http://127.0.0.1:8000/callback', 
-          redirectUri
-        );
-        return { login_url: fixedUrl };
-      }
+      // Get the login URL WITHOUT specifying a redirect URI
+      const resp = await axiosInstance.get('/kroger/login-url');
+      console.log('Login URL response:', resp.data);
       
       return resp.data;
     } catch (err) {
@@ -1107,55 +1085,14 @@ const apiService = {
     try {
       console.log('Attempting to refresh Kroger token');
       
-      // Check if we have a local refresh token to use
-      const localRefreshToken = localStorage.getItem('kroger_refresh_token');
-      
-      let resp;
-      if (localRefreshToken) {
-        // If we have a local refresh token, include it in the request
-        resp = await axiosInstance.post('/kroger/refresh-token', {
-          refresh_token: localRefreshToken
-        });
-      } else {
-        // Otherwise use the standard endpoint
-        resp = await axiosInstance.post('/kroger/refresh-token');
-      }
-      
+      // Simple approach matching single-user app - let backend handle it
+      const resp = await axiosInstance.post('/kroger/refresh-token');
       console.log('Kroger token refresh response:', resp.data);
-      
-      // If we get new tokens in the response, update localStorage
-      if (resp.data.access_token) {
-        localStorage.setItem('kroger_access_token', resp.data.access_token);
-        if (resp.data.refresh_token) {
-          localStorage.setItem('kroger_refresh_token', resp.data.refresh_token);
-        }
-      }
       
       return resp.data;
     } catch (err) {
       console.error("Kroger token refresh error:", err);
       throw err;
-    }
-  },
-  
-  async syncKrogerTokens(tokens) {
-    try {
-      console.log('Syncing Kroger tokens to server');
-      const resp = await axiosInstance.post('/kroger/sync-tokens', tokens);
-      console.log('Token sync response:', resp.data);
-      return resp.data;
-    } catch (err) {
-      console.error("Token sync error:", err);
-      
-      // Try fallback approach with direct token update
-      try {
-        console.log('Attempting fallback token sync');
-        await axiosInstance.post('/kroger/update-tokens', tokens);
-        return { success: true, message: "Tokens synced using fallback method" };
-      } catch (fallbackErr) {
-        console.error("Fallback token sync also failed:", fallbackErr);
-        throw err; // Throw the original error
-      }
     }
   },
 
