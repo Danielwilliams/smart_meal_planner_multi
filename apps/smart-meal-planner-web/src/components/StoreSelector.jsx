@@ -142,6 +142,20 @@ const searchStores = async () => {
     onClose();
   };
 
+  // Add a handler for store selection with proper error handling
+  const handleStoreSelect = (storeId) => {
+    if (!storeId) {
+      console.error('No store ID provided for selection');
+      setError('Unable to select store: Missing store ID');
+      return;
+    }
+    
+    console.log(`Selected store: ${storeId}`);
+    
+    // Call the parent component's handler
+    onStoreSelect(storeId);
+  };
+
   return (
     <Dialog 
       open={open} 
@@ -239,7 +253,7 @@ const searchStores = async () => {
                 }}
               >
                 <CardContent 
-                  onClick={() => onStoreSelect(store.location_id || store.locationId)}
+                  onClick={() => handleStoreSelect(store.location_id || store.locationId)}
                   sx={{ pb: showHours[store.location_id || store.locationId] ? 0 : undefined }}
                 >
                   <Typography variant="subtitle1" component="div">

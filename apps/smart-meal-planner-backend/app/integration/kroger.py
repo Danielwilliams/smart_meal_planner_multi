@@ -5,7 +5,8 @@ import re
 from typing import Optional, Dict, List, Any
 import logging
 from urllib.parse import urlencode
-from .kroger_db import get_user_kroger_credentials
+from app.integration.kroger_db import get_user_kroger_credentials, update_kroger_store_location
+from app.db import get_db_connection
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -576,40 +577,30 @@ class KrogerIntegration:
             }
 
     async def set_store_location(self, user_id: int, location_id: str) -> Dict[str, Any]:
-        """Save store location to user profile"""
+        """Save store location to user profile using the kroger_db helper function"""
         try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
+            logger.info(f"Setting store location for user {user_id}: {location_id}")
             
-            cursor.execute("""
-                UPDATE user_profiles 
-                SET kroger_store_location_id = %s
-                WHERE id = %s
-                RETURNING id;
-            """, (location_id, user_id))
+            # Use the existing update_kroger_store_location function which is properly tested
+            success = update_kroger_store_location(user_id, location_id)
             
-            conn.commit()
-            
-            if cursor.rowcount == 0:
+            if not success:
+                logger.warning(f"No rows updated for user {user_id}")
                 return {
                     "success": False,
-                    "message": "Failed to update store location"
+                    "message": "Failed to update store location - user not found"
                 }
-                
+            
+            logger.info(f"Successfully updated store location for user {user_id}")    
             return {
                 "success": True,
                 "message": "Store location updated successfully"
             }
             
         except Exception as e:
-            logger.error(f"Error setting store location: {str(e)}")
+            logger.error(f"Error setting store location: {str(e)}", exc_info=True)
             return {
                 "success": False,
-                "message": "Database error occurred"
+                "message": f"Database error: {str(e)}"
             }
-        finally:
-            if cursor:
-                cursor.close()
-            if conn:
-                conn.close()
    

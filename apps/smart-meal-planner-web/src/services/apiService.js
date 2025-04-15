@@ -963,9 +963,18 @@ const apiService = {
         };
       }
       
-      const response = await axiosInstance.post('/kroger/store-location', {
-        store_location_id: locationId
-      });
+      // Log the data we're sending for debugging
+      const requestData = {
+        // Send multiple variations of the parameter name to ensure one works
+        store_location_id: locationId,
+        locationId: locationId,
+        location_id: locationId,
+        storeLocationId: locationId
+      };
+      
+      console.log('Sending Kroger location update request with data:', requestData);
+      
+      const response = await axiosInstance.post('/kroger/store-location', requestData);
       
       console.log('Kroger location update response:', response.data);
       return {
@@ -976,11 +985,26 @@ const apiService = {
     } catch (err) {
       console.error("Kroger location update error:", err);
       
+      // Log detailed error information
+      if (err.response) {
+        console.error('Response error details:', {
+          status: err.response.status,
+          data: err.response.data,
+          headers: err.response.headers
+        });
+      } else if (err.request) {
+        console.error('Request was made but no response:', err.request);
+      } else {
+        console.error('Error setting up request:', err.message);
+      }
+      
       // Create user-friendly error message
       let errorMessage = "Failed to update Kroger store location.";
       
       if (err.response?.status === 401) {
         errorMessage = "Authorization error. Please log in again.";
+      } else if (err.response?.status === 400) {
+        errorMessage = err.response.data?.detail || "Invalid request format";
       } else if (err.response?.data?.detail) {
         errorMessage = err.response.data.detail;
       } else if (err.message) {
@@ -989,7 +1013,8 @@ const apiService = {
       
       return {
         success: false,
-        message: errorMessage
+        message: errorMessage,
+        error_details: err.response?.data || {}
       };
     }
   },

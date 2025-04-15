@@ -223,23 +223,40 @@ async def update_store_location(
 ):
     """Update user's preferred Kroger store location"""
     try:
-        # Extract store_location_id from request body
-        body = await request.json()
-        location_id = body.get("store_location_id")
-        
-        if not location_id:
-            logger.error("Missing store_location_id in request")
-            raise HTTPException(400, "Missing store_location_id in request")
+        # Extract store_location_id from request body with better error handling
+        try:
+            logger.debug("Reading request body")
+            body = await request.json()
+            logger.debug(f"Request body: {body}")
+            
+            # Check all possible key names for location_id
+            location_id = None
+            
+            for key in ["store_location_id", "locationId", "location_id", "storeLocationId"]:
+                if key in body and body[key]:
+                    location_id = body[key]
+                    logger.debug(f"Found location ID in field '{key}': {location_id}")
+                    break
+                    
+            if not location_id:
+                logger.error("Missing location ID in request body")
+                # Log the complete request body for debugging
+                logger.error(f"Complete request body: {body}")
+                raise HTTPException(400, "Missing store location ID in request body")
+                
+        except Exception as parse_err:
+            logger.error(f"Failed to parse request body: {str(parse_err)}")
+            raise HTTPException(400, f"Invalid request format: {str(parse_err)}")
         
         user_id = user.get('user_id')
         logger.info(f"Setting Kroger store location for user {user_id}: {location_id}")
         
-        kroger = KrogerIntegration()
-        result = await kroger.set_store_location(user_id, location_id)
+        # Use the kroger_db function directly, which has been tested
+        success = update_kroger_store_location(user_id, location_id)
         
-        if not result["success"]:
-            logger.error(f"Failed to set store location: {result['message']}")
-            raise HTTPException(500, result["message"])
+        if not success:
+            logger.error(f"Failed to set store location for user {user_id}")
+            raise HTTPException(500, "Failed to update store location")
             
         logger.info(f"Successfully set Kroger store location for user {user_id}")
         return {
@@ -251,5 +268,5 @@ async def update_store_location(
         # Re-raise HTTP exceptions
         raise
     except Exception as e:
-        logger.error(f"Error updating store location: {str(e)}")
+        logger.error(f"Error updating store location: {str(e)}", exc_info=True)
         raise HTTPException(500, f"Failed to update Kroger store location: {str(e)}")
