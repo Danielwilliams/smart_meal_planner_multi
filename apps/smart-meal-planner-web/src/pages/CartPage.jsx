@@ -99,77 +99,131 @@ function CartPage() {
           setSnackbarMessage("Processing Kroger connection...");
           setSnackbarOpen(true);
           
-          // Call backend API directly with code from session storage
-          const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://smartmealplannermulti-production.up.railway.app';
-          
-          // Try to call the backend directly with window.location to let the backend handle the redirect
-          const fullUrl = `${API_BASE_URL}/kroger/code-handler?code=${encodeURIComponent(krogerAuthCode)}&redirect_uri=${encodeURIComponent(krogerAuthRedirectUri || 'https://smart-meal-planner-multi.vercel.app/kroger/callback')}`;
-          
-          console.log("Navigating to backend code handler:", fullUrl);
-          
-          // Create an invisible iframe to load the URL
-          const iframe = document.createElement('iframe');
-          iframe.style.display = 'none';
-          iframe.src = fullUrl;
-          
-          // Set a timeout to handle success/failure
-          const timeoutId = setTimeout(() => {
-            document.body.removeChild(iframe);
+          // First, try the new handleKrogerAuthCode method in apiService
+          try {
+            console.log("Using krogerAuthService.processAuthCode");
+            const result = await krogerAuthService.processAuthCode(
+              krogerAuthCode, 
+              krogerAuthRedirectUri || 'https://smart-meal-planner-multi.vercel.app/kroger/callback'
+            );
             
-            // Wait a moment and check connection status
-            setTimeout(async () => {
+            console.log("Auth code handling result:", result);
+            
+            if (result && (result.success || result.access_token)) {
+              console.log("Successfully processed Kroger auth code!");
+              
+              // Clear session storage on success
+              sessionStorage.removeItem('kroger_auth_code');
+              sessionStorage.removeItem('kroger_auth_redirect_uri');
+              sessionStorage.removeItem('kroger_auth_timestamp');
+              
+              // Show success message
+              setSnackbarMessage("Successfully connected to Kroger!");
+              setSnackbarOpen(true);
+              
+              // Double-check connection status after a moment
+              setTimeout(async () => {
+                try {
+                  const status = await krogerAuthService.checkKrogerStatus();
+                  console.log("Connection status after code processing:", status);
+                  
+                  if (status && status.is_connected) {
+                    console.log("Connection verified via status check");
+                  } else {
+                    console.warn("Status check shows not connected despite successful code processing");
+                  }
+                } catch (statusErr) {
+                  console.error("Error checking status after code processing:", statusErr);
+                }
+              }, 2000);
+            } else {
+              throw new Error("Auth code processing didn't return success");
+            }
+          } catch (apiError) {
+            console.error("Error processing auth code with apiService:", apiError);
+            
+            // Second approach: try direct backend request
+            try {
+              console.log("Trying direct POST to backend endpoint");
+              
+              const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://smartmealplannermulti-production.up.railway.app';
+              
+              // Create form data for the request
+              const formData = new FormData();
+              formData.append('code', krogerAuthCode);
+              formData.append('redirect_uri', krogerAuthRedirectUri || 'https://smart-meal-planner-multi.vercel.app/kroger/callback');
+              formData.append('grant_type', 'authorization_code');
+              
+              // Make a direct fetch request to the backend
+              const response = await fetch(`${API_BASE_URL}/kroger/process-code`, {
+                method: 'POST',
+                body: formData,
+                credentials: 'include'
+              });
+              
+              if (!response.ok) {
+                throw new Error(`Backend returned status ${response.status}`);
+              }
+              
+              const data = await response.json();
+              console.log("Direct fetch response:", data);
+              
+              // Clear session storage on success
+              sessionStorage.removeItem('kroger_auth_code');
+              sessionStorage.removeItem('kroger_auth_redirect_uri');
+              sessionStorage.removeItem('kroger_auth_timestamp');
+              
+              // Show success message
+              setSnackbarMessage("Successfully connected to Kroger!");
+              setSnackbarOpen(true);
+            } catch (fetchError) {
+              console.error("Direct fetch also failed:", fetchError);
+              
+              // Last resort: try krogerAuthService
               try {
-                const status = await krogerAuthService.checkKrogerStatus();
-                if (status && status.is_connected) {
+                console.log("Trying krogerAuthService as last resort");
+                
+                // Store the redirect URI and code in localStorage for the service to use
+                localStorage.setItem('kroger_auth_code', krogerAuthCode);
+                localStorage.setItem('kroger_auth_redirect_uri', krogerAuthRedirectUri || 'https://smart-meal-planner-multi.vercel.app/kroger/callback');
+                
+                // Use the krogerAuthService to handle the connection
+                const refreshResult = await krogerAuthService.getKrogerToken();
+                console.log("Refresh result:", refreshResult);
+                
+                if (refreshResult && refreshResult.success) {
+                  // Clear all storage
+                  sessionStorage.removeItem('kroger_auth_code');
+                  sessionStorage.removeItem('kroger_auth_redirect_uri');
+                  sessionStorage.removeItem('kroger_auth_timestamp');
+                  localStorage.removeItem('kroger_auth_code');
+                  localStorage.removeItem('kroger_auth_redirect_uri');
+                  
+                  // Show success message
                   setSnackbarMessage("Successfully connected to Kroger!");
                   setSnackbarOpen(true);
                 } else {
-                  showKrogerError(
-                    "Kroger Connection Issue",
-                    "We couldn't verify your Kroger connection. Please try reconnecting again.",
-                    true
-                  );
+                  throw new Error("Token refresh failed");
                 }
-              } catch (err) {
-                console.error("Error checking connection status:", err);
+              } catch (serviceError) {
+                console.error("All auth methods failed:", serviceError);
+                
+                // Clear storage
+                sessionStorage.removeItem('kroger_auth_code');
+                sessionStorage.removeItem('kroger_auth_redirect_uri');
+                sessionStorage.removeItem('kroger_auth_timestamp');
+                localStorage.removeItem('kroger_auth_code');
+                localStorage.removeItem('kroger_auth_redirect_uri');
+                
+                // Show error dialog
                 showKrogerError(
                   "Kroger Connection Issue",
-                  "We couldn't verify your Kroger connection. Please try reconnecting again.",
+                  "We couldn't complete your Kroger connection. Please try reconnecting again.",
                   true
                 );
               }
-            }, 2000);
-          }, 5000);
-          
-          // Add event listeners for success/failure
-          iframe.onload = () => {
-            clearTimeout(timeoutId);
-            document.body.removeChild(iframe);
-            setSnackbarMessage("Kroger connection processed!");
-            setSnackbarOpen(true);
-            
-            // Clear session storage
-            sessionStorage.removeItem('kroger_auth_code');
-            sessionStorage.removeItem('kroger_auth_redirect_uri');
-            sessionStorage.removeItem('kroger_auth_timestamp');
-          };
-          
-          iframe.onerror = () => {
-            clearTimeout(timeoutId);
-            document.body.removeChild(iframe);
-            showKrogerError(
-              "Kroger Connection Issue",
-              "We couldn't verify your Kroger connection. Please try reconnecting again.",
-              true
-            );
-            
-            // Clear session storage
-            sessionStorage.removeItem('kroger_auth_code');
-            sessionStorage.removeItem('kroger_auth_redirect_uri');
-            sessionStorage.removeItem('kroger_auth_timestamp');
-          };
-          
-          document.body.appendChild(iframe);
+            }
+          }
         } catch (err) {
           console.error("Error processing stored Kroger auth code:", err);
           

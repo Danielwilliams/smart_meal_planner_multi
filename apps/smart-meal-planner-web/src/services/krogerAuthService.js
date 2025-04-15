@@ -1,7 +1,13 @@
 // src/services/krogerAuthService.js
 import axios from 'axios';
 
+// Ensure we're using the correct API base URL
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://smartmealplannermulti-production.up.railway.app';
+console.log('KrogerAuthService using API base URL:', API_BASE_URL);
+
+// Direct API URLs for debugging
+const DIRECT_KROGER_AUTH_URL = 'https://api.kroger.com/v1/connect/oauth2/authorize';
+const DIRECT_KROGER_TOKEN_URL = 'https://api.kroger.com/v1/connect/oauth2/token';
 
 // Standalone axios instance for auth-related requests
 const authAxios = axios.create({
@@ -406,9 +412,82 @@ const checkKrogerStatus = async () => {
   }
 };
 
+/**
+ * Process an authorization code directly
+ */
+const processAuthCode = async (code, redirectUri) => {
+  try {
+    console.log(`Processing auth code: ${code.substring(0, 10)}...`);
+    
+    // Try various approaches to process the code
+    
+    // Approach 1: Standard backend endpoint
+    try {
+      console.log('Approach 1: Using backend process-code endpoint');
+      const response = await authAxios.post('/kroger/process-code', {
+        code,
+        redirect_uri: redirectUri || 'https://smart-meal-planner-multi.vercel.app/kroger/callback',
+        grant_type: 'authorization_code'
+      });
+      
+      console.log('Process-code response:', response.data);
+      return { success: true, data: response.data };
+    } catch (err1) {
+      console.error('Approach 1 failed:', err1);
+      
+      // Approach 2: Try the auth-callback endpoint with URL params
+      try {
+        console.log('Approach 2: Using auth-callback endpoint with URL params');
+        const params = new URLSearchParams();
+        params.append('code', code);
+        params.append('redirect_uri', redirectUri || 'https://smart-meal-planner-multi.vercel.app/kroger/callback');
+        params.append('grant_type', 'authorization_code');
+        
+        const response = await authAxios.post('/kroger/auth-callback', params, {
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded'
+          }
+        });
+        
+        console.log('Auth-callback response:', response.data);
+        return { success: true, data: response.data };
+      } catch (err2) {
+        console.error('Approach 2 failed:', err2);
+        
+        // Approach 3: Try the direct-token endpoint
+        try {
+          console.log('Approach 3: Using direct-token endpoint');
+          const formData = new FormData();
+          formData.append('code', code);
+          formData.append('redirect_uri', redirectUri || 'https://smart-meal-planner-multi.vercel.app/kroger/callback');
+          formData.append('grant_type', 'authorization_code');
+          
+          const response = await authAxios.post('/kroger/direct-token', formData, {
+            headers: {
+              'Content-Type': 'multipart/form-data'
+            }
+          });
+          
+          console.log('Direct-token response:', response.data);
+          return { success: true, data: response.data };
+        } catch (err3) {
+          console.error('Approach 3 failed:', err3);
+          
+          // If all approaches fail, throw the original error
+          throw err1;
+        }
+      }
+    }
+  } catch (error) {
+    console.error('All approaches to process auth code failed:', error);
+    return { success: false, error: error.message };
+  }
+};
+
 export default {
   getKrogerToken,
   addToKrogerCart,
   reconnectKroger,
-  checkKrogerStatus
+  checkKrogerStatus,
+  processAuthCode
 };
