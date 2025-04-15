@@ -346,9 +346,10 @@ class KrogerIntegration:
                 'Accept': 'application/json'
             }
             
+            # Use both product.compact AND location scope to ensure we can search stores
             data = {
                 'grant_type': 'client_credentials',
-                'scope': 'product.compact chain.locations.read'
+                'scope': 'product.compact chain.locations.read location'
             }
             
             logger.info(f"Sending token request to: {token_url}")
@@ -373,11 +374,24 @@ class KrogerIntegration:
                     "expires_in": token_data.get('expires_in')
                 }
             else:
+                # Enhanced error logging
                 logger.error(f"Token generation failed. Status: {response.status_code}")
                 logger.error(f"Response Content: {response.text}")
+                
+                # Check for specific error types
+                error_msg = f"Token generation failed. Status {response.status_code}: {response.text}"
+                try:
+                    error_data = response.json()
+                    if 'error' in error_data:
+                        error_msg = f"Kroger API error: {error_data['error']}"
+                        if error_data.get('error_description'):
+                            error_msg += f" - {error_data['error_description']}"
+                except Exception:
+                    pass  # Use default error message if JSON parsing fails
+                
                 return {
                     "success": False,
-                    "message": f"Token generation failed. Status {response.status_code}: {response.text}"
+                    "message": error_msg
                 }
         
         except Exception as e:
@@ -392,7 +406,7 @@ class KrogerIntegration:
         Find nearby Kroger stores using Certification environment
         """
         try:
-            # Get access token first
+            # Get access token first with the correct scope for locations
             token_result = self.get_access_token()
             
             if not token_result.get("success"):
@@ -440,14 +454,23 @@ class KrogerIntegration:
                     "stores": [
                         {
                             "name": store.get('name'),
+                            "location_id": store.get('locationId'),  # CRITICAL: Include locationId
                             "address": store.get('address', {}).get('addressLine1'),
                             "city": store.get('address', {}).get('city'),
                             "state": store.get('address', {}).get('state'),
                             "zipCode": store.get('address', {}).get('zipCode'),
-                            "distance": store.get('distance')
+                            "distance": store.get('distance', 0.0)  # Add default value
                         }
                         for store in stores
                     ]
+                }
+            elif response.status_code == 401:
+                # Handle authentication error specifically
+                logger.error("Authentication error when searching for Kroger stores")
+                return {
+                    "success": False,
+                    "needs_reconnect": True,
+                    "message": "Your Kroger authentication has expired. Please reconnect your account."
                 }
             else:
                 logger.error(f"Store lookup failed. Status: {response.status_code}")

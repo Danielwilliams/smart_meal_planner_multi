@@ -953,29 +953,109 @@ const apiService = {
 
   async updateKrogerLocation(locationId) {
     try {
+      console.log(`Updating Kroger store location to: ${locationId}`);
+      
+      if (!locationId) {
+        console.error("Cannot update Kroger location: locationId is empty or null");
+        return {
+          success: false,
+          message: "Missing store location ID"
+        };
+      }
+      
       const response = await axiosInstance.post('/kroger/store-location', {
         store_location_id: locationId
       });
-      return response.data;
+      
+      console.log('Kroger location update response:', response.data);
+      return {
+        ...response.data,
+        success: true,  // Ensure success flag is set
+        message: response.data.message || "Kroger store location updated successfully"
+      };
     } catch (err) {
       console.error("Kroger location update error:", err);
-      throw err;
+      
+      // Create user-friendly error message
+      let errorMessage = "Failed to update Kroger store location.";
+      
+      if (err.response?.status === 401) {
+        errorMessage = "Authorization error. Please log in again.";
+      } else if (err.response?.data?.detail) {
+        errorMessage = err.response.data.detail;
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
+      return {
+        success: false,
+        message: errorMessage
+      };
     }
   },
 
   // Store Location Endpoints
   async findNearbyStores(storeType, params) {
     try {
+      console.log(`Finding ${storeType} stores near ${params.zipCode} within ${params.radius} miles`);
+      
       const response = await axiosInstance.get(`/${storeType}/stores/near`, { 
         params: {
           zip_code: params.zipCode,
           radius: params.radius
         }
       });
+      
+      console.log('Store search response:', response.data);
+      
+      // Enhanced error handling and response validation
+      if (!response.data) {
+        return {
+          success: false,
+          message: "No response data received from the server"
+        };
+      }
+      
+      // Normalize the response structure
+      if (response.data.success && Array.isArray(response.data.stores)) {
+        // Validate that each store has a location ID
+        const validatedStores = response.data.stores.map((store, index) => {
+          // Ensure every store has a location_id
+          if (!store.location_id && !store.locationId) {
+            console.warn(`Store ${index} missing location ID:`, store);
+            return {
+              ...store,
+              location_id: `unknown_${index}`  // Add a fallback ID
+            };
+          }
+          return store;
+        });
+        
+        return {
+          success: true,
+          stores: validatedStores
+        };
+      }
+      
       return response.data;
     } catch (err) {
       console.error("Store search error:", err);
-      throw err;
+      
+      // Create user-friendly error message
+      let errorMessage = "Failed to find stores. Please try again later.";
+      
+      if (err.response?.status === 401) {
+        errorMessage = "Authorization error. Please reconnect your Kroger account.";
+      } else if (err.response?.data?.message) {
+        errorMessage = err.response.data.message;
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
+      return {
+        success: false,
+        message: errorMessage
+      };
     }
   },
   

@@ -112,36 +112,67 @@ async def find_nearby_stores(
     logger.info(f"Searching stores - Zip: {zip_code}, Radius: {radius}")
     
     try:
+        # Initialize the Kroger integration
         kroger = KrogerIntegration()
+        
+        # Make the request with better logging
+        logger.debug(f"Calling find_nearby_stores with zip: {zip_code}, radius: {radius}")
         result = kroger.find_nearby_stores(zip_code, radius)
-
-        logger.debug(f"Kroger stores search result: {result}")
-
+        
+        # Log the results for debugging
+        if result.get("success"):
+            logger.info(f"Successfully found {len(result.get('stores', []))} Kroger stores near {zip_code}")
+            # Verify location_id is included for each store
+            for i, store in enumerate(result.get('stores', [])):
+                if 'location_id' not in store:
+                    logger.warning(f"Store {i} missing location_id! Adding dummy ID")
+                    store['location_id'] = f"missing_{i}"
+        else:
+            logger.error(f"Failed to find Kroger stores: {result.get('message')}")
+            
         return result
     except Exception as e:
         logger.error(f"Error finding stores: {str(e)}", exc_info=True)
         return {
             "success": False,
-            "message": str(e)
+            "message": f"Failed to find Kroger stores: {str(e)}"
         }
 
         
 @router.post("/store-location")
 async def update_store_location(
-    location_id: str,
+    request: Request,
     user = Depends(get_user_from_token)
 ):
     """Update user's preferred Kroger store location"""
     try:
+        # Extract store_location_id from request body
+        body = await request.json()
+        location_id = body.get("store_location_id")
+        
+        if not location_id:
+            logger.error("Missing store_location_id in request")
+            raise HTTPException(400, "Missing store_location_id in request")
+        
         user_id = user.get('user_id')
+        logger.info(f"Setting Kroger store location for user {user_id}: {location_id}")
+        
         kroger = KrogerIntegration()
         result = await kroger.set_store_location(user_id, location_id)
         
         if not result["success"]:
+            logger.error(f"Failed to set store location: {result['message']}")
             raise HTTPException(500, result["message"])
             
-        return result
+        logger.info(f"Successfully set Kroger store location for user {user_id}")
+        return {
+            "success": True,
+            "message": "Kroger store location updated successfully"
+        }
         
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
     except Exception as e:
         logger.error(f"Error updating store location: {str(e)}")
-        raise HTTPException(500, str(e))
+        raise HTTPException(500, f"Failed to update Kroger store location: {str(e)}")

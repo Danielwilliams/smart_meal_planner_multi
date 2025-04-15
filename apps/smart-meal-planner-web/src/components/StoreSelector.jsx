@@ -239,33 +239,33 @@ const searchStores = async () => {
                 }}
               >
                 <CardContent 
-                  onClick={() => onStoreSelect(store.locationId)}
-                  sx={{ pb: showHours[store.locationId] ? 0 : undefined }}
+                  onClick={() => onStoreSelect(store.location_id || store.locationId)}
+                  sx={{ pb: showHours[store.location_id || store.locationId] ? 0 : undefined }}
                 >
                   <Typography variant="subtitle1" component="div">
                     {store.name}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    {store.address.addressLine1}<br />
-                    {store.address.city}, {store.address.state} {store.address.zipCode}
+                    {store.address}<br />
+                    {store.city}, {store.state} {store.zipCode}
                   </Typography>
                   <Box display="flex" justifyContent="space-between" alignItems="center" mt={0.5}>
                     <Typography variant="body2" color="text.secondary">
-                      {store.distance !== undefined && `${store.distance.toFixed(1)} miles away`}
+                      {store.distance !== undefined && `${parseFloat(store.distance).toFixed(1)} miles away`}
                     </Typography>
-                    <Tooltip title="Store Hours">
+                    <Tooltip title={`Store ID: ${store.location_id || store.locationId}`}>
                       <IconButton 
                         size="small" 
                         onClick={(e) => {
                           e.stopPropagation();
-                          toggleHours(store.locationId);
+                          toggleHours(store.location_id || store.locationId);
                         }}
                       >
                         <TimeIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>
                   </Box>
-                  {showHours[store.locationId] && formatHours(store.hours)}
+                  {showHours[store.location_id || store.locationId] && formatHours(store.hours)}
                 </CardContent>
               </Card>
             ))}
