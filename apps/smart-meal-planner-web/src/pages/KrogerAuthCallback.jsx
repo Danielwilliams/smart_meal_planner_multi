@@ -38,7 +38,7 @@ function KrogerAuthCallback() {
           await axios.post(`${API_BASE_URL}/kroger/exchange-token`, {
             code,
             // Use the same redirect URI that we used in the authorization URL
-            redirect_uri: 'https://smartmealplannerio.vercel.app/kroger/callback'
+            redirect_uri: 'https://smart-meal-planner-multi.vercel.app/kroger/callback'
           }, {
             headers: {
               'Content-Type': 'application/json',

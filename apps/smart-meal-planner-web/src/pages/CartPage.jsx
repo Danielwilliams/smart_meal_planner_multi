@@ -242,9 +242,9 @@ const handleKrogerAuthError = async () => {
         const clientId = "smartmealplannerio-243261243034247652497361364a447078555731455949714a464f61656e5a676b444e552e42796961517a4f4576367156464b3564774c3039777a614700745159802496692";
         const state = loginUrlResponse.login_url.split('state=')[1];
         
-        // Use one of the registered redirect URIs
-        // These are registered with Kroger and will work
-        const redirectUri = "https://smartmealplannerio.vercel.app/kroger/callback";
+        // Use the redirect URI for the multi-user app
+        // This is registered with Kroger and will route to the multi-user app
+        const redirectUri = "https://smart-meal-planner-multi.vercel.app/kroger/callback";
         
         correctUrl = `${krogerBaseUrl}?scope=product.compact%20cart.basic:write&response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`;
         console.log("Corrected URL:", correctUrl);
