@@ -800,123 +800,34 @@ const apiService = {
   async searchKrogerItems(items) {
     try {
       console.log("Searching Kroger items:", items);
+      const response = await axiosInstance.post('/kroger/search', { items });
+      console.log("Kroger search response:", response.data);
       
-      // Check if we have a selected Kroger store in localStorage
-      const savedKrogerStoreId = localStorage.getItem('kroger_store_location_id');
-      console.log("Saved Kroger store location ID:", savedKrogerStoreId);
-      
-      // Check if we have a locally stored token
-      const localToken = localStorage.getItem('kroger_access_token');
-      
-      // If we have a local token, try to send it with the request
-      let requestConfig = {};
-      if (localToken) {
-        console.log("Using locally stored Kroger token for search");
-        requestConfig = {
-          headers: {
-            'X-Kroger-Token': localToken
-          }
+      // Ensure needs_setup is properly handled
+      if (response.data.needs_setup === true) {
+        return {
+          success: false,
+          needs_setup: true,
+          message: response.data.message
         };
       }
       
-      // Make the API request
-      let response = await axiosInstance.post('/kroger/search', { items }, requestConfig);
-      console.log("Kroger search response:", response.data);
-      
-      // If the search was successful, mark the store as configured
-      if (response.data && response.data.success) {
-        localStorage.setItem('kroger_store_configured', 'true');
-        return response.data;
-      }
-      
-      // If we need store setup and have a saved location ID, try to update and retry
-      if (response.data && response.data.needs_setup && savedKrogerStoreId) {
-        console.log("Need Kroger setup but have saved location ID. Trying silent update.");
-        
-        try {
-          // Update the store location without requiring user interaction
-          await this.updateKrogerLocation(savedKrogerStoreId);
-          
-          // Retry the search with updated location
-          console.log("Retrying Kroger search after location update");
-          const retryResponse = await axiosInstance.post('/kroger/search', { items }, requestConfig);
-          
-          if (retryResponse.data && retryResponse.data.success) {
-            console.log("Retry successful after location update");
-            localStorage.setItem('kroger_store_configured', 'true');
-            return retryResponse.data;
-          }
-          
-          // If retry still needs setup, let the UI handle it
-          if (retryResponse.data && retryResponse.data.needs_setup) {
-            console.log("Still need setup after retry, let UI handle it");
-            return {
-              success: false,
-              needs_setup: true,
-              tried_saved_location: true,
-              message: "Please select a Kroger store in the dialog"
-            };
-          }
-          
-          // For any other response, return it directly
-          return retryResponse.data;
-        } catch (updateError) {
-          console.error("Failed to update location silently:", updateError);
-          // Fall through to returning the original response
-        }
-      }
-      
-      // If we got here, return the original response
       return response.data;
     } catch (err) {
       console.error("Kroger search error:", err);
-      
-      // Create an error object with helpful information for the UI
-      const errorResponse = {
-        success: false,
-        message: err.message || "Failed to search Kroger items"
-      };
-      
-      // Handle known error responses
-      if (err.response) {
-        // For needs_setup response, try saved location if available
-        if (err.response.data && err.response.data.needs_setup) {
-          errorResponse.needs_setup = true;
-          
-          // Try with saved location ID if available
-          const savedLocationId = localStorage.getItem('kroger_store_location_id');
-          if (savedLocationId) {
-            try {
-              await this.updateKrogerLocation(savedLocationId);
-              errorResponse.message = "Attempting to restore saved location. Please try again.";
-              errorResponse.try_again = true;
-            } catch (updateErr) {
-              console.error("Failed to restore location:", updateErr);
-            }
-          }
-        }
-        
-        // For authentication errors, include details
-        if (err.response.status === 401) {
-          errorResponse.auth_error = true;
-          errorResponse.message = "Authentication error. Please reconnect your Kroger account.";
-          
-          // Clear any invalid tokens
-          localStorage.removeItem('kroger_access_token');
-          localStorage.removeItem('kroger_refresh_token');
-        }
-        
-        // Include any messages from the server response
-        if (err.response.data && err.response.data.message) {
-          errorResponse.message = err.response.data.message;
-        }
+      // Check if the error response contains needs_setup
+      if (err.response?.data?.needs_setup) {
+        return {
+          success: false,
+          needs_setup: true,
+          message: err.response.data.message
+        };
       }
-      
-      return errorResponse;
+      throw err;
     }
   },
 
-  // Kroger-Specific Operations
+ // Kroger-Specific Operations
   async addToKrogerCart(items) {
     try {
       console.log('Adding items to Kroger cart:', items);
@@ -954,7 +865,7 @@ const apiService = {
         try {
           // Try to refresh the token
           console.log('Attempting to refresh Kroger token...');
-          await this.refreshKrogerToken();
+          await refreshKrogerToken();
           
           // If refresh succeeds, suggest retry
           return {
@@ -1020,230 +931,190 @@ const apiService = {
 
   async getKrogerLoginUrl() {
     try {
-      // Make an explicit request with the correct redirect URI
-      console.log('Getting Kroger login URL with explicit redirect URI');
-      
-      const resp = await axiosInstance.get('/kroger/login-url', {
-        params: {
-          redirect_uri: 'https://smart-meal-planner-multi.vercel.app/kroger/callback'
-        }
-      });
-      console.log('Login URL response:', resp.data);
-      
-      // If we still got an incorrect redirect URI, fix it manually
-      if (resp.data && resp.data.login_url && resp.data.login_url.includes('127.0.0.1:8000/callback')) {
-        console.log('Fixing redirect URI in login URL');
-        // Extract the parts we need
-        const krogerBaseUrl = "https://api.kroger.com/v1/connect/oauth2/authorize";
-        const queryParams = new URLSearchParams(resp.data.login_url.split('?')[1]);
-        
-        // Replace the redirect URI
-        queryParams.set('redirect_uri', 'https://smart-meal-planner-multi.vercel.app/kroger/callback');
-        
-        // Create the corrected URL
-        const correctedUrl = `${krogerBaseUrl}?${queryParams.toString()}`;
-        console.log('Corrected URL:', correctedUrl);
-        
-        return { login_url: correctedUrl };
-      }
-      
+      const resp = await axiosInstance.get('/kroger/login-url');
       return resp.data;
     } catch (err) {
       console.error("Kroger login URL error:", err);
       throw err;
     }
   },
-  
-  async exchangeKrogerAuthCode(code, redirectUri = null) {
-    try {
-      console.log('Exchanging Kroger auth code for tokens');
-      
-      // Use the provided redirect URI or fall back to the production URL
-      const finalRedirectUri = redirectUri || 'https://smart-meal-planner-multi.vercel.app/kroger/callback';
-      
-      // First try the official endpoint
-      try {
-        const resp = await axiosInstance.post('/kroger/exchange-token', { 
-          code,
-          redirect_uri: finalRedirectUri
-        });
-        console.log('Kroger token exchange successful');
-        
-        // Mark Kroger as connected in localStorage for immediate UI feedback
-        localStorage.setItem('kroger_connected', 'true');
-        
-        return resp.data;
-      } catch (mainError) {
-        console.error("Primary token exchange method failed:", mainError);
-        
-        // Try a direct exchange as fallback (if backend supports it)
-        try {
-          console.log("Attempting fallback token exchange...");
-          const fallbackResp = await axiosInstance.post('/kroger/direct-token-exchange', { 
-            code,
-            redirect_uri: finalRedirectUri
-          });
-          
-          console.log('Fallback Kroger token exchange successful');
-          localStorage.setItem('kroger_connected', 'true');
-          
-          return fallbackResp.data;
-        } catch (fallbackError) {
-          console.error("Fallback token exchange failed:", fallbackError);
-          throw mainError; // Throw the original error
-        }
-      }
-    } catch (err) {
-      console.error("Kroger token exchange error:", err);
-      localStorage.setItem('kroger_connected', 'false');
-      throw err;
-    }
-  },
-  
-  async refreshKrogerToken() {
-    try {
-      console.log('Attempting to refresh Kroger token');
-      
-      // Simple approach matching single-user app - let backend handle it
-      const resp = await axiosInstance.post('/kroger/refresh-token');
-      console.log('Kroger token refresh response:', resp.data);
-      
-      return resp.data;
-    } catch (err) {
-      console.error("Kroger token refresh error:", err);
-      throw err;
-    }
-  },
 
   async updateKrogerLocation(locationId) {
     try {
-      console.log(`Updating Kroger store location to: ${locationId}`);
+      console.log('Sending location_id:', locationId);
       
-      if (!locationId) {
-        console.error("Cannot update Kroger location: locationId is empty or null");
-        return {
-          success: false,
-          message: "Missing store location ID"
-        };
-      }
-      
-      // Simple request with just the location ID - this matches the single-user app
       const response = await axiosInstance.post('/kroger/store-location', {
-        store_location_id: locationId
+        location_id: locationId
       });
       
-      console.log('Kroger location update response:', response.data);
-      
-      // Cache in localStorage for fallback
-      localStorage.setItem('kroger_store_location_id', locationId);
-      
-      return {
-        success: true,
-        message: "Kroger store location updated successfully"
-      };
+      return response.data;
     } catch (err) {
       console.error("Kroger location update error:", err);
-      
-      // If the main endpoint fails, try the direct update endpoint as fallback
-      try {
-        console.log("Trying direct store update endpoint as fallback");
-        const directResponse = await axiosInstance.post('/kroger/direct-store-update', {
-          store_id: locationId
-        });
-        
-        if (directResponse.data && directResponse.data.success) {
-          // Still cache the location ID
-          localStorage.setItem('kroger_store_location_id', locationId);
-          
-          return {
-            success: true,
-            message: "Kroger store location updated successfully"
-          };
-        }
-      } catch (directErr) {
-        console.error("Direct update also failed:", directErr);
-      }
-      
-      // Create user-friendly error message for the failure case
-      let errorMessage = "Failed to update Kroger store location.";
-      
-      if (err.response?.status === 401) {
-        errorMessage = "Authorization error. Please log in again.";
-      } else if (err.response?.data?.detail) {
-        errorMessage = err.response.data.detail;
-      } else if (err.message) {
-        errorMessage = err.message;
-      }
-      
-      return {
-        success: false,
-        message: errorMessage
-      };
+      throw err;
     }
   },
 
   // Store Location Endpoints
   async findNearbyStores(storeType, params) {
     try {
-      console.log(`Finding ${storeType} stores near ${params.zipCode} within ${params.radius} miles`);
-      
       const response = await axiosInstance.get(`/${storeType}/stores/near`, { 
         params: {
           zip_code: params.zipCode,
           radius: params.radius
         }
       });
-      
-      console.log('Store search response:', response.data);
-      
-      // Enhanced error handling and response validation
-      if (!response.data) {
-        return {
-          success: false,
-          message: "No response data received from the server"
-        };
-      }
-      
-      // Normalize the response structure
-      if (response.data.success && Array.isArray(response.data.stores)) {
-        // Validate that each store has a location ID
-        const validatedStores = response.data.stores.map((store, index) => {
-          // Ensure every store has a location_id
-          if (!store.location_id && !store.locationId) {
-            console.warn(`Store ${index} missing location ID:`, store);
-            return {
-              ...store,
-              location_id: `unknown_${index}`  // Add a fallback ID
-            };
-          }
-          return store;
-        });
-        
-        return {
-          success: true,
-          stores: validatedStores
-        };
-      }
-      
       return response.data;
     } catch (err) {
       console.error("Store search error:", err);
+      throw err;
+    }
+  },
+  
+  exchangeKrogerAuthCode: async (code) => {
+    try {
+      console.log(`Exchanging code ${code.substring(0, 10)}... with backend`);
       
-      // Create user-friendly error message
-      let errorMessage = "Failed to find stores. Please try again later.";
+      // Make sure we're using the full path to match the backend route
+      const resp = await axiosInstance.get('/kroger/callback', {
+        params: { 
+          code,
+          state: 'from-frontend' 
+        },
+        // Adding a longer timeout for this request
+        timeout: 10000
+      });
       
-      if (err.response?.status === 401) {
-        errorMessage = "Authorization error. Please reconnect your Kroger account.";
-      } else if (err.response?.data?.message) {
-        errorMessage = err.response.data.message;
-      } else if (err.message) {
-        errorMessage = err.message;
+      return resp.data;
+    } catch (err) {
+      console.error('Error exchanging Kroger auth code:', err);
+      console.error('Error details:', {
+        message: err.message,
+        response: err.response?.data,
+        status: err.response?.status
+      });
+      throw err;
+    }
+  },
+
+  async checkKrogerCredentials() {
+    try {
+      const resp = await axiosInstance.get('/kroger/check-credentials');
+      return resp.data;
+    } catch (err) {
+      console.error('Error checking Kroger credentials:', err);
+      throw err;
+    }
+  },
+
+  // Enhanced function to handle reconnection
+  async reconnectKroger() {
+    try {
+      // Get the login URL from the backend
+      const loginUrlData = await this.getKrogerLoginUrl();
+      
+      if (loginUrlData && loginUrlData.url) {
+        // Redirect to Kroger auth page
+        window.location.href = loginUrlData.url;
+        return { success: true };
+      } else {
+        return { 
+          success: false, 
+          message: "Couldn't get Kroger login URL" 
+        };
+      }
+    } catch (err) {
+      console.error('Error reconnecting to Kroger:', err);
+      return { 
+        success: false, 
+        message: "Error reconnecting to Kroger" 
+      };
+    }
+  },
+
+  // Add a new function to refresh token explicitly
+  async refreshKrogerTokenExplicit() {
+    try {
+      console.log('Explicitly refreshing Kroger token...');
+      
+      // Try different refresh endpoints since the API structure might vary
+      let response;
+      
+      // First try the dedicated refresh endpoint
+      try {
+        response = await axiosInstance.post('/kroger/refresh-token', {}, {
+          timeout: 10000 // 10 second timeout for token refresh
+        });
+        console.log('Kroger token refreshed successfully via dedicated endpoint');
+      } catch (err) {
+        console.log('Dedicated refresh endpoint failed, trying alternative:', err.message);
+        
+        // Try the connection status endpoint which might trigger a refresh
+        try {
+          const statusResponse = await axiosInstance.get('/kroger/connection-status', {
+            timeout: 10000
+          });
+          console.log('Connection status check completed:', statusResponse.data);
+          
+          // If we got here, at least the connection check worked
+          if (statusResponse.data.is_connected) {
+            console.log('Kroger connection is valid according to status check');
+            return {
+              success: true,
+              message: "Kroger connection is valid"
+            };
+          } else {
+            // If not connected, try a more direct approach
+            throw new Error('Connection status shows not connected');
+          }
+        } catch (statusErr) {
+          console.log('Status check failed, trying auth check:', statusErr.message);
+          
+          // Last resort - try credentials check which might update tokens
+          const credResult = await this.checkKrogerCredentials();
+          
+          if (credResult.has_access_token) {
+            console.log('Credentials check shows we have valid access token');
+            return {
+              success: true,
+              message: "Kroger connection verified via credentials check"
+            };
+          } else {
+            throw new Error('All refresh methods failed');
+          }
+        }
       }
       
       return {
-        success: false,
-        message: errorMessage
+        success: true,
+        message: "Token refreshed successfully"
       };
+    } catch (err) {
+      console.error('All Kroger token refresh methods failed:', err);
+      console.log('Error details:', {
+        message: err.message,
+        code: err.code,
+        status: err.response?.status,
+        data: err.response?.data
+      });
+      
+      return {
+        success: false,
+        message: "Failed to refresh Kroger token",
+        error: err.message
+      };
+    }
+  },
+
+  completeKrogerAuth: async (tempToken) => {
+    try {
+      console.log('Completing Kroger auth with token:', tempToken);
+      const response = await axiosInstance.post('/kroger/complete-auth', {
+        temp_token: tempToken
+      });
+      return response.data;
+    } catch (err) {
+      console.error('Error completing Kroger auth:', err);
+      throw err;
     }
   },
   
