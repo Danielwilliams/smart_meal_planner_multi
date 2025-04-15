@@ -1034,99 +1034,57 @@ const apiService = {
         };
       }
       
-      // Always save the location ID to localStorage for client-side caching and fallback
+      // Simple request with just the location ID - this matches the single-user app
+      const response = await axiosInstance.post('/kroger/store-location', {
+        store_location_id: locationId
+      });
+      
+      console.log('Kroger location update response:', response.data);
+      
+      // Cache in localStorage for fallback
       localStorage.setItem('kroger_store_location_id', locationId);
-      localStorage.setItem('kroger_store_configured', 'true');
       
-      // Log the data we're sending for debugging
-      const requestData = {
-        // Send multiple variations of the parameter name to ensure one works
-        store_location_id: locationId,
-        locationId: locationId,
-        location_id: locationId,
-        storeLocationId: locationId
+      return {
+        success: true,
+        message: "Kroger store location updated successfully"
       };
+    } catch (err) {
+      console.error("Kroger location update error:", err);
       
-      console.log('Sending Kroger location update request with data:', requestData);
-      
+      // If the main endpoint fails, try the direct update endpoint as fallback
       try {
-        // Try the main endpoint first
-        const response = await axiosInstance.post('/kroger/store-location', requestData);
-        
-        console.log('Kroger location update response:', response.data);
-        
-        // Store the last successful update time
-        localStorage.setItem('kroger_location_updated_at', new Date().toISOString());
-        
-        return {
-          ...response.data,
-          success: true,  // Ensure success flag is set
-          message: response.data.message || "Kroger store location updated successfully"
-        };
-      } catch (mainEndpointErr) {
-        // If the main endpoint fails, try the direct update endpoint
-        console.warn("Main store location endpoint failed, trying direct endpoint:", mainEndpointErr);
-        
+        console.log("Trying direct store update endpoint as fallback");
         const directResponse = await axiosInstance.post('/kroger/direct-store-update', {
           store_id: locationId
         });
         
-        console.log('Direct store update response:', directResponse.data);
-        
-        // Store the last successful update time
-        localStorage.setItem('kroger_location_updated_at', new Date().toISOString());
-        
-        return {
-          ...directResponse.data,
-          success: true,
-          message: directResponse.data.message || "Kroger store location updated (direct method)"
-        };
-      }
-    } catch (err) {
-      console.error("All Kroger location update methods failed:", err);
-      
-      // Log detailed error information
-      if (err.response) {
-        console.error('Response error details:', {
-          status: err.response.status,
-          data: err.response.data,
-          headers: err.response.headers
-        });
-      } else if (err.request) {
-        console.error('Request was made but no response:', err.request);
-      } else {
-        console.error('Error setting up request:', err.message);
+        if (directResponse.data && directResponse.data.success) {
+          // Still cache the location ID
+          localStorage.setItem('kroger_store_location_id', locationId);
+          
+          return {
+            success: true,
+            message: "Kroger store location updated successfully"
+          };
+        }
+      } catch (directErr) {
+        console.error("Direct update also failed:", directErr);
       }
       
-      // Create user-friendly error message
+      // Create user-friendly error message for the failure case
       let errorMessage = "Failed to update Kroger store location.";
       
       if (err.response?.status === 401) {
         errorMessage = "Authorization error. Please log in again.";
-      } else if (err.response?.status === 400) {
-        errorMessage = err.response.data?.detail || "Invalid request format";
       } else if (err.response?.data?.detail) {
         errorMessage = err.response.data.detail;
       } else if (err.message) {
         errorMessage = err.message;
       }
       
-      // Last resort method - we've already stored the location in localStorage, so return the cached location info
-      // If backend is unreachable, pretend the update succeeded since we'll retry on next API call
-      if (!err.response || err.response.status >= 500) {
-        console.warn("Backend unavailable, using client-side fallback from localStorage");
-        return {
-          success: true,
-          message: "Stored location choice. The server will be updated when connection is restored.",
-          using_fallback: true,
-          location_id: locationId
-        };
-      }
-      
       return {
         success: false,
-        message: errorMessage,
-        error_details: err.response?.data || {}
+        message: errorMessage
       };
     }
   },
