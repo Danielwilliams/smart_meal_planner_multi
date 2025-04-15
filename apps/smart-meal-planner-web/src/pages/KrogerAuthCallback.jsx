@@ -46,13 +46,23 @@ function KrogerAuthCallback() {
           console.log("Sending code to backend:", authCallbackUrl);
           
           try {
-            // Using fetch instead of a link to capture the response
-            const response = await fetch(authCallbackUrl, {
-              method: 'GET',
+            console.log("Using POST method with fetch API");
+            
+            // Make a POST request to the auth-callback endpoint instead of GET
+            const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://smartmealplannermulti-production.up.railway.app';
+            const postUrl = `${API_BASE_URL}/kroger/auth-callback`;
+            
+            const response = await fetch(postUrl, {
+              method: 'POST',
               credentials: 'include',
               headers: {
-                'Accept': 'application/json'
-              }
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                code: code,
+                redirect_uri: 'https://smart-meal-planner-multi.vercel.app/kroger/callback'
+              })
             });
             
             if (!response.ok) {
@@ -78,10 +88,60 @@ function KrogerAuthCallback() {
           } catch (fetchError) {
             console.error("Error using fetch API:", fetchError);
             
-            // Fall back to direct browser navigation
-            console.log("Falling back to direct browser navigation");
-            window.location.href = authCallbackUrl;
-            return;
+            // Try one more approach with axios
+            try {
+              console.log("Trying axiosInstance from apiService");
+              const { axiosInstance } = await import('../services/apiService');
+              
+              const response = await axiosInstance.post('/kroger/auth-callback', {
+                code: code,
+                redirect_uri: 'https://smart-meal-planner-multi.vercel.app/kroger/callback'
+              });
+              
+              console.log("Axios response:", response.data);
+              
+              // Mark as connected in localStorage
+              localStorage.setItem('kroger_connected', 'true');
+              
+              // Set success state
+              setStatus('success');
+              setMessage(response.data.message || 'Kroger account connected successfully!');
+              
+              // Redirect to cart page after short delay
+              setTimeout(() => {
+                navigate('/cart');
+              }, 2000);
+              
+              return;
+            } catch (axiosError) {
+              console.error("Error using axios:", axiosError);
+              
+              // Last resort: use the apiService directly
+              try {
+                console.log("Trying apiService.exchangeKrogerAuthCode");
+                const apiService = await import('../services/apiService').then(m => m.default);
+                
+                const result = await apiService.exchangeKrogerAuthCode(code);
+                console.log("apiService response:", result);
+                
+                // Mark as connected in localStorage
+                localStorage.setItem('kroger_connected', 'true');
+                
+                // Set success state
+                setStatus('success');
+                setMessage(result.message || 'Kroger account connected successfully!');
+                
+                // Redirect to cart page after short delay
+                setTimeout(() => {
+                  navigate('/cart');
+                }, 2000);
+                
+                return;
+              } catch (apiServiceError) {
+                console.error("All auth methods failed:", apiServiceError);
+                throw apiServiceError; // Re-throw to be caught by outer catch
+              }
+            }
           }
         } catch (err) {
           console.error("Error processing auth code:", err);
