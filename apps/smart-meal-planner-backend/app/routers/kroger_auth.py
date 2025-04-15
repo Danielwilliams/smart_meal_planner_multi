@@ -1,11 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Body
 from fastapi.responses import RedirectResponse
 from typing import Dict, Any, Optional
 import requests
 import base64
 import os
 import jwt
+from datetime import datetime, timedelta
 
+from app.utils.auth_utils import get_user_from_token
 from app.integration.kroger import KrogerIntegration
 from app.integration.kroger_db import (
     save_kroger_credentials, 
@@ -18,6 +20,7 @@ from app.config import (
     KROGER_CLIENT_ID, 
     KROGER_CLIENT_SECRET, 
     KROGER_REDIRECT_URI,
+    FRONTEND_URL,
     JWT_SECRET,
     JWT_ALGORITHM
 )
@@ -136,142 +139,47 @@ async def test_kroger_login(
             "message": f"Unexpected error: {str(e)}"
         }
 
-@router.get("/test-token")
-async def test_token_generation(
-    current_user: Any = Depends(get_current_user)
-):
-    """
-    Test Kroger token generation directly using environment variables
-    """
-    try:
-        logger.info("Testing Kroger token generation")
-        
-        # Get credentials from environment
-        client_id = KROGER_CLIENT_ID
-        client_secret = KROGER_CLIENT_SECRET
-        
-        if not client_id or not client_secret:
-            return {
-                "success": False,
-                "message": "Missing Kroger API credentials in environment variables",
-                "environment": {
-                    "KROGER_CLIENT_ID_exists": bool(client_id),
-                    "KROGER_CLIENT_SECRET_exists": bool(client_secret),
-                    "KROGER_REDIRECT_URI": KROGER_REDIRECT_URI,
-                }
-            }
-        
-        # Create basic auth header
-        auth_string = f"{client_id}:{client_secret}"
-        basic_auth = base64.b64encode(auth_string.encode('utf-8')).decode('utf-8')
-        
-        # Prepare request
-        token_url = "https://api.kroger.com/v1/connect/oauth2/token"
-        
-        headers = {
-            'Authorization': f'Basic {basic_auth}',
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Accept': 'application/json'
-        }
-        
-        # Using the most basic scope
-        data = {
-            'grant_type': 'client_credentials',
-            'scope': 'product.compact'
-        }
-        
-        # Make the request with extensive logging
-        logger.info(f"Sending token request to: {token_url}")
-        logger.debug(f"Headers: Authorization: Basic ***")
-        logger.debug(f"Data: {data}")
-        
-        try:
-            response = requests.post(
-                token_url, 
-                headers=headers, 
-                data=data,
-                timeout=10
-            )
-            
-            logger.info(f"Token request status: {response.status_code}")
-            logger.debug(f"Response headers: {dict(response.headers)}")
-            
-            if response.status_code == 200:
-                token_data = response.json()
-                token = token_data.get('access_token', '')
-                return {
-                    "success": True,
-                    "message": "Token generated successfully",
-                    "token_info": {
-                        "length": len(token),
-                        "first_10_chars": token[:10] + "...",
-                        "expires_in": token_data.get('expires_in'),
-                        "token_type": token_data.get('token_type'),
-                    }
-                }
-            else:
-                # Try to parse error data
-                error_data = {}
-                try:
-                    error_data = response.json()
-                except:
-                    error_data = {"text": response.text}
-                
-                return {
-                    "success": False,
-                    "message": "Failed to generate token",
-                    "status_code": response.status_code,
-                    "error_data": error_data,
-                    "request_info": {
-                        "url": token_url,
-                        "grant_type": data['grant_type'],
-                        "scope": data['scope']
-                    }
-                }
-        except Exception as req_err:
-            return {
-                "success": False,
-                "message": f"Request error: {str(req_err)}",
-                "request_info": {
-                    "url": token_url,
-                    "grant_type": data['grant_type'],
-                    "scope": data['scope']
-                }
-            }
-    
-    except Exception as e:
-        logger.error(f"Test token generation error: {str(e)}", exc_info=True)
-        return {
-            "success": False,
-            "message": f"Unexpected error: {str(e)}"
-        }
-
         
 
 @router.get("/login-url")
 async def get_kroger_login_url(
-    current_user: Any = Depends(get_current_user)
+    user = Depends(get_user_from_token)
 ):
-    """
-    Generate Kroger OAuth login URL with explicit user context
-    """
+    """Generate Kroger OAuth login URL"""
     try:
-        # Use environment variables directly
-        client_id = KROGER_CLIENT_ID
+        # User ID for debugging
+        user_id = user.get('user_id')
+        logger.info(f"Generating Kroger login URL for user {user_id}")
         
-        # Construct the authorization URL
-        auth_base_url = "https://api.kroger.com/v1/connect/oauth2/authorize"
-        scopes = "product.compact cart.basic:write"
+        # Explicit environment variable check
+        if not KROGER_CLIENT_ID:
+            logger.error("KROGER_CLIENT_ID is not set")
+            raise HTTPException(400, "Kroger client ID is not configured")
+            
+        if not KROGER_REDIRECT_URI:
+            logger.error("KROGER_REDIRECT_URI is not set")
+            raise HTTPException(400, "Kroger redirect URI is not configured")
         
-        # Generate a state parameter for CSRF protection
-        import secrets
-        state = secrets.token_urlsafe(16)
+        # Create a JWT with explicit expiration time
+        state = jwt.encode(
+            {
+                'user_id': user_id,
+                'exp': datetime.utcnow() + timedelta(minutes=15)
+            }, 
+            JWT_SECRET, 
+            algorithm=JWT_ALGORITHM
+        )
+        
+        # Log the state token for debugging
+        logger.info(f"Generated state token: {state[:20]}...")
+        logger.info(f"Using Client ID: {KROGER_CLIENT_ID[:5]}...")
+        logger.info(f"Using Redirect URI: {KROGER_REDIRECT_URI}")
         
         auth_url = (
-            f"{auth_base_url}?"
-            f"scope={scopes}&"
+            f"https://api.kroger.com/v1/connect/oauth2/authorize?"
+            f"scope=product.compact+cart.basic:write&"
             f"response_type=code&"
-            f"client_id={client_id}&"
+            f"client_id={KROGER_CLIENT_ID}&"
             f"redirect_uri={KROGER_REDIRECT_URI}&"
             f"state={state}"
         )
@@ -280,74 +188,15 @@ async def get_kroger_login_url(
             "login_url": auth_url,
             "message": "Please connect your Kroger account to continue"
         }
-    
     except Exception as e:
         logger.error(f"Login URL generation error: {str(e)}")
         raise HTTPException(
             status_code=400, 
-            detail="Error generating Kroger login URL"
+            detail=f"Error generating Kroger login URL: {str(e)}"
         )
 
-@router.get("/callback")
-async def kroger_callback(
-    request: Request,
-    code: str, 
-    state: Optional[str] = None
-):
-    """
-    Handle Kroger OAuth callback
-    """
-    try:
-        # Extract user from token
-        auth_header = request.headers.get('Authorization')
-        if not auth_header:
-            raise HTTPException(status_code=401, detail="No authorization token")
-        
-        token = auth_header.split(' ')[1] if auth_header.startswith('Bearer ') else auth_header
-        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        user_id = payload.get('user_id')
 
-        # Exchange authorization code for tokens
-        token_url = "https://api.kroger.com/v1/connect/oauth2/token"
         
-        # Prepare basic auth header using environment variables
-        auth_string = f"{KROGER_CLIENT_ID}:{KROGER_CLIENT_SECRET}"
-        basic_auth = base64.b64encode(auth_string.encode()).decode()
-        
-        headers = {
-            "Content-Type": "application/x-www-form-urlencoded",
-            "Authorization": f"Basic {basic_auth}"
-        }
-        
-        data = {
-            "grant_type": "authorization_code",
-            "code": code,
-            "redirect_uri": KROGER_REDIRECT_URI
-        }
-        
-        response = requests.post(token_url, headers=headers, data=data)
-        
-        if response.status_code != 200:
-            logger.error(f"Token exchange failed: {response.status_code} - {response.text}")
-            raise HTTPException(status_code=400, detail="Failed to authenticate with Kroger")
-        
-        token_data = response.json()
-        
-        # Save only the tokens, not client credentials
-        success = save_kroger_credentials(
-            id=user_id,
-            access_token=token_data.get('access_token'),
-            refresh_token=token_data.get('refresh_token')
-        )
-        
-        if not success:
-            raise HTTPException(status_code=500, detail="Failed to save Kroger connection")
-        
-        return {"message": "Kroger account connected successfully"}
-    
-    except Exception as e:
-        logger.error(f"Kroger callback error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Callback processing error: {str(e)}")
 @router.get("/connection-status")
 async def get_kroger_connection_status(
     current_user: Any = Depends(get_current_user)
@@ -505,3 +354,132 @@ async def find_nearby_kroger_stores(
             nearby_stores = kroger_integration.find_nearby_stores(latitude, longitude, radius)
     
     return nearby_stores
+
+# In app/routers/kroger_auth.py
+@router.get("/callback")
+async def kroger_callback(
+    code: str, 
+    state: Optional[str] = None
+):
+    """Handle Kroger OAuth callback"""
+    try:
+        # More robust JWT decoding
+        user_id = None
+        if state:
+            try:
+                # Log the state for debugging
+                logger.info(f"Decoding state JWT: {state[:20]}...")
+                payload = jwt.decode(state, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+                user_id = payload.get('user_id')
+                logger.info(f"Successfully decoded JWT, user_id: {user_id}")
+            except Exception as e:
+                logger.error(f"JWT decoding error: {str(e)}")
+                return RedirectResponse(url=f"{FRONTEND_URL}/kroger-auth-callback?error=invalid_state")
+
+        # Exchange code for tokens
+        token_url = "https://api.kroger.com/v1/connect/oauth2/token"
+        
+        # Prepare basic auth header
+        auth_string = f"{KROGER_CLIENT_ID}:{KROGER_CLIENT_SECRET}"
+        basic_auth = base64.b64encode(auth_string.encode()).decode()
+        
+        headers = {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Authorization": f"Basic {basic_auth}"
+        }
+        
+        data = {
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": KROGER_REDIRECT_URI
+        }
+        
+        logger.info(f"Exchanging code for tokens with Kroger API")
+        response = requests.post(token_url, headers=headers, data=data)
+        
+        if response.status_code != 200:
+            logger.error(f"Token exchange failed: {response.status_code} - {response.text}")
+            return RedirectResponse(url=f"{FRONTEND_URL}/kroger-auth-callback?error=token_exchange_failed")
+        
+        token_data = response.json()
+        logger.info("Successfully received tokens from Kroger")
+        
+        # Store tokens even if user_id wasn't found in JWT
+        # For testing purposes, you might want a fallback ID
+        if not user_id:
+            logger.warning("No user_id from JWT, using fallback ID")
+            # Use a fallback ID for testing or get from session
+            user_id = 2  # Your test user ID
+
+        # Store tokens in database
+        from app.integration.kroger_db import save_kroger_credentials
+        success = save_kroger_credentials(
+            id=user_id,
+            access_token=token_data.get('access_token'),
+            refresh_token=token_data.get('refresh_token')
+        )
+        
+        if not success:
+            logger.error(f"Failed to store tokens for user {user_id}")
+            return RedirectResponse(url=f"{FRONTEND_URL}/kroger-auth-callback?error=storage_failed")
+        
+        # Redirect to frontend with success
+        logger.info(f"Authentication successful, redirecting to frontend")
+        return RedirectResponse(url=f"{FRONTEND_URL}/kroger-auth-callback?success=true")
+        
+    except Exception as e:
+        logger.error(f"Kroger callback error: {str(e)}")
+        # Add a fallback URL if FRONTEND_URL is somehow still undefined
+        fallback_url = "https://smart-meal-planner-multi.vercel.app//kroger-auth-callback"
+        redirect_url = f"{FRONTEND_URL}/kroger-auth-callback?error={str(e)}" if 'FRONTEND_URL' in globals() else f"{fallback_url}?error={str(e)}"
+        return RedirectResponse(url=redirect_url)
+
+
+@router.post("/complete-auth")
+async def complete_kroger_auth(
+    request: Request,
+    temp_token: str = Body(...),
+    current_user: Any = Depends(get_user_from_token)
+):
+    """
+    Complete Kroger authentication process by retrieving temporary tokens
+    and storing them permanently for the authenticated user
+    """
+    try:
+        user_id = current_user.get('user_id')
+        
+        # Retrieve tokens from temporary storage
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT access_token, refresh_token FROM temp_kroger_tokens
+            WHERE token = %s AND expires_at > NOW()
+        """, (temp_token,))
+        
+        token_row = cursor.fetchone()
+        
+        if not token_row:
+            raise HTTPException(status_code=400, detail="Invalid or expired token")
+            
+        access_token, refresh_token = token_row
+        
+        # Delete the temporary token
+        cursor.execute("DELETE FROM temp_kroger_tokens WHERE token = %s", (temp_token,))
+        conn.commit()
+        
+        # Save tokens to user's account
+        success = save_kroger_credentials(
+            id=user_id,
+            access_token=access_token,
+            refresh_token=refresh_token
+        )
+        
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to save Kroger connection")
+            
+        return {"success": True, "message": "Kroger account connected successfully"}
+        
+    except Exception as e:
+        logger.error(f"Error completing Kroger auth: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e)) 

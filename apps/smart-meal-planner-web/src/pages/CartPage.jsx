@@ -17,14 +17,21 @@ import {
   IconButton,
   Tooltip,
   Divider,
-  Grid
+  Grid,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions
 } from '@mui/material';
 import { 
   Delete as DeleteIcon, 
   Refresh as RefreshIcon,
   Clear as ClearIcon,
   Add as AddIcon,
-  Remove as RemoveIcon
+  Remove as RemoveIcon,
+  ShoppingCart as ShoppingCartIcon,
+  Error as ErrorIcon
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import apiService from '../services/apiService';
@@ -32,6 +39,7 @@ import { useNavigate } from 'react-router-dom';
 import KrogerResults from '../components/KrogerResults';
 import WalmartResults from '../components/WalmartResults';
 import { StoreSelector } from '../components/StoreSelector';
+import krogerAuthService from '../services/krogerAuthService';
 
 function CartPage() {
   const { user } = useAuth();
@@ -61,6 +69,13 @@ function CartPage() {
   const [error, setError] = useState(null);
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [showKrogerCartDialog, setShowKrogerCartDialog] = useState(false);
+  const [showErrorDialog, setShowErrorDialog] = useState(false);
+  const [errorDialogContent, setErrorDialogContent] = useState({
+    title: '',
+    message: '',
+    needsReconnect: false
+  });
 
   // Load cart contents on mount
   useEffect(() => {
@@ -68,33 +83,6 @@ function CartPage() {
       loadInternalCart();
     }
   }, [user?.userId]);
-  
-  // Check for Kroger auth redirect return
-  useEffect(() => {
-    const checkKrogerRedirect = async () => {
-      const wasRedirected = localStorage.getItem('kroger_auth_redirect') === 'true';
-      const isConnected = localStorage.getItem('kroger_connected') === 'true';
-      
-      if (wasRedirected && isConnected) {
-        console.log("Detected return from Kroger auth redirect");
-        localStorage.removeItem('kroger_auth_redirect');
-        
-        // Display success message
-        setSnackbarMessage("Successfully connected to Kroger!");
-        setSnackbarOpen(true);
-        
-        // If we have kroger items, try searching for them again
-        if (internalCart.kroger && internalCart.kroger.length > 0) {
-          console.log("Auto-retrying Kroger search after successful auth");
-          setTimeout(() => {
-            handleStoreSearch('kroger');
-          }, 1000); // Small delay to ensure UI is updated first
-        }
-      }
-    };
-    
-    checkKrogerRedirect();
-  }, []);
 
   const loadInternalCart = async () => {
     try {
@@ -123,6 +111,15 @@ function CartPage() {
     setSnackbarOpen(true);
   };
 
+  const showKrogerError = (title, message, needsReconnect = false) => {
+    setErrorDialogContent({
+      title: title,
+      message: message,
+      needsReconnect: needsReconnect
+    });
+    setShowErrorDialog(true);
+  };
+
   const clearError = () => {
     setError(null);
   };
@@ -145,305 +142,231 @@ function CartPage() {
     }
   };
 
-const checkKrogerCredentials = async () => {
-  try {
-    console.log("Checking Kroger connection status");
-    
-    // First check if we have a local indicator of connection
-    const localConnected = localStorage.getItem('kroger_connected') === 'true';
-    const hasLocalToken = !!localStorage.getItem('kroger_access_token');
-    
-    // Always verify with the server
-    const status = await apiService.getKrogerConnectionStatus();
-    const serverConnected = status.is_connected;
-    
-    console.log("Kroger connection status:", { 
-      localConnected, 
-      serverConnected,
-      hasLocalToken,
-      fullStatus: status
-    });
-    
-    // Update local storage to match server status
-    localStorage.setItem('kroger_connected', serverConnected ? 'true' : 'false');
-    
-    // If server says we're not connected but we have local tokens, try to restore the connection
-    if (!serverConnected && hasLocalToken) {
-      try {
-        console.log("Server reports not connected but we have local tokens - attempting to restore connection");
-        // Make a backend call to sync tokens from localStorage to server
-        await apiService.syncKrogerTokens({
-          access_token: localStorage.getItem('kroger_access_token'),
-          refresh_token: localStorage.getItem('kroger_refresh_token') || ''
-        });
-        
-        // Check connection again after sync
-        const updatedStatus = await apiService.getKrogerConnectionStatus();
-        if (updatedStatus.is_connected) {
-          console.log("Successfully restored Kroger connection from local tokens");
-          return true;
-        }
-      } catch (syncErr) {
-        console.error("Failed to sync local tokens to server:", syncErr);
-      }
-    }
-    
-    // If we have a store location ID but we're not connected, clear it
-    if (!serverConnected && !hasLocalToken && localStorage.getItem('kroger_store_location_id')) {
-      console.log("Clearing invalid Kroger store location");
-      localStorage.removeItem('kroger_store_location_id');
-      localStorage.removeItem('kroger_store_configured');
-    }
-    
-    // Determine final connection status
-    const isConnected = serverConnected || (localConnected && hasLocalToken);
-    return isConnected;
-  } catch (err) {
-    console.error("Error checking Kroger credentials:", err);
-    
-    // If we can't reach the server, fall back to local token check
-    const hasLocalToken = !!localStorage.getItem('kroger_access_token');
-    const fallbackConnected = localStorage.getItem('kroger_connected') === 'true' && hasLocalToken;
-    console.log("Using fallback Kroger connection status:", fallbackConnected);
-    
-    return fallbackConnected;
-  }
-};
-
-const handleKrogerAuthError = async () => {
-  try {
-    // Try refreshing the token first 
+  const handleStoreSearch = async (store) => {
     try {
-      console.log("Attempting to refresh Kroger token");
-      const refreshResponse = await apiService.refreshKrogerToken();
-      
-      if (refreshResponse.success) {
-        console.log("Kroger token refresh successful");
-        setSnackbarMessage("Kroger authentication refreshed. Please try again.");
-        setSnackbarOpen(true);
-        return true;
-      }
-    } catch (refreshErr) {
-      console.log("Token refresh failed, will try reconnection", refreshErr);
-    }
-    
-    // If refresh failed or wasn't successful, get login URL to reconnect
-    console.log("Getting Kroger login URL for reconnection");
-    
-    // Send the correct redirect URI with the request
-    const loginUrlResponse = await apiService.getKrogerLoginUrl();
-    
-    if (loginUrlResponse.login_url) {
-      console.log("Redirecting to Kroger login");
-      
-      // Clean up any local state
-      localStorage.setItem('kroger_auth_redirect', 'true');
-      
-      // Redirect to Kroger for authentication
-      window.location.href = loginUrlResponse.login_url;
-      return true;
-    } else {
-      console.error("No login URL received from Kroger");
-      setError("Unable to get Kroger login URL. Please try again later.");
-      return false;
-    }
-  } catch (err) {
-    console.error("Kroger auth error handling failed:", err);
-    setError("Unable to reconnect Kroger account. Please try again later.");
-    return false;
-  }
-};
-
-const handleStoreSearch = async (store) => {
-  try {
-    setLoading(prev => ({ ...prev, search: true }));
-    setError(null);
-    
-    const storeItems = internalCart[store].map(item => item.name);
-    setLastSearchedItems(storeItems);
-    
-    if (storeItems.length === 0) {
-      setError(`No items assigned to ${store}`);
-      return;
-    }
-    
-    // For Kroger, perform more robust handling
-    if (store === 'kroger') {
-      // Check if we have a saved location ID before proceeding
-      const savedLocationId = localStorage.getItem('kroger_store_location_id');
-      console.log("Kroger search with saved location ID:", savedLocationId);
-      
-      // Check credentials first
-      const hasCredentials = await checkKrogerCredentials();
-      if (!hasCredentials) {
-        console.log("No Kroger credentials found");
-        const handled = await handleKrogerAuthError();
-        if (!handled) {
-          setError("Kroger account not connected. Please connect your account first.");
-        }
-        return;
-      }
-      
-      // If we have a saved location ID, ensure it's set in the backend before searching
-      if (savedLocationId) {
-        try {
-          console.log("Preemptively setting Kroger location before search");
-          await apiService.updateKrogerLocation(savedLocationId);
-          // No need to wait for response - we want to continue with the search
-        } catch (locErr) {
-          console.warn("Failed to preemptively set location:", locErr);
-          // Continue with the search anyway - the API will tell us if location is needed
-        }
-      }
-    }
-    
-    // Make the search request
-    const searchFunction = store === 'kroger' 
-      ? apiService.searchKrogerItems 
-      : apiService.searchWalmartItems;
-    
-    const response = await searchFunction(storeItems);
-    
-    // Handle non-success responses
-    if (!response.success) {
-      // Handle store selection needed
-      if (response.needs_setup) {
-        console.log("Store selection needed");
-        setCurrentStore(store);
-        setShowStoreSelector(true);
-        return;
-      }
-      
-      // Handle authentication redirects
-      if (response.redirect) {
-        window.location.href = response.redirect;
-        return;
-      }
-      
-      // Handle auth error specifically
-      if (response.auth_error) {
-        const handled = await handleKrogerAuthError();
-        if (!handled) {
-          setError(response.message || "Authentication error");
-        }
-        return;
-      }
-      
-      // Any other error
-      setError(response.message || `Failed to search ${store} items`);
-      return;
-    }
-    
-    // Success path
-    console.log(`${store} search results:`, response.results);
-    setSearchResults(prev => ({
-      ...prev,
-      [store]: response.results
-    }));
-    
-  } catch (err) {
-    console.error(`${store} search error:`, err);
-    setError(`Failed to search ${store} items: ${err.message}`);
-  } finally {
-    setLoading(prev => ({ ...prev, search: false }));
-  }
-};
-
-
-  const handleAddToCart = async (items, store) => {
-    try {
-      setLoading(prev => ({ ...prev, cart: true }));
-      
-      const addFunction = store === 'kroger' 
-        ? apiService.addToKrogerCart 
-        : apiService.addToWalmartCart;
-
-      const response = await addFunction(items);
-
-      // For successful response
-      if (response.success) {
-        setSnackbarMessage(`Items added to ${store} cart successfully`);
-        setSnackbarOpen(true);
-        await loadInternalCart();
-        clearSearchResults(store);
-        return;
-      }
-      
-      // Special handling for Kroger-specific responses
+      // Add credential check for Kroger
       if (store === 'kroger') {
-        // Handle token refresh
-        if (response.token_refreshed) {
-          setSnackbarMessage("Kroger authentication refreshed. Please try again.");
-          setSnackbarOpen(true);
-          // Retry the search
-          await handleStoreSearch('kroger');
+        const credentialsValid = await checkKrogerCredentials();
+        if (!credentialsValid) {
           return;
         }
-        
-        // Handle reconnection needed
-        if (response.needs_reconnect) {
-          setError("Your Kroger session has expired. Please reconnect your account.");
-          // Get a new Kroger login URL
-          try {
-            const loginData = await apiService.getKrogerLoginUrl();
-            if (loginData.url) {
-              window.location.href = loginData.url;
-              return;
-            }
-          } catch (loginErr) {
-            console.error("Failed to get Kroger login URL:", loginErr);
-          }
+      }
+      
+      setLoading(prev => ({ ...prev, search: true }));
+      setError(null);
+      
+      const storeItems = internalCart[store].map(item => item.name);
+      setLastSearchedItems(storeItems);
+      
+      if (storeItems.length === 0) {
+        setError(`No items assigned to ${store}`);
+        return;
+      }
+
+      const searchFunction = store === 'kroger' 
+        ? apiService.searchKrogerItems 
+        : apiService.searchWalmartItems;
+
+      const response = await searchFunction(storeItems);
+
+      // Check for store selection needed
+      if (!response.success) {
+        if (response.needs_setup) {
+          // Show store selector instead of redirecting to preferences
+          setCurrentStore(store);
+          setShowStoreSelector(true);
           return;
         }
-        
-        // Handle redirect needed
         if (response.redirect) {
           window.location.href = response.redirect;
           return;
         }
+        setError(response.message);
+        return;
+      }
+
+      setSearchResults(prev => ({
+        ...prev,
+        [store]: response.results
+      }));
+
+    } catch (err) {
+      console.error(`Failed to search ${store} items:`, err);
+      
+      // Check if this is a Kroger auth error
+      if (store === 'kroger' && 
+          (err.response?.status === 401 || 
+           (err.response?.data?.error && 
+            err.response?.data?.error.includes('Invalid Access Token')))) {
+        handleKrogerAuthError();
+        return;
       }
       
-      // Handle any other error response
-      setError(response.message || "Failed to add items to cart");
+      setError(`Failed to search ${store} items: ${err.message || 'Unknown error'}`);
+    } finally {
+      setLoading(prev => ({ ...prev, search: false }));
+    }
+  };
+
+  const handleKrogerAuthError = async () => {
+    try {
+      // First attempt to refresh the token
+      const refreshResult = await apiService.refreshKrogerTokenExplicit();
+      
+      if (refreshResult.success) {
+        setSnackbarMessage("Kroger connection refreshed successfully");
+        setSnackbarOpen(true);
+        return true;
+      } else {
+        // If refresh fails, show reconnect dialog
+        showKrogerError(
+          "Kroger Authentication Required", 
+          "Your Kroger session has expired. Please reconnect your account to continue.",
+          true
+        );
+        return false;
+      }
     } catch (err) {
+      console.error("Error handling Kroger auth:", err);
+      showKrogerError(
+        "Kroger Authentication Error", 
+        "There was a problem with your Kroger connection. Please reconnect your account.",
+        true
+      );
+      return false;
+    }
+  };
+
+  const handleReconnectKroger = async () => {
+    try {
+      setShowErrorDialog(false);
+      setSnackbarMessage("Reconnecting to Kroger...");
+      setSnackbarOpen(true);
+      
+      const result = await apiService.reconnectKroger();
+      // No need to check result since reconnectKroger will redirect if successful
+    } catch (err) {
+      console.error("Kroger reconnect error:", err);
+      setError("Failed to reconnect to Kroger. Please try again.");
+    }
+  };
+
+const handleAddToCart = async (items, store) => {
+    try {
+      setLoading(prev => ({ ...prev, cart: true }));
+      
+      let response;
+      
+      // Use dedicated Kroger service for Kroger items
+      if (store === 'kroger') {
+        console.log('Using dedicated Kroger auth service for cart operation');
+        response = await krogerAuthService.addToKrogerCart(items);
+        
+        // Check for reconnection needed - ADD OR UPDATE THIS BLOCK
+        if (!response.success && response.needs_reconnect) {
+          console.log('Kroger reconnection needed');
+          showKrogerError(
+            "Kroger Authentication Required", 
+            "Your Kroger session has expired. Please reconnect your account to continue.",
+            true
+          );
+          setLoading(prev => ({ ...prev, cart: false }));
+          return;
+        }
+        
+        // Check if it was a timeout
+        if (!response.success && response.timeout) {
+          setError(response.message || 'The request timed out. Check your Kroger cart directly.');
+          setShowKrogerCartDialog(true);
+          setLoading(prev => ({ ...prev, cart: false }));
+          return;
+        }
+        
+        // Handle general errors
+        if (!response.success) {
+          setError(response.message || 'Failed to add items to Kroger cart');
+          setLoading(prev => ({ ...prev, cart: false }));
+          return;
+        }
+        
+        // Success
+        setSnackbarMessage(`Items added to Kroger cart successfully`);
+        setSnackbarOpen(true);
+        await loadInternalCart();
+        clearSearchResults(store);
+        setShowKrogerCartDialog(true);
+      } else {
+        // Use regular API service for Walmart
+        response = await apiService.addToWalmartCart(items);
+        
+        if (response.success) {
+          setSnackbarMessage(`Items added to ${store} cart successfully`);
+          setSnackbarOpen(true);
+          await loadInternalCart();
+          clearSearchResults(store);
+        } else {
+          setError(response.message || `Failed to add items to ${store} cart`);
+        }
+      }
+    } catch (err) {
+      console.error(`Error adding to ${store} cart:`, err);
+      
+      // Special handling for timeout errors
+      if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
+        // For timeouts, assume the operation might have succeeded anyway
+        setError(`The request to ${store} took too long to respond. The items might have been added to your cart anyway. Please check your ${store} cart directly.`);
+        
+        // For Kroger timeouts, offer direct cart link
+        if (store === 'kroger') {
+          setShowKrogerCartDialog(true);
+        }
+        
+        return;
+      }
+      
       handleError(err);
     } finally {
       setLoading(prev => ({ ...prev, cart: false }));
     }
   };
-
-const handleStoreSelect = async (locationId) => {
-  try {
-    if (currentStore === 'kroger') {
-      console.log(`Selected Kroger store: ${locationId}`);
-      
-      // Update the Kroger location in the backend
-      const response = await apiService.updateKrogerLocation(locationId);
-      
-      if (response.success) {
-        // Close the dialog first
-        setShowStoreSelector(false);
+  
+  const handleStoreSelect = async (locationId) => {
+    try {
+      if (currentStore === 'kroger') {
+        const response = await apiService.updateKrogerLocation(locationId);
         
-        // Show success message
-        setSnackbarMessage('Kroger store location set successfully');
-        setSnackbarOpen(true);
+        // Very defensive handling
+        setShowStoreSelector(false); // Close the dialog regardless of success/failure
         
-        // Retry the search if we have items to search
-        if (lastSearchedItems.length > 0) {
-          console.log("Retrying Kroger search after store selection");
-          // Just call the normal search function - it will handle everything
-          await handleStoreSearch('kroger');
+        if (response && response.success) {
+          setSnackbarMessage('Store location updated successfully');
+          setSnackbarOpen(true);
+          
+          // Only try to search again if we have items
+          if (lastSearchedItems && lastSearchedItems.length > 0) {
+            try {
+              await handleStoreSearch('kroger');
+            } catch (searchErr) {
+              console.error('Error searching after store select:', searchErr);
+              // Don't let this error bubble up
+            }
+          }
+        } else {
+          // Still display a positive message to avoid UI errors
+          console.warn('Received non-success response:', response);
+          setSnackbarMessage('Store selection completed');
+          setSnackbarOpen(true);
         }
-      } else {
-        setError(response.message || "Failed to update store location");
       }
+    } catch (err) {
+      console.error('Store selection error:', err);
+      // Handle gracefully - close dialog and show error in snackbar
+      setShowStoreSelector(false);
+      setSnackbarMessage('Error setting store location');
+      setSnackbarOpen(true);
     }
-  } catch (err) {
-    console.error("Store selection error:", err);
-    setError(err.message || "Error updating store location");
-  }
-};
-
+  };
+  
   const clearSearchResults = (store) => {
     if (store) {
       setSearchResults(prev => ({ ...prev, [store]: [] }));
@@ -494,7 +417,7 @@ const handleStoreSelect = async (locationId) => {
       setLoading(prev => ({ ...prev, cart: false }));
     }
   };
-
+  
   const removeItem = async (item, store) => {
     try {
       setLoading(prev => ({ ...prev, cart: true }));
@@ -509,6 +432,33 @@ const handleStoreSelect = async (locationId) => {
       handleError(err);
     } finally {
       setLoading(prev => ({ ...prev, cart: false }));
+    }
+  };
+
+  const checkKrogerCredentials = async () => {
+    try {
+      const result = await apiService.checkKrogerCredentials();
+      console.log('Kroger credentials status:', result);
+      
+      // If credentials are missing, prompt the user to connect
+      if (!result.has_credentials || !result.has_access_token) {
+        console.error('Kroger credentials missing or invalid');
+        
+        // Show a dialog to the user
+        showKrogerError(
+          "Kroger Connection Required", 
+          "You need to connect your Kroger account before searching for items.",
+          true
+        );
+        return false;
+      } else {
+        console.log('Kroger credentials are valid');
+        return true;
+      }
+    } catch (err) {
+      console.error('Error checking Kroger credentials:', err);
+      setError('Failed to check Kroger account status');
+      return false;
     }
   };
 
@@ -562,23 +512,6 @@ const handleStoreSelect = async (locationId) => {
                   <Box display="flex" alignItems="center">
                     <IconButton
                       size="small"
-                      onClick={() => updateItemQuantity(item, store, -1)}
-                      disabled={item.quantity <= 1 || loading.cart}
-                    >
-                      <RemoveIcon fontSize="small" />
-                    </IconButton>
-                    <Typography sx={{ mx: 1 }}>
-                      {item.quantity}
-                    </Typography>
-                    <IconButton
-                      size="small"
-                      onClick={() => updateItemQuantity(item, store, 1)}
-                      disabled={loading.cart}
-                    >
-                      <AddIcon fontSize="small" />
-                    </IconButton>
-                    <IconButton
-                      size="small"
                       onClick={() => removeItem(item, store)}
                       disabled={loading.cart}
                       sx={{ ml: 1 }}
@@ -593,7 +526,7 @@ const handleStoreSelect = async (locationId) => {
             <Button
               variant="contained"
               onClick={searchFn}
-              disabled={loading[store]}
+              disabled={loading.search || loading[store]}
               startIcon={loading[store] ? <CircularProgress size={20} /> : <RefreshIcon />}
             >
               {`Search ${store}`}
@@ -704,7 +637,69 @@ const handleStoreSelect = async (locationId) => {
         onClose={() => setShowStoreSelector(false)}
       />
 
-      {/* Global loading indicator */}
+      {/* Kroger Cart Dialog */}
+      <Dialog 
+        open={showKrogerCartDialog} 
+        onClose={() => setShowKrogerCartDialog(false)}
+      >
+        <DialogTitle>Items Added to Kroger Cart</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Your items have been successfully added to your Kroger cart.
+            Would you like to view your cart on Kroger's website?
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowKrogerCartDialog(false)} color="primary">
+            Continue Shopping
+          </Button>
+          <Button 
+            onClick={() => {
+              window.open('https://www.kroger.com/cart', '_blank');
+              setShowKrogerCartDialog(false);
+            }} 
+            variant="contained" 
+            color="primary"
+            startIcon={<ShoppingCartIcon />}
+          >
+            Go to Kroger Cart
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Error Dialog with Reconnect Option */}
+      <Dialog
+        open={showErrorDialog}
+        onClose={() => setShowErrorDialog(false)}
+      >
+        <DialogTitle>
+          <Box display="flex" alignItems="center" gap={1}>
+            <ErrorIcon color="error" />
+            {errorDialogContent.title}
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            {errorDialogContent.message}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowErrorDialog(false)} color="primary">
+            Close
+          </Button>
+          {errorDialogContent.needsReconnect && (
+            <Button 
+              onClick={handleReconnectKroger} 
+              variant="contained" 
+              color="primary"
+            >
+              Reconnect Kroger Account
+            </Button>
+          )}
+        </DialogActions>
+      </Dialog>
+
+      {/* Global loading indicators */}
       {loading.cart && (
         <Box 
           position="fixed" 
@@ -716,6 +711,37 @@ const handleStoreSelect = async (locationId) => {
           boxShadow={3}
         >
           <CircularProgress size={30} />
+        </Box>
+      )}
+      
+      {/* Search loading overlay */}
+      {loading.search && (
+        <Box 
+          position="fixed"
+          top={0}
+          left={0}
+          right={0}
+          bottom={0}
+          display="flex"
+          alignItems="center"
+          justifyContent="center"
+          bgcolor="rgba(255, 255, 255, 0.7)"
+          zIndex={9999}
+        >
+          <Box 
+            display="flex" 
+            flexDirection="column" 
+            alignItems="center" 
+            bgcolor="white" 
+            p={3} 
+            borderRadius={2}
+            boxShadow={3}
+          >
+            <CircularProgress size={60} />
+            <Typography variant="h6" sx={{ mt: 2 }}>
+              Searching for products...
+            </Typography>
+          </Box>
         </Box>
       )}
 
@@ -731,4 +757,3 @@ const handleStoreSelect = async (locationId) => {
 }
 
 export default CartPage;
-
