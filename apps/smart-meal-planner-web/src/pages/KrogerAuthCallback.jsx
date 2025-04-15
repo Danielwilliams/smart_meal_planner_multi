@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useSearchParams, useLocation, useNavigate } from 'react-router-dom';
 import { Container, Typography, Paper, Box, CircularProgress, Alert, Button } from '@mui/material';
+import apiService from '../services/apiService';
 
 function KrogerAuthCallback() {
+  const [searchParams] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate();
   
@@ -14,31 +16,85 @@ function KrogerAuthCallback() {
     // Enhanced debugging
     console.log("KrogerAuthCallback - Full URL:", window.location.href);
     
-    const params = new URLSearchParams(location.search);
-    const success = params.get('success');
-    const errorMsg = params.get('error');
-    const code = params.get('code');
+    const code = searchParams.get('code');
+    const success = searchParams.get('success');
+    const errorMsg = searchParams.get('error');
     
-    console.log("KrogerAuthCallback params:", { success, error: errorMsg, hasCode: !!code });
+    console.log("KrogerAuthCallback params:", { code, success, error: errorMsg });
     
-    // If we have a code parameter, we need to forward it to the backend
-    if (code) {
-      // Forward to backend with the correct URI
-      const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://smart-meal-planner-multi-production.up.railway.app';
-      const redirectUrl = `${API_BASE_URL}/kroger/auth-callback?code=${encodeURIComponent(code)}&redirect_uri=${encodeURIComponent('https://smart-meal-planner-multi.vercel.app/kroger/callback')}`;
-      
-      console.log("Redirecting to backend:", redirectUrl);
-      
-      // Create a link and click it - this ensures a proper GET request
-      const link = document.createElement('a');
-      link.href = redirectUrl;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      
-      return; // Don't proceed with rest of function
+    // Check if we're coming from a reconnect attempt
+    const reconnectPending = localStorage.getItem('kroger_reconnect_pending');
+    const reconnectTimestamp = localStorage.getItem('kroger_reconnect_timestamp');
+    
+    // Clear reconnect flags
+    if (reconnectPending) {
+      localStorage.removeItem('kroger_reconnect_pending');
+      localStorage.removeItem('kroger_reconnect_timestamp');
     }
     
+    // Handle Kroger auth code
+    if (code) {
+      const processKrogerAuthCode = async () => {
+        try {
+          console.log(`Processing Kroger auth code: ${code.substring(0, 10)}...`);
+          
+          // Forward to backend with the correct URI
+          const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://smartmealplannermulti-production.up.railway.app';
+          const authCallbackUrl = `${API_BASE_URL}/kroger/auth-callback?code=${encodeURIComponent(code)}&redirect_uri=${encodeURIComponent('https://smart-meal-planner-multi.vercel.app/kroger/callback')}`;
+          
+          // First try the fetch API to get the response
+          console.log("Sending code to backend:", authCallbackUrl);
+          
+          try {
+            // Using fetch instead of a link to capture the response
+            const response = await fetch(authCallbackUrl, {
+              method: 'GET',
+              credentials: 'include',
+              headers: {
+                'Accept': 'application/json'
+              }
+            });
+            
+            if (!response.ok) {
+              throw new Error(`Backend responded with status ${response.status}`);
+            }
+            
+            const data = await response.json();
+            console.log("Backend auth response:", data);
+            
+            // Mark as connected in localStorage
+            localStorage.setItem('kroger_connected', 'true');
+            
+            // Set success state
+            setStatus('success');
+            setMessage(data.message || 'Kroger account connected successfully!');
+            
+            // Redirect to cart page after short delay
+            setTimeout(() => {
+              navigate('/cart');
+            }, 2000);
+            
+            return;
+          } catch (fetchError) {
+            console.error("Error using fetch API:", fetchError);
+            
+            // Fall back to direct browser navigation
+            console.log("Falling back to direct browser navigation");
+            window.location.href = authCallbackUrl;
+            return;
+          }
+        } catch (err) {
+          console.error("Error processing auth code:", err);
+          setStatus('error');
+          setError(`Failed to process authentication: ${err.message}`);
+        }
+      };
+      
+      processKrogerAuthCode();
+      return;
+    }
+    
+    // Handle explicit success response
     if (success === 'true') {
       setStatus('success');
       setMessage('Kroger account connected successfully!');
@@ -54,7 +110,36 @@ function KrogerAuthCallback() {
       setStatus('error');
       setError(`Connection failed: ${errorMsg}`);
     }
-  }, [location, navigate]);
+  }, [searchParams, location, navigate]);
+  
+  // Function to manually verify connection after auth
+  const verifyConnection = async () => {
+    try {
+      setMessage('Verifying connection...');
+      
+      const status = await apiService.getKrogerConnectionStatus();
+      
+      if (status && status.is_connected) {
+        setStatus('success');
+        setMessage('Kroger connection verified successfully!');
+        
+        // Mark as connected in localStorage
+        localStorage.setItem('kroger_connected', 'true');
+        
+        // Redirect to cart page after short delay
+        setTimeout(() => {
+          navigate('/cart');
+        }, 1500);
+      } else {
+        setStatus('error');
+        setError('Could not verify Kroger connection. Please try again.');
+      }
+    } catch (err) {
+      console.error('Error verifying connection:', err);
+      setStatus('error');
+      setError('Failed to verify connection: ' + (err.message || 'Unknown error'));
+    }
+  };
   
   return (
     <Container maxWidth="sm">
@@ -101,13 +186,23 @@ function KrogerAuthCallback() {
             </>
           )}
           
-          <Box display="flex" justifyContent="center" mt={3}>
+          <Box display="flex" justifyContent="center" mt={3} gap={2}>
             <Button 
               variant="contained"
               onClick={() => navigate('/cart')}
             >
               {status === 'success' ? 'Continue to Cart' : 'Back to Cart'}
             </Button>
+            
+            {status === 'error' && (
+              <Button 
+                variant="outlined" 
+                color="primary"
+                onClick={verifyConnection}
+              >
+                Verify Connection
+              </Button>
+            )}
           </Box>
         </Paper>
       </Box>

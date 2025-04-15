@@ -1,7 +1,7 @@
 // src/services/krogerAuthService.js
 import axios from 'axios';
 
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://www.smartmealplannerio.com';
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://smartmealplannermulti-production.up.railway.app';
 
 // Standalone axios instance for auth-related requests
 const authAxios = axios.create({
@@ -245,33 +245,144 @@ const addToKrogerCart = async (items) => {
  */
 const reconnectKroger = async () => {
   try {
-    const response = await authAxios.get('/kroger/login-url');
+    console.log('Attempting to reconnect Kroger...');
     
-    if (response.data && response.data.login_url) {
-      // Reset the reconnect flag since we're starting a new flow
-      hasAttemptedReconnect = false;
-      
-      // Fix redirect URI if needed
-      let loginUrl = response.data.login_url;
-      if (loginUrl.includes('127.0.0.1:8000/callback')) {
-        console.log('Fixing redirect URI in login URL');
-        loginUrl = loginUrl.replace(
-          'http://127.0.0.1:8000/callback',
-          'https://smart-meal-planner-multi.vercel.app/kroger/callback'
-        );
+    // Set a flag in localStorage to detect if we get redirected properly
+    localStorage.setItem('kroger_reconnect_attempted', 'true');
+    localStorage.setItem('kroger_reconnect_timestamp', Date.now().toString());
+    
+    // Try multiple approaches to get a valid Kroger login URL
+    
+    // Approach 1: Get login URL from backend
+    try {
+      console.log('Approach 1: Getting login URL from backend');
+      const response = await authAxios.get('/kroger/login-url');
+      console.log('Login URL response:', response.data);
+    
+      if (response.data && response.data.login_url) {
+        // Reset the reconnect flag since we're starting a new flow
+        hasAttemptedReconnect = false;
+        
+        // Fix redirect URI if needed
+        let loginUrl = response.data.login_url;
+        if (loginUrl.includes('127.0.0.1:8000/callback')) {
+          console.log('Fixing redirect URI in login URL');
+          loginUrl = loginUrl.replace(
+            'http://127.0.0.1:8000/callback',
+            'https://smart-meal-planner-multi.vercel.app/kroger/callback'
+          );
+          console.log('Fixed URL:', loginUrl);
+        }
+        
+        // Try to use the browser's fetch API to validate the URL first
+        try {
+          console.log('Validating login URL by making a HEAD request');
+          const validation = await fetch(loginUrl, { 
+            method: 'HEAD',
+            mode: 'no-cors' // This allows us to at least try to connect
+          });
+          console.log('Login URL validation response:', validation);
+        } catch (validationErr) {
+          console.warn('Login URL validation failed (this is often expected):', validationErr);
+          // This error is expected and can be ignored - we just want to ensure
+          // the URL is at least reachable before redirecting
+        }
+        
+        // Navigate to Kroger login page
+        console.log('Redirecting to Kroger login...');
+        
+        // Manually create and click a link for more reliable navigation
+        const a = document.createElement('a');
+        a.href = loginUrl;
+        a.target = '_self'; // Open in current tab
+        a.rel = 'noopener noreferrer';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        
+        // As a backup, also try direct location.href assignment
+        setTimeout(() => {
+          console.log('Backup redirect with location.href');
+          window.location.href = loginUrl;
+        }, 500);
+        
+        return { success: true };
       }
       
-      // Navigate to Kroger login page
-      window.location.href = loginUrl;
-      return { success: true };
+      console.log('No login URL in response:', response.data);
+    } catch (apiError) {
+      console.error('Approach 1 failed - Error getting login URL from API:', apiError);
     }
     
-    return {
-      success: false,
-      message: 'Failed to get Kroger login URL'
-    };
+    // Approach 2: Use the connection status endpoint as a trigger
+    try {
+      console.log('Approach 2: Using connection status endpoint as trigger');
+      const statusResponse = await authAxios.get('/kroger/connection-status');
+      console.log('Connection status response:', statusResponse.data);
+      
+      // If the backend responded with a login URL or redirect, use it
+      if (statusResponse.data && statusResponse.data.login_url) {
+        console.log('Got login URL from status endpoint:', statusResponse.data.login_url);
+        
+        // Fix redirect URI if needed
+        let loginUrl = statusResponse.data.login_url;
+        if (loginUrl.includes('127.0.0.1:8000/callback')) {
+          console.log('Fixing redirect URI in login URL');
+          loginUrl = loginUrl.replace(
+            'http://127.0.0.1:8000/callback',
+            'https://smart-meal-planner-multi.vercel.app/kroger/callback'
+          );
+        }
+        
+        // Navigate to Kroger login page
+        console.log('Redirecting to Kroger login from status endpoint...');
+        window.location.href = loginUrl;
+        return { success: true };
+      }
+    } catch (statusError) {
+      console.error('Approach 2 failed:', statusError);
+    }
+    
+    // Approach 3: Manually construct Kroger OAuth URL
+    console.log('Approach 3: Manual URL construction - last resort');
+    
+    // These are the critical Kroger OAuth parameters
+    const clientId = 'smartmealplannerio-243261243034247652497361364a447078555731455949714a464f61656e5a676b444e552e42796961517a4f4576367156464b3564774c3039777a614700745159802496692';
+    const redirectUri = 'https://smart-meal-planner-multi.vercel.app/kroger/callback';
+    const scope = 'product.compact cart.basic:write';
+    
+    // Generate a random state
+    const state = Math.random().toString(36).substring(2, 15);
+    
+    // Construct the URL manually with all required params
+    const manualUrl = `https://api.kroger.com/v1/connect/oauth2/authorize?scope=${encodeURIComponent(scope)}&response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`;
+    
+    console.log('Manually constructed URL:', manualUrl);
+    
+    // Use the most reliable method for navigation - create and click a link
+    try {
+      const a = document.createElement('a');
+      a.href = manualUrl;
+      a.target = '_self'; // Open in current tab
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      
+      // As a backup, also try direct location.href assignment
+      setTimeout(() => {
+        window.location.href = manualUrl;
+      }, 500);
+      
+      return { success: true };
+    } catch (navError) {
+      console.error('Error during navigation:', navError);
+      
+      // Last resort approach - direct assignment
+      window.location.href = manualUrl;
+      return { success: true };
+    }
   } catch (error) {
-    console.error('Error getting Kroger login URL:', error);
+    console.error('Error initiating Kroger reconnection:', error);
     return {
       success: false,
       message: 'Error initiating Kroger reconnection'

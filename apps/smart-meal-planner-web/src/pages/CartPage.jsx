@@ -83,6 +83,55 @@ function CartPage() {
       loadInternalCart();
     }
   }, [user?.userId]);
+  
+  // Check for returning from Kroger auth
+  useEffect(() => {
+    const krogerConnected = localStorage.getItem('kroger_connected');
+    const reconnectAttempted = localStorage.getItem('kroger_reconnect_attempted');
+    
+    if (krogerConnected === 'true' || reconnectAttempted) {
+      // Clear the flags
+      localStorage.removeItem('kroger_reconnect_attempted');
+      localStorage.removeItem('kroger_reconnect_timestamp');
+      
+      if (krogerConnected === 'true') {
+        // Show success message
+        setSnackbarMessage("Successfully connected to Kroger!");
+        setSnackbarOpen(true);
+      }
+      
+      // Verify connection status
+      (async () => {
+        try {
+          console.log("Verifying Kroger connection after redirect");
+          const status = await krogerAuthService.checkKrogerStatus();
+          
+          if (status && status.is_connected) {
+            console.log("Kroger connection verified successfully");
+            localStorage.setItem('kroger_connected', 'true');
+            
+            if (reconnectAttempted) {
+              setSnackbarMessage("Successfully reconnected to Kroger!");
+              setSnackbarOpen(true);
+            }
+          } else {
+            console.warn("Kroger connection verification failed");
+            localStorage.removeItem('kroger_connected');
+            
+            if (reconnectAttempted) {
+              showKrogerError(
+                "Kroger Connection Issue",
+                "We couldn't verify your Kroger connection. Please try reconnecting again.",
+                true
+              );
+            }
+          }
+        } catch (err) {
+          console.error("Error verifying Kroger connection:", err);
+        }
+      })();
+    }
+  }, []);
 
   const loadInternalCart = async () => {
     try {
@@ -139,6 +188,36 @@ function CartPage() {
       handleError(err);
     } finally {
       setLoading(prev => ({ ...prev, cart: false }));
+    }
+  };
+
+  // Check if Kroger credentials are valid
+  const checkKrogerCredentials = async () => {
+    console.log("Checking Kroger credentials");
+    try {
+      // Use krogerAuthService directly for most accurate status
+      const status = await krogerAuthService.checkKrogerStatus();
+      console.log("Kroger status:", status);
+      
+      if (!status.is_connected) {
+        console.log("Kroger not connected, showing reconnect dialog");
+        showKrogerError(
+          "Kroger Connection Required",
+          "You need to connect your Kroger account before searching for items.",
+          true
+        );
+        return false;
+      }
+      
+      return true;
+    } catch (err) {
+      console.error("Error checking Kroger credentials:", err);
+      showKrogerError(
+        "Kroger Connection Error",
+        "There was a problem checking your Kroger connection. Please try reconnecting your account.",
+        true
+      );
+      return false;
     }
   };
 
@@ -211,7 +290,8 @@ function CartPage() {
   const handleKrogerAuthError = async () => {
     try {
       // First attempt to refresh the token
-      const refreshResult = await apiService.refreshKrogerTokenExplicit();
+      console.log("Attempting to refresh Kroger token via auth service");
+      const refreshResult = await krogerAuthService.getKrogerToken();
       
       if (refreshResult.success) {
         setSnackbarMessage("Kroger connection refreshed successfully");
@@ -219,6 +299,7 @@ function CartPage() {
         return true;
       } else {
         // If refresh fails, show reconnect dialog
+        console.log("Token refresh failed, showing reconnect dialog");
         showKrogerError(
           "Kroger Authentication Required", 
           "Your Kroger session has expired. Please reconnect your account to continue.",
@@ -243,8 +324,74 @@ function CartPage() {
       setSnackbarMessage("Reconnecting to Kroger...");
       setSnackbarOpen(true);
       
-      const result = await apiService.reconnectKroger();
-      // No need to check result since reconnectKroger will redirect if successful
+      // Flag to track if we've tried manual reconnection
+      let manualReconnectAttempted = false;
+      
+      // First, try direct reconnect with krogerAuthService
+      try {
+        console.log('Calling krogerAuthService.reconnectKroger directly');
+        
+        // Set a flag in localStorage to detect successful redirects later
+        localStorage.setItem('kroger_reconnect_pending', 'true');
+        localStorage.setItem('kroger_reconnect_timestamp', Date.now().toString());
+        
+        const result = await krogerAuthService.reconnectKroger();
+        console.log('Reconnect result:', result);
+        
+        // If successful, the browser should have already redirected
+        // If we're still here, it means the redirect didn't happen
+        if (!result.success) {
+          throw new Error("Redirect failed");
+        }
+      } catch (reconnectError) {
+        console.error("First reconnect method failed:", reconnectError);
+        manualReconnectAttempted = true;
+        
+        // Fallback approach: try using apiService directly
+        try {
+          console.log('Trying fallback: apiService.reconnectKroger');
+          const apiResult = await apiService.reconnectKroger();
+          
+          if (apiResult && apiResult.success) {
+            console.log('apiService reconnect successful, should have redirected');
+            return; // Should have redirected
+          } else {
+            throw new Error("API service reconnect failed");
+          }
+        } catch (apiError) {
+          console.error("Second reconnect method failed:", apiError);
+          
+          // Final fallback: manual construction of Kroger OAuth URL
+          try {
+            console.log('Trying final fallback: manual Kroger OAuth URL');
+            
+            // These are the critical Kroger OAuth parameters
+            const clientId = 'smartmealplannerio-243261243034247652497361364a447078555731455949714a464f61656e5a676b444e552e42796961517a4f4576367156464b3564774c3039777a614700745159802496692';
+            const redirectUri = 'https://smart-meal-planner-multi.vercel.app/kroger/callback';
+            const scope = 'product.compact cart.basic:write';
+            
+            // Generate a random state
+            const state = Math.random().toString(36).substring(2, 15);
+            
+            // Construct the URL manually
+            const manualUrl = `https://api.kroger.com/v1/connect/oauth2/authorize?scope=${encodeURIComponent(scope)}&response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`;
+            
+            console.log('Manually redirecting to:', manualUrl);
+            window.location.href = manualUrl;
+            return; // Should redirect
+          } catch (manualError) {
+            console.error("Final manual reconnect failed:", manualError);
+            throw manualError;
+          }
+        }
+      }
+      
+      // If we get here, we failed to redirect
+      console.error("All reconnect methods failed to redirect");
+      setError("Failed to initiate Kroger reconnection. Please try again.");
+      
+      // Wait a bit before allowing new attempts
+      await new Promise(resolve => setTimeout(resolve, 1000));
     } catch (err) {
       console.error("Kroger reconnect error:", err);
       setError("Failed to reconnect to Kroger. Please try again.");
@@ -435,32 +582,7 @@ const handleAddToCart = async (items, store) => {
     }
   };
 
-  const checkKrogerCredentials = async () => {
-    try {
-      const result = await apiService.checkKrogerCredentials();
-      console.log('Kroger credentials status:', result);
-      
-      // If credentials are missing, prompt the user to connect
-      if (!result.has_credentials || !result.has_access_token) {
-        console.error('Kroger credentials missing or invalid');
-        
-        // Show a dialog to the user
-        showKrogerError(
-          "Kroger Connection Required", 
-          "You need to connect your Kroger account before searching for items.",
-          true
-        );
-        return false;
-      } else {
-        console.log('Kroger credentials are valid');
-        return true;
-      }
-    } catch (err) {
-      console.error('Error checking Kroger credentials:', err);
-      setError('Failed to check Kroger account status');
-      return false;
-    }
-  };
+  // Already defined earlier in the file, removing duplicate
 
   const renderStoreSection = (store, items, searchFn, ResultsComponent) => (
     <Card sx={{ mb: 4 }}>
