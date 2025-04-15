@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 import logging
 from app.integration.kroger import KrogerIntegration  # Changed to absolute
-from app.integration.kroger_db import get_user_kroger_credentials  # Changed to absolute
+from app.integration.kroger_db import get_user_kroger_credentials, update_kroger_store_location  # Added update_kroger_store_location
 from app.utils.auth_utils import get_user_from_token  # Changed to absolute
 import os
 
@@ -216,6 +216,86 @@ async def test_kroger_api(user = Depends(get_user_from_token)):
         }
 
         
+# Fallback function in case import fails
+def direct_update_kroger_store_location(user_id, location_id):
+    """Direct implementation of updating store location in case import fails"""
+    try:
+        from app.db import get_db_connection
+        
+        conn = None
+        cursor = None
+        
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            query = """
+            UPDATE user_profiles 
+            SET kroger_store_location_id = %s
+            WHERE id = %s
+            RETURNING id;
+            """
+            
+            cursor.execute(query, (location_id, user_id))
+            conn.commit()
+            
+            return cursor.rowcount > 0
+            
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
+                
+    except Exception as e:
+        logger.error(f"Direct store location update failed: {str(e)}", exc_info=True)
+        return False
+
+@router.post("/direct-store-update")
+async def direct_store_update(
+    request: Request,
+    user = Depends(get_user_from_token)
+):
+    """Direct endpoint to update store location in database"""
+    try:
+        body = await request.json()
+        location_id = body.get("store_id") or body.get("location_id") or body.get("store_location_id")
+        
+        if not location_id:
+            return {"success": False, "message": "Missing store ID"}
+            
+        user_id = user.get('user_id')
+        
+        # Direct database connection
+        from app.db import get_db_connection
+        conn = None
+        cursor = None
+        
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            query = """
+            UPDATE user_profiles 
+            SET kroger_store_location_id = %s
+            WHERE id = %s;
+            """
+            
+            cursor.execute(query, (location_id, user_id))
+            conn.commit()
+            
+            return {"success": True, "message": "Store location updated successfully"}
+            
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
+                
+    except Exception as e:
+        logger.error(f"Direct store update failed: {str(e)}", exc_info=True)
+        return {"success": False, "message": str(e)}
+
 @router.post("/store-location")
 async def update_store_location(
     request: Request,
@@ -251,8 +331,13 @@ async def update_store_location(
         user_id = user.get('user_id')
         logger.info(f"Setting Kroger store location for user {user_id}: {location_id}")
         
-        # Use the kroger_db function directly, which has been tested
-        success = update_kroger_store_location(user_id, location_id)
+        # Try using the imported function first
+        try:
+            success = update_kroger_store_location(user_id, location_id)
+        except NameError:
+            # If import failed, use our direct implementation
+            logger.warning("update_kroger_store_location not imported properly, using direct implementation")
+            success = direct_update_kroger_store_location(user_id, location_id)
         
         if not success:
             logger.error(f"Failed to set store location for user {user_id}")

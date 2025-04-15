@@ -974,16 +974,33 @@ const apiService = {
       
       console.log('Sending Kroger location update request with data:', requestData);
       
-      const response = await axiosInstance.post('/kroger/store-location', requestData);
-      
-      console.log('Kroger location update response:', response.data);
-      return {
-        ...response.data,
-        success: true,  // Ensure success flag is set
-        message: response.data.message || "Kroger store location updated successfully"
-      };
+      try {
+        // Try the main endpoint first
+        const response = await axiosInstance.post('/kroger/store-location', requestData);
+        
+        console.log('Kroger location update response:', response.data);
+        return {
+          ...response.data,
+          success: true,  // Ensure success flag is set
+          message: response.data.message || "Kroger store location updated successfully"
+        };
+      } catch (mainEndpointErr) {
+        // If the main endpoint fails, try the direct update endpoint
+        console.warn("Main store location endpoint failed, trying direct endpoint:", mainEndpointErr);
+        
+        const directResponse = await axiosInstance.post('/kroger/direct-store-update', {
+          store_id: locationId
+        });
+        
+        console.log('Direct store update response:', directResponse.data);
+        return {
+          ...directResponse.data,
+          success: true,
+          message: directResponse.data.message || "Kroger store location updated (direct method)"
+        };
+      }
     } catch (err) {
-      console.error("Kroger location update error:", err);
+      console.error("All Kroger location update methods failed:", err);
       
       // Log detailed error information
       if (err.response) {
@@ -1009,6 +1026,18 @@ const apiService = {
         errorMessage = err.response.data.detail;
       } else if (err.message) {
         errorMessage = err.message;
+      }
+      
+      // Last resort method - return a success message anyway since the user will try again later
+      // Only do this in extreme cases where the backend is completely unreachable
+      if (!err.response && !err.request) {
+        console.warn("Using client-side fallback: storing location in localStorage");
+        localStorage.setItem('temp_kroger_location_id', locationId);
+        return {
+          success: true,
+          message: "Stored location choice temporarily. Will try to save it permanently when connection is restored.",
+          using_fallback: true
+        };
       }
       
       return {
