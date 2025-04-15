@@ -152,6 +152,13 @@ const searchStores = async () => {
     
     console.log(`Selected store: ${storeId}`);
     
+    // Immediately close the dialog to improve user experience
+    handleClose();
+    
+    // Set the location in localStorage right away (before API call completes)
+    localStorage.setItem('kroger_store_location_id', storeId);
+    localStorage.setItem('kroger_store_configured', 'true');
+    
     // Call the parent component's handler
     onStoreSelect(storeId);
   };

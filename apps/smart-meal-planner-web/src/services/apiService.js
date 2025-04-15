@@ -806,71 +806,95 @@ const apiService = {
       console.log("Saved Kroger store location ID:", savedKrogerStoreId);
       
       // Make the API request
-      const response = await axiosInstance.post('/kroger/search', { items });
+      let response = await axiosInstance.post('/kroger/search', { items });
       console.log("Kroger search response:", response.data);
       
-      // If the search was successful, save that we have a properly configured Kroger store
-      if (response.data.success && !response.data.needs_setup) {
+      // If the search was successful, mark the store as configured
+      if (response.data && response.data.success) {
         localStorage.setItem('kroger_store_configured', 'true');
+        return response.data;
       }
       
-      // Check if backend indicates we need to set up Kroger (no store selected)
-      if (response.data.needs_setup === true) {
-        // If we previously saved a store ID but backend says we need setup, 
-        // try to update the location again
-        if (savedKrogerStoreId) {
-          console.log("Backend says we need setup but we have a saved location ID. Trying to update location again.");
-          try {
-            const updateResult = await this.updateKrogerLocation(savedKrogerStoreId);
-            if (updateResult.success) {
-              console.log("Successfully restored Kroger store location, retrying search");
-              // Retry the search
-              const retryResponse = await axiosInstance.post('/kroger/search', { items });
-              
-              if (retryResponse.data.success) {
-                return retryResponse.data;
-              }
-            }
-          } catch (updateErr) {
-            console.error("Failed to restore Kroger location:", updateErr);
-          }
-        }
+      // If we need store setup and have a saved location ID, try to update and retry
+      if (response.data && response.data.needs_setup && savedKrogerStoreId) {
+        console.log("Need Kroger setup but have saved location ID. Trying silent update.");
         
-        // If we couldn't fix it automatically, return the needs_setup response
-        return {
-          success: false,
-          needs_setup: true,
-          message: response.data.message || "Please select a Kroger store location"
-        };
+        try {
+          // Update the store location without requiring user interaction
+          await this.updateKrogerLocation(savedKrogerStoreId);
+          
+          // Retry the search with updated location
+          console.log("Retrying Kroger search after location update");
+          const retryResponse = await axiosInstance.post('/kroger/search', { items });
+          
+          if (retryResponse.data && retryResponse.data.success) {
+            console.log("Retry successful after location update");
+            localStorage.setItem('kroger_store_configured', 'true');
+            return retryResponse.data;
+          }
+          
+          // If retry still needs setup, let the UI handle it
+          if (retryResponse.data && retryResponse.data.needs_setup) {
+            console.log("Still need setup after retry, let UI handle it");
+            return {
+              success: false,
+              needs_setup: true,
+              tried_saved_location: true,
+              message: "Please select a Kroger store in the dialog"
+            };
+          }
+          
+          // For any other response, return it directly
+          return retryResponse.data;
+        } catch (updateError) {
+          console.error("Failed to update location silently:", updateError);
+          // Fall through to returning the original response
+        }
       }
       
+      // If we got here, return the original response
       return response.data;
     } catch (err) {
       console.error("Kroger search error:", err);
       
-      // Check if the error response contains needs_setup
-      if (err.response?.data?.needs_setup) {
-        // Same logic as above for trying to restore a saved location
-        const savedKrogerStoreId = localStorage.getItem('kroger_store_location_id');
-        
-        if (savedKrogerStoreId) {
-          try {
-            console.log("Trying to restore saved Kroger location before returning needs_setup");
-            await this.updateKrogerLocation(savedKrogerStoreId);
-            // We'll still return needs_setup, but next search attempt might work
-          } catch (updateErr) {
-            console.error("Failed to restore Kroger location:", updateErr);
+      // Create an error object with helpful information for the UI
+      const errorResponse = {
+        success: false,
+        message: err.message || "Failed to search Kroger items"
+      };
+      
+      // Handle known error responses
+      if (err.response) {
+        // For needs_setup response, try saved location if available
+        if (err.response.data && err.response.data.needs_setup) {
+          errorResponse.needs_setup = true;
+          
+          // Try with saved location ID if available
+          const savedLocationId = localStorage.getItem('kroger_store_location_id');
+          if (savedLocationId) {
+            try {
+              await this.updateKrogerLocation(savedLocationId);
+              errorResponse.message = "Attempting to restore saved location. Please try again.";
+              errorResponse.try_again = true;
+            } catch (updateErr) {
+              console.error("Failed to restore location:", updateErr);
+            }
           }
         }
         
-        return {
-          success: false,
-          needs_setup: true,
-          message: err.response.data.message || "Please select a Kroger store location"
-        };
+        // For authentication errors, include details
+        if (err.response.status === 401) {
+          errorResponse.auth_error = true;
+          errorResponse.message = "Authentication error. Please reconnect your Kroger account.";
+        }
+        
+        // Include any messages from the server response
+        if (err.response.data && err.response.data.message) {
+          errorResponse.message = err.response.data.message;
+        }
       }
       
-      throw err;
+      return errorResponse;
     }
   },
 

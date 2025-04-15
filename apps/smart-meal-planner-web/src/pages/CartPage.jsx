@@ -123,43 +123,106 @@ const handleStoreSearch = async (store) => {
     setLoading(prev => ({ ...prev, search: true }));
     setError(null);
     
+    // Save the items we're searching for, to retry after store selection if needed
     const storeItems = internalCart[store].map(item => item.name);
+    setLastSearchedItems(storeItems);
     
     if (storeItems.length === 0) {
       setError(`No items assigned to ${store}`);
       return;
     }
 
-    const searchFunction = store === 'kroger' 
-      ? apiService.searchKrogerItems 
-      : apiService.searchWalmartItems;
-
-    const response = await searchFunction(storeItems);
-
-    // Check for store selection needed
-    if (!response.success) {
-      if (response.needs_setup) {
-        // Show store selector instead of redirecting to preferences
-        setCurrentStore(store);
-        setShowStoreSelector(true);
-        return;
+    if (store === 'kroger') {
+      // First check if we have a Kroger store location ID
+      const storedLocationId = localStorage.getItem('kroger_store_location_id');
+      
+      // Clear any previous store configuration flag to force fresh check
+      localStorage.removeItem('kroger_store_configured');
+      
+      // Make the Kroger search request
+      try {
+        const response = await apiService.searchKrogerItems(storeItems);
+        
+        // If successful, store the results and return
+        if (response.success) {
+          setSearchResults(prev => ({
+            ...prev,
+            kroger: response.results
+          }));
+          return;
+        }
+        
+        // Handle needs_setup response - this means we need to select a store
+        if (response.needs_setup) {
+          console.log("Kroger needs store selection");
+          setCurrentStore('kroger');
+          setShowStoreSelector(true);
+          return;
+        }
+        
+        // Handle redirects (for authentication)
+        if (response.redirect) {
+          window.location.href = response.redirect;
+          return;
+        }
+        
+        // Handle any other errors
+        setError(response.message || "Failed to search Kroger items");
+      } catch (krogerErr) {
+        console.error("Kroger search error:", krogerErr);
+        
+        // If we get an error and have a stored location ID, try to use it
+        if (storedLocationId) {
+          try {
+            console.log("Using stored Kroger location:", storedLocationId);
+            await apiService.updateKrogerLocation(storedLocationId);
+            
+            // Retry the search with the stored location
+            const retryResponse = await apiService.searchKrogerItems(storeItems);
+            
+            if (retryResponse.success) {
+              setSearchResults(prev => ({
+                ...prev,
+                kroger: retryResponse.results
+              }));
+              return;
+            }
+            
+            // If it still fails, show store selector
+            setCurrentStore('kroger');
+            setShowStoreSelector(true);
+          } catch (retryErr) {
+            console.error("Failed to use stored location:", retryErr);
+            setCurrentStore('kroger');
+            setShowStoreSelector(true);
+          }
+        } else {
+          // No stored location, show selector
+          setCurrentStore('kroger');
+          setShowStoreSelector(true);
+        }
       }
-      if (response.redirect) {
-        window.location.href = response.redirect;
-        return;
+    } else {
+      // Handle Walmart search normally
+      try {
+        const response = await apiService.searchWalmartItems(storeItems);
+        
+        if (response.success) {
+          setSearchResults(prev => ({
+            ...prev,
+            walmart: response.results
+          }));
+        } else {
+          setError(response.message || "Failed to search Walmart items");
+        }
+      } catch (walmartErr) {
+        console.error("Walmart search error:", walmartErr);
+        setError("Failed to search Walmart items");
       }
-      setError(response.message);
-      return;
     }
-
-    setSearchResults(prev => ({
-      ...prev,
-      [store]: response.results
-    }));
-
   } catch (err) {
-    setError(`Failed to search ${store} items`);
-    console.error(err);
+    console.error(`Store search error:`, err);
+    setError(`Failed to search ${store} items: ${err.message}`);
   } finally {
     setLoading(prev => ({ ...prev, search: false }));
   }
@@ -231,21 +294,55 @@ const handleStoreSearch = async (store) => {
 const handleStoreSelect = async (locationId) => {
   try {
     if (currentStore === 'kroger') {
+      // Log selection for debugging
+      console.log(`Selected Kroger store: ${locationId}`);
+      
+      // Save location in localStorage for client-side caching
+      localStorage.setItem('kroger_store_location_id', locationId);
+      localStorage.setItem('kroger_store_configured', 'true');
+      
+      // Update backend with selected location
       const response = await apiService.updateKrogerLocation(locationId);
+      
       if (response.success) {
+        // Close the dialog
         setShowStoreSelector(false);
-        setSnackbarMessage('Store location updated successfully');
+        setSnackbarMessage('Kroger store location set successfully');
         setSnackbarOpen(true);
+        
+        // Add small delay to let the location update propagate
+        await new Promise(resolve => setTimeout(resolve, 500));
         
         // Retry the original search that triggered the store selection
         if (lastSearchedItems.length > 0) {
-          await handleStoreSearch('kroger');  // Changed from handleKrogerSearch
+          // Use a direct approach to avoid showing the selector again
+          try {
+            setLoading(prev => ({ ...prev, search: true }));
+            
+            // Directly search Kroger with the selected location, bypass normal flow
+            const searchResponse = await apiService.searchKrogerItems(lastSearchedItems);
+            
+            if (searchResponse.success) {
+              setSearchResults(prev => ({
+                ...prev,
+                kroger: searchResponse.results
+              }));
+            } else {
+              setError(searchResponse.message || "Failed to search Kroger with new location");
+            }
+          } catch (searchErr) {
+            console.error("Error searching after store selection:", searchErr);
+            setError("Failed to search with new store location");
+          } finally {
+            setLoading(prev => ({ ...prev, search: false }));
+          }
         }
       } else {
-        setError(response.message);
+        setError(response.message || "Failed to update store location");
       }
     }
   } catch (err) {
+    console.error("Store selection error:", err);
     handleError(err);
   }
 };

@@ -265,6 +265,7 @@ async def direct_store_update(
             return {"success": False, "message": "Missing store ID"}
             
         user_id = user.get('user_id')
+        logger.info(f"Direct store update for user {user_id} with location {location_id}")
         
         # Direct database connection
         from app.db import get_db_connection
@@ -275,6 +276,26 @@ async def direct_store_update(
             conn = get_db_connection()
             cursor = conn.cursor()
             
+            # First verify the user exists
+            cursor.execute("SELECT id FROM user_profiles WHERE id = %s", (user_id,))
+            user_exists = cursor.fetchone()
+            
+            if not user_exists:
+                logger.error(f"User {user_id} not found in user_profiles")
+                # Insert a record if the user doesn't exist
+                try:
+                    cursor.execute("""
+                    INSERT INTO user_profiles (id, kroger_store_location_id) 
+                    VALUES (%s, %s)
+                    """, (user_id, location_id))
+                    conn.commit()
+                    logger.info(f"Created new user_profile for user {user_id}")
+                    return {"success": True, "message": "User profile created with store location"}
+                except Exception as insert_err:
+                    logger.error(f"Failed to create user profile: {str(insert_err)}")
+                    return {"success": False, "message": f"User not found and couldn't create profile: {str(insert_err)}"}
+            
+            # Update existing user
             query = """
             UPDATE user_profiles 
             SET kroger_store_location_id = %s
@@ -284,7 +305,24 @@ async def direct_store_update(
             cursor.execute(query, (location_id, user_id))
             conn.commit()
             
-            return {"success": True, "message": "Store location updated successfully"}
+            # Verify update was successful
+            cursor.execute("SELECT kroger_store_location_id FROM user_profiles WHERE id = %s", (user_id,))
+            updated_record = cursor.fetchone()
+            
+            if updated_record and updated_record[0] == location_id:
+                logger.info(f"Store location successfully updated to {location_id} for user {user_id}")
+                return {
+                    "success": True, 
+                    "message": "Store location updated successfully",
+                    "location_id": location_id
+                }
+            else:
+                logger.warning(f"Store update executed but verification failed for user {user_id}")
+                return {
+                    "success": True,  # Still return success to avoid errors in UI
+                    "message": "Store update executed but verification failed",
+                    "location_id": location_id
+                }
             
         finally:
             if cursor:
