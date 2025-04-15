@@ -15,6 +15,7 @@ import {
   Alert,
   Snackbar
 } from '@mui/material';
+import StoreSelector from '../components/StoreSelector';
 import { useAuth } from '../context/AuthContext';
 import apiService from '../services/apiService';
 import CATEGORY_MAPPING from '../data/categoryMapping';
@@ -802,11 +803,28 @@ const categorizeItems = (mealPlanData) => {
   return categorizedItems;
 };
   
+  // State for Kroger store selector
+  const [showKrogerStoreSelector, setShowKrogerStoreSelector] = useState(false);
+  const [pendingAllItems, setPendingAllItems] = useState(false);
+  
   // Store search handler
   const handleStoreSearchAll = async () => {
     try {
       if (selectedStore === 'mixed') {
         return;
+      }
+      
+      // For Kroger, check if we have a configured store first
+      if (selectedStore === 'kroger') {
+        const isConfigured = localStorage.getItem('kroger_store_configured') === 'true';
+        const locationId = localStorage.getItem('kroger_store_location_id');
+        
+        if (!isConfigured || !locationId) {
+          console.log("Kroger store not configured, showing selector for all items");
+          setPendingAllItems(true);
+          setShowKrogerStoreSelector(true);
+          return;
+        }
       }
 
       // Add all items to internal cart
@@ -823,7 +841,66 @@ const categorizeItems = (mealPlanData) => {
       setSnackbarOpen(true);
     } catch (err) {
       console.error(`Error processing ${selectedStore} items:`, err);
+      
+      // Check if this is a Kroger setup error
+      if (err.response?.data?.needs_setup && selectedStore === 'kroger') {
+        console.log("Kroger needs setup, showing store selector");
+        setPendingAllItems(true);
+        setShowKrogerStoreSelector(true);
+        return;
+      }
+      
       setError(`Failed to process items in ${selectedStore}`);
+      setSnackbarMessage(`Error: ${err.message}`);
+      setSnackbarOpen(true);
+    }
+  };
+  
+  // Handle Kroger store selection
+  const handleKrogerStoreSelect = async (locationId) => {
+    try {
+      console.log(`Selected Kroger store location: ${locationId}`);
+      
+      const result = await apiService.updateKrogerLocation(locationId);
+      
+      if (result.success) {
+        // Store was successfully set
+        console.log("Kroger store location set successfully");
+        localStorage.setItem('kroger_store_configured', 'true');
+        
+        // Close the dialog
+        setShowKrogerStoreSelector(false);
+        
+        // If we had pending items to add to cart, do it now
+        if (pendingAllItems) {
+          try {
+            await apiService.addToInternalCart({
+              items: groceryList.map(item => ({
+                name: typeof item === 'string' ? item : item.name,
+                quantity: 1,
+                store_preference: 'kroger'
+              })),
+              store: 'kroger'
+            });
+            
+            setSnackbarMessage(`Items added to Kroger cart`);
+            setSnackbarOpen(true);
+          } catch (cartErr) {
+            console.error("Error adding items to Kroger cart:", cartErr);
+            setSnackbarMessage(`Error adding items to Kroger cart: ${cartErr.message}`);
+            setSnackbarOpen(true);
+          }
+          
+          setPendingAllItems(false);
+        }
+      } else {
+        setError(result.message || "Failed to set store location");
+        setSnackbarMessage(`Error: ${result.message}`);
+        setSnackbarOpen(true);
+      }
+    } catch (err) {
+      console.error("Error setting store location:", err);
+      setError(err.message || "An error occurred setting the store location");
       setSnackbarMessage(`Error: ${err.message}`);
       setSnackbarOpen(true);
     }
@@ -951,6 +1028,14 @@ const categorizeItems = (mealPlanData) => {
         autoHideDuration={3000}
         onClose={handleCloseSnackbar}
         message={snackbarMessage}
+      />
+      
+      {/* Kroger Store Selection Dialog */}
+      <StoreSelector 
+        open={showKrogerStoreSelector}
+        onClose={() => setShowKrogerStoreSelector(false)}
+        onStoreSelect={handleKrogerStoreSelect}
+        storeType="kroger"
       />
     </Container>
   );

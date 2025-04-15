@@ -1,13 +1,21 @@
 // src/components/ShoppingList.jsx
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Typography, 
   Paper, 
   Grid,
   Button,
-  Box
+  Box,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  Alert
 } from '@mui/material';
+import StoreSelector from './StoreSelector';
+import apiService from '../services/apiService';
 import _ from 'lodash';
 
 const SPECIAL_UNITS = {
@@ -232,8 +240,43 @@ const ShoppingListItem = ({
   item, 
   selectedStore, 
   onAddToCart, 
-  onAddToMixedCart 
+  onAddToMixedCart,
+  onKrogerNeededSetup
 }) => {
+  const handleStoreClick = async (store, itemName) => {
+    if (store === 'kroger') {
+      try {
+        // Check if we have a configured Kroger store in localStorage
+        const isConfigured = localStorage.getItem('kroger_store_configured') === 'true';
+        const locationId = localStorage.getItem('kroger_store_location_id');
+        
+        // If not configured, show the setup dialog
+        if (!isConfigured || !locationId) {
+          console.log("Kroger store not configured, showing setup dialog");
+          onKrogerNeededSetup(itemName);
+          return;
+        }
+        
+        // If configured, try to add to cart
+        if (selectedStore === 'mixed') {
+          onAddToMixedCart(itemName, 'kroger');
+        } else {
+          onAddToCart(itemName, 'kroger');
+        }
+      } catch (err) {
+        console.error("Error checking Kroger configuration:", err);
+        onKrogerNeededSetup(itemName);
+      }
+    } else {
+      // For Walmart, just proceed normally
+      if (selectedStore === 'mixed') {
+        onAddToMixedCart(itemName, store);
+      } else {
+        onAddToCart(itemName, store);
+      }
+    }
+  };
+  
   return (
     <Grid item xs={12} sm={6}>
       <Typography>{item}</Typography>
@@ -244,14 +287,14 @@ const ShoppingListItem = ({
             variant="outlined" 
             size="small" 
             sx={{ mr: 1 }}
-            onClick={() => onAddToMixedCart(item, 'walmart')}
+            onClick={() => handleStoreClick('walmart', item)}
           >
             Add to Walmart
           </Button>
           <Button 
             variant="outlined" 
             size="small" 
-            onClick={() => onAddToMixedCart(item, 'kroger')}
+            onClick={() => handleStoreClick('kroger', item)}
           >
             Add to Kroger
           </Button>
@@ -261,7 +304,7 @@ const ShoppingListItem = ({
           variant="outlined" 
           size="small" 
           sx={{ mt: 1 }}
-          onClick={() => onAddToCart(item, selectedStore)}
+          onClick={() => handleStoreClick(selectedStore, item)}
         >
           Add to {selectedStore.charAt(0).toUpperCase() + selectedStore.slice(1)} Cart
         </Button>
@@ -276,10 +319,81 @@ const ShoppingList = ({
   onAddToCart,
   onAddToMixedCart
 }) => {
+  const [showStoreSelector, setShowStoreSelector] = useState(false);
+  const [pendingItem, setPendingItem] = useState(null);
+  const [error, setError] = useState('');
+  
+  // Check if we have a configured Kroger store already
+  useEffect(() => {
+    // Check if we need to refresh the Kroger location from a temp storage
+    const tempLocationId = localStorage.getItem('temp_kroger_location_id');
+    const savedLocationId = localStorage.getItem('kroger_store_location_id');
+    
+    if (tempLocationId && (!savedLocationId || tempLocationId !== savedLocationId)) {
+      console.log("Found temp Kroger location ID, attempting to save permanently");
+      const refreshLocation = async () => {
+        try {
+          await apiService.updateKrogerLocation(tempLocationId);
+          localStorage.removeItem('temp_kroger_location_id');
+        } catch (err) {
+          console.error("Failed to save temp location:", err);
+        }
+      };
+      refreshLocation();
+    }
+  }, []);
+  
   const processedCategories = Object.entries(categories).reduce((acc, [category, items]) => {
     acc[category] = combineItems(items);
     return acc;
   }, {});
+  
+  const handleKrogerNeededSetup = (item) => {
+    setPendingItem(item);
+    setShowStoreSelector(true);
+  };
+  
+  const handleCloseStoreSelector = () => {
+    setShowStoreSelector(false);
+    setPendingItem(null);
+  };
+  
+  const handleStoreSelect = async (locationId) => {
+    if (!locationId) {
+      setError("No store location selected");
+      return;
+    }
+    
+    try {
+      console.log(`Selected Kroger store location: ${locationId}`);
+      
+      const result = await apiService.updateKrogerLocation(locationId);
+      
+      if (result.success) {
+        // Store was successfully set
+        console.log("Kroger store location set successfully");
+        localStorage.setItem('kroger_store_configured', 'true');
+        
+        // Close the dialog
+        setShowStoreSelector(false);
+        
+        // If we had a pending item, try to add it to the cart now
+        if (pendingItem) {
+          if (selectedStore === 'mixed') {
+            onAddToMixedCart(pendingItem, 'kroger');
+          } else {
+            onAddToCart(pendingItem, 'kroger');
+          }
+          setPendingItem(null);
+        }
+      } else {
+        setError(result.message || "Failed to set store location");
+      }
+    } catch (err) {
+      console.error("Error setting store location:", err);
+      setError(err.message || "An error occurred setting the store location");
+    }
+  };
 
   return (
     <>
@@ -294,11 +408,36 @@ const ShoppingList = ({
                 selectedStore={selectedStore}
                 onAddToCart={onAddToCart}
                 onAddToMixedCart={onAddToMixedCart}
+                onKrogerNeededSetup={handleKrogerNeededSetup}
               />
             ))}
           </Grid>
         </Paper>
       ))}
+      
+      {/* Kroger Store Selection Dialog */}
+      <StoreSelector 
+        open={showStoreSelector}
+        onClose={handleCloseStoreSelector}
+        onStoreSelect={handleStoreSelect}
+        storeType="kroger"
+      />
+      
+      {error && (
+        <Dialog open={!!error} onClose={() => setError('')}>
+          <DialogTitle>Error</DialogTitle>
+          <DialogContent>
+            <Alert severity="error" sx={{ mt: 2 }}>
+              {error}
+            </Alert>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setError('')} color="primary">
+              Close
+            </Button>
+          </DialogActions>
+        </Dialog>
+      )}
     </>
   );
 };

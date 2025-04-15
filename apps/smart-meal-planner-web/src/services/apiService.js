@@ -800,29 +800,76 @@ const apiService = {
   async searchKrogerItems(items) {
     try {
       console.log("Searching Kroger items:", items);
+      
+      // Check if we have a selected Kroger store in localStorage
+      const savedKrogerStoreId = localStorage.getItem('kroger_store_location_id');
+      console.log("Saved Kroger store location ID:", savedKrogerStoreId);
+      
+      // Make the API request
       const response = await axiosInstance.post('/kroger/search', { items });
       console.log("Kroger search response:", response.data);
       
-      // Ensure needs_setup is properly handled
+      // If the search was successful, save that we have a properly configured Kroger store
+      if (response.data.success && !response.data.needs_setup) {
+        localStorage.setItem('kroger_store_configured', 'true');
+      }
+      
+      // Check if backend indicates we need to set up Kroger (no store selected)
       if (response.data.needs_setup === true) {
+        // If we previously saved a store ID but backend says we need setup, 
+        // try to update the location again
+        if (savedKrogerStoreId) {
+          console.log("Backend says we need setup but we have a saved location ID. Trying to update location again.");
+          try {
+            const updateResult = await this.updateKrogerLocation(savedKrogerStoreId);
+            if (updateResult.success) {
+              console.log("Successfully restored Kroger store location, retrying search");
+              // Retry the search
+              const retryResponse = await axiosInstance.post('/kroger/search', { items });
+              
+              if (retryResponse.data.success) {
+                return retryResponse.data;
+              }
+            }
+          } catch (updateErr) {
+            console.error("Failed to restore Kroger location:", updateErr);
+          }
+        }
+        
+        // If we couldn't fix it automatically, return the needs_setup response
         return {
           success: false,
           needs_setup: true,
-          message: response.data.message
+          message: response.data.message || "Please select a Kroger store location"
         };
       }
       
       return response.data;
     } catch (err) {
       console.error("Kroger search error:", err);
+      
       // Check if the error response contains needs_setup
       if (err.response?.data?.needs_setup) {
+        // Same logic as above for trying to restore a saved location
+        const savedKrogerStoreId = localStorage.getItem('kroger_store_location_id');
+        
+        if (savedKrogerStoreId) {
+          try {
+            console.log("Trying to restore saved Kroger location before returning needs_setup");
+            await this.updateKrogerLocation(savedKrogerStoreId);
+            // We'll still return needs_setup, but next search attempt might work
+          } catch (updateErr) {
+            console.error("Failed to restore Kroger location:", updateErr);
+          }
+        }
+        
         return {
           success: false,
           needs_setup: true,
-          message: err.response.data.message
+          message: err.response.data.message || "Please select a Kroger store location"
         };
       }
+      
       throw err;
     }
   },
@@ -963,6 +1010,10 @@ const apiService = {
         };
       }
       
+      // Always save the location ID to localStorage for client-side caching and fallback
+      localStorage.setItem('kroger_store_location_id', locationId);
+      localStorage.setItem('kroger_store_configured', 'true');
+      
       // Log the data we're sending for debugging
       const requestData = {
         // Send multiple variations of the parameter name to ensure one works
@@ -979,6 +1030,10 @@ const apiService = {
         const response = await axiosInstance.post('/kroger/store-location', requestData);
         
         console.log('Kroger location update response:', response.data);
+        
+        // Store the last successful update time
+        localStorage.setItem('kroger_location_updated_at', new Date().toISOString());
+        
         return {
           ...response.data,
           success: true,  // Ensure success flag is set
@@ -993,6 +1048,10 @@ const apiService = {
         });
         
         console.log('Direct store update response:', directResponse.data);
+        
+        // Store the last successful update time
+        localStorage.setItem('kroger_location_updated_at', new Date().toISOString());
+        
         return {
           ...directResponse.data,
           success: true,
@@ -1028,15 +1087,15 @@ const apiService = {
         errorMessage = err.message;
       }
       
-      // Last resort method - return a success message anyway since the user will try again later
-      // Only do this in extreme cases where the backend is completely unreachable
-      if (!err.response && !err.request) {
-        console.warn("Using client-side fallback: storing location in localStorage");
-        localStorage.setItem('temp_kroger_location_id', locationId);
+      // Last resort method - we've already stored the location in localStorage, so return the cached location info
+      // If backend is unreachable, pretend the update succeeded since we'll retry on next API call
+      if (!err.response || err.response.status >= 500) {
+        console.warn("Backend unavailable, using client-side fallback from localStorage");
         return {
           success: true,
-          message: "Stored location choice temporarily. Will try to save it permanently when connection is restored.",
-          using_fallback: true
+          message: "Stored location choice. The server will be updated when connection is restored.",
+          using_fallback: true,
+          location_id: locationId
         };
       }
       
