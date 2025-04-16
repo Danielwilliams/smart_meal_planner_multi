@@ -96,47 +96,6 @@ async def direct_kroger_search(
         # Use the standalone function
         result = kroger_search_item(term, locationId)
         
-        # If the search failed and returned no results, provide mock data so the
-        # frontend has something to display (helpful during development/testing)
-        if not result.get("success") or not result.get("results"):
-            import random
-            cleaned_term = term.lower()
-            mock_data = []
-            
-            # Common food brands
-            brands = [
-                "Kroger", "Simple Truth", "Private Selection", "Murray's", 
-                "Boar's Head", "Organic", "Dole", "Hass", "Chiquita", "Del Monte"
-            ]
-            
-            # Generate different UPCs based on the search term for a bit of realism
-            import hashlib
-            term_hash = hashlib.md5(cleaned_term.encode()).hexdigest()
-            
-            # Add some fake products based on the search term
-            for i in range(1, 4):
-                price = round(random.uniform(0.99, 12.99), 2)
-                mock_data.append({
-                    "name": f"{cleaned_term.title()} ({i})",
-                    "upc": f"{term_hash[:8]}-{i}",
-                    "brand": random.choice(brands),
-                    "price": price,
-                    "size": f"{random.randint(1, 32)} oz",
-                    "fulfillment": {
-                        "instore": True,
-                        "curbside": True,
-                        "delivery": random.choice([True, False]),
-                        "shiptohome": False
-                    }
-                })
-            
-            logger.info(f"Providing mock data for '{term}' due to API issues")
-            return {
-                "success": True,
-                "results": mock_data,
-                "is_mock": True
-            }
-        
         return result
             
     except Exception as e:
@@ -177,40 +136,8 @@ async def search_products(
         if result.get("success"):
             return result.get("results", [])
         else:
-            # Generate mock data if the search failed
-            import random
-            cleaned_term = query.lower()
-            mock_data = []
-            
-            # Common food brands
-            brands = [
-                "Kroger", "Simple Truth", "Private Selection", "Murray's", 
-                "Boar's Head", "Organic", "Dole", "Hass", "Chiquita"
-            ]
-            
-            # Generate different UPCs based on the search term for a bit of realism
-            import hashlib
-            term_hash = hashlib.md5(cleaned_term.encode()).hexdigest()
-            
-            # Add some fake products based on the search term
-            for i in range(1, 4):
-                price = round(random.uniform(0.99, 12.99), 2)
-                mock_data.append({
-                    "name": f"{cleaned_term.title()} ({i})",
-                    "upc": f"{term_hash[:8]}-{i}",
-                    "brand": random.choice(brands),
-                    "price": price,
-                    "size": f"{random.randint(1, 32)} oz",
-                    "fulfillment": {
-                        "instore": True,
-                        "curbside": True,
-                        "delivery": random.choice([True, False]),
-                        "shiptohome": False
-                    }
-                })
-            
-            logger.info(f"Providing mock data for '{query}' due to API issues")
-            return mock_data
+            # Return empty array if search fails
+            return []
             
     except Exception as e:
         logger.error(f"Error searching Kroger products: {str(e)}")
