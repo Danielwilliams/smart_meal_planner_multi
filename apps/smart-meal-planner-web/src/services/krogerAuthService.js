@@ -401,10 +401,38 @@ const reconnectKroger = async () => {
  */
 const checkKrogerStatus = async () => {
   try {
+    console.log('Checking Kroger connection status...');
     const response = await authAxios.get('/kroger/connection-status');
+    console.log('Kroger connection status response:', response.data);
+    
+    // Add detailed debugging
+    if (response.data) {
+      if (response.data.is_connected === true) {
+        console.log('✅ Kroger connection is VALID');
+        if (response.data.store_location) {
+          console.log(`✅ Store location ID: ${response.data.store_location}`);
+        } else {
+          console.log('⚠️ No store location ID found');
+        }
+        if (response.data.access_token_expires) {
+          console.log(`✅ Access token expires: ${response.data.access_token_expires}`);
+        }
+      } else {
+        console.log('❌ Kroger connection is NOT VALID');
+        if (response.data.message) {
+          console.log(`❌ Reason: ${response.data.message}`);
+        }
+      }
+    }
+    
     return response.data;
   } catch (error) {
     console.error('Error checking Kroger status:', error);
+    console.log('❌ Kroger status check FAILED with error');
+    if (error.response) {
+      console.log('Response data:', error.response.data);
+      console.log('Response status:', error.response.status);
+    }
     return {
       is_connected: false,
       error: error.message
@@ -417,31 +445,79 @@ const checkKrogerStatus = async () => {
  */
 const processAuthCode = async (code, redirectUri) => {
   try {
-    console.log(`Processing auth code: ${code.substring(0, 10)}...`);
+    console.log('------------------------------------------------');
+    console.log(`🔄 PROCESSING KROGER AUTH CODE: ${code.substring(0, 10)}...`);
+    console.log('------------------------------------------------');
     
     // Try various approaches to process the code
     
     // Approach 1: Standard backend endpoint
     try {
       console.log('Approach 1: Using backend process-code endpoint');
-      const response = await authAxios.post('/kroger/process-code', {
+      
+      // Log the complete data we're sending
+      const requestData = {
         code,
         redirect_uri: redirectUri || 'https://smart-meal-planner-multi.vercel.app/kroger/callback',
         grant_type: 'authorization_code'
-      });
+      };
+      console.log('Sending request data:', requestData);
       
-      console.log('Process-code response:', response.data);
+      const response = await authAxios.post('/kroger/process-code', requestData);
+      
+      console.log('✅ APPROACH 1 SUCCEEDED');
+      console.log('Response status:', response.status);
+      console.log('Response data:', response.data);
+      
+      // Verify we got the expected data back
+      if (response.data) {
+        if (response.data.success) {
+          console.log('✅ Success flag found in response');
+        }
+        if (response.data.access_token) {
+          console.log('✅ Access token received');
+        }
+        if (response.data.refresh_token) {
+          console.log('✅ Refresh token received');
+        }
+        if (response.data.store_location) {
+          console.log('✅ Store location received:', response.data.store_location);
+        }
+      }
+      
+      // Do a quick verification that we're now connected
+      try {
+        console.log('Verifying connection after processing code...');
+        const verifyResponse = await authAxios.get('/kroger/connection-status');
+        if (verifyResponse.data && verifyResponse.data.is_connected) {
+          console.log('✅ Verification SUCCEEDED - connection is valid');
+        } else {
+          console.log('❌ Verification FAILED - connection is still not valid');
+          console.log('Status response:', verifyResponse.data);
+        }
+      } catch (verifyErr) {
+        console.error('Error during verification:', verifyErr);
+      }
+      
       return { success: true, data: response.data };
     } catch (err1) {
-      console.error('Approach 1 failed:', err1);
+      console.error('❌ APPROACH 1 FAILED');
+      console.error('Error details:', err1);
+      if (err1.response) {
+        console.error('Response status:', err1.response.status);
+        console.error('Response data:', err1.response.data);
+      }
       
       // Approach 2: Try the auth-callback endpoint with URL params
       try {
+        console.log('------------------------------------------------');
         console.log('Approach 2: Using auth-callback endpoint with URL params');
         const params = new URLSearchParams();
         params.append('code', code);
         params.append('redirect_uri', redirectUri || 'https://smart-meal-planner-multi.vercel.app/kroger/callback');
         params.append('grant_type', 'authorization_code');
+        
+        console.log('Sending parameters:', Object.fromEntries(params.entries()));
         
         const response = await authAxios.post('/kroger/auth-callback', params, {
           headers: {
@@ -449,29 +525,66 @@ const processAuthCode = async (code, redirectUri) => {
           }
         });
         
-        console.log('Auth-callback response:', response.data);
+        console.log('✅ APPROACH 2 SUCCEEDED');
+        console.log('Response data:', response.data);
+        
+        // Do a quick verification
+        try {
+          console.log('Verifying connection after processing code...');
+          const verifyResponse = await authAxios.get('/kroger/connection-status');
+          if (verifyResponse.data && verifyResponse.data.is_connected) {
+            console.log('✅ Verification SUCCEEDED - connection is valid');
+          } else {
+            console.log('❌ Verification FAILED - connection is still not valid');
+          }
+        } catch (verifyErr) {
+          console.error('Error during verification:', verifyErr);
+        }
+        
         return { success: true, data: response.data };
       } catch (err2) {
-        console.error('Approach 2 failed:', err2);
+        console.error('❌ APPROACH 2 FAILED');
+        console.error('Error details:', err2);
+        if (err2.response) {
+          console.error('Response status:', err2.response.status);
+          console.error('Response data:', err2.response.data);
+        }
         
-        // Approach 3: Try the direct-token endpoint
+        // Approach 3: Try a different endpoint
         try {
-          console.log('Approach 3: Using direct-token endpoint');
-          const formData = new FormData();
-          formData.append('code', code);
-          formData.append('redirect_uri', redirectUri || 'https://smart-meal-planner-multi.vercel.app/kroger/callback');
-          formData.append('grant_type', 'authorization_code');
+          console.log('------------------------------------------------');
+          console.log('Approach 3: Using exchange-token endpoint');
           
-          const response = await authAxios.post('/kroger/direct-token', formData, {
-            headers: {
-              'Content-Type': 'multipart/form-data'
-            }
+          // Try yet another endpoint - exchange-token
+          const response = await authAxios.post('/kroger/exchange-token', {
+            code: code,
+            redirect_uri: redirectUri || 'https://smart-meal-planner-multi.vercel.app/kroger/callback'
           });
           
-          console.log('Direct-token response:', response.data);
+          console.log('✅ APPROACH 3 SUCCEEDED');
+          console.log('Response data:', response.data);
+          
+          // Do a quick verification
+          try {
+            console.log('Verifying connection after processing code...');
+            const verifyResponse = await authAxios.get('/kroger/connection-status');
+            if (verifyResponse.data && verifyResponse.data.is_connected) {
+              console.log('✅ Verification SUCCEEDED - connection is valid');
+            } else {
+              console.log('❌ Verification FAILED - connection is still not valid');
+            }
+          } catch (verifyErr) {
+            console.error('Error during verification:', verifyErr);
+          }
+          
           return { success: true, data: response.data };
         } catch (err3) {
-          console.error('Approach 3 failed:', err3);
+          console.error('❌ APPROACH 3 FAILED');
+          console.error('Error details:', err3);
+          if (err3.response) {
+            console.error('Response status:', err3.response.status);
+            console.error('Response data:', err3.response.data);
+          }
           
           // If all approaches fail, throw the original error
           throw err1;
@@ -479,7 +592,8 @@ const processAuthCode = async (code, redirectUri) => {
       }
     }
   } catch (error) {
-    console.error('All approaches to process auth code failed:', error);
+    console.error('❌ ALL APPROACHES TO PROCESS AUTH CODE FAILED');
+    console.error('Final error:', error);
     return { success: false, error: error.message };
   }
 };

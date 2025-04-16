@@ -92,17 +92,32 @@ function CartPage() {
     const krogerConnected = localStorage.getItem('kroger_connected');
     const reconnectAttempted = localStorage.getItem('kroger_reconnect_attempted');
     
+    console.log('----------------[ Kroger Auth Check ]----------------');
+    console.log('krogerAuthCode exists:', !!krogerAuthCode);
+    console.log('krogerAuthRedirectUri:', krogerAuthRedirectUri);
+    console.log('krogerConnected flag:', krogerConnected);
+    console.log('reconnectAttempted flag:', reconnectAttempted);
+    
     // Process Kroger auth code ONLY if we have one (coming back from redirect)
     if (krogerAuthCode) {
       (async () => {
         try {
-          console.log(`Processing Kroger auth code from session storage: ${krogerAuthCode.substring(0, 10)}...`);
+          console.log(`Processing Kroger auth code (length: ${krogerAuthCode.length}): ${krogerAuthCode.substring(0, 10)}...`);
           setSnackbarMessage("Processing Kroger connection...");
           setSnackbarOpen(true);
           
-          // First, try the new handleKrogerAuthCode method in apiService
+          // First verify what state the backend thinks we're in
           try {
-            console.log("Using krogerAuthService.processAuthCode");
+            console.log('Checking current connection status before processing code...');
+            const currentStatus = await krogerAuthService.checkKrogerStatus();
+            console.log('Current connection status:', currentStatus);
+          } catch (statusErr) {
+            console.error('Failed to check connection status:', statusErr);
+          }
+          
+          // Now try to process the code
+          try {
+            console.log("Using krogerAuthService.processAuthCode to handle the code");
             const result = await krogerAuthService.processAuthCode(
               krogerAuthCode, 
               krogerAuthRedirectUri || 'https://smart-meal-planner-multi.vercel.app/kroger/callback'
@@ -110,8 +125,21 @@ function CartPage() {
             
             console.log("Auth code handling result:", result);
             
-            if (result && (result.success || result.access_token)) {
+            if (result && (result.success || result.data?.success || result.data?.access_token)) {
               console.log("Successfully processed Kroger auth code!");
+              
+              // Check again after processing
+              try {
+                console.log('Checking connection status AFTER processing code...');
+                const afterStatus = await krogerAuthService.checkKrogerStatus();
+                console.log('Connection status after processing:', afterStatus);
+                
+                if (!afterStatus.is_connected) {
+                  console.error('⚠️ Still not connected after processing code!');
+                }
+              } catch (afterErr) {
+                console.error('Failed to check connection status after processing:', afterErr);
+              }
               
               // Clear session storage on success
               sessionStorage.removeItem('kroger_auth_code');
