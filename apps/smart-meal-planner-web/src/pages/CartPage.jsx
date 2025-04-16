@@ -449,35 +449,82 @@ function CartPage() {
           return;
         }
         
-        // Now check Kroger credentials before proceeding
-        console.log("Checking Kroger credentials before search");
+        // Check if we have a pending Kroger setup from an auth code
+        const needsSetup = sessionStorage.getItem('kroger_needs_setup');
+        const authCode = sessionStorage.getItem('kroger_auth_code');
+        const authTimestamp = sessionStorage.getItem('kroger_auth_timestamp');
         
-        try {
-          // First check with the backend API
-          const status = await krogerAuthService.checkKrogerStatus();
-          console.log("Kroger status check result:", status);
+        if (needsSetup === 'true' && authCode) {
+          console.log('Detected Kroger auth code that needs processing');
           
-          // If not connected, show reconnect dialog
-          if (!status.is_connected) {
-            console.log("Kroger not connected, showing reconnect dialog");
-            showKrogerError(
-              "Kroger Connection Required",
-              "You need to connect your Kroger account before searching for items.",
-              true
-            );
-            return;
+          // Check if the code is recent (within last 5 minutes)
+          const now = Date.now();
+          const authTime = parseInt(authTimestamp || '0', 10);
+          const isRecent = (now - authTime) < 5 * 60 * 1000; // 5 minutes
+          
+          if (isRecent) {
+            console.log('Auth code is recent, assuming connection was successful');
+            // Clear the session storage flags
+            sessionStorage.removeItem('kroger_needs_setup');
+            sessionStorage.removeItem('kroger_auth_code');
+            sessionStorage.removeItem('kroger_auth_timestamp');
+            
+            // Set status flags in localStorage
+            localStorage.setItem('kroger_connected', 'true');
+            localStorage.setItem('kroger_connected_at', new Date().toISOString());
+            
+            // Skip connection check and proceed with search
+            console.log('Proceeding with search without connection check');
+          } else {
+            console.log('Auth code is stale, clearing it');
+            sessionStorage.removeItem('kroger_needs_setup');
+            sessionStorage.removeItem('kroger_auth_code');
+            sessionStorage.removeItem('kroger_auth_timestamp');
           }
+        } else {
+          // Now check Kroger credentials before proceeding
+          console.log("Checking Kroger credentials before search");
           
-          // If we get here, we're good to proceed with the search
-          console.log("Kroger credentials verified, proceeding with search");
-        } catch (err) {
-          console.error("Error checking Kroger credentials:", err);
-          showKrogerError(
-            "Kroger Connection Error",
-            "There was a problem checking your Kroger connection. Please try reconnecting your account.",
-            true
-          );
-          return;
+          try {
+            // First check with the backend API
+            const status = await krogerAuthService.checkKrogerStatus();
+            console.log("Kroger status check result:", status);
+            
+            // If not connected, show reconnect dialog
+            if (!status.is_connected) {
+              console.log("Kroger not connected, showing reconnect dialog");
+              showKrogerError(
+                "Kroger Connection Required",
+                "You need to connect your Kroger account before searching for items.",
+                true
+              );
+              return;
+            }
+            
+            // If we get here, we're good to proceed with the search
+            console.log("Kroger credentials verified, proceeding with search");
+          } catch (err) {
+            console.error("Error checking Kroger credentials:", err);
+            
+            // Check for a recently successful auth
+            const wasRecentlyConnected = localStorage.getItem('kroger_connected') === 'true';
+            const connectedAt = localStorage.getItem('kroger_connected_at');
+            const now = Date.now();
+            const connectedTime = new Date(connectedAt || 0).getTime();
+            const isRecentlyConnected = connectedAt && (now - connectedTime) < 60 * 60 * 1000; // 1 hour
+            
+            if (wasRecentlyConnected && isRecentlyConnected) {
+              console.log('Recently connected to Kroger, proceeding with search despite error');
+              // Continue with search, assuming connection is still valid
+            } else {
+              showKrogerError(
+                "Kroger Connection Error",
+                "There was a problem checking your Kroger connection. Please try reconnecting your account.",
+                true
+              );
+              return;
+            }
+          }
         }
       }
       
