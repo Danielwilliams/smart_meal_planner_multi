@@ -337,6 +337,14 @@ class KrogerIntegration:
         
         # Store access token if provided (for operations that use an existing token)
         self.access_token = access_token
+        
+    def search_products(self, query: str, location_id: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Search for products on Kroger
+        This is a wrapper around the standalone kroger_search_item function
+        """
+        logger.info(f"Searching for: {query} at location: {location_id}")
+        return kroger_search_item(query, location_id)
 
     def get_access_token(self) -> Dict[str, Any]:
         try:

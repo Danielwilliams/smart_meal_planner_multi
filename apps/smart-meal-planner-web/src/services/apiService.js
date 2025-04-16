@@ -970,8 +970,8 @@ const apiService = {
       }
       
       // If we get here, either the backend search failed or we have a database schema issue
-      // Try direct query to Kroger as a last resort
-      console.log("Using direct requests to Kroger API");
+      // Try multiple fallback search endpoints
+      console.log("Using fallback Kroger search endpoints");
       
       const allResults = [];
       
@@ -985,28 +985,66 @@ const apiService = {
             throw new Error("No store location ID found");
           }
           
-          // Perform a direct search query
-          const searchResponse = await axiosInstance.post('/kroger/direct-search', {
-            term,
-            locationId: storeLocation
-          });
-          
-          if (searchResponse.data && searchResponse.data.data) {
-            const results = searchResponse.data.data.map(item => ({
-              upc: item.productId || item.upc || '',
-              description: item.description || '',
-              brand: item.brand || '',
-              size: item.items?.[0]?.size || '',
-              price: item.items?.[0]?.price?.regular || 0,
-              inStock: true,
-              image: item.images?.[0]?.sizes?.[3]?.url || '',
-              quantity: 1
-            }));
+          // Try direct-search endpoint first (we just added this to the backend)
+          try {
+            console.log(`Trying direct-search endpoint for "${term}"`);
+            const searchResponse = await axiosInstance.get(`/kroger/direct-search?term=${encodeURIComponent(term)}&locationId=${encodeURIComponent(storeLocation)}`);
             
-            allResults.push(...results);
+            if (searchResponse.data && searchResponse.data.success && searchResponse.data.results) {
+              console.log(`direct-search success for "${term}"`, searchResponse.data.results.length, "results");
+              
+              // These results should already be in the correct format from our kroger_search_item function
+              allResults.push(...searchResponse.data.results);
+              continue; // Skip to next term if this worked
+            }
+          } catch (directSearchError) {
+            console.error(`direct-search endpoint failed for "${term}":`, directSearchError.message);
           }
+          
+          // Try search-products endpoint as fallback
+          try {
+            console.log(`Trying search-products endpoint for "${term}"`);
+            const searchProductsResponse = await axiosInstance.get(`/kroger/search-products?query=${encodeURIComponent(term)}&location_id=${encodeURIComponent(storeLocation)}`);
+            
+            if (searchProductsResponse.data && Array.isArray(searchProductsResponse.data)) {
+              console.log(`search-products success for "${term}"`, searchProductsResponse.data.length, "results");
+              
+              // Format the results
+              const results = searchProductsResponse.data.map(item => ({
+                upc: item.upc || '',
+                description: item.name || '',
+                brand: item.brand || '',
+                size: item.size || '',
+                price: item.price || 0,
+                inStock: true,
+                image: '',
+                quantity: 1
+              }));
+              
+              allResults.push(...results);
+              continue; // Skip to next term if this worked
+            }
+          } catch (searchProductsError) {
+            console.log(`search-products endpoint failed for "${term}":`, searchProductsError.message);
+          }
+          
+          // If we get here, both approaches failed
+          console.log(`All search attempts failed for "${term}"`);
+          
+          // Add a placeholder result so the user knows we tried
+          allResults.push({
+            upc: `placeholder-${Date.now()}`,
+            description: `${term} (No exact matches found)`,
+            brand: '',
+            size: '',
+            price: 0,
+            inStock: false,
+            image: '',
+            quantity: 1,
+            placeholder: true
+          });
         } catch (searchError) {
-          console.error(`Error searching for "${term}":`, searchError);
+          console.error(`All search methods failed for "${term}":`, searchError);
           
           // Check if this error indicates auth issues
           if (searchError.response?.status === 401 || 

@@ -49,7 +49,6 @@ async def search_kroger_items(
         
         # Pass user_id to KrogerIntegration to try user-specific credentials
         kroger = KrogerIntegration()
-        # ...
 
         search_results = []
         
@@ -79,6 +78,69 @@ async def search_kroger_items(
             "success": False,
             "message": str(e)
         }
+
+@router.get("/direct-search")
+async def direct_kroger_search(
+    term: str,
+    locationId: str,
+    user = Depends(get_user_from_token)
+):
+    """Direct search for a single term in Kroger"""
+    try:
+        user_id = user.get('user_id')
+        logger.info(f"Direct Kroger search for user {user_id}: term={term}, locationId={locationId}")
+        
+        # Import the kroger_search_item function directly
+        from app.integration.kroger import kroger_search_item
+        
+        # Use the standalone function
+        result = kroger_search_item(term, locationId)
+        
+        return result
+            
+    except Exception as e:
+        logger.error(f"Error in direct Kroger search: {str(e)}")
+        return {
+            "success": False,
+            "message": str(e)
+        }
+
+@router.get("/search-products")
+async def search_products(
+    query: str,
+    location_id: Optional[str] = None,
+    user = Depends(get_user_from_token)
+):
+    """Search for products in Kroger store"""
+    try:
+        user_id = user.get('user_id')
+        logger.info(f"Product search for user {user_id}: query={query}")
+
+        # If location_id not provided, get from user preferences
+        if not location_id:
+            user_creds = get_user_kroger_credentials(user_id)
+            location_id = user_creds.get('store_location_id') if user_creds else None
+            
+            if not location_id:
+                logger.warning("No Kroger store location ID found")
+                return {
+                    "success": False,
+                    "message": "Please select a Kroger store location in preferences",
+                    "needs_setup": True
+                }
+        
+        # Use the existing standalone function
+        from app.integration.kroger import kroger_search_item
+        result = kroger_search_item(query, location_id)
+        
+        if result.get("success"):
+            return result.get("results", [])
+        else:
+            return []
+            
+    except Exception as e:
+        logger.error(f"Error searching Kroger products: {str(e)}")
+        return []
 
 # In app/routers/kroger_store.py
 
