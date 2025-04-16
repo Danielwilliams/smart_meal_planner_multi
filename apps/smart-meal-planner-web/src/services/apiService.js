@@ -1018,54 +1018,135 @@ const apiService = {
   
   exchangeKrogerAuthCode: async (code) => {
     try {
-      console.log(`Exchanging code ${code.substring(0, 10)}... with backend`);
+      console.log('================================================');
+      console.log(`🔄 EXCHANGING KROGER AUTH CODE: ${code.substring(0, 10)}...`);
+      console.log('CODE LENGTH:', code.length);
+      console.log('================================================');
       
-      // Using URLSearchParams for proper OAuth 2.0 format
-      const params = new URLSearchParams();
-      params.append('code', code);
-      params.append('redirect_uri', 'https://smart-meal-planner-multi.vercel.app/kroger/callback');
-      params.append('grant_type', 'authorization_code');
-      params.append('state', 'from-frontend');
-      
-      // POST with application/x-www-form-urlencoded content type as per OAuth standards
-      const resp = await axiosInstance.post('/kroger/auth-callback', params, {
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded'
-        },
-        // Adding a longer timeout for this request
-        timeout: 10000
-      });
-      
-      return resp.data;
-    } catch (err) {
-      console.error('Error exchanging Kroger auth code:', err);
-      console.error('Error details:', {
-        message: err.message,
-        response: err.response?.data,
-        status: err.response?.status
-      });
-      
-      // If we got a 405 Method Not Allowed error, try with GET as a fallback
-      if (err.response?.status === 405) {
-        try {
-          console.log('POST failed with 405, trying GET as fallback');
-          // As a last resort, try GET with the params in the URL
-          const getResp = await axiosInstance.get('/kroger/auth-callback', {
-            params: { 
-              code,
-              redirect_uri: 'https://smart-meal-planner-multi.vercel.app/kroger/callback',
-              grant_type: 'authorization_code',
-              state: 'from-frontend' 
-            },
-            timeout: 10000
-          });
-          return getResp.data;
-        } catch (getErr) {
-          console.error('GET fallback also failed:', getErr);
-          throw getErr;
-        }
+      // First, check current connection status
+      try {
+        console.log('Checking connection status before code exchange...');
+        const statusBefore = await axiosInstance.get('/kroger/connection-status');
+        console.log('Connection status before exchange:', statusBefore.data);
+      } catch (statusErr) {
+        console.error('Error checking status before exchange:', statusErr);
       }
       
+      // Try multiple approaches to ensure success
+      
+      // APPROACH 1: Try the recommended form-urlencoded approach
+      try {
+        console.log('APPROACH 1: Using application/x-www-form-urlencoded with POST');
+        
+        // Use URLSearchParams for proper OAuth 2.0 format
+        const params = new URLSearchParams();
+        params.append('code', code);
+        params.append('redirect_uri', 'https://smart-meal-planner-multi.vercel.app/kroger/callback');
+        params.append('grant_type', 'authorization_code');
+        params.append('state', 'from-frontend');
+        
+        console.log('Request data:', Object.fromEntries(params.entries()));
+        
+        const resp = await axiosInstance.post('/kroger/auth-callback', params, {
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded'
+          },
+          timeout: 15000 // Increase timeout for better reliability
+        });
+        
+        console.log('✅ APPROACH 1 SUCCEEDED');
+        console.log('Response data:', resp.data);
+        
+        // Verify connection after exchange
+        try {
+          console.log('Verifying connection after code exchange...');
+          const statusResp = await axiosInstance.get('/kroger/connection-status');
+          console.log('Connection status after exchange:', statusResp.data);
+          
+          if (statusResp.data && statusResp.data.is_connected) {
+            console.log('✅ Connection is valid after exchange');
+          } else {
+            console.log('❌ Connection is still NOT valid after exchange');
+          }
+        } catch (verifyErr) {
+          console.error('Error verifying connection:', verifyErr);
+        }
+        
+        return resp.data;
+      } catch (approach1Err) {
+        console.error('❌ APPROACH 1 FAILED');
+        console.error('Error details:', {
+          message: approach1Err.message,
+          response: approach1Err.response?.data,
+          status: approach1Err.response?.status
+        });
+        
+        // APPROACH 2: Try alternative endpoint
+        try {
+          console.log('------------------------------------------------');
+          console.log('APPROACH 2: Using process-code endpoint');
+          
+          const resp = await axiosInstance.post('/kroger/process-code', {
+            code,
+            redirect_uri: 'https://smart-meal-planner-multi.vercel.app/kroger/callback',
+            grant_type: 'authorization_code'
+          });
+          
+          console.log('✅ APPROACH 2 SUCCEEDED');
+          console.log('Response data:', resp.data);
+          
+          // Verify connection after exchange
+          try {
+            console.log('Verifying connection after code exchange...');
+            const statusResp = await axiosInstance.get('/kroger/connection-status');
+            console.log('Connection status after exchange:', statusResp.data);
+          } catch (verifyErr) {
+            console.error('Error verifying connection:', verifyErr);
+          }
+          
+          return resp.data;
+        } catch (approach2Err) {
+          console.error('❌ APPROACH 2 FAILED');
+          console.error('Error details:', {
+            message: approach2Err.message,
+            response: approach2Err.response?.data,
+            status: approach2Err.response?.status
+          });
+          
+          // APPROACH 3: Try GET as a last resort
+          try {
+            console.log('------------------------------------------------');
+            console.log('APPROACH 3: Using GET with query parameters');
+            
+            const resp = await axiosInstance.get('/kroger/auth-callback', {
+              params: { 
+                code,
+                redirect_uri: 'https://smart-meal-planner-multi.vercel.app/kroger/callback',
+                grant_type: 'authorization_code',
+                state: 'from-frontend' 
+              },
+              timeout: 15000
+            });
+            
+            console.log('✅ APPROACH 3 SUCCEEDED');
+            console.log('Response data:', resp.data);
+            
+            return resp.data;
+          } catch (approach3Err) {
+            console.error('❌ APPROACH 3 FAILED');
+            console.error('Error details:', {
+              message: approach3Err.message,
+              response: approach3Err.response?.data,
+              status: approach3Err.response?.status
+            });
+            
+            throw approach1Err; // Throw original error
+          }
+        }
+      }
+    } catch (err) {
+      console.error('❌ ALL APPROACHES FAILED');
+      console.error('Final error:', err);
       throw err;
     }
   },
