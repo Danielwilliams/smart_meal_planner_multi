@@ -480,6 +480,8 @@ const processAuthCode = async (code, redirectUri) => {
     // Store the code processing attempt in localStorage
     localStorage.setItem('kroger_code_processing', 'true');
     localStorage.setItem('kroger_code_timestamp', Date.now().toString());
+    localStorage.setItem('kroger_auth_code', code);
+    localStorage.setItem('kroger_redirect_uri', redirectUri || 'https://smart-meal-planner-multi.vercel.app/kroger/callback');
     
     // First, check if we already have a valid connection
     try {
@@ -501,21 +503,20 @@ const processAuthCode = async (code, redirectUri) => {
     
     // Try various approaches to process the code
     
-    // Approach 1: Using the process-code endpoint with JSON body
+    // Approach 1: Using the auth-callback endpoint with GET request
     try {
-      console.log('Approach 1: Using process-code endpoint');
+      console.log('Approach 1: Using GET auth-callback endpoint with URL params');
       
-      // Log the complete data we're sending
-      const requestData = {
+      // Construct URL with query parameters
+      const queryParams = new URLSearchParams({
         code,
         redirect_uri: redirectUri || 'https://smart-meal-planner-multi.vercel.app/kroger/callback',
-        grant_type: 'authorization_code',
-        store_tokens: true, // Explicitly request token storage
-        return_tokens: true  // Request tokens in response
-      };
-      console.log('Sending request data:', requestData);
+        grant_type: 'authorization_code'
+      }).toString();
       
-      const response = await authAxios.post('/kroger/process-code', requestData);
+      console.log('Using query string:', queryParams);
+      
+      const response = await authAxios.get(`/kroger/auth-callback?${queryParams}`);
       
       console.log('✅ APPROACH 1 SUCCEEDED');
       console.log('Response status:', response.status);
@@ -525,12 +526,6 @@ const processAuthCode = async (code, redirectUri) => {
       if (response.data) {
         if (response.data.success) {
           console.log('✅ Success flag found in response');
-        }
-        if (response.data.access_token) {
-          console.log('✅ Access token received');
-        }
-        if (response.data.refresh_token) {
-          console.log('✅ Refresh token received');
         }
         if (response.data.store_location) {
           console.log('✅ Store location received:', response.data.store_location);
@@ -542,21 +537,6 @@ const processAuthCode = async (code, redirectUri) => {
       localStorage.setItem('kroger_connected', 'true');
       localStorage.setItem('kroger_connected_at', new Date().toISOString());
       
-      // Do a quick verification that we're now connected
-      try {
-        console.log('Verifying connection after processing code...');
-        const verifyResponse = await checkKrogerStatus();
-        
-        if (verifyResponse && verifyResponse.is_connected) {
-          console.log('✅ Verification SUCCEEDED - connection is valid');
-        } else {
-          console.log('❌ Verification FAILED - connection is still not valid');
-          console.log('Status response:', verifyResponse);
-        }
-      } catch (verifyErr) {
-        console.error('Error during verification:', verifyErr);
-      }
-      
       return { success: true, data: response.data };
     } catch (err1) {
       console.error('❌ APPROACH 1 FAILED');
@@ -566,24 +546,21 @@ const processAuthCode = async (code, redirectUri) => {
         console.error('Response data:', err1.response.data);
       }
       
-      // Approach 2: Using form-urlencoded
+      // Approach 2: Using process-auth with GET request
       try {
         console.log('================================================');
-        console.log('Approach 2: Using auth-callback endpoint with URL params');
+        console.log('Approach 2: Using GET process-auth endpoint');
         
-        const params = new URLSearchParams();
-        params.append('code', code);
-        params.append('redirect_uri', redirectUri || 'https://smart-meal-planner-multi.vercel.app/kroger/callback');
-        params.append('grant_type', 'authorization_code');
-        params.append('client_id', KROGER_CLIENT_ID);
+        // Construct URL with query parameters
+        const queryParams = new URLSearchParams({
+          code,
+          redirect_uri: redirectUri || 'https://smart-meal-planner-multi.vercel.app/kroger/callback',
+          grant_type: 'authorization_code'
+        }).toString();
         
-        console.log('Sending parameters:', Object.fromEntries(params.entries()));
+        console.log('Using query string:', queryParams);
         
-        const response = await authAxios.post('/kroger/auth-callback', params, {
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded'
-          }
-        });
+        const response = await authAxios.get(`/kroger/process-auth?${queryParams}`);
         
         console.log('✅ APPROACH 2 SUCCEEDED');
         console.log('Response data:', response.data);
@@ -601,17 +578,19 @@ const processAuthCode = async (code, redirectUri) => {
           console.error('Response data:', err2.response.data);
         }
         
-        // Approach 3: Using an alternative endpoint
+        // Approach 3: Try to just mark the code as received in the backend
         try {
           console.log('================================================');
-          console.log('Approach 3: Using exchange-token endpoint');
+          console.log('Approach 3: Using simple code registration endpoint');
           
-          // Try a different endpoint
-          const response = await authAxios.post('/kroger/exchange-token', {
-            code: code,
-            redirect_uri: redirectUri || 'https://smart-meal-planner-multi.vercel.app/kroger/callback',
-            client_id: KROGER_CLIENT_ID
-          });
+          // Construct URL with minimal parameters
+          const queryParams = new URLSearchParams({
+            code,
+            redirect_uri: redirectUri || 'https://smart-meal-planner-multi.vercel.app/kroger/callback'
+          }).toString();
+          
+          // Use the simplest endpoint possible
+          const response = await authAxios.get(`/kroger/register-code?${queryParams}`);
           
           console.log('✅ APPROACH 3 SUCCEEDED');
           console.log('Response data:', response.data);
