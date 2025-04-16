@@ -10,10 +10,8 @@ const DIRECT_KROGER_AUTH_URL = 'https://api.kroger.com/v1/connect/oauth2/authori
 const DIRECT_KROGER_TOKEN_URL = 'https://api.kroger.com/v1/connect/oauth2/token';
 
 // Kroger OAuth credentials from environment variables
-// The backend will provide these values through API endpoints
-// Important: For backward compatibility, we're using a hardcoded client ID 
-// This is necessary because the backend expects kroger_client_id column in the database
-// but the actual column is kroger_username
+// Important: These are environment variables, not from the database
+// The database schema has kroger_username and kroger_password columns, not client_id and client_secret
 const KROGER_CLIENT_ID = process.env.KROGER_CLIENT_ID || 'smartmealplannerio-243261243034247652497361364a447078555731455949714a464f61656e5a676b444e552e42796961517a4f4576367156464b3564774c3039777a614700745159802496692';
 const KROGER_REDIRECT_URI = process.env.KROGER_REDIRECT_URI || 'https://smart-meal-planner-multi.vercel.app/kroger/callback';
 const KROGER_SCOPE = 'product.compact cart.basic:write';
@@ -347,41 +345,56 @@ const reconnectKroger = async () => {
     localStorage.removeItem('kroger_store_selection_done');
     localStorage.removeItem('kroger_store_selected');
     localStorage.removeItem('kroger_store_configured');
+    sessionStorage.removeItem('kroger_needs_store_selection');
     
-    // First try to get the login URL from the backend
-    try {
-      console.log('Trying to get login URL from backend...');
-      const response = await authAxios.get('/kroger/login-url');
-      
-      if (response.data && response.data.login_url) {
-        let loginUrl = response.data.login_url;
+    // Check if there's a database schema issue before trying backend
+    const hasSchemaIssue = localStorage.getItem('database_schema_issue') === 'true';
+    
+    if (!hasSchemaIssue) {
+      // First try to get the login URL from the backend
+      try {
+        console.log('Trying to get login URL from backend...');
+        const response = await authAxios.get('/kroger/login-url');
         
-        // If the backend returns a localhost URL, replace with the deployed URL
-        if (loginUrl.includes('127.0.0.1:8000/callback')) {
-          console.log('Fixing redirect URI in login URL from backend');
-          loginUrl = loginUrl.replace(
-            'http://127.0.0.1:8000/callback',
-            KROGER_REDIRECT_URI
-          );
+        if (response.data && response.data.login_url) {
+          let loginUrl = response.data.login_url;
+          
+          // If the backend returns a localhost URL, replace with the deployed URL
+          if (loginUrl.includes('127.0.0.1:8000/callback')) {
+            console.log('Fixing redirect URI in login URL from backend');
+            loginUrl = loginUrl.replace(
+              'http://127.0.0.1:8000/callback',
+              KROGER_REDIRECT_URI
+            );
+          }
+          
+          console.log('Successfully got login URL from backend');
+          
+          // Navigate to Kroger login page
+          window.location.href = loginUrl;
+          
+          return { 
+            success: true, 
+            redirectUrl: loginUrl,
+            source: 'backend'
+          };
         }
+      } catch (backendError) {
+        console.error('Failed to get login URL from backend:', backendError);
         
-        console.log('Successfully got login URL from backend');
-        
-        // Navigate to Kroger login page
-        window.location.href = loginUrl;
-        
-        return { 
-          success: true, 
-          redirectUrl: loginUrl,
-          source: 'backend'
-        };
+        // Check if this error indicates a database schema issue
+        if (backendError.response?.data?.error?.includes('client_id') || 
+            backendError.response?.data?.error?.includes('column')) {
+          console.log("Database schema issue detected, setting flag");
+          localStorage.setItem('database_schema_issue', 'true');
+        }
       }
-    } catch (backendError) {
-      console.error('Failed to get login URL from backend:', backendError);
+    } else {
+      console.log('Known database schema issue, skipping backend login URL');
     }
     
-    // Fall back to direct construction if backend fails
-    console.log('Falling back to direct OAuth URL construction');
+    // Fall back to direct construction if backend fails or if we have a schema issue
+    console.log('Using direct OAuth URL construction');
     
     // Construct the OAuth URL using the client ID from environment or hardcoded value
     const authUrl = `${DIRECT_KROGER_AUTH_URL}?scope=${encodeURIComponent(KROGER_SCOPE)}&response_type=code&client_id=${KROGER_CLIENT_ID}&redirect_uri=${encodeURIComponent(KROGER_REDIRECT_URI)}&state=${krogerState}`;
@@ -407,21 +420,51 @@ const reconnectKroger = async () => {
 
 /**
  * Check if Kroger credentials are valid
- * Due to schema issues in the database, we always use client-side tracking
- * and never try the backend endpoints
- * 
- * Note: The backend has schema mismatch issues - it's looking for kroger_client_id 
- * and kroger_client_secret columns, but the database has kroger_username and 
- * kroger_password columns instead.
+ * This function checks both backend and client-side Kroger credentials
  */
 const checkKrogerStatus = async () => {
   try {
     console.log('Checking Kroger connection status...');
     
-    // Always set the database schema issue flag to avoid any backend calls
-    localStorage.setItem('database_schema_issue', 'true');
+    // First try the backend API to check connection status
+    try {
+      console.log('Trying backend connection status check...');
+      const response = await authAxios.get('/kroger/connection-status');
+      
+      if (response.data && response.data.is_connected) {
+        console.log('✅ Backend reports valid Kroger connection:', response.data);
+        
+        // Make sure local storage is in sync with backend
+        localStorage.setItem('kroger_connected', 'true');
+        localStorage.setItem('kroger_connected_at', new Date().toISOString());
+        
+        // Check if store is selected in backend
+        if (response.data.store_location) {
+          localStorage.setItem('kroger_store_location', response.data.store_location);
+          localStorage.setItem('kroger_store_location_id', response.data.store_location);
+          localStorage.setItem('kroger_store_selected', 'true');
+          localStorage.setItem('kroger_store_configured', 'true');
+          sessionStorage.removeItem('kroger_needs_store_selection');
+          
+          return {
+            is_connected: true,
+            store_location: response.data.store_location,
+            store_selected: true
+          };
+        } else {
+          // Connected but no store selected
+          return {
+            is_connected: true,
+            needs_store_selection: true,
+            message: 'Please select a store'
+          };
+        }
+      }
+    } catch (backendError) {
+      console.log('Backend check failed, falling back to client-side state:', backendError.message);
+    }
     
-    // Use client-side checks only, skipping backend entirely
+    // Fall back to client-side checks if backend fails
     console.log('Using client-side checks for Kroger connection status');
     
     // Check store selection status first
@@ -483,7 +526,7 @@ const checkKrogerStatus = async () => {
       needs_reconnect: true
     };
   } catch (error) {
-    console.error('Error in client-side Kroger status check:', error);
+    console.error('Error in Kroger status check:', error);
     
     // Return a structured response even on error
     return {
@@ -512,11 +555,87 @@ const processAuthCode = async (code, redirectUri) => {
     localStorage.setItem('kroger_auth_code', code);
     localStorage.setItem('kroger_redirect_uri', redirectUri || 'https://smart-meal-planner-multi.vercel.app/kroger/callback');
     
+    // Make sure we clear any database schema issue flag to try backend first
+    localStorage.removeItem('database_schema_issue');
+    
     // First try to process the code with the backend
     try {
       console.log('Trying to process auth code with backend...');
       
-      // First try with GET to /kroger/auth-callback
+      // First try with POST to /kroger/process-code (most direct method)
+      try {
+        console.log('Trying POST to /kroger/process-code...');
+        
+        const processResponse = await authAxios.post('/kroger/process-code', {
+          code,
+          redirect_uri: redirectUri || 'https://smart-meal-planner-multi.vercel.app/kroger/callback'
+        });
+        
+        if (processResponse.data && processResponse.data.success) {
+          console.log('POST to /kroger/process-code successful:', processResponse.data);
+          
+          // Set connection flags for client-side tracking
+          localStorage.setItem('kroger_connected', 'true');
+          localStorage.setItem('kroger_connected_at', new Date().toISOString());
+          localStorage.setItem('kroger_auth_code_received', 'true');
+          
+          // Indicate that store selection is needed
+          sessionStorage.setItem('kroger_needs_store_selection', 'true');
+          
+          return processResponse.data;
+        }
+      } catch (processError) {
+        console.log('POST to /kroger/process-code failed:', processError.message);
+        
+        // Check if this is a database schema issue
+        if (processError.response?.data?.error?.includes('client_id') || 
+            processError.response?.data?.error?.includes('column')) {
+          console.log("Database schema issue detected, will use client-side tracking");
+          localStorage.setItem('database_schema_issue', 'true');
+        }
+      }
+      
+      // Try with POST to /kroger/auth-callback
+      try {
+        console.log('Trying POST to /kroger/auth-callback...');
+        
+        const formData = new URLSearchParams();
+        formData.append('code', code);
+        formData.append('redirect_uri', redirectUri || 'https://smart-meal-planner-multi.vercel.app/kroger/callback');
+        formData.append('grant_type', 'authorization_code');
+        formData.append('state', 'from-frontend');
+        
+        const postResponse = await authAxios.post('/kroger/auth-callback', formData, {
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded'
+          }
+        });
+        
+        if (postResponse.data && postResponse.data.success) {
+          console.log('POST to /kroger/auth-callback successful:', postResponse.data);
+          
+          // Set connection flags for client-side tracking
+          localStorage.setItem('kroger_connected', 'true');
+          localStorage.setItem('kroger_connected_at', new Date().toISOString());
+          localStorage.setItem('kroger_auth_code_received', 'true');
+          
+          // Indicate that store selection is needed
+          sessionStorage.setItem('kroger_needs_store_selection', 'true');
+          
+          return postResponse.data;
+        }
+      } catch (postError) {
+        console.log('POST to /kroger/auth-callback failed:', postError.message);
+        
+        // Check if this is a database schema issue
+        if (postError.response?.data?.error?.includes('client_id') || 
+            postError.response?.data?.error?.includes('column')) {
+          console.log("Database schema issue detected, will use client-side tracking");
+          localStorage.setItem('database_schema_issue', 'true');
+        }
+      }
+      
+      // Try with GET to /kroger/auth-callback as last backend attempt
       try {
         const queryParams = new URLSearchParams({
           code,
@@ -542,66 +661,12 @@ const processAuthCode = async (code, redirectUri) => {
       } catch (getError) {
         console.log('GET to /kroger/auth-callback failed:', getError.message);
         
-        // If GET method is not allowed, try POST
-        if (getError.response?.status === 405) {
-          try {
-            console.log('Trying POST to /kroger/auth-callback...');
-            
-            const formData = new URLSearchParams();
-            formData.append('code', code);
-            formData.append('redirect_uri', redirectUri || 'https://smart-meal-planner-multi.vercel.app/kroger/callback');
-            formData.append('grant_type', 'authorization_code');
-            formData.append('state', 'from-frontend');
-            
-            const postResponse = await authAxios.post('/kroger/auth-callback', formData, {
-              headers: {
-                'Content-Type': 'application/x-www-form-urlencoded'
-              }
-            });
-            
-            if (postResponse.data && postResponse.data.success) {
-              console.log('POST to /kroger/auth-callback successful:', postResponse.data);
-              
-              // Set connection flags for client-side tracking
-              localStorage.setItem('kroger_connected', 'true');
-              localStorage.setItem('kroger_connected_at', new Date().toISOString());
-              localStorage.setItem('kroger_auth_code_received', 'true');
-              
-              // Indicate that store selection is needed
-              sessionStorage.setItem('kroger_needs_store_selection', 'true');
-              
-              return postResponse.data;
-            }
-          } catch (postError) {
-            console.log('POST to /kroger/auth-callback failed:', postError.message);
-          }
+        // Check if this is a database schema issue
+        if (getError.response?.data?.error?.includes('client_id') || 
+            getError.response?.data?.error?.includes('column')) {
+          console.log("Database schema issue detected, will use client-side tracking");
+          localStorage.setItem('database_schema_issue', 'true');
         }
-      }
-      
-      // If previous methods failed, try the specific process-code endpoint
-      try {
-        console.log('Trying POST to /kroger/process-code...');
-        
-        const processResponse = await authAxios.post('/kroger/process-code', {
-          code,
-          redirect_uri: redirectUri || 'https://smart-meal-planner-multi.vercel.app/kroger/callback'
-        });
-        
-        if (processResponse.data && processResponse.data.success) {
-          console.log('POST to /kroger/process-code successful:', processResponse.data);
-          
-          // Set connection flags for client-side tracking
-          localStorage.setItem('kroger_connected', 'true');
-          localStorage.setItem('kroger_connected_at', new Date().toISOString());
-          localStorage.setItem('kroger_auth_code_received', 'true');
-          
-          // Indicate that store selection is needed
-          sessionStorage.setItem('kroger_needs_store_selection', 'true');
-          
-          return processResponse.data;
-        }
-      } catch (processError) {
-        console.log('POST to /kroger/process-code failed:', processError.message);
       }
     } catch (backendError) {
       console.error('All backend approaches failed:', backendError);

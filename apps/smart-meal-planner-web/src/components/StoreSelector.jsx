@@ -231,7 +231,7 @@ const searchStores = async (lat, lon) => {
   };
 
   // Improved handler for store selection
-  const handleStoreSelect = async (storeId) => {
+  const handleStoreSelect = (storeId) => {
     if (!storeId) {
       console.error('No store ID provided for selection');
       setError('Unable to select store: Missing store ID');
@@ -259,98 +259,31 @@ const searchStores = async (lat, lon) => {
     sessionStorage.removeItem('kroger_needs_store_selection');
     
     // Try to update the store location on the backend - critical for persistence!
-    try {
-      console.log("Updating store location in backend DB...");
-      const response = await apiService.updateKrogerLocation(storeId);
-      console.log("Backend store location update response:", response);
-      
-      if (response && response.success) {
-        console.log("Successfully updated store location in backend DB");
-      } else {
-        console.warn("Failed to update store location in backend DB, but continuing with client-side tracking");
-      }
-    } catch (err) {
-      console.error("Error updating store location in backend:", err);
-    }
+    console.log("Updating store location in backend DB...");
+    apiService.updateKrogerLocation(storeId)
+      .then(response => {
+        console.log("Backend store location update response:", response);
+        if (response && response.success) {
+          console.log("Successfully updated store location in backend DB");
+        } else {
+          console.warn("Failed to update store location in backend DB, but continuing with client-side tracking");
+        }
+      })
+      .catch(err => {
+        console.error("Error updating store location in backend:", err);
+        
+        // Check if this is a database schema issue
+        if (err.response?.data?.error?.includes('client_id') || 
+            err.response?.data?.error?.includes('column')) {
+          console.log("Database schema issue detected in error, storing locally only");
+          localStorage.setItem('database_schema_issue', 'true');
+        }
+      });
     
     // Call the parent handler after attempting the backend update
     setTimeout(() => {
       onStoreSelect(storeId);
     }, 300);  // Slightly longer delay to ensure backend update has time to complete
-  };
-    
-    try {
-      // Try to update the store location in the backend first
-      console.log("Persisting store selection to backend...");
-      
-      // IMPORTANT: The backend expects the store ID to match the database column name kroger_store_location_id
-      // But the endpoints might have inconsistent parameter names - try various formats
-      const storeUpdateData = {
-        location_id: storeId,
-        store_id: storeId,
-        store_location_id: storeId,
-        kroger_store_location_id: storeId
-      };
-      
-      // First try with GET request (to handle Method Not Allowed issues)
-      try {
-        // Try with the most likely parameter name first
-        const response = await axiosInstance.get(`/kroger/store-location?location_id=${storeId}`);
-        console.log("Store location updated successfully via GET:", response.data);
-      } catch (getError) {
-        // If GET fails, try POST with multiple parameter formats
-        if (getError.response?.status === 405) {
-          console.log("GET method not allowed, trying POST with multiple parameter formats...");
-          try {
-            await apiService.updateKrogerLocation(storeId);
-          } catch (postError) {
-            console.log("Standard updateKrogerLocation failed, trying alternative formats");
-            
-            // Try direct API calls with different parameter formats
-            try {
-              await axiosInstance.post('/kroger/store-location', { location_id: storeId });
-            } catch (format1Error) {
-              try {
-                await axiosInstance.post('/kroger/store-location', { store_id: storeId });
-              } catch (format2Error) {
-                try {
-                  await axiosInstance.post('/kroger/store-location', { kroger_store_location_id: storeId });
-                } catch (format3Error) {
-                  console.log("All parameter formats failed for store update");
-                }
-              }
-            }
-          }
-        } else if (getError.response?.data?.error?.includes('client_id') || 
-                  getError.response?.data?.error?.includes('column')) {
-          // Database schema issue detected
-          console.log("Database schema issue detected, storing locally only");
-          localStorage.setItem('database_schema_issue', 'true');
-        } else {
-          // For other errors, log but continue
-          console.error("Store location update error:", getError);
-        }
-      }
-      
-      // Call the parent component's handler with a slight delay to ensure the dialog is fully closed
-      setTimeout(() => {
-        onStoreSelect(storeId);
-      }, 100);
-    } catch (err) {
-      console.error("Failed to save store selection to backend:", err);
-      
-      // Check if this is a database schema issue
-      if (err.response?.data?.error?.includes('client_id') || 
-          err.response?.data?.error?.includes('column')) {
-        console.log("Database schema issue detected in error, storing locally only");
-        localStorage.setItem('database_schema_issue', 'true');
-      }
-      
-      // Still call the parent handler with a slight delay
-      setTimeout(() => {
-        onStoreSelect(storeId);
-      }, 100);
-    }
   };
 
   return (

@@ -858,10 +858,14 @@ const apiService = {
                            sessionStorage.getItem('kroger_store_selection_complete') === 'true' ||
                            localStorage.getItem('kroger_store_selection_done') === 'true';
       
+      // Check if we have a database schema issue
+      const hasSchemaIssue = localStorage.getItem('database_schema_issue') === 'true';
+      
       console.log("Client-side state:", {
         isConnected,
         storeLocation,
-        storeSelected
+        storeSelected,
+        hasSchemaIssue
       });
       
       // If not connected, return need to connect error
@@ -897,58 +901,77 @@ const apiService = {
       console.log("Original search terms:", items);
       console.log("Cleaned search terms:", cleanedItems);
       
-      // Try direct POST to backend first
-      console.log("Trying direct POST to backend search endpoint");
-      try {
-        const response = await axiosInstance.post('/kroger/search', { 
-          items: cleanedItems 
-        });
-        
-        console.log("Backend search response:", response.data);
-        
-        if (response.data && response.data.success && response.data.results) {
-          return response.data;
-        }
-        
-        if (response.data && response.data.needs_setup) {
-          return {
-            success: false,
-            needs_setup: true,
-            message: "Please select a Kroger store to continue."
-          };
-        }
-        
-        if (response.data && response.data.needs_reconnect) {
-          return {
-            success: false,
-            needs_reconnect: true,
-            message: "Your Kroger session has expired. Please reconnect your account."
-          };
-        }
-        
-        // If we get here, we got a response but it wasn't what we expected
-        console.log("Unexpected response from backend search:", response.data);
-      } catch (postError) {
-        console.error("POST to backend search failed:", postError);
-        
-        // Try GET method next (some backends might use GET for search)
+      // If we're not aware of a database schema issue, try regular backend first
+      if (!hasSchemaIssue) {
+        // Try direct POST to backend first
+        console.log("Trying direct POST to backend search endpoint");
         try {
-          const itemsString = cleanedItems.join(',');
-          const getResponse = await axiosInstance.get(`/kroger/search?items=${encodeURIComponent(itemsString)}`);
+          const response = await axiosInstance.post('/kroger/search', { 
+            items: cleanedItems 
+          });
           
-          console.log("Backend GET search response:", getResponse.data);
+          console.log("Backend search response:", response.data);
           
-          if (getResponse.data && getResponse.data.success && getResponse.data.results) {
-            return getResponse.data;
+          if (response.data && response.data.success && response.data.results) {
+            return response.data;
           }
-        } catch (getError) {
-          console.error("GET to backend search also failed:", getError);
+          
+          if (response.data && response.data.needs_setup) {
+            return {
+              success: false,
+              needs_setup: true,
+              message: "Please select a Kroger store to continue."
+            };
+          }
+          
+          if (response.data && response.data.needs_reconnect) {
+            return {
+              success: false,
+              needs_reconnect: true,
+              message: "Your Kroger session has expired. Please reconnect your account."
+            };
+          }
+          
+          // If we get here, we got a response but it wasn't what we expected
+          console.log("Unexpected response from backend search:", response.data);
+        } catch (postError) {
+          console.error("POST to backend search failed:", postError);
+          
+          // Check if this error indicates a database schema issue
+          if (postError.response?.data?.error?.includes('client_id') || 
+              postError.response?.data?.error?.includes('column')) {
+            console.log("Database schema issue detected, setting flag");
+            localStorage.setItem('database_schema_issue', 'true');
+          } else {
+            // Try GET method next (some backends might use GET for search)
+            try {
+              const itemsString = cleanedItems.join(',');
+              const getResponse = await axiosInstance.get(`/kroger/search?items=${encodeURIComponent(itemsString)}`);
+              
+              console.log("Backend GET search response:", getResponse.data);
+              
+              if (getResponse.data && getResponse.data.success && getResponse.data.results) {
+                return getResponse.data;
+              }
+            } catch (getError) {
+              console.error("GET to backend search also failed:", getError);
+              
+              // Check if this error indicates a database schema issue
+              if (getError.response?.data?.error?.includes('client_id') || 
+                  getError.response?.data?.error?.includes('column')) {
+                console.log("Database schema issue detected, setting flag");
+                localStorage.setItem('database_schema_issue', 'true');
+              }
+            }
+          }
         }
+      } else {
+        console.log("Skipping backend search due to known database schema issue");
       }
       
-      // If we get here, the search through the backend failed
+      // If we get here, either the backend search failed or we have a database schema issue
       // Try direct query to Kroger as a last resort
-      console.log("Backend search failed, trying direct requests to Kroger API");
+      console.log("Using direct requests to Kroger API");
       
       const allResults = [];
       
@@ -984,6 +1007,16 @@ const apiService = {
           }
         } catch (searchError) {
           console.error(`Error searching for "${term}":`, searchError);
+          
+          // Check if this error indicates auth issues
+          if (searchError.response?.status === 401 || 
+              searchError.response?.data?.error?.includes('token')) {
+            return {
+              success: false,
+              needs_reconnect: true,
+              message: "Your Kroger session has expired. Please reconnect your account."
+            };
+          }
         }
       }
       
@@ -1006,11 +1039,25 @@ const apiService = {
       console.error("Kroger search error:", err);
       
       // Handle specific errors
-      if (err.response?.status === 401) {
+      if (err.response?.status === 401 || 
+          err.response?.data?.error?.includes('token')) {
         return {
           success: false,
           needs_reconnect: true,
           message: "Your Kroger session has expired. Please reconnect your account."
+        };
+      }
+      
+      // Check for database schema issues
+      if (err.response?.data?.error?.includes('client_id') || 
+          err.response?.data?.error?.includes('column')) {
+        console.log("Database schema issue detected, setting flag");
+        localStorage.setItem('database_schema_issue', 'true');
+        
+        // Return a more helpful error message
+        return {
+          success: false,
+          message: "Database schema issue detected. Please try direct search again."
         };
       }
       
@@ -1136,35 +1183,112 @@ const apiService = {
 
   async updateKrogerLocation(locationId) {
     try {
-      console.log('Sending location_id:', locationId);
+      if (!locationId) {
+        console.error('No location ID provided');
+        return {
+          success: false,
+          message: 'No location ID provided'
+        };
+      }
       
-      // First try GET with query parameters
-      try {
-        const response = await axiosInstance.get(`/kroger/store-location?location_id=${locationId}`);
-        console.log('Store location update response (GET):', response.data);
-        return response.data;
-      } catch (getError) {
-        console.error('GET request failed for store location:', getError);
+      console.log('Updating Kroger store location to:', locationId);
+      
+      // Try multiple approaches in sequence to ensure success
+      
+      // First check if we have a database schema issue 
+      const hasSchemaIssue = localStorage.getItem('database_schema_issue') === 'true';
+      
+      if (hasSchemaIssue) {
+        console.log('Database schema issue detected, skipping backend update');
+        // Just update localStorage and return success
+        localStorage.setItem('kroger_store_location', locationId);
+        localStorage.setItem('kroger_store_location_id', locationId);
+        localStorage.setItem('kroger_store_selected', 'true');
+        localStorage.setItem('kroger_store_timestamp', Date.now().toString());
         
-        if (getError.response?.status === 405) {
-          console.log('GET method not allowed, trying POST...');
-          // Fall back to POST request
-          const response = await axiosInstance.post('/kroger/store-location', {
-            location_id: locationId
-          });
-          console.log('Store location update response (POST):', response.data);
-          return response.data;
-        } else {
-          // For non-405 errors, store in local storage and return client-side success
-          console.log('Storing location in local storage as fallback');
+        // Set flags to prevent selection loops
+        sessionStorage.setItem('kroger_store_selection_complete', 'true');
+        localStorage.setItem('kroger_store_selection_done', 'true');
+        
+        return {
+          success: true,
+          client_side_fallback: true,
+          message: 'Store location saved locally due to database schema issue'
+        };
+      }
+      
+      // Try backend update - first with POST request
+      try {
+        console.log('Trying POST to update store location...');
+        const response = await axiosInstance.post('/kroger/store-location', {
+          location_id: locationId
+        });
+        
+        console.log('Store location update response (POST):', response.data);
+        
+        // Update localStorage for consistent client-side state
+        localStorage.setItem('kroger_store_location', locationId);
+        localStorage.setItem('kroger_store_location_id', locationId);
+        localStorage.setItem('kroger_store_selected', 'true');
+        localStorage.setItem('kroger_store_timestamp', Date.now().toString());
+        
+        // Set flags to prevent selection loops
+        sessionStorage.setItem('kroger_store_selection_complete', 'true');
+        localStorage.setItem('kroger_store_selection_done', 'true');
+        
+        return response.data;
+      } catch (postError) {
+        console.error('POST request failed for store location:', postError);
+        
+        // Check for database schema issue
+        if (postError.response?.data?.error?.includes('client_id') || 
+            postError.response?.data?.error?.includes('column')) {
+          console.log("Database schema issue detected, setting flag and using client-side storage");
+          localStorage.setItem('database_schema_issue', 'true');
+        }
+        
+        // Try GET method as fallback
+        try {
+          console.log('Trying GET method to update store location...');
+          const response = await axiosInstance.get(`/kroger/store-location?location_id=${locationId}`);
+          
+          console.log('Store location update response (GET):', response.data);
+          
+          // Update localStorage for consistent client-side state
           localStorage.setItem('kroger_store_location', locationId);
+          localStorage.setItem('kroger_store_location_id', locationId);
           localStorage.setItem('kroger_store_selected', 'true');
           localStorage.setItem('kroger_store_timestamp', Date.now().toString());
+          
+          // Set flags to prevent selection loops
+          sessionStorage.setItem('kroger_store_selection_complete', 'true');
+          localStorage.setItem('kroger_store_selection_done', 'true');
+          
+          return response.data;
+        } catch (getError) {
+          console.error('GET request failed for store location:', getError);
+          
+          // Check for database schema issue
+          if (getError.response?.data?.error?.includes('client_id') || 
+              getError.response?.data?.error?.includes('column')) {
+            console.log("Database schema issue detected, setting flag and using client-side storage");
+            localStorage.setItem('database_schema_issue', 'true');
+          }
+          
+          // All backend approaches failed, fall back to client-side only
+          localStorage.setItem('kroger_store_location', locationId);
+          localStorage.setItem('kroger_store_location_id', locationId);
+          localStorage.setItem('kroger_store_selected', 'true');
+          localStorage.setItem('kroger_store_timestamp', Date.now().toString());
+          
+          // Set flags to prevent selection loops
+          sessionStorage.setItem('kroger_store_selection_complete', 'true');
+          localStorage.setItem('kroger_store_selection_done', 'true');
           
           return {
             success: true,
             client_side_fallback: true,
-            message: 'Store location saved locally'
+            message: 'Store location saved locally despite backend errors'
           };
         }
       }
@@ -1173,8 +1297,13 @@ const apiService = {
       
       // Save in localStorage as a fallback and return "success"
       localStorage.setItem('kroger_store_location', locationId);
+      localStorage.setItem('kroger_store_location_id', locationId);
       localStorage.setItem('kroger_store_selected', 'true');
       localStorage.setItem('kroger_store_timestamp', Date.now().toString());
+      
+      // Set flags to prevent selection loops
+      sessionStorage.setItem('kroger_store_selection_complete', 'true');
+      localStorage.setItem('kroger_store_selection_done', 'true');
       
       return {
         success: true,

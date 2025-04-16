@@ -40,6 +40,10 @@ function KrogerAuthCallback() {
     // Remove database schema issue flag - we want to try the backend first
     localStorage.removeItem('database_schema_issue');
     
+    // Clear any outdated store selection flags to ensure fresh selection if needed
+    localStorage.removeItem('kroger_store_selection_done');
+    sessionStorage.removeItem('kroger_store_selection_complete');
+    
     // Handle Kroger auth code (this is what we expect from Kroger OAuth redirect)
     if (code) {
       const processAuthCode = async () => {
