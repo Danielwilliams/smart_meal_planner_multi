@@ -322,12 +322,11 @@ const addToKrogerCart = async (items) => {
 
 /**
  * Handle Kroger reconnection process
- * This function directly constructs the OAuth URL using hardcoded values
- * to bypass all backend endpoints
+ * This function directly constructs the OAuth URL using the correct client ID
  */
 const reconnectKroger = async () => {
   try {
-    console.log('Initiating Kroger reconnection with direct OAuth URL construction...');
+    console.log('Initiating Kroger reconnection...');
     
     // Set a flag in localStorage to track the reconnection attempt
     localStorage.setItem('kroger_reconnect_attempted', 'true');
@@ -340,22 +339,54 @@ const reconnectKroger = async () => {
     // Store the state in localStorage to verify when redirected back
     localStorage.setItem('kroger_auth_state', krogerState);
     
-    // Always set database schema issue flag to avoid backend API calls
-    localStorage.setItem('database_schema_issue', 'true');
+    // Remove any database schema issue flag - we want to try backend first
+    localStorage.removeItem('database_schema_issue');
     
     // Clear store selection flags to ensure the user can select a store after auth
     sessionStorage.removeItem('kroger_store_selection_complete');
     localStorage.removeItem('kroger_store_selection_done');
-    localStorage.removeItem('kroger_store_location');
-    localStorage.removeItem('kroger_store_location_id');
     localStorage.removeItem('kroger_store_selected');
     localStorage.removeItem('kroger_store_configured');
     
-    // Construct the OAuth URL directly using the hardcoded client ID
+    // First try to get the login URL from the backend
+    try {
+      console.log('Trying to get login URL from backend...');
+      const response = await authAxios.get('/kroger/login-url');
+      
+      if (response.data && response.data.login_url) {
+        let loginUrl = response.data.login_url;
+        
+        // If the backend returns a localhost URL, replace with the deployed URL
+        if (loginUrl.includes('127.0.0.1:8000/callback')) {
+          console.log('Fixing redirect URI in login URL from backend');
+          loginUrl = loginUrl.replace(
+            'http://127.0.0.1:8000/callback',
+            KROGER_REDIRECT_URI
+          );
+        }
+        
+        console.log('Successfully got login URL from backend');
+        
+        // Navigate to Kroger login page
+        window.location.href = loginUrl;
+        
+        return { 
+          success: true, 
+          redirectUrl: loginUrl,
+          source: 'backend'
+        };
+      }
+    } catch (backendError) {
+      console.error('Failed to get login URL from backend:', backendError);
+    }
+    
+    // Fall back to direct construction if backend fails
+    console.log('Falling back to direct OAuth URL construction');
+    
+    // Construct the OAuth URL using the client ID from environment or hardcoded value
     const authUrl = `${DIRECT_KROGER_AUTH_URL}?scope=${encodeURIComponent(KROGER_SCOPE)}&response_type=code&client_id=${KROGER_CLIENT_ID}&redirect_uri=${encodeURIComponent(KROGER_REDIRECT_URI)}&state=${krogerState}`;
     
-    console.log('Constructed auth URL with hardcoded client ID');
-    console.log('Redirecting to Kroger login page...');
+    console.log('Constructed OAuth URL, redirecting to Kroger login page...');
     
     // Navigate to Kroger login page
     window.location.href = authUrl;

@@ -63,10 +63,11 @@ def get_user_kroger_credentials(id: int) -> Dict[str, Any]:
     conn = get_db_connection()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Fix: Use kroger_username and kroger_password columns instead of client_id/secret
             query = """
             SELECT 
-                kroger_client_id,
-                kroger_client_secret,
+                kroger_username,
+                kroger_password,
                 kroger_access_token, 
                 kroger_refresh_token, 
                 kroger_store_location_id,
@@ -83,15 +84,16 @@ def get_user_kroger_credentials(id: int) -> Dict[str, Any]:
 
             # More detailed logging
             log_details = {
-                "client_id_present": bool(result.get('kroger_client_id')),
+                "username_present": bool(result.get('kroger_username')),
                 "access_token_present": bool(result.get('kroger_access_token')),
                 "store_location_present": bool(result.get('kroger_store_location_id'))
             }
             logger.info(f"Kroger credentials check for user {id}: {log_details}")
 
+            # Map username/password to client_id/secret in the return for compatibility
             return {
-                "client_id": result.get('kroger_client_id'),
-                "client_secret": result.get('kroger_client_secret'),
+                "client_id": result.get('kroger_username'),
+                "client_secret": result.get('kroger_password'),
                 "access_token": result.get('kroger_access_token'),
                 "refresh_token": result.get('kroger_refresh_token'),
                 "store_location_id": result.get('kroger_store_location_id'),

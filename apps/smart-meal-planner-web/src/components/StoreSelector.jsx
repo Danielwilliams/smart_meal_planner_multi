@@ -230,7 +230,7 @@ const searchStores = async (lat, lon) => {
     onClose();
   };
 
-  // Improved handler for store selection with multiple fallbacks
+  // Improved handler for store selection
   const handleStoreSelect = async (storeId) => {
     if (!storeId) {
       console.error('No store ID provided for selection');
@@ -243,31 +243,41 @@ const searchStores = async (lat, lon) => {
     // Immediately close the dialog to improve user experience
     handleClose();
     
-    // Set the location in localStorage right away (before API call completes)
-    // This ensures client-side caching works even if the API call fails
+    // Set the location in localStorage right away for fast client-side tracking
     localStorage.setItem('kroger_store_location', storeId);
     localStorage.setItem('kroger_store_selected', 'true');
     localStorage.setItem('kroger_store_timestamp', Date.now().toString());
-    
-    // For backwards compatibility with existing code - THESE NAMES MUST MATCH THE DATABASE SCHEMA
     localStorage.setItem('kroger_store_location_id', storeId);
     localStorage.setItem('kroger_store_configured', 'true');
     
-    // Set multiple flags to prevent location selection loops - this is critical
+    // Set flags to prevent location selection loops
     sessionStorage.setItem('kroger_store_selection_complete', 'true');
     localStorage.setItem('kroger_store_selection_done', 'true');
     localStorage.setItem('kroger_store_selection_timestamp', Date.now().toString());
     
-    // Always set the database schema issue flag to prevent backend calls that will fail
-    localStorage.setItem('database_schema_issue', 'true');
-    console.log("Set database_schema_issue flag to true to prevent backend API calls");
+    // Clear the store selection needed flag
+    sessionStorage.removeItem('kroger_needs_store_selection');
     
-    // Just call the parent handler with the store ID - but make sure we're using the right store ID format
-    // Call onStoreSelect with a slight delay to allow the component to finish closing
+    // Try to update the store location on the backend - critical for persistence!
+    try {
+      console.log("Updating store location in backend DB...");
+      const response = await apiService.updateKrogerLocation(storeId);
+      console.log("Backend store location update response:", response);
+      
+      if (response && response.success) {
+        console.log("Successfully updated store location in backend DB");
+      } else {
+        console.warn("Failed to update store location in backend DB, but continuing with client-side tracking");
+      }
+    } catch (err) {
+      console.error("Error updating store location in backend:", err);
+    }
+    
+    // Call the parent handler after attempting the backend update
     setTimeout(() => {
       onStoreSelect(storeId);
-    }, 100);
-    return;
+    }, 300);  // Slightly longer delay to ensure backend update has time to complete
+  };
     
     try {
       // Try to update the store location in the backend first

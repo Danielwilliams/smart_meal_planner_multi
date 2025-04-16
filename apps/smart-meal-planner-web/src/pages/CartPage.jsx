@@ -359,38 +359,73 @@ function CartPage() {
   const checkKrogerCredentials = async () => {
     console.log("Checking Kroger credentials");
     
-    // First check if we have a store selection completed in the session - if so, we can skip credential checks
-    const storeSelectionComplete = sessionStorage.getItem('kroger_store_selection_complete') === 'true';
-    const storeSelectionDone = localStorage.getItem('kroger_store_selection_done') === 'true'; 
-    const storeLocation = localStorage.getItem('kroger_store_location') || 
-                          localStorage.getItem('kroger_store_location_id');
-    
-    if ((storeSelectionComplete || storeSelectionDone) && storeLocation) {
-      console.log("Store selection is complete and we have a location, skipping credential check");
-      // Ensure we have the connected flag set
-      localStorage.setItem('kroger_connected', 'true');
-      return true;
-    }
-    
-    // Always set database schema issue flag to avoid backend calls that will fail
-    localStorage.setItem('database_schema_issue', 'true');
-    
-    // Check if we have client-side connection state
-    const isConnected = localStorage.getItem('kroger_connected') === 'true';
-    
-    if (isConnected) {
-      // Check if we need to select a store
-      if (!storeLocation) {
-        console.log("Connected but no store selected, showing store selector");
+    try {
+      // First try to get Kroger status from the backend
+      console.log("Getting Kroger connection status from backend");
+      const status = await krogerAuthService.checkKrogerStatus();
+      console.log("Backend Kroger status:", status);
+      
+      // If the backend says we're connected and have a store location, we're good to go
+      if (status && status.is_connected && status.store_location) {
+        console.log("Backend reports valid Kroger connection with store location:", status.store_location);
+        
+        // Update localStorage with the store location from the backend for consistency
+        localStorage.setItem('kroger_store_location', status.store_location);
+        localStorage.setItem('kroger_store_location_id', status.store_location);
+        localStorage.setItem('kroger_store_selected', 'true');
+        localStorage.setItem('kroger_connected', 'true');
+        
+        // Clear any store selection flags to prevent the dialog from showing again
+        sessionStorage.removeItem('kroger_needs_store_selection');
+        
+        return true;
+      }
+      
+      // If connected but no store location, show the store selector
+      if (status && status.is_connected && !status.store_location) {
+        console.log("Connected but no store location set in backend, showing store selector");
         setCurrentStore('kroger');
         setShowStoreSelector(true);
         return false;
       }
+      
+      // If we get here, we're not properly connected according to the backend
+      console.log("Not properly connected according to backend, checking local state");
+    } catch (err) {
+      console.error("Error checking Kroger status with backend:", err);
+      console.log("Falling back to client-side state checks");
+    }
+    
+    // Fall back to checking client-side state
+    const storeSelectionComplete = sessionStorage.getItem('kroger_store_selection_complete') === 'true';
+    const storeSelectionDone = localStorage.getItem('kroger_store_selection_done') === 'true'; 
+    const storeLocation = localStorage.getItem('kroger_store_location') || 
+                          localStorage.getItem('kroger_store_location_id');
+    const isConnected = localStorage.getItem('kroger_connected') === 'true';
+    
+    // If we have a recent store selection with location, we're good
+    if ((storeSelectionComplete || storeSelectionDone) && storeLocation) {
+      console.log("Store selection is complete and we have a location from client-side");
+      localStorage.setItem('kroger_connected', 'true');
       return true;
     }
     
-    // If not connected, show reconnect dialog
-    console.log("Kroger not connected, showing reconnect dialog");
+    // If connected but no store location, show the store selector
+    if (isConnected && !storeLocation) {
+      console.log("Connected but no store location from client-side, showing store selector");
+      setCurrentStore('kroger');
+      setShowStoreSelector(true);
+      return false;
+    }
+    
+    // If connected with store location, we're good
+    if (isConnected && storeLocation) {
+      console.log("Connected with store location from client-side");
+      return true;
+    }
+    
+    // Not connected at all, show reconnect dialog
+    console.log("Not connected according to client-side state, showing reconnect dialog");
     showKrogerError(
       "Kroger Connection Required",
       "You need to connect your Kroger account before searching for items.",

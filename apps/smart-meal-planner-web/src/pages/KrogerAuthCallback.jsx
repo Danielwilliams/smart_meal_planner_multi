@@ -37,44 +37,91 @@ function KrogerAuthCallback() {
     localStorage.removeItem('kroger_auth_pending');
     localStorage.removeItem('kroger_auth_state');
     
-    // Always set database schema issue flag to avoid backend API calls that will fail
-    localStorage.setItem('database_schema_issue', 'true');
+    // Remove database schema issue flag - we want to try the backend first
+    localStorage.removeItem('database_schema_issue');
     
     // Handle Kroger auth code (this is what we expect from Kroger OAuth redirect)
     if (code) {
       const processAuthCode = async () => {
         try {
-          // First store the auth code and additional info in sessionStorage
-          // for the cart page to process and for diagnostics
+          // Store auth code for diagnostics
           sessionStorage.setItem('kroger_auth_code', code);
           sessionStorage.setItem('kroger_auth_redirect_uri', process.env.KROGER_REDIRECT_URI || 'https://smart-meal-planner-multi.vercel.app/kroger/callback');
           sessionStorage.setItem('kroger_auth_timestamp', Date.now().toString());
           
-          // Track the state validation
           if (stateParam) {
             sessionStorage.setItem('kroger_auth_state_valid', stateValid.toString());
           }
           
-          // Mark the connection as successful using multiple flags for redundancy
+          // Mark connected in localStorage as pre-emptive fallback
           localStorage.setItem('kroger_connected', 'true');
           localStorage.setItem('kroger_connected_at', new Date().toISOString());
-          localStorage.setItem('kroger_auth_code_received', 'true');
           localStorage.setItem('kroger_last_auth_code', code.substring(0, 10) + '...');
           
-          // Set session flags
-          sessionStorage.setItem('kroger_auth_successful', 'true');
+          setMessage('Processing authorization...');
           
-          // Mark the auth complete in CartPage tracking flags
-          sessionStorage.removeItem('kroger_needs_setup');
-          localStorage.setItem('kroger_reconnect_attempted', 'false');
-          
-          // Skip backend processing and use client-side tracking only
-          console.log('Using client-side auth tracking only - skipping backend processing');
-          setStatus('success');
-          setMessage('Kroger authorization received! Redirecting to cart...');
+          // Try to process the auth code with the backend
+          try {
+            const processingResult = await krogerAuthService.processAuthCode(
+              code, 
+              process.env.KROGER_REDIRECT_URI || 'https://smart-meal-planner-multi.vercel.app/kroger/callback'
+            );
             
-          // Track that we now need to select a store
-          sessionStorage.setItem('kroger_needs_store_selection', 'true');
+            console.log('Auth code processing result:', processingResult);
+            
+            if (processingResult.success) {
+              setStatus('success');
+              setMessage('Kroger authorization successful! Redirecting to cart...');
+              
+              // Check if we need to select a store
+              // First check if a store location is already in the profile
+              try {
+                const statusCheck = await krogerAuthService.checkKrogerStatus();
+                console.log("Checking if store selection is needed:", statusCheck);
+                
+                if (statusCheck.is_connected && statusCheck.store_location) {
+                  // We already have a store location, no need to select again
+                  console.log("Store location already set:", statusCheck.store_location);
+                  
+                  // Set store location in localStorage for client-side use
+                  localStorage.setItem('kroger_store_location', statusCheck.store_location);
+                  localStorage.setItem('kroger_store_location_id', statusCheck.store_location);
+                  localStorage.setItem('kroger_store_selected', 'true');
+                  localStorage.setItem('kroger_store_configured', 'true');
+                  
+                  // Clear any store selection flags
+                  sessionStorage.removeItem('kroger_needs_store_selection');
+                } else {
+                  // Need to select a store
+                  console.log("No store location found, will need to select one");
+                  sessionStorage.setItem('kroger_needs_store_selection', 'true');
+                }
+              } catch (statusErr) {
+                console.error("Error checking store status:", statusErr);
+                // Default to needing store selection if we can't check
+                sessionStorage.setItem('kroger_needs_store_selection', 'true');
+              }
+            } else {
+              // Even if backend processing failed, we might still be able to proceed
+              setStatus('warning');
+              setMessage('Had some issues processing the auth code, but proceeding...');
+              
+              // Set store selection needed flag
+              sessionStorage.setItem('kroger_needs_store_selection', 'true');
+            }
+          } catch (processingErr) {
+            console.error('Error processing auth code:', processingErr);
+            
+            // Even if processing fails, we can still proceed with client-side fallbacks
+            setStatus('warning');
+            setMessage('Had issues connecting with Kroger servers. Will proceed anyway...');
+            
+            // Set store selection needed flag
+            sessionStorage.setItem('kroger_needs_store_selection', 'true');
+          }
+          
+          // Clean up any reconnection flags
+          localStorage.removeItem('kroger_reconnect_attempted');
           
           // Redirect to cart page after a short delay
           setTimeout(() => {
