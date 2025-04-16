@@ -368,10 +368,10 @@ class KrogerIntegration:
                 'Accept': 'application/json'
             }
             
-            # Try with a simpler scope set that should work with Kroger API
+            # Use the same scopes as the app backend
             data = {
                 'grant_type': 'client_credentials',
-                'scope': 'product.compact'  # Use just this scope - location scope is invalid
+                'scope': 'product.compact cart.basic:write profile.compact'  # Match the app backend scopes
             }
             
             logger.info(f"Sending token request to: {token_url}")

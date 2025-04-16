@@ -671,7 +671,7 @@ function CartPage() {
         // Use hardcoded client ID for consistency (same as in krogerAuthService)
         const clientId = 'smartmealplannerio-243261243034247652497361364a447078555731455949714a464f61656e5a676b444e552e42796961517a4f4576367156464b3564774c3039777a614700745159802496692';
         const redirectUri = 'https://smart-meal-planner-multi.vercel.app/kroger/callback';
-        const scope = 'product.compact cart.basic:write';
+        const scope = 'product.compact cart.basic:write profile.compact';
         const state = Math.random().toString(36).substring(2, 15);
         
         // Log the client ID and redirect URI being used
