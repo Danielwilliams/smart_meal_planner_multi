@@ -847,9 +847,6 @@ const apiService = {
     try {
       console.log("Searching Kroger items:", items);
       
-      // Always mark database schema issue to use client-side only approach
-      localStorage.setItem('database_schema_issue', 'true');
-      
       // Check client-side connection state
       const isConnected = localStorage.getItem('kroger_connected') === 'true';
       
@@ -889,66 +886,138 @@ const apiService = {
         };
       }
       
-      // All client-side checks passed, create mock search results since we can't use the backend
-      console.log("Creating mock search results based on items:", items);
+      // Clean up search terms - strip quantities and measurements
+      const cleanedItems = items.map(item => {
+        // Remove common quantity patterns like "4 cups of", "2 tablespoons", etc.
+        return item.replace(/^\d+(\.\d+)?\s*(cup|cups|tablespoon|tablespoons|tbsp|tsp|teaspoon|teaspoons|oz|ounce|ounces|lb|pound|pounds|g|gram|grams|ml|liter|liters)\s*(of)?\s*/i, '')
+                   .replace(/^(a |an |one |few |some |handful of |bunch of )/i, '')
+                   .trim();
+      });
       
-      // Create realistic looking mock product results
-      const mockResults = items.map(item => {
-        // Generate a UPC that looks valid
-        const generateUpc = () => {
-          const randomDigits = Math.floor(Math.random() * 100000000000).toString().padStart(12, '0');
-          return randomDigits;
-        };
+      console.log("Original search terms:", items);
+      console.log("Cleaned search terms:", cleanedItems);
+      
+      // Try direct POST to backend first
+      console.log("Trying direct POST to backend search endpoint");
+      try {
+        const response = await axiosInstance.post('/kroger/search', { 
+          items: cleanedItems 
+        });
         
-        // Format sizes and prices to look realistic
-        const getSize = () => {
-          const sizes = ['16 oz', '12 oz', '32 oz', '8 oz', '1 lb', '2 lb', '1 gal', '0.5 gal', '750 ml'];
-          return sizes[Math.floor(Math.random() * sizes.length)];
-        };
+        console.log("Backend search response:", response.data);
         
-        const getPrice = () => {
-          return (Math.random() * 10 + 1).toFixed(2);
-        };
-        
-        // Generate 1-3 results for each item
-        const numResults = Math.floor(Math.random() * 3) + 1;
-        const results = [];
-        
-        for (let i = 0; i < numResults; i++) {
-          const result = {
-            upc: generateUpc(),
-            description: `${item} ${i > 0 ? `(Option ${i+1})` : ''}`,
-            brand: ['Kroger', 'Simple Truth', 'Private Selection'][Math.floor(Math.random() * 3)],
-            size: getSize(),
-            price: getPrice(),
-            inStock: Math.random() > 0.1, // 90% chance item is in stock
-            image: `https://placekitten.com/200/200?image=${Math.floor(Math.random() * 16)}`,
-            quantity: 1
-          };
-          results.push(result);
+        if (response.data && response.data.success && response.data.results) {
+          return response.data;
         }
         
-        return results;
-      }).flat();
+        if (response.data && response.data.needs_setup) {
+          return {
+            success: false,
+            needs_setup: true,
+            message: "Please select a Kroger store to continue."
+          };
+        }
+        
+        if (response.data && response.data.needs_reconnect) {
+          return {
+            success: false,
+            needs_reconnect: true,
+            message: "Your Kroger session has expired. Please reconnect your account."
+          };
+        }
+        
+        // If we get here, we got a response but it wasn't what we expected
+        console.log("Unexpected response from backend search:", response.data);
+      } catch (postError) {
+        console.error("POST to backend search failed:", postError);
+        
+        // Try GET method next (some backends might use GET for search)
+        try {
+          const itemsString = cleanedItems.join(',');
+          const getResponse = await axiosInstance.get(`/kroger/search?items=${encodeURIComponent(itemsString)}`);
+          
+          console.log("Backend GET search response:", getResponse.data);
+          
+          if (getResponse.data && getResponse.data.success && getResponse.data.results) {
+            return getResponse.data;
+          }
+        } catch (getError) {
+          console.error("GET to backend search also failed:", getError);
+        }
+      }
       
-      console.log(`Created ${mockResults.length} mock results`);
+      // If we get here, the search through the backend failed
+      // Try direct query to Kroger as a last resort
+      console.log("Backend search failed, trying direct requests to Kroger API");
       
-      // Return success with mock results
+      const allResults = [];
+      
+      // Loop through each cleaned item and search one by one
+      for (const term of cleanedItems) {
+        try {
+          console.log(`Searching Kroger for: ${term}`);
+          
+          // Make sure we have a valid store location ID
+          if (!storeLocation) {
+            throw new Error("No store location ID found");
+          }
+          
+          // Perform a direct search query
+          const searchResponse = await axiosInstance.post('/kroger/direct-search', {
+            term,
+            locationId: storeLocation
+          });
+          
+          if (searchResponse.data && searchResponse.data.data) {
+            const results = searchResponse.data.data.map(item => ({
+              upc: item.productId || item.upc || '',
+              description: item.description || '',
+              brand: item.brand || '',
+              size: item.items?.[0]?.size || '',
+              price: item.items?.[0]?.price?.regular || 0,
+              inStock: true,
+              image: item.images?.[0]?.sizes?.[3]?.url || '',
+              quantity: 1
+            }));
+            
+            allResults.push(...results);
+          }
+        } catch (searchError) {
+          console.error(`Error searching for "${term}":`, searchError);
+        }
+      }
+      
+      if (allResults.length > 0) {
+        console.log(`Found ${allResults.length} results through direct API`);
+        
+        return {
+          success: true,
+          results: allResults
+        };
+      }
+      
+      // If we still have no results, return an empty array
       return {
         success: true,
-        results: mockResults,
-        client_side_fallback: true,
-        message: "Using client-side data due to database configuration issues"
+        results: [],
+        message: "No matching products found"
       };
     } catch (err) {
-      console.error("Error creating mock search results:", err);
+      console.error("Kroger search error:", err);
       
-      // Even on error, try to return something useful
+      // Handle specific errors
+      if (err.response?.status === 401) {
+        return {
+          success: false,
+          needs_reconnect: true,
+          message: "Your Kroger session has expired. Please reconnect your account."
+        };
+      }
+      
+      // Generic error case
       return {
-        success: true, // Return success to avoid blocking the UI
-        results: [],
-        error_recovered: true,
-        message: "No matching products found"
+        success: false,
+        message: err.message || "Error searching Kroger items"
       };
     }
   },

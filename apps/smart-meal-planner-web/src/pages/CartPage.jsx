@@ -410,9 +410,6 @@ function CartPage() {
           return;
         }
         
-        // Always set database schema issue flag to use client-side approach only
-        localStorage.setItem('database_schema_issue', 'true');
-        
         // Check if store selection is needed
         const needsStoreSelection = sessionStorage.getItem('kroger_needs_store_selection') === 'true';
         

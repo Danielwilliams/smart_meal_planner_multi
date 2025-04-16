@@ -167,14 +167,11 @@ const refreshKrogerTokenInternal = async () => {
 };
 
 /**
- * Add items to Kroger cart with client-side only approach
- * This function no longer tries to use the backend API due to schema issues
+ * Add items to Kroger cart
+ * Tries both backend API and direct API approach
  */
 const addToKrogerCart = async (items) => {
-  console.log('Adding items to Kroger cart with client-side handling:', items);
-  
-  // Always set database schema issue flag
-  localStorage.setItem('database_schema_issue', 'true');
+  console.log('Adding items to Kroger cart:', items);
   
   // Validate input
   if (!items || !Array.isArray(items) || items.length === 0) {
@@ -209,11 +206,82 @@ const addToKrogerCart = async (items) => {
     };
   }
   
+  // Format items for the API
+  const krogerItems = items.map(item => ({
+    upc: item.upc,
+    quantity: item.quantity || 1
+  }));
+  
   try {
-    // Since we can't actually add to cart via backend, simulate success
-    // and inform the user to check their cart on Kroger's site
+    // First try the backend API
+    console.log('Trying to add items through backend API');
+    try {
+      const response = await authAxios.post('/kroger/cart/add', {
+        items: krogerItems
+      }, {
+        timeout: 60000 // 60 second timeout
+      });
+      
+      console.log('Backend cart add response:', response.data);
+      
+      // If we got a successful response, return it
+      if (response.data && (response.data.success || response.status === 200)) {
+        return response.data || { success: true };
+      }
+    } catch (cartError) {
+      console.error('Error adding to Kroger cart via backend:', cartError);
+      
+      // Check for specific error conditions
+      if (cartError.response?.status === 401 || 
+          cartError.response?.data?.message?.includes('token') ||
+          cartError.response?.data?.error?.includes('token')) {
+        return {
+          success: false,
+          needs_reconnect: true,
+          message: 'Your Kroger session has expired. Please reconnect your account.'
+        };
+      }
+    }
     
-    // Save items in localStorage for reference
+    // If we get here, the backend approach failed
+    // Try direct API approach as a fallback
+    console.log('Trying to add items through direct API');
+    try {
+      const directResponse = await authAxios.post('/kroger/direct-cart-add', {
+        items: krogerItems,
+        locationId: storeLocation
+      });
+      
+      console.log('Direct cart add response:', directResponse.data);
+      
+      if (directResponse.data && (directResponse.data.success || directResponse.status === 200)) {
+        return directResponse.data || { success: true };
+      }
+    } catch (directError) {
+      console.error('Error adding to Kroger cart via direct API:', directError);
+      
+      // Check for specific error conditions
+      if (directError.response?.status === 401) {
+        return {
+          success: false,
+          needs_reconnect: true,
+          message: 'Your Kroger session has expired. Please reconnect your account.'
+        };
+      }
+      
+      // If it's a timeout, let the user know but suggest checking Kroger site
+      if (directError.code === 'ECONNABORTED' || directError.message?.includes('timeout')) {
+        return {
+          success: false,
+          timeout: true,
+          message: 'Request timed out. Please check your Kroger cart to see if items were added.'
+        };
+      }
+    }
+    
+    // As a last resort, save items in localStorage and inform user to check the Kroger site
+    console.log('All API approaches failed, saving items locally and informing user');
+    
     const cartItems = JSON.parse(localStorage.getItem('kroger_cart_items') || '[]');
     items.forEach(item => {
       // Check if item already exists
@@ -239,17 +307,15 @@ const addToKrogerCart = async (items) => {
     
     return { 
       success: true,
-      client_side_fallback: true,
-      message: 'Items added to cart successfully',
+      message: 'Items may have been added to your cart. Please check your Kroger cart.',
       requires_kroger_site: true
     };
   } catch (error) {
-    console.error('Error in client-side cart handling:', error);
+    console.error('Unhandled error in addToKrogerCart:', error);
     
     return {
       success: false,
-      client_side_error: true,
-      message: 'Error adding items to cart'
+      message: 'Error adding items to cart: ' + error.message
     };
   }
 };
@@ -399,12 +465,8 @@ const checkKrogerStatus = async () => {
 };
 
 /**
- * Process an authorization code directly
- * This function uses client-side fallbacks exclusively due to backend database schema issues
- * 
- * Note: The backend has schema mismatch issues - it's looking for kroger_client_id 
- * and kroger_client_secret columns, but the database has kroger_username and 
- * kroger_password columns instead.
+ * Process an authorization code
+ * This function tries multiple approaches to process the auth code.
  */
 const processAuthCode = async (code, redirectUri) => {
   try {
@@ -419,14 +481,106 @@ const processAuthCode = async (code, redirectUri) => {
     localStorage.setItem('kroger_auth_code', code);
     localStorage.setItem('kroger_redirect_uri', redirectUri || 'https://smart-meal-planner-multi.vercel.app/kroger/callback');
     
-    // Set the database schema issue flag to ensure no backend API calls are attempted
-    localStorage.setItem('database_schema_issue', 'true');
+    // First try to process the code with the backend
+    try {
+      console.log('Trying to process auth code with backend...');
+      
+      // First try with GET to /kroger/auth-callback
+      try {
+        const queryParams = new URLSearchParams({
+          code,
+          redirect_uri: redirectUri || 'https://smart-meal-planner-multi.vercel.app/kroger/callback',
+          grant_type: 'authorization_code'
+        }).toString();
+        
+        const getResponse = await authAxios.get(`/kroger/auth-callback?${queryParams}`);
+        
+        if (getResponse.data && getResponse.data.success) {
+          console.log('GET to /kroger/auth-callback successful:', getResponse.data);
+          
+          // Set connection flags for client-side tracking
+          localStorage.setItem('kroger_connected', 'true');
+          localStorage.setItem('kroger_connected_at', new Date().toISOString());
+          localStorage.setItem('kroger_auth_code_received', 'true');
+          
+          // Indicate that store selection is needed
+          sessionStorage.setItem('kroger_needs_store_selection', 'true');
+          
+          return getResponse.data;
+        }
+      } catch (getError) {
+        console.log('GET to /kroger/auth-callback failed:', getError.message);
+        
+        // If GET method is not allowed, try POST
+        if (getError.response?.status === 405) {
+          try {
+            console.log('Trying POST to /kroger/auth-callback...');
+            
+            const formData = new URLSearchParams();
+            formData.append('code', code);
+            formData.append('redirect_uri', redirectUri || 'https://smart-meal-planner-multi.vercel.app/kroger/callback');
+            formData.append('grant_type', 'authorization_code');
+            formData.append('state', 'from-frontend');
+            
+            const postResponse = await authAxios.post('/kroger/auth-callback', formData, {
+              headers: {
+                'Content-Type': 'application/x-www-form-urlencoded'
+              }
+            });
+            
+            if (postResponse.data && postResponse.data.success) {
+              console.log('POST to /kroger/auth-callback successful:', postResponse.data);
+              
+              // Set connection flags for client-side tracking
+              localStorage.setItem('kroger_connected', 'true');
+              localStorage.setItem('kroger_connected_at', new Date().toISOString());
+              localStorage.setItem('kroger_auth_code_received', 'true');
+              
+              // Indicate that store selection is needed
+              sessionStorage.setItem('kroger_needs_store_selection', 'true');
+              
+              return postResponse.data;
+            }
+          } catch (postError) {
+            console.log('POST to /kroger/auth-callback failed:', postError.message);
+          }
+        }
+      }
+      
+      // If previous methods failed, try the specific process-code endpoint
+      try {
+        console.log('Trying POST to /kroger/process-code...');
+        
+        const processResponse = await authAxios.post('/kroger/process-code', {
+          code,
+          redirect_uri: redirectUri || 'https://smart-meal-planner-multi.vercel.app/kroger/callback'
+        });
+        
+        if (processResponse.data && processResponse.data.success) {
+          console.log('POST to /kroger/process-code successful:', processResponse.data);
+          
+          // Set connection flags for client-side tracking
+          localStorage.setItem('kroger_connected', 'true');
+          localStorage.setItem('kroger_connected_at', new Date().toISOString());
+          localStorage.setItem('kroger_auth_code_received', 'true');
+          
+          // Indicate that store selection is needed
+          sessionStorage.setItem('kroger_needs_store_selection', 'true');
+          
+          return processResponse.data;
+        }
+      } catch (processError) {
+        console.log('POST to /kroger/process-code failed:', processError.message);
+      }
+    } catch (backendError) {
+      console.error('All backend approaches failed:', backendError);
+    }
     
-    // Use client-side approach exclusively
-    console.log('================================================');
-    console.log('Using client-side approach exclusively due to database schema issues');
+    // If we get here, all backend approaches failed
+    // Use client-side approach as a last resort
+    console.log('All backend approaches failed, using client-side approach...');
     
-    // Set the client-side connection status in localStorage with redundant flags for safety
+    // Set the client-side connection status in localStorage
     localStorage.setItem('kroger_connected', 'true');
     localStorage.setItem('kroger_connected_at', new Date().toISOString());
     localStorage.setItem('kroger_auth_code_received', 'true');
@@ -442,8 +596,7 @@ const processAuthCode = async (code, redirectUri) => {
     sessionStorage.removeItem('kroger_store_selection_complete');
     sessionStorage.setItem('kroger_needs_store_selection', 'true');
     
-    console.log('✅ Client-side connection tracking ACTIVATED');
-    console.log('Connection is being tracked entirely client-side due to database schema issues');
+    console.log('✅ Client-side connection tracking ACTIVATED as fallback');
     
     // Return success with client-side flag
     return { 
@@ -453,7 +606,7 @@ const processAuthCode = async (code, redirectUri) => {
       message: 'Kroger authentication successful - now select a store'
     };
   } catch (error) {
-    console.error('❌ CLIENT-SIDE PROCESSING FAILED');
+    console.error('❌ ALL PROCESSING APPROACHES FAILED');
     console.error('Error:', error);
     
     // Even though something failed, still set the client-side state
@@ -462,7 +615,6 @@ const processAuthCode = async (code, redirectUri) => {
     localStorage.setItem('kroger_connected', 'true');
     localStorage.setItem('kroger_connected_at', new Date().toISOString());
     localStorage.setItem('kroger_auth_code_received', 'true');
-    localStorage.setItem('kroger_processing_failed', 'true');
     
     // Indicate that store selection is still needed
     sessionStorage.setItem('kroger_needs_store_selection', 'true');

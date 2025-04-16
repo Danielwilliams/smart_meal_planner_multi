@@ -82,8 +82,16 @@ const KrogerResults = ({ results, onAddToCart }) => {
     }
   };
 
-  // Get product image URL using various Kroger CDN patterns
+  // Get product image URL from item or try various Kroger CDN patterns
   const getProductImageUrl = (item) => {
+    // First, check if the item already has an image property from our mock data
+    if (item.image && item.image.startsWith('http')) {
+      return {
+        url: item.image,
+        pattern: 'provided'
+      };
+    }
+    
     const upc = item.upc;
     if (!upc) return null;
 
@@ -103,14 +111,15 @@ const KrogerResults = ({ results, onAddToCart }) => {
     
     // Try all known patterns if no working pattern is established yet
     const patterns = [
-      'kroger-xlarge-padded',  // New pattern based on your example
-      'kroger-large-padded',
       'kroger-medium-padded',
-      'kroger-large',
+      'kroger-large-padded',
+      'kroger-xlarge-padded',
       'kroger-medium',
+      'kroger-large',
       'kroger-thumbnail',
       'kroger-cdn-1',
-      'kroger-cdn-2'
+      'kroger-cdn-2',
+      'fallback'
     ];
     
     // Find the first pattern that hasn't errored for this UPC
@@ -150,6 +159,18 @@ const KrogerResults = ({ results, onAddToCart }) => {
         return `https://www.kroger.com/product/images/xlarge/front/${cleanUpc}`;
       case 'kroger-cdn-2':
         return `https://assets.shop.kroger.com/products/${cleanUpc}/front/default/medium`;
+      case 'fallback':
+        // For some common product categories, use category-specific product images
+        const categoryImages = {
+          produce: "https://www.kroger.com/product/images/medium/front/0000000004011", // Banana
+          dairy: "https://www.kroger.com/product/images/medium/front/0001111050314",   // Milk
+          meat: "https://www.kroger.com/product/images/medium/front/0002100006000",    // Chicken
+          bakery: "https://www.kroger.com/product/images/medium/front/0001111091100",  // Bread
+          default: "https://www.kroger.com/product/images/medium/front/0003800031903"  // General
+        };
+        
+        // Determine category based on UPC or return default
+        return categoryImages.default;
       default:
         return null;
     }
