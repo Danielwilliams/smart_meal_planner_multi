@@ -1153,10 +1153,51 @@ const apiService = {
 
   async checkKrogerCredentials() {
     try {
+      console.log('Checking Kroger credentials via API...');
       const resp = await axiosInstance.get('/kroger/check-credentials');
+      console.log('Kroger credentials response:', resp.data);
       return resp.data;
     } catch (err) {
       console.error('Error checking Kroger credentials:', err);
+      throw err;
+    }
+  },
+  
+  // New method to explicitly store Kroger tokens
+  async storeKrogerTokens(tokenData) {
+    try {
+      console.log('Explicitly storing Kroger tokens...');
+      if (!tokenData.access_token || !tokenData.refresh_token) {
+        console.error('❌ Missing required token data:', tokenData);
+        throw new Error('Missing required token data');
+      }
+      
+      const resp = await axiosInstance.post('/kroger/store-tokens', tokenData);
+      console.log('Token storage response:', resp.data);
+      
+      // Verify tokens were stored
+      try {
+        console.log('Verifying token storage...');
+        const verifyResp = await axiosInstance.get('/kroger/check-credentials');
+        console.log('Verification response:', verifyResp.data);
+        
+        if (verifyResp.data.has_access_token && verifyResp.data.has_refresh_token) {
+          console.log('✅ Tokens were successfully stored and verified!');
+        } else {
+          console.error('❌ Token verification failed - tokens not properly stored');
+        }
+      } catch (verifyErr) {
+        console.error('Token verification error:', verifyErr);
+      }
+      
+      return resp.data;
+    } catch (err) {
+      console.error('Error storing Kroger tokens:', err);
+      console.error('Error details:', {
+        message: err.message,
+        response: err.response?.data,
+        status: err.response?.status
+      });
       throw err;
     }
   },

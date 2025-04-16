@@ -118,6 +118,16 @@ function CartPage() {
           // Now try to process the code
           try {
             console.log("Using krogerAuthService.processAuthCode to handle the code");
+            
+            // Explicit check before processing
+            try {
+              console.log('Checking credentials BEFORE processing code...');
+              const beforeCreds = await apiService.checkKrogerCredentials();
+              console.log('Credentials before processing:', beforeCreds);
+            } catch (beforeErr) {
+              console.warn('Could not check credentials before processing:', beforeErr);
+            }
+            
             const result = await krogerAuthService.processAuthCode(
               krogerAuthCode, 
               krogerAuthRedirectUri || 'https://smart-meal-planner-multi.vercel.app/kroger/callback'
@@ -128,7 +138,35 @@ function CartPage() {
             if (result && (result.success || result.data?.success || result.data?.access_token)) {
               console.log("Successfully processed Kroger auth code!");
               
-              // Check again after processing
+              // Check credentials explicitly after processing
+              try {
+                console.log('Checking credentials AFTER processing code...');
+                const afterCreds = await apiService.checkKrogerCredentials();
+                console.log('Credentials after processing:', afterCreds);
+                
+                if (!afterCreds.has_access_token || !afterCreds.has_refresh_token) {
+                  console.error('⚠️ MISSING TOKENS after processing code!');
+                  
+                  // Explicitly try to store tokens if they're in the result
+                  if (result.data?.access_token && result.data?.refresh_token) {
+                    try {
+                      console.log('Attempting to explicitly store tokens...');
+                      const storeResult = await apiService.storeKrogerTokens({
+                        access_token: result.data.access_token,
+                        refresh_token: result.data.refresh_token,
+                        expires_in: result.data.expires_in || 3600
+                      });
+                      console.log('Token storage result:', storeResult);
+                    } catch (storeErr) {
+                      console.error('Failed to store tokens explicitly:', storeErr);
+                    }
+                  }
+                }
+              } catch (afterErr) {
+                console.error('Failed to check credentials after processing:', afterErr);
+              }
+              
+              // Check connection status as well
               try {
                 console.log('Checking connection status AFTER processing code...');
                 const afterStatus = await krogerAuthService.checkKrogerStatus();

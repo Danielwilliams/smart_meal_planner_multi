@@ -451,15 +451,17 @@ const processAuthCode = async (code, redirectUri) => {
     
     // Try various approaches to process the code
     
-    // Approach 1: Standard backend endpoint
+    // Approach 1: Using explicit token request
     try {
-      console.log('Approach 1: Using backend process-code endpoint');
+      console.log('Approach 1: Using explicit token acquisition');
       
       // Log the complete data we're sending
       const requestData = {
         code,
         redirect_uri: redirectUri || 'https://smart-meal-planner-multi.vercel.app/kroger/callback',
-        grant_type: 'authorization_code'
+        grant_type: 'authorization_code',
+        store_tokens: true, // Explicitly request token storage
+        return_tokens: true  // Request tokens in response
       };
       console.log('Sending request data:', requestData);
       
