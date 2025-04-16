@@ -262,15 +262,15 @@ const reconnectKroger = async () => {
     
     // These are the critical Kroger OAuth parameters
     // Using known client ID from your logs
-    const clientId = 'cc725f44-b50a-4be8-9295-05b5389365f4';
-    const redirectUri = 'https://smart-meal-planner-multi.vercel.app/kroger/callback';
-    const scope = 'product.compact cart.basic:write';
+    const krogerClientId = 'cc725f44-b50a-4be8-9295-05b5389365f4';
+    const krogerRedirectUri = 'https://smart-meal-planner-multi.vercel.app/kroger/callback';
+    const krogerScope = 'product.compact cart.basic:write';
     
     // Generate a random state
-    const state = Math.random().toString(36).substring(2, 15);
+    const krogerState = Math.random().toString(36).substring(2, 15);
     
     // Construct the URL manually with all required params
-    const authUrl = `https://api.kroger.com/v1/connect/oauth2/authorize?scope=${encodeURIComponent(scope)}&response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`;
+    const authUrl = `https://api.kroger.com/v1/connect/oauth2/authorize?scope=${encodeURIComponent(krogerScope)}&response_type=code&client_id=${krogerClientId}&redirect_uri=${encodeURIComponent(krogerRedirectUri)}&state=${krogerState}`;
     
     console.log('Direct Kroger auth URL:', authUrl);
     
@@ -293,48 +293,6 @@ const reconnectKroger = async () => {
     }, 500);
     
     return { success: true };
-    
-    // Note: We're skipping the backend approaches since they're not working correctly
-    // Backend approaches would go here if they were working
-    
-    // Approach 3: Manually construct Kroger OAuth URL
-    console.log('Approach 3: Manual URL construction - last resort');
-    
-    // These are the critical Kroger OAuth parameters
-    const clientId = 'smartmealplannerio-243261243034247652497361364a447078555731455949714a464f61656e5a676b444e552e42796961517a4f4576367156464b3564774c3039777a614700745159802496692';
-    const redirectUri = 'https://smart-meal-planner-multi.vercel.app/kroger/callback';
-    const scope = 'product.compact cart.basic:write';
-    
-    // Generate a random state
-    const state = Math.random().toString(36).substring(2, 15);
-    
-    // Construct the URL manually with all required params
-    const manualUrl = `https://api.kroger.com/v1/connect/oauth2/authorize?scope=${encodeURIComponent(scope)}&response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`;
-    
-    console.log('Manually constructed URL:', manualUrl);
-    
-    // Use the most reliable method for navigation - create and click a link
-    try {
-      const a = document.createElement('a');
-      a.href = manualUrl;
-      a.target = '_self'; // Open in current tab
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      
-      // As a backup, also try direct location.href assignment
-      setTimeout(() => {
-        window.location.href = manualUrl;
-      }, 500);
-      
-      return { success: true };
-    } catch (navError) {
-      console.error('Error during navigation:', navError);
-      
-      // Last resort approach - direct assignment
-      window.location.href = manualUrl;
-      return { success: true };
-    }
   } catch (error) {
     console.error('Error initiating Kroger reconnection:', error);
     return {
