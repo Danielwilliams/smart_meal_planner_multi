@@ -847,6 +847,40 @@ const apiService = {
     try {
       console.log("Searching Kroger items:", items);
       
+      // Check for database schema issues based on previous connection status attempts
+      const dbSchemaIssue = (
+        localStorage.getItem('database_schema_issue') === 'true' || 
+        false
+      );
+      
+      // Check if we have client-side connection tracking active
+      const usingClientSideFallback = localStorage.getItem('kroger_connected') === 'true';
+      const storeLocation = localStorage.getItem('kroger_store_location');
+      
+      if (dbSchemaIssue) {
+        console.log("Skipping backend search due to known database schema issues");
+        
+        if (!usingClientSideFallback || !storeLocation) {
+          return {
+            success: false,
+            needs_setup: true,
+            message: "Please connect your Kroger account and select a store.",
+            client_side_error: true
+          };
+        }
+      }
+      
+      // Check if we need a store location first
+      if (usingClientSideFallback && !storeLocation) {
+        console.log("Client-side tracking active but no store location - need store selection");
+        return {
+          success: false,
+          needs_setup: true,
+          message: "Please select a Kroger store to continue.",
+          client_side_error: true
+        };
+      }
+      
       // First try using GET request with query params
       try {
         // Convert items array to comma-separated string
@@ -865,9 +899,41 @@ const apiService = {
           };
         }
         
+        // Check for database schema errors in error message
+        if (response.data.error && (
+          response.data.error.includes('client_id') || 
+          response.data.error.includes('column')
+        )) {
+          console.log("Database schema issue detected in search response");
+          localStorage.setItem('database_schema_issue', 'true');
+          
+          return {
+            success: false,
+            needs_setup: true,
+            message: "Database configuration issue. Please contact support.",
+            db_schema_issue: true
+          };
+        }
+        
         return response.data;
       } catch (getError) {
         console.error("Kroger GET search failed:", getError);
+        
+        // Check error for schema issues
+        if (getError.response?.data?.error && (
+          getError.response.data.error.includes('client_id') || 
+          getError.response.data.error.includes('column')
+        )) {
+          console.log("Database schema issue detected in search error");
+          localStorage.setItem('database_schema_issue', 'true');
+          
+          return {
+            success: false,
+            needs_setup: true,
+            message: "Database configuration issue. Please reconnect to Kroger.",
+            db_schema_issue: true
+          };
+        }
         
         if (getError.response?.status === 405) {
           console.log("GET method not allowed, trying POST...");
@@ -886,7 +952,7 @@ const apiService = {
           
           return response.data;
         } else {
-          // For other errors, rethrow
+          // For other errors, throw to handle in the catch block
           throw getError;
         }
       }
@@ -917,6 +983,22 @@ const apiService = {
         }
       }
       
+      // Check if the error indicates a database schema issue
+      if (err.response?.data?.error && (
+        err.response.data.error.includes('client_id') || 
+        err.response.data.error.includes('column')
+      )) {
+        console.log("Database schema issue detected in error");
+        localStorage.setItem('database_schema_issue', 'true');
+        
+        return {
+          success: false,
+          needs_setup: true,
+          message: "Database configuration issue. Please reconnect to Kroger.",
+          db_schema_issue: true
+        };
+      }
+      
       // Check if the error response contains needs_setup
       if (err.response?.data?.needs_setup) {
         return {
@@ -926,7 +1008,11 @@ const apiService = {
         };
       }
       
-      throw err;
+      // Return a generic error
+      return {
+        success: false,
+        message: err.response?.data?.message || err.message || "Error searching Kroger items"
+      };
     }
   },
 
