@@ -14,14 +14,17 @@ const DIRECT_KROGER_TOKEN_URL = 'https://api.kroger.com/v1/connect/oauth2/token'
 // The database schema has kroger_username and kroger_password columns, not client_id and client_secret
 const KROGER_CLIENT_ID = process.env.KROGER_CLIENT_ID || 'smartmealplannerio-243261243034247652497361364a447078555731455949714a464f61656e5a676b444e552e42796961517a4f4576367156464b3564774c3039777a614700745159802496692';
 const KROGER_REDIRECT_URI = process.env.KROGER_REDIRECT_URI || 'https://smart-meal-planner-multi.vercel.app/kroger/callback';
-// These scopes are for authorization_code grant type, which is different from client_credentials
-const KROGER_SCOPE = 'product.compact cart.basic:write profile.compact';
+// These scopes are for product search (client_credentials) vs cart operations (authorization_code)
+const KROGER_SEARCH_SCOPE = 'product.compact'; // For client_credentials flow (product search only)
+const KROGER_CART_SCOPE = 'product.compact cart.basic:write profile.compact'; // For authorization_code flow (cart operations)
 
 // Log configuration for debugging
 console.log('Kroger configuration:', {
   clientIdExists: !!KROGER_CLIENT_ID,
   clientIdValue: KROGER_CLIENT_ID ? KROGER_CLIENT_ID.substring(0, 10) + '...' : 'missing',
   redirectUri: KROGER_REDIRECT_URI,
+  searchScope: KROGER_SEARCH_SCOPE,
+  cartScope: KROGER_CART_SCOPE,
   envVars: {
     KROGER_CLIENT_ID: !!process.env.KROGER_CLIENT_ID,
     KROGER_REDIRECT_URI: !!process.env.KROGER_REDIRECT_URI
@@ -168,6 +171,7 @@ const refreshKrogerTokenInternal = async () => {
 /**
  * Add items to Kroger cart
  * Tries both backend API and direct API approach
+ * Ensures proper token management for cart operations, which require user authorization
  */
 const addToKrogerCart = async (items) => {
   console.log('Adding items to Kroger cart:', items);
@@ -180,7 +184,7 @@ const addToKrogerCart = async (items) => {
     };
   }
   
-  // Check client-side connection state
+  // Check client-side connection state and ensure we have proper scopes for cart operations
   const isConnected = localStorage.getItem('kroger_connected') === 'true';
   if (!isConnected) {
     return {
@@ -205,6 +209,20 @@ const addToKrogerCart = async (items) => {
     };
   }
   
+  // Check if we have a user-authorized token with cart scope
+  // For cart operations, we need the cart.basic:write scope which requires user authorization
+  // This is different from the product.compact scope used for product search
+  const authCodeReceived = localStorage.getItem('kroger_auth_code_received') === 'true';
+  
+  if (!authCodeReceived) {
+    console.log('No user-authorized token detected for cart operations');
+    return {
+      success: false,
+      needs_reconnect: true,
+      message: 'Kroger cart operations require user authorization. Please reconnect your account.'
+    };
+  }
+  
   // Format items for the API
   const krogerItems = items.map(item => ({
     upc: item.upc,
@@ -213,7 +231,7 @@ const addToKrogerCart = async (items) => {
   
   try {
     // First try the backend API
-    console.log('Trying to add items through backend API');
+    console.log('Trying to add items through backend API with user-authorized token');
     try {
       const response = await authAxios.post('/kroger/cart/add', {
         items: krogerItems
@@ -225,6 +243,11 @@ const addToKrogerCart = async (items) => {
       
       // If we got a successful response, return it
       if (response.data && (response.data.success || response.status === 200)) {
+        // Update success metrics for analytics and debugging
+        localStorage.setItem('kroger_cart_last_success', Date.now().toString());
+        localStorage.setItem('kroger_cart_success_count', 
+          (parseInt(localStorage.getItem('kroger_cart_success_count') || '0', 10) + 1).toString());
+        
         return response.data || { success: true };
       }
     } catch (cartError) {
@@ -233,11 +256,31 @@ const addToKrogerCart = async (items) => {
       // Check for specific error conditions
       if (cartError.response?.status === 401 || 
           cartError.response?.data?.message?.includes('token') ||
-          cartError.response?.data?.error?.includes('token')) {
+          cartError.response?.data?.error?.includes('token') ||
+          cartError.response?.data?.needs_reconnect) {
+        
+        console.log('Auth error detected, attempting token refresh before recommending reconnect');
+        
+        // Try refreshing the token first
+        try {
+          const refreshResult = await refreshKrogerTokenInternal();
+          if (refreshResult.success) {
+            console.log('Token refresh successful, suggesting retry');
+            return {
+              success: false,
+              token_refreshed: true,
+              message: 'Kroger token refreshed, please try again'
+            };
+          }
+        } catch (refreshError) {
+          console.error('Token refresh failed:', refreshError);
+        }
+        
+        // If we get here, we need a full reconnect
         return {
           success: false,
           needs_reconnect: true,
-          message: 'Your Kroger session has expired. Please reconnect your account.'
+          message: 'Your Kroger session has expired. Please reconnect your account to use cart features.'
         };
       }
     }
@@ -254,13 +297,18 @@ const addToKrogerCart = async (items) => {
       console.log('Direct cart add response:', directResponse.data);
       
       if (directResponse.data && (directResponse.data.success || directResponse.status === 200)) {
+        // Update success metrics
+        localStorage.setItem('kroger_cart_last_success', Date.now().toString());
+        localStorage.setItem('kroger_cart_direct_success_count', 
+          (parseInt(localStorage.getItem('kroger_cart_direct_success_count') || '0', 10) + 1).toString());
+        
         return directResponse.data || { success: true };
       }
     } catch (directError) {
       console.error('Error adding to Kroger cart via direct API:', directError);
       
       // Check for specific error conditions
-      if (directError.response?.status === 401) {
+      if (directError.response?.status === 401 || directError.response?.data?.needs_reconnect) {
         return {
           success: false,
           needs_reconnect: true,
@@ -398,7 +446,8 @@ const reconnectKroger = async () => {
     console.log('Using direct OAuth URL construction');
     
     // Construct the OAuth URL using the client ID from environment or hardcoded value
-    const authUrl = `${DIRECT_KROGER_AUTH_URL}?scope=${encodeURIComponent(KROGER_SCOPE)}&response_type=code&client_id=${KROGER_CLIENT_ID}&redirect_uri=${encodeURIComponent(KROGER_REDIRECT_URI)}&state=${krogerState}`;
+    // Use the CART scope for user authorization (which includes the permissions needed for cart operations)
+    const authUrl = `${DIRECT_KROGER_AUTH_URL}?scope=${encodeURIComponent(KROGER_CART_SCOPE)}&response_type=code&client_id=${KROGER_CLIENT_ID}&redirect_uri=${encodeURIComponent(KROGER_REDIRECT_URI)}&state=${krogerState}`;
     
     console.log('Constructed OAuth URL, redirecting to Kroger login page...');
     
@@ -578,7 +627,12 @@ const processAuthCode = async (code, redirectUri) => {
           // Set connection flags for client-side tracking
           localStorage.setItem('kroger_connected', 'true');
           localStorage.setItem('kroger_connected_at', new Date().toISOString());
-          localStorage.setItem('kroger_auth_code_received', 'true');
+          localStorage.setItem('kroger_auth_code_received', 'true'); // Important flag for cart operations
+          
+          // Track additional details about this authorization
+          localStorage.setItem('kroger_auth_type', 'user_authorized');
+          localStorage.setItem('kroger_auth_timestamp', Date.now().toString());
+          localStorage.setItem('kroger_has_cart_scope', 'true'); // Critical for cart operations
           
           // Indicate that store selection is needed
           sessionStorage.setItem('kroger_needs_store_selection', 'true');
@@ -618,7 +672,12 @@ const processAuthCode = async (code, redirectUri) => {
           // Set connection flags for client-side tracking
           localStorage.setItem('kroger_connected', 'true');
           localStorage.setItem('kroger_connected_at', new Date().toISOString());
-          localStorage.setItem('kroger_auth_code_received', 'true');
+          localStorage.setItem('kroger_auth_code_received', 'true'); // Important flag for cart operations
+          
+          // Track additional details about this authorization
+          localStorage.setItem('kroger_auth_type', 'user_authorized');
+          localStorage.setItem('kroger_auth_timestamp', Date.now().toString());
+          localStorage.setItem('kroger_has_cart_scope', 'true'); // Critical for cart operations
           
           // Indicate that store selection is needed
           sessionStorage.setItem('kroger_needs_store_selection', 'true');
@@ -652,7 +711,12 @@ const processAuthCode = async (code, redirectUri) => {
           // Set connection flags for client-side tracking
           localStorage.setItem('kroger_connected', 'true');
           localStorage.setItem('kroger_connected_at', new Date().toISOString());
-          localStorage.setItem('kroger_auth_code_received', 'true');
+          localStorage.setItem('kroger_auth_code_received', 'true'); // Important flag for cart operations
+          
+          // Track additional details about this authorization
+          localStorage.setItem('kroger_auth_type', 'user_authorized');
+          localStorage.setItem('kroger_auth_timestamp', Date.now().toString());
+          localStorage.setItem('kroger_has_cart_scope', 'true'); // Critical for cart operations
           
           // Indicate that store selection is needed
           sessionStorage.setItem('kroger_needs_store_selection', 'true');
@@ -680,8 +744,13 @@ const processAuthCode = async (code, redirectUri) => {
     // Set the client-side connection status in localStorage
     localStorage.setItem('kroger_connected', 'true');
     localStorage.setItem('kroger_connected_at', new Date().toISOString());
-    localStorage.setItem('kroger_auth_code_received', 'true');
+    localStorage.setItem('kroger_auth_code_received', 'true'); // Important flag for cart operations
     localStorage.setItem('kroger_auth_completed', 'true');
+    
+    // Track additional details about this authorization
+    localStorage.setItem('kroger_auth_type', 'user_authorized');
+    localStorage.setItem('kroger_auth_timestamp', Date.now().toString());
+    localStorage.setItem('kroger_has_cart_scope', 'true'); // Critical for cart operations
     
     // Clear any flags indicating reconnection in progress
     localStorage.removeItem('kroger_reconnect_attempted');

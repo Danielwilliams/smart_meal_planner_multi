@@ -643,10 +643,10 @@ function CartPage() {
       setShowErrorDialog(false);
       
       // Show connecting message
-      setSnackbarMessage("Redirecting to Kroger login...");
+      setSnackbarMessage("Redirecting to Kroger login for cart access...");
       setSnackbarOpen(true);
       
-      console.log('Initiating Kroger reconnection');
+      console.log('Initiating Kroger reconnection for cart operations');
       
       // Mark the starting time of the reconnection attempt
       const reconnectStartTime = Date.now();
@@ -672,6 +672,7 @@ function CartPage() {
         const clientId = 'smartmealplannerio-243261243034247652497361364a447078555731455949714a464f61656e5a676b444e552e42796961517a4f4576367156464b3564774c3039777a614700745159802496692';
         const redirectUri = 'https://smart-meal-planner-multi.vercel.app/kroger/callback';
         // These scopes are for authorization_code flow which is used in user OAuth process
+        // Make sure to include cart.basic:write scope for cart operations
         const scope = 'product.compact cart.basic:write profile.compact';
         const state = Math.random().toString(36).substring(2, 15);
         
@@ -736,12 +737,12 @@ const handleAddToCart = async (items, store) => {
         console.log('Using dedicated Kroger auth service for cart operation');
         response = await krogerAuthService.addToKrogerCart(items);
         
-        // Check for reconnection needed - ADD OR UPDATE THIS BLOCK
+        // Check for reconnection needed - we need a user-authorized token with cart.basic:write scope
         if (!response.success && response.needs_reconnect) {
           console.log('Kroger reconnection needed');
           showKrogerError(
-            "Kroger Authentication Required", 
-            "Your Kroger session has expired. Please reconnect your account to continue.",
+            "Kroger Cart Authorization Required", 
+            "Your Kroger session requires cart permissions. Please reconnect your account to add items to cart.",
             true
           );
           setLoading(prev => ({ ...prev, cart: false }));
