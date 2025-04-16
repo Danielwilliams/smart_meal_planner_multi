@@ -990,12 +990,29 @@ const apiService = {
             console.log(`Trying direct-search endpoint for "${term}"`);
             const searchResponse = await axiosInstance.get(`/kroger/direct-search?term=${encodeURIComponent(term)}&locationId=${encodeURIComponent(storeLocation)}`);
             
+            // Handle success case
             if (searchResponse.data && searchResponse.data.success && searchResponse.data.results) {
               console.log(`direct-search success for "${term}"`, searchResponse.data.results.length, "results");
               
               // These results should already be in the correct format from our kroger_search_item function
               allResults.push(...searchResponse.data.results);
               continue; // Skip to next term if this worked
+            } 
+            // Handle case where we get a response but no results (might happen with token errors)
+            else if (searchResponse.data && !searchResponse.data.success) {
+              console.log(`direct-search returned error: "${searchResponse.data.message}"`);
+              
+              // Check if this indicates an authentication error
+              if (searchResponse.data.message && 
+                  (searchResponse.data.message.includes("token") || 
+                   searchResponse.data.message.includes("auth"))) {
+                // Don't continue trying - return auth error
+                return {
+                  success: false,
+                  needs_reconnect: true,
+                  message: "Authentication error with Kroger. Please try reconnecting."
+                };
+              }
             }
           } catch (directSearchError) {
             console.error(`direct-search endpoint failed for "${term}":`, directSearchError.message);

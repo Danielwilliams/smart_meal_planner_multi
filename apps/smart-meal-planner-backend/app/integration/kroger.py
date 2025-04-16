@@ -47,10 +47,10 @@ def get_kroger_access_token() -> Dict[str, Any]:
             'Accept': 'application/json'
         }
         
-        # Using only product.compact scope
+        # Using the correct scopes from the app backend
         data = {
             'grant_type': 'client_credentials',
-            'scope': 'product.compact location'
+            'scope': 'product.compact cart.basic:write profile.compact'
         }
         
         logger.debug(f"Making token request to: {token_url}")
@@ -371,7 +371,7 @@ class KrogerIntegration:
             # Try with a simpler scope set that should work with Kroger API
             data = {
                 'grant_type': 'client_credentials',
-                'scope': 'product.compact'  # Start with just this scope
+                'scope': 'product.compact'  # Use just this scope - location scope is invalid
             }
             
             logger.info(f"Sending token request to: {token_url}")
