@@ -251,11 +251,30 @@ async def add_to_kroger_cart(
         
         return result
         
-    except Exception as e:
-        logger.error(f"Unexpected error adding to Kroger cart: {str(e)}")
+    except ImportError as imp_err:
+        # Handle specific import error case with better diagnostics
+        logger.error(f"Import error in Kroger cart function: {str(imp_err)}")
+        
+        # Check if this is the refresh_kroger_token import error which we just fixed
+        if "refresh_kroger_token" in str(imp_err):
+            logger.info("This is the refresh_kroger_token import error - should be fixed now")
+            return {
+                "success": False,
+                "message": "Server needs restarting with latest code changes.",
+                "error": str(imp_err),
+                "needs_reconnect": True
+            }
         return {
             "success": False,
-            "message": "An unexpected error occurred",
+            "message": f"Server configuration error: {str(imp_err)}",
+            "needs_reconnect": True
+        }
+    except Exception as e:
+        logger.error(f"Unexpected error adding to Kroger cart: {str(e)}", exc_info=True)
+        return {
+            "success": False,
+            "message": f"An unexpected error occurred: {str(e)}",
+            "error_type": type(e).__name__,
             "needs_reconnect": True
         }
 

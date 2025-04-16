@@ -738,15 +738,22 @@ const handleAddToCart = async (items, store) => {
         response = await krogerAuthService.addToKrogerCart(items);
         
         // Check for reconnection needed - we need a user-authorized token with cart.basic:write scope
-        if (!response.success && response.needs_reconnect) {
-          console.log('Kroger reconnection needed');
-          showKrogerError(
-            "Kroger Cart Authorization Required", 
-            "Your Kroger session requires cart permissions. Please reconnect your account to add items to cart.",
-            true
-          );
-          setLoading(prev => ({ ...prev, cart: false }));
-          return;
+        if (!response.success) {
+          console.log('Kroger error response:', response);
+          
+          // Check for needs_reconnect flag or specific error messages
+          if (response.needs_reconnect || 
+              response.message === "An unexpected error occurred" ||
+              (response.message && response.message.includes("Server needs restarting"))) {
+            
+            console.log('Kroger reconnection needed');
+            showKrogerError(
+              "Kroger Cart Authorization Required", 
+              "Your Kroger session requires cart permissions. Please reconnect your account to add items to cart.",
+              true
+            );
+            setLoading(prev => ({ ...prev, cart: false }));
+            return;
         }
         
         // Check if it was a timeout

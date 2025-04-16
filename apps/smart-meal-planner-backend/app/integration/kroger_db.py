@@ -161,3 +161,30 @@ def update_kroger_store_location(id: int, store_location_id: str) -> bool:
     finally:
         conn.close()
         
+def update_kroger_tokens(user_id: int, access_token: str, refresh_token: Optional[str] = None) -> bool:
+    """
+    Update Kroger tokens for a specific user
+    
+    This function updates the Kroger access and refresh tokens in the database
+    for a specific user. It's primarily used during token refresh operations.
+    
+    Args:
+        user_id: The database ID of the user
+        access_token: The new access token
+        refresh_token: The new refresh token (optional)
+        
+    Returns:
+        bool: True if the update was successful, False otherwise
+    """
+    logger.info(f"Updating Kroger tokens for user {user_id}")
+    
+    if not access_token:
+        logger.error("No access token provided for update")
+        return False
+        
+    # Use the existing save_kroger_credentials function
+    return save_kroger_credentials(
+        id=user_id,
+        access_token=access_token,
+        refresh_token=refresh_token
+    )

@@ -277,9 +277,97 @@ def kroger_search_item(query: str, location_id: Optional[str] = None) -> Dict[st
             "results": []
         }
 
+def refresh_kroger_token(user_id: int) -> Optional[str]:
+    """
+    Refresh the Kroger API token for a specific user using their refresh token
+    
+    This function attempts to refresh a user's Kroger access token using their stored
+    refresh token. This is different from getting a client_credentials token, as it 
+    preserves user-specific scopes like cart.basic:write.
+    
+    Args:
+        user_id: The database ID of the user
+        
+    Returns:
+        Optional[str]: The new access token if successful, None if failed
+    """
+    try:
+        logger.info(f"Attempting to refresh token for user {user_id}")
+        
+        # Get the user's credentials including refresh token
+        from app.integration.kroger_db import get_user_kroger_credentials, update_kroger_tokens
+        user_creds = get_user_kroger_credentials(user_id)
+        
+        if not user_creds or not user_creds.get('refresh_token'):
+            logger.error(f"No refresh token found for user {user_id}")
+            return None
+            
+        refresh_token = user_creds.get('refresh_token')
+        
+        # Prepare for token refresh
+        token_url = f"{KROGER_BASE_URL}/connect/oauth2/token"
+        
+        # Create basic auth header with client credentials
+        auth_string = f"{KROGER_CLIENT_ID}:{KROGER_CLIENT_SECRET}"
+        basic_auth = base64.b64encode(auth_string.encode('utf-8')).decode('utf-8')
+        
+        headers = {
+            'Authorization': f'Basic {basic_auth}',
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Accept': 'application/json'
+        }
+        
+        # Use refresh_token grant type
+        data = {
+            'grant_type': 'refresh_token',
+            'refresh_token': refresh_token
+        }
+        
+        # Request new tokens
+        response = requests.post(
+            token_url, 
+            headers=headers, 
+            data=data,
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            # Parse token data
+            token_data = response.json()
+            new_access_token = token_data.get('access_token')
+            new_refresh_token = token_data.get('refresh_token')
+            
+            if new_access_token and new_refresh_token:
+                # Update tokens in database
+                update_success = update_kroger_tokens(
+                    user_id=user_id,
+                    access_token=new_access_token,
+                    refresh_token=new_refresh_token
+                )
+                
+                if update_success:
+                    logger.info(f"Successfully refreshed and updated tokens for user {user_id}")
+                    return new_access_token
+                else:
+                    logger.error("Failed to save refreshed tokens to database")
+            else:
+                logger.error("Tokens missing from refresh response")
+        else:
+            logger.error(f"Token refresh failed: {response.status_code} - {response.text}")
+            
+        return None
+        
+    except Exception as e:
+        logger.error(f"Error refreshing token: {str(e)}")
+        return None
+
 def add_to_kroger_cart(access_token: str, location_id: str, items: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
     Standalone function to add items to Kroger cart
+    
+    Note: This function requires an access token with cart.basic:write scope,
+    which can only be obtained through the authorization_code flow, not
+    the client_credentials flow used for product search.
     """
     cart_url = f"{KROGER_BASE_URL}/cart/add"
     
