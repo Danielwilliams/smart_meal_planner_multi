@@ -396,80 +396,194 @@ function CartPage() {
           return;
         }
         
-        // Check if we have a pending Kroger setup from an auth code
-        const needsSetup = sessionStorage.getItem('kroger_needs_setup');
-        const authCode = sessionStorage.getItem('kroger_auth_code');
-        const authTimestamp = sessionStorage.getItem('kroger_auth_timestamp');
+        // Check if we have a known database schema issue
+        const dbSchemaIssue = localStorage.getItem('database_schema_issue') === 'true';
         
-        if (needsSetup === 'true' && authCode) {
-          console.log('Detected Kroger auth code that needs processing');
+        // Check for store selection status
+        const storeLocation = localStorage.getItem('kroger_store_location') || 
+                             localStorage.getItem('kroger_store_location_id');
+        const storeSelected = localStorage.getItem('kroger_store_selected') === 'true' || 
+                             localStorage.getItem('kroger_store_configured') === 'true';
+        
+        // If we have a schema issue, check client-side connection status
+        if (dbSchemaIssue) {
+          console.log('Database schema issue detected, checking client-side connection status');
           
-          // Check if the code is recent (within last 5 minutes)
-          const now = Date.now();
-          const authTime = parseInt(authTimestamp || '0', 10);
-          const isRecent = (now - authTime) < 5 * 60 * 1000; // 5 minutes
+          const isConnected = localStorage.getItem('kroger_connected') === 'true';
           
-          if (isRecent) {
-            console.log('Auth code is recent, assuming connection was successful');
-            // Clear the session storage flags
-            sessionStorage.removeItem('kroger_needs_setup');
-            sessionStorage.removeItem('kroger_auth_code');
-            sessionStorage.removeItem('kroger_auth_timestamp');
-            
-            // Set status flags in localStorage
-            localStorage.setItem('kroger_connected', 'true');
-            localStorage.setItem('kroger_connected_at', new Date().toISOString());
-            
-            // Skip connection check and proceed with search
-            console.log('Proceeding with search without connection check');
-          } else {
-            console.log('Auth code is stale, clearing it');
-            sessionStorage.removeItem('kroger_needs_setup');
-            sessionStorage.removeItem('kroger_auth_code');
-            sessionStorage.removeItem('kroger_auth_timestamp');
+          if (!isConnected) {
+            console.log('Not connected according to client-side data, showing connect dialog');
+            showKrogerError(
+              "Kroger Connection Required",
+              "You need to connect your Kroger account before searching for items.",
+              true
+            );
+            return;
           }
-        } else {
-          // Now check Kroger credentials before proceeding
-          console.log("Checking Kroger credentials before search");
           
-          try {
-            // First check with the backend API
-            const status = await krogerAuthService.checkKrogerStatus();
-            console.log("Kroger status check result:", status);
+          if (!storeLocation || !storeSelected) {
+            console.log('No store selected according to client-side data, showing store selector');
+            setCurrentStore(store);
+            setShowStoreSelector(true);
+            return;
+          }
+          
+          console.log('Connected and store selected according to client-side data, proceeding with search');
+        } else {
+          // Check if we have a pending Kroger setup from an auth code
+          const needsSetup = sessionStorage.getItem('kroger_needs_setup');
+          const authCode = sessionStorage.getItem('kroger_auth_code');
+          const authTimestamp = sessionStorage.getItem('kroger_auth_timestamp');
+          
+          if (needsSetup === 'true' && authCode) {
+            console.log('Detected Kroger auth code that needs processing');
             
-            // If not connected, show reconnect dialog
-            if (!status.is_connected) {
-              console.log("Kroger not connected, showing reconnect dialog");
-              showKrogerError(
-                "Kroger Connection Required",
-                "You need to connect your Kroger account before searching for items.",
-                true
-              );
-              return;
-            }
-            
-            // If we get here, we're good to proceed with the search
-            console.log("Kroger credentials verified, proceeding with search");
-          } catch (err) {
-            console.error("Error checking Kroger credentials:", err);
-            
-            // Check for a recently successful auth
-            const wasRecentlyConnected = localStorage.getItem('kroger_connected') === 'true';
-            const connectedAt = localStorage.getItem('kroger_connected_at');
+            // Check if the code is recent (within last 5 minutes)
             const now = Date.now();
-            const connectedTime = new Date(connectedAt || 0).getTime();
-            const isRecentlyConnected = connectedAt && (now - connectedTime) < 60 * 60 * 1000; // 1 hour
+            const authTime = parseInt(authTimestamp || '0', 10);
+            const isRecent = (now - authTime) < 5 * 60 * 1000; // 5 minutes
             
-            if (wasRecentlyConnected && isRecentlyConnected) {
-              console.log('Recently connected to Kroger, proceeding with search despite error');
-              // Continue with search, assuming connection is still valid
+            if (isRecent) {
+              console.log('Auth code is recent, assuming connection was successful');
+              // Clear the session storage flags
+              sessionStorage.removeItem('kroger_needs_setup');
+              sessionStorage.removeItem('kroger_auth_code');
+              sessionStorage.removeItem('kroger_auth_timestamp');
+              
+              // Set status flags in localStorage
+              localStorage.setItem('kroger_connected', 'true');
+              localStorage.setItem('kroger_connected_at', new Date().toISOString());
+              
+              // If no store is selected yet, we need to show the store selector
+              if (!storeLocation && !storeSelected) {
+                console.log('No store selected, showing store selector');
+                setCurrentStore(store);
+                setShowStoreSelector(true);
+                return;
+              }
+              
+              // Skip connection check and proceed with search
+              console.log('Proceeding with search without connection check');
             } else {
-              showKrogerError(
-                "Kroger Connection Error",
-                "There was a problem checking your Kroger connection. Please try reconnecting your account.",
-                true
-              );
-              return;
+              console.log('Auth code is stale, clearing it');
+              sessionStorage.removeItem('kroger_needs_setup');
+              sessionStorage.removeItem('kroger_auth_code');
+              sessionStorage.removeItem('kroger_auth_timestamp');
+            }
+          } else {
+            // Now check Kroger credentials before proceeding
+            console.log("Checking Kroger credentials before search");
+            
+            try {
+              // First check with the backend API
+              const status = await krogerAuthService.checkKrogerStatus();
+              console.log("Kroger status check result:", status);
+              
+              // Check for database schema issues in the response
+              if (status.error && (
+                status.error.includes('client_id') || 
+                status.error.includes('column')
+              )) {
+                console.log("Database schema issue detected in status check");
+                localStorage.setItem('database_schema_issue', 'true');
+                
+                // Check client-side connection status instead
+                const isConnected = localStorage.getItem('kroger_connected') === 'true';
+                
+                if (!isConnected) {
+                  showKrogerError(
+                    "Kroger Connection Required",
+                    "You need to connect your Kroger account before searching for items.",
+                    true
+                  );
+                  return;
+                }
+                
+                // Check if store is selected
+                if (!storeLocation && !storeSelected) {
+                  console.log('No store selected, showing store selector');
+                  setCurrentStore(store);
+                  setShowStoreSelector(true);
+                  return;
+                }
+              } else if (!status.is_connected) {
+                // If not connected, show reconnect dialog
+                console.log("Kroger not connected, showing reconnect dialog");
+                showKrogerError(
+                  "Kroger Connection Required",
+                  "You need to connect your Kroger account before searching for items.",
+                  true
+                );
+                return;
+              } else if (!status.store_location && !storeLocation && !storeSelected) {
+                // If connected but no store is selected
+                console.log('Connected but no store selected, showing store selector');
+                setCurrentStore(store);
+                setShowStoreSelector(true);
+                return;
+              }
+              
+              // If we get here, we're good to proceed with the search
+              console.log("Kroger credentials verified, proceeding with search");
+            } catch (err) {
+              console.error("Error checking Kroger credentials:", err);
+              
+              // Check if error indicates a database schema issue
+              if (err.response?.data?.error && (
+                err.response.data.error.includes('client_id') || 
+                err.response.data.error.includes('column')
+              )) {
+                console.log("Database schema issue detected in credentials check error");
+                localStorage.setItem('database_schema_issue', 'true');
+                
+                // Use client-side connection status
+                const isConnected = localStorage.getItem('kroger_connected') === 'true';
+                
+                if (!isConnected) {
+                  showKrogerError(
+                    "Kroger Connection Required",
+                    "You need to connect your Kroger account before searching for items.",
+                    true
+                  );
+                  return;
+                }
+                
+                // Check if store is selected
+                if (!storeLocation && !storeSelected) {
+                  console.log('No store selected, showing store selector');
+                  setCurrentStore(store);
+                  setShowStoreSelector(true);
+                  return;
+                }
+              } else {
+                // Check for a recently successful auth
+                const wasRecentlyConnected = localStorage.getItem('kroger_connected') === 'true';
+                const connectedAt = localStorage.getItem('kroger_connected_at');
+                const now = Date.now();
+                const connectedTime = new Date(connectedAt || 0).getTime();
+                const isRecentlyConnected = connectedAt && (now - connectedTime) < 24 * 60 * 60 * 1000; // 24 hours
+                
+                if (wasRecentlyConnected && isRecentlyConnected) {
+                  console.log('Recently connected to Kroger, proceeding with search despite error');
+                  
+                  // Check if store is selected
+                  if (!storeLocation && !storeSelected) {
+                    console.log('No store selected, showing store selector');
+                    setCurrentStore(store);
+                    setShowStoreSelector(true);
+                    return;
+                  }
+                  
+                  // Continue with search, assuming connection is still valid
+                } else {
+                  showKrogerError(
+                    "Kroger Connection Error",
+                    "There was a problem checking your Kroger connection. Please try reconnecting your account.",
+                    true
+                  );
+                  return;
+                }
+              }
             }
           }
         }
@@ -496,23 +610,48 @@ function CartPage() {
       // Execute the search
       const response = await searchFunction(storeItems);
 
-      // Handle store selection if needed
+      // Handle various response scenarios
       if (!response.success) {
-        if (response.needs_setup) {
+        if (response.db_schema_issue) {
+          console.log("Database schema issue reported in search response");
+          localStorage.setItem('database_schema_issue', 'true');
+          
+          // Check if we need store selection
+          const storeLocation = localStorage.getItem('kroger_store_location') || 
+                              localStorage.getItem('kroger_store_location_id');
+          const storeSelected = localStorage.getItem('kroger_store_selected') === 'true' || 
+                              localStorage.getItem('kroger_store_configured') === 'true';
+                              
+          if (!storeLocation && !storeSelected) {
+            setCurrentStore(store);
+            setShowStoreSelector(true);
+            return;
+          } else {
+            setError("Database issue detected. Using client-side workarounds, but results may be limited.");
+            return;
+          }
+        } else if (response.needs_setup) {
           // Show store selector instead of redirecting to preferences
           setCurrentStore(store);
           setShowStoreSelector(true);
           return;
-        }
-        if (response.redirect) {
+        } else if (response.needs_reconnect) {
+          showKrogerError(
+            "Kroger Authentication Required",
+            "Your Kroger session has expired. Please reconnect your account to continue.",
+            true
+          );
+          return;
+        } else if (response.redirect) {
           window.location.href = response.redirect;
           return;
         }
-        setError(response.message);
+        
+        setError(response.message || `Failed to search ${store} items`);
         return;
       }
 
-      // Update search results
+      // Update search results on success
       setSearchResults(prev => ({
         ...prev,
         [store]: response.results
@@ -520,6 +659,17 @@ function CartPage() {
 
     } catch (err) {
       console.error(`Failed to search ${store} items:`, err);
+      
+      // Check for database schema issues in the error
+      if (err.response?.data?.error && (
+        err.response.data.error.includes('client_id') || 
+        err.response.data.error.includes('column')
+      )) {
+        console.log("Database schema issue detected in search error");
+        localStorage.setItem('database_schema_issue', 'true');
+        setError("Database configuration issue detected. Please contact support.");
+        return;
+      }
       
       // Handle specific Kroger auth errors
       if (store === 'kroger' && 
