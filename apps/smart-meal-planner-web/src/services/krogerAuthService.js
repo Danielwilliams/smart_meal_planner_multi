@@ -11,14 +11,18 @@ const DIRECT_KROGER_TOKEN_URL = 'https://api.kroger.com/v1/connect/oauth2/token'
 
 // Kroger OAuth credentials from environment variables
 // The backend will provide these values through API endpoints
-const KROGER_CLIENT_ID = process.env.REACT_APP_KROGER_CLIENT_ID || '';
-const KROGER_REDIRECT_URI = process.env.REACT_APP_KROGER_REDIRECT_URI || 'https://smart-meal-planner-multi.vercel.app/kroger/callback';
+const KROGER_CLIENT_ID = process.env.KROGER_CLIENT_ID || '';
+const KROGER_REDIRECT_URI = process.env.KROGER_REDIRECT_URI || 'https://smart-meal-planner-multi.vercel.app/kroger/callback';
 const KROGER_SCOPE = 'product.compact cart.basic:write';
 
 // Log configuration for debugging
 console.log('Kroger configuration:', {
   clientIdExists: !!KROGER_CLIENT_ID,
-  redirectUri: KROGER_REDIRECT_URI
+  redirectUri: KROGER_REDIRECT_URI,
+  envVars: {
+    KROGER_CLIENT_ID: !!process.env.KROGER_CLIENT_ID,
+    KROGER_REDIRECT_URI: !!process.env.KROGER_REDIRECT_URI
+  }
 });
 
 // Standalone axios instance for auth-related requests

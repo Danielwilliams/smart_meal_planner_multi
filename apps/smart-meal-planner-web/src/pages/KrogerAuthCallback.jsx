@@ -44,7 +44,7 @@ function KrogerAuthCallback() {
           // First store the auth code and additional info in sessionStorage
           // for the cart page to process and for diagnostics
           sessionStorage.setItem('kroger_auth_code', code);
-          sessionStorage.setItem('kroger_auth_redirect_uri', process.env.REACT_APP_KROGER_REDIRECT_URI || 'https://smart-meal-planner-multi.vercel.app/kroger/callback');
+          sessionStorage.setItem('kroger_auth_redirect_uri', process.env.KROGER_REDIRECT_URI || 'https://smart-meal-planner-multi.vercel.app/kroger/callback');
           sessionStorage.setItem('kroger_auth_timestamp', Date.now().toString());
           
           // Track the state validation
@@ -64,7 +64,7 @@ function KrogerAuthCallback() {
             
             // Attempt to process the auth code to get tokens
             const processingResult = await krogerAuthService.processAuthCode(code, 
-              process.env.REACT_APP_KROGER_REDIRECT_URI || 'https://smart-meal-planner-multi.vercel.app/kroger/callback');
+              process.env.KROGER_REDIRECT_URI || 'https://smart-meal-planner-multi.vercel.app/kroger/callback');
             
             console.log('Auth code processing result:', processingResult);
             

@@ -645,8 +645,8 @@ function CartPage() {
           console.log("Using direct OAuth URL construction as final fallback");
           
           // Try to get client ID and redirect URI from environment variables
-          const clientId = process.env.REACT_APP_KROGER_CLIENT_ID;
-          const redirectUri = process.env.REACT_APP_KROGER_REDIRECT_URI || 'https://smart-meal-planner-multi.vercel.app/kroger/callback';
+          const clientId = process.env.KROGER_CLIENT_ID;
+          const redirectUri = process.env.KROGER_REDIRECT_URI || 'https://smart-meal-planner-multi.vercel.app/kroger/callback';
           const scope = 'product.compact cart.basic:write';
           const state = Math.random().toString(36).substring(2, 15);
           
