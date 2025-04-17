@@ -268,6 +268,42 @@ const addToKrogerCart = async (items) => {
       console.log('Backend status check failed:', statusErr.message);
     }
     
+    // Before returning needs_setup, check if we can get the store location from backend
+    try {
+      console.log('Checking backend for store location before showing selector');
+      const statusPromise = authAxios.get('/kroger/connection-status', { timeout: 3000 });
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Backend status check timed out')), 3000)
+      );
+      
+      const statusResponse = await Promise.race([statusPromise, timeoutPromise]);
+      
+      if (statusResponse?.data?.is_connected && 
+          (statusResponse?.data?.store_location || statusResponse?.data?.store_location_id)) {
+        console.log('Found store location in backend:', 
+          statusResponse.data.store_location || statusResponse.data.store_location_id);
+        
+        // Get store location from backend
+        const backendLocation = statusResponse.data.store_location || statusResponse.data.store_location_id;
+        
+        // Set all client-side flags
+        localStorage.setItem('kroger_store_location', backendLocation);
+        localStorage.setItem('kroger_store_location_id', backendLocation);
+        localStorage.setItem('kroger_store_selected', 'true');
+        localStorage.setItem('kroger_store_configured', 'true');
+        localStorage.setItem('kroger_store_selection_done', 'true');
+        sessionStorage.setItem('kroger_store_selection_complete', 'true');
+        sessionStorage.removeItem('kroger_needs_store_selection');
+        
+        // Continue with the operation instead of showing the store selector
+        console.log('Using backend store location, continuing with operation');
+        return;
+      }
+    } catch (statusError) {
+      console.error('Error checking backend for store location:', statusError);
+    }
+    
+    // Finally, if all else fails, return needs_setup
     return {
       success: false,
       needs_setup: true,

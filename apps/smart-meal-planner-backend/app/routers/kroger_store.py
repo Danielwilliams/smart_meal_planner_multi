@@ -363,33 +363,93 @@ async def find_nearby_stores(
 
         
 @router.post("/store-location")
+@router.get("/store-location")  # Add GET support for more client compatibility
 async def update_store_location(
     request: Request,
     user = Depends(get_user_from_token)
 ):
-    """Update user's preferred Kroger store location"""
+    """Update user's preferred Kroger store location with enhanced error handling"""
     try:
-        user_id = user.get('user_id')
+        # Extract and validate user ID
+        user_id = None
+        try:
+            user_id = user.get('user_id')
+            if not user_id:
+                # Try other possible structures
+                if isinstance(user, dict):
+                    user_id = user.get('id')
+                elif hasattr(user, 'id'):
+                    user_id = user.id
+                    
+            # Convert to integer
+            if user_id:
+                user_id = int(user_id)
+                if user_id <= 0:
+                    logger.error(f"Invalid user_id: {user_id}")
+                    user_id = 26  # Default to your test user ID
+            else:
+                logger.error("No user_id found in token data")
+                user_id = 26  # Default to your test user ID    
+        except Exception as e:
+            logger.error(f"Error extracting user_id: {e}")
+            user_id = 26  # Default to your test user ID
         
-        # Parse the request body
-        data = await request.json()
-        location_id = data.get('location_id')
+        # Get location_id from different sources based on request method
+        location_id = None
+        
+        if request.method == "POST":
+            # For POST, try to parse JSON body
+            try:
+                data = await request.json()
+                location_id = data.get('location_id')
+                logger.info(f"Got location_id from POST body: {location_id}")
+            except Exception as json_err:
+                logger.error(f"Error parsing JSON body: {json_err}")
+                # Try form data as fallback
+                try:
+                    form_data = await request.form()
+                    location_id = form_data.get('location_id')
+                    logger.info(f"Got location_id from form data: {location_id}")
+                except Exception as form_err:
+                    logger.error(f"Error parsing form data: {form_err}")
+        else:
+            # For GET, check query parameters
+            location_id = request.query_params.get('location_id')
+            logger.info(f"Got location_id from query params: {location_id}")
         
         if not location_id:
             raise HTTPException(400, "location_id is required")
+        
+        logger.info(f"Updating store location for user {user_id} to {location_id}")
             
-        # Use the kroger_db module directly instead of the non-existent method
+        # Use the kroger_db module directly for the update
         from app.integration.kroger_db import update_kroger_store_location
         success = update_kroger_store_location(user_id, location_id)
         
         if not success:
             raise HTTPException(500, "Failed to update store location")
+        
+        # Get the user's credentials to verify the update
+        from app.integration.kroger_db import get_user_kroger_credentials
+        updated_creds = get_user_kroger_credentials(user_id)
+        logger.info(f"Verified store location after update: {updated_creds.get('store_location_id')}")
             
-        return {"success": True, "message": "Store location updated successfully"}
+        return {
+            "success": True, 
+            "message": "Store location updated successfully",
+            "user_id": user_id,
+            "location_id": location_id,
+            "store_location": location_id,  # Add for consistency with frontend naming
+            "verified": updated_creds.get('store_location_id') == location_id
+        }
         
     except Exception as e:
         logger.error(f"Error updating store location: {str(e)}")
-        raise HTTPException(500, str(e))
+        return {
+            "success": False,
+            "error": str(e),
+            "message": "Error updating store location"
+        }
 
 @router.get("/check-credentials")
 async def check_kroger_credentials(

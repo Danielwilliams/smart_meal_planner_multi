@@ -445,6 +445,35 @@ function CartPage() {
           return;
         }
         
+        // Pre-emptively set all store selection flags for better persistence
+        const clientStoreLocation = localStorage.getItem('kroger_store_location') || 
+                                    localStorage.getItem('kroger_store_location_id');
+                                    
+        if (clientStoreLocation) {
+          console.log('Found store location in client storage:', clientStoreLocation);
+          console.log('Setting all store selection flags for consistency');
+          
+          // Set all possible flags to ensure consistent experience
+          localStorage.setItem('kroger_store_location', clientStoreLocation);
+          localStorage.setItem('kroger_store_location_id', clientStoreLocation);
+          localStorage.setItem('kroger_store_selected', 'true');
+          localStorage.setItem('kroger_store_configured', 'true');
+          localStorage.setItem('kroger_store_selection_done', 'true');
+          sessionStorage.setItem('kroger_store_selection_complete', 'true');
+          sessionStorage.removeItem('kroger_needs_store_selection');
+          
+          // Also update backend with this store location to ensure consistency
+          console.log('Updating backend with client store location');
+          apiService.updateKrogerLocation(clientStoreLocation)
+            .then(updateResult => {
+              console.log('Backend store location update result:', updateResult);
+            })
+            .catch(updateErr => {
+              console.error('Error updating backend store location:', updateErr);
+              // Continue despite errors - we've already set local flags
+            });
+        }
+        
         // First try the backend for connection status
         try {
           console.log('Checking Kroger connection status with backend...');
@@ -452,23 +481,46 @@ function CartPage() {
           console.log('Backend connection status check result:', status);
           
           // If we have a valid connection with a store location, we can proceed
-          if (status.is_connected && status.store_location) {
-            console.log('Backend reports valid connection with store location:', status.store_location);
+          if (status.is_connected && (status.store_location || status.store_location_id)) {
+            console.log('Backend reports valid connection with store location:', 
+              status.store_location || status.store_location_id);
+            
+            // Get the store location from the response
+            const backendStoreLocation = status.store_location || status.store_location_id;
             
             // Update local storage with backend data for consistency
-            localStorage.setItem('kroger_store_location', status.store_location);
-            localStorage.setItem('kroger_store_location_id', status.store_location);
+            localStorage.setItem('kroger_store_location', backendStoreLocation);
+            localStorage.setItem('kroger_store_location_id', backendStoreLocation);
             localStorage.setItem('kroger_store_selected', 'true');
+            localStorage.setItem('kroger_store_configured', 'true');
             localStorage.setItem('kroger_connected', 'true');
+            localStorage.setItem('kroger_store_selection_done', 'true');
+            sessionStorage.setItem('kroger_store_selection_complete', 'true');
             
             // Clear any flags that would trigger store selection
             sessionStorage.removeItem('kroger_needs_store_selection');
             
             // Proceed with search (handled after this if block)
           } 
+          // If connected but no store location in backend BUT we have one in localStorage
+          else if (status.is_connected && !status.store_location && !status.store_location_id && clientStoreLocation) {
+            console.log('Backend connected but missing store location, using client location:', clientStoreLocation);
+            
+            // Try to update the backend with our local store location
+            try {
+              const updateResult = await apiService.updateKrogerLocation(clientStoreLocation);
+              console.log('Updated backend with client store location:', updateResult);
+              
+              // No need to show store selector, proceed with the search
+              console.log('Using client-side store location for search');
+            } catch (updateError) {
+              console.error('Error updating backend with client store location:', updateError);
+              // Continue anyway - we'll use the client location for the search
+            }
+          }
           // If connected but no store location, show store selector
-          else if (status.is_connected && !status.store_location) {
-            console.log('Backend reports connected but no store location set');
+          else if (status.is_connected && !status.store_location && !status.store_location_id && !clientStoreLocation) {
+            console.log('No store location in backend or client, showing store selector');
             setCurrentStore(store);
             setShowStoreSelector(true);
             return;
@@ -515,7 +567,7 @@ function CartPage() {
           }
           
           // If connected but needs store selection or no store selected, show selector
-          if (needsStoreSelection || !storeLocation || !storeSelected) {
+          if (needsStoreSelection && (!storeLocation || !storeSelected)) {
             console.log('Store selection needed, showing store selector');
             setCurrentStore(store);
             setShowStoreSelector(true);
@@ -550,7 +602,38 @@ function CartPage() {
       // Handle various response scenarios
       if (!response.success) {
         if (response.needs_setup || response.client_side_error) {
-          // Show store selector
+          // Before showing store selector, check if we already have a location in localStorage
+          const savedStoreLocation = localStorage.getItem('kroger_store_location') || 
+                                   localStorage.getItem('kroger_store_location_id');
+          
+          if (savedStoreLocation) {
+            console.log('Store selection needed but found saved location:', savedStoreLocation);
+            // Try updating backend and retrying search
+            try {
+              // Update backend with our saved location
+              await apiService.updateKrogerLocation(savedStoreLocation);
+              
+              // Retry the search
+              console.log('Retrying search with saved location');
+              const retryResponse = await searchFunction(storeItems);
+              
+              if (retryResponse.success) {
+                console.log('Retry search succeeded');
+                // Update search results on success
+                setSearchResults(prev => ({
+                  ...prev,
+                  [store]: retryResponse.results
+                }));
+                setLoading(prev => ({ ...prev, search: false }));
+                return;
+              }
+            } catch (retryError) {
+              console.error('Error retrying search with saved location:', retryError);
+            }
+          }
+          
+          // If we get here, we need to show the store selector
+          console.log('Still need store selection, showing selector');
           setCurrentStore(store);
           setShowStoreSelector(true);
           return;

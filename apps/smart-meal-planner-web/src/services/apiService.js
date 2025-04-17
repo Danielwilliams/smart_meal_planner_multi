@@ -1248,23 +1248,37 @@ const apiService = {
       
       console.log('Updating Kroger store location to:', locationId);
       
-      // Try multiple approaches in sequence to ensure success
+      // FIRST SET OF ACTIONS: Immediately set ALL client-side flags
+      // This ensures immediate feedback to the user and persistence 
+      // even if backend operations fail
+      console.log('Setting ALL client-side flags for maximum consistency');
+      localStorage.setItem('kroger_store_location', locationId);
+      localStorage.setItem('kroger_store_location_id', locationId);
+      localStorage.setItem('kroger_store_selected', 'true');
+      localStorage.setItem('kroger_store_configured', 'true');
+      localStorage.setItem('kroger_store_timestamp', Date.now().toString());
+      localStorage.setItem('kroger_store_selection_done', 'true');
+      localStorage.setItem('kroger_store_selection_timestamp', Date.now().toString());
+      sessionStorage.setItem('kroger_store_selection_complete', 'true');
+      sessionStorage.removeItem('kroger_needs_store_selection');
       
-      // First check if we have a database schema issue 
+      // Log all the flags we've set for debugging
+      console.log('Store selection flags set:', {
+        'kroger_store_location': localStorage.getItem('kroger_store_location'),
+        'kroger_store_location_id': localStorage.getItem('kroger_store_location_id'),
+        'kroger_store_selected': localStorage.getItem('kroger_store_selected'),
+        'kroger_store_configured': localStorage.getItem('kroger_store_configured'),
+        'kroger_store_selection_done': localStorage.getItem('kroger_store_selection_done'),
+        'kroger_store_selection_complete (session)': sessionStorage.getItem('kroger_store_selection_complete'),
+        'kroger_needs_store_selection (session)': sessionStorage.getItem('kroger_needs_store_selection')
+      });
+      
+      // SECOND SET OF ACTIONS: Try to update the backend
+      // Check if we have a database schema issue 
       const hasSchemaIssue = localStorage.getItem('database_schema_issue') === 'true';
       
       if (hasSchemaIssue) {
         console.log('Database schema issue detected, skipping backend update');
-        // Just update localStorage and return success
-        localStorage.setItem('kroger_store_location', locationId);
-        localStorage.setItem('kroger_store_location_id', locationId);
-        localStorage.setItem('kroger_store_selected', 'true');
-        localStorage.setItem('kroger_store_timestamp', Date.now().toString());
-        
-        // Set flags to prevent selection loops
-        sessionStorage.setItem('kroger_store_selection_complete', 'true');
-        localStorage.setItem('kroger_store_selection_done', 'true');
-        
         return {
           success: true,
           client_side_fallback: true,
@@ -1272,98 +1286,101 @@ const apiService = {
         };
       }
       
-      // Try backend update - first with POST request
-      try {
-        console.log('Trying POST to update store location...');
-        const response = await axiosInstance.post('/kroger/store-location', {
-          location_id: locationId
-        });
-        
-        console.log('Store location update response (POST):', response.data);
-        
-        // Update localStorage for consistent client-side state
-        localStorage.setItem('kroger_store_location', locationId);
-        localStorage.setItem('kroger_store_location_id', locationId);
-        localStorage.setItem('kroger_store_selected', 'true');
-        localStorage.setItem('kroger_store_timestamp', Date.now().toString());
-        
-        // Set flags to prevent selection loops
-        sessionStorage.setItem('kroger_store_selection_complete', 'true');
-        localStorage.setItem('kroger_store_selection_done', 'true');
-        
-        return response.data;
-      } catch (postError) {
-        console.error('POST request failed for store location:', postError);
-        
-        // Check for database schema issue
-        if (postError.response?.data?.error?.includes('client_id') || 
-            postError.response?.data?.error?.includes('column')) {
-          console.log("Database schema issue detected, setting flag and using client-side storage");
-          localStorage.setItem('database_schema_issue', 'true');
-        }
-        
-        // Try GET method as fallback
-        try {
-          console.log('Trying GET method to update store location...');
-          const response = await axiosInstance.get(`/kroger/store-location?location_id=${locationId}`);
-          
-          console.log('Store location update response (GET):', response.data);
-          
-          // Update localStorage for consistent client-side state
-          localStorage.setItem('kroger_store_location', locationId);
-          localStorage.setItem('kroger_store_location_id', locationId);
-          localStorage.setItem('kroger_store_selected', 'true');
-          localStorage.setItem('kroger_store_timestamp', Date.now().toString());
-          
-          // Set flags to prevent selection loops
-          sessionStorage.setItem('kroger_store_selection_complete', 'true');
-          localStorage.setItem('kroger_store_selection_done', 'true');
-          
+      // Try backend update with multiple approaches for robustness
+      console.log('Attempting to update backend with store location');
+      
+      // Array of all approaches to try
+      const updateApproaches = [
+        // Approach 1: POST to store-location endpoint (standard)
+        async () => {
+          console.log('Approach 1: POST to /kroger/store-location');
+          const response = await axiosInstance.post('/kroger/store-location', {
+            location_id: locationId
+          });
+          console.log('Approach 1 response:', response.data);
           return response.data;
-        } catch (getError) {
-          console.error('GET request failed for store location:', getError);
+        },
+        
+        // Approach 2: GET to store-location endpoint (alternative)
+        async () => {
+          console.log('Approach 2: GET to /kroger/store-location');
+          const response = await axiosInstance.get(`/kroger/store-location?location_id=${locationId}`);
+          console.log('Approach 2 response:', response.data);
+          return response.data;
+        },
+        
+        // Approach 3: POST with different content type
+        async () => {
+          console.log('Approach 3: POST with form data');
+          const formData = new FormData();
+          formData.append('location_id', locationId);
+          
+          const response = await axiosInstance.post('/kroger/store-location', formData, {
+            headers: {
+              'Content-Type': 'multipart/form-data'
+            }
+          });
+          console.log('Approach 3 response:', response.data);
+          return response.data;
+        },
+        
+        // Approach 4: Direct fetch API as last resort
+        async () => {
+          console.log('Approach 4: Direct fetch API');
+          const response = await fetch(`${API_BASE_URL}/kroger/store-location`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+            },
+            body: JSON.stringify({ location_id: locationId })
+          });
+          
+          const data = await response.json();
+          console.log('Approach 4 response:', data);
+          return data;
+        }
+      ];
+      
+      // Try each approach in sequence until one succeeds
+      for (let i = 0; i < updateApproaches.length; i++) {
+        try {
+          const result = await updateApproaches[i]();
+          
+          // If we got a successful result, return it
+          if (result && result.success) {
+            console.log(`Backend update succeeded with approach ${i+1}`);
+            return result;
+          }
+        } catch (error) {
+          console.error(`Approach ${i+1} failed:`, error);
           
           // Check for database schema issue
-          if (getError.response?.data?.error?.includes('client_id') || 
-              getError.response?.data?.error?.includes('column')) {
-            console.log("Database schema issue detected, setting flag and using client-side storage");
+          if (error.response?.data?.error?.includes('client_id') || 
+              error.response?.data?.error?.includes('column')) {
+            console.log("Database schema issue detected, setting flag and skipping remaining approaches");
             localStorage.setItem('database_schema_issue', 'true');
+            break;
           }
-          
-          // All backend approaches failed, fall back to client-side only
-          localStorage.setItem('kroger_store_location', locationId);
-          localStorage.setItem('kroger_store_location_id', locationId);
-          localStorage.setItem('kroger_store_selected', 'true');
-          localStorage.setItem('kroger_store_timestamp', Date.now().toString());
-          
-          // Set flags to prevent selection loops
-          sessionStorage.setItem('kroger_store_selection_complete', 'true');
-          localStorage.setItem('kroger_store_selection_done', 'true');
-          
-          return {
-            success: true,
-            client_side_fallback: true,
-            message: 'Store location saved locally despite backend errors'
-          };
         }
       }
-    } catch (err) {
-      console.error("Kroger location update error:", err);
       
-      // Save in localStorage as a fallback and return "success"
-      localStorage.setItem('kroger_store_location', locationId);
-      localStorage.setItem('kroger_store_location_id', locationId);
-      localStorage.setItem('kroger_store_selected', 'true');
-      localStorage.setItem('kroger_store_timestamp', Date.now().toString());
-      
-      // Set flags to prevent selection loops
-      sessionStorage.setItem('kroger_store_selection_complete', 'true');
-      localStorage.setItem('kroger_store_selection_done', 'true');
+      // If we get here, all approaches failed, but client-side state is already set
+      console.log('All backend update approaches failed, but client-side state is set');
       
       return {
         success: true,
         client_side_fallback: true,
-        message: 'Store location saved locally despite errors'
+        message: 'Store location saved locally despite backend errors'
+      };
+    } catch (err) {
+      console.error("Kroger location update error:", err);
+      
+      // Client-side flags are already set at the beginning, so just return success
+      return {
+        success: true,
+        client_side_fallback: true,
+        message: 'Store location saved locally despite unexpected errors'
       };
     }
   },

@@ -202,13 +202,22 @@ async def get_kroger_connection_status(
     current_user: Any = Depends(get_current_user)
 ):
     """
-    Check Kroger connection status for the current user
+    Check Kroger connection status for the current user with enhanced store location handling
     """
     credentials = get_user_kroger_credentials(current_user.id)
     
+    # Extract store location from credentials
+    store_location = credentials.get('store_location_id')
+    
+    # Log the credentials and store location for debugging
+    logger.info(f"Kroger connection status check for user {current_user.id}")
+    logger.info(f"Has access token: {bool(credentials.get('access_token'))}")
+    logger.info(f"Store location in DB: {store_location}")
+    
     return {
         "is_connected": bool(credentials.get('access_token')),
-        "store_location_id": credentials.get('store_location_id'),
+        "store_location_id": store_location,
+        "store_location": store_location,  # Add this for consistency with frontend naming
         "connected_at": credentials.get('connected_at'),
         "client_id_exists": bool(credentials.get('client_id')),
         "needs_login": not bool(credentials.get('access_token'))
