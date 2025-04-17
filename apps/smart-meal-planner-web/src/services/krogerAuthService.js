@@ -187,13 +187,13 @@ const addToKrogerCart = async (items) => {
   
   // ENHANCEMENT: Check and consolidate store selection flags before proceeding
   // This helps prevent repeated store selection prompts
-  const storeLocation = localStorage.getItem('kroger_store_location') || 
+  const locationValue = localStorage.getItem('kroger_store_location') || 
                         localStorage.getItem('kroger_store_location_id');
-  const storeSelected = localStorage.getItem('kroger_store_selected') === 'true' || 
-                         localStorage.getItem('kroger_store_configured') === 'true';
+  const selectionFlagSet = localStorage.getItem('kroger_store_selected') === 'true' || 
+                           localStorage.getItem('kroger_store_configured') === 'true';
   
   // If we have a store location but selection flags aren't set properly, fix them
-  if (storeLocation && !storeSelected) {
+  if (locationValue && !selectionFlagSet) {
     console.log('Found store location but selection flags not set, fixing flags');
     localStorage.setItem('kroger_store_selected', 'true');
     localStorage.setItem('kroger_store_configured', 'true');
@@ -253,8 +253,9 @@ const addToKrogerCart = async (items) => {
       if (statusResponse?.data?.is_connected && statusResponse?.data?.store_location) {
         console.log('Found store location in backend:', statusResponse.data.store_location);
         // Update localStorage with backend data
-        localStorage.setItem('kroger_store_location', statusResponse.data.store_location);
-        localStorage.setItem('kroger_store_location_id', statusResponse.data.store_location);
+        const backendStoreLocation = statusResponse.data.store_location;
+        localStorage.setItem('kroger_store_location', backendStoreLocation);
+        localStorage.setItem('kroger_store_location_id', backendStoreLocation);
         localStorage.setItem('kroger_store_selected', 'true');
         localStorage.setItem('kroger_store_configured', 'true');
         sessionStorage.setItem('kroger_store_selection_complete', 'true');
