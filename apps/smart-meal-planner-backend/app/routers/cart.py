@@ -153,7 +153,7 @@ async def clear_internal_cart(
         logger.error(f"Error clearing internal cart: {str(e)}")
         raise HTTPException(500, f"Error clearing internal cart: {str(e)}")
 
-@router.delete("/internal/{user_id}/{store}")
+@router.delete("/internal/{user_id}/clear_store/{store}")
 async def clear_store_items(
     user_id: str,
     store: str,
@@ -174,6 +174,16 @@ async def clear_store_items(
     except Exception as e:
         logger.error(f"Error clearing store items: {str(e)}")
         raise HTTPException(500, f"Error clearing store items: {str(e)}")
+
+# For backward compatibility with old clients
+@router.delete("/internal/{user_id}/{store}")
+async def legacy_clear_store_items(
+    user_id: str,
+    store: str,
+    user = Depends(get_user_from_token)
+):
+    """Legacy endpoint to clear items for a specific store"""
+    return await clear_store_items(user_id, store, user)
 
 @router.get("/internal/{user_id}/store/{store}")
 async def get_store_items(
@@ -203,3 +213,92 @@ async def get_store_items(
     except Exception as e:
         logger.error(f"Error getting store items: {str(e)}")
         raise HTTPException(500, f"Error getting store items: {str(e)}")
+
+class RemoveItemRequest(BaseModel):
+    item_name: str
+    store: str
+
+@router.delete("/internal/{user_id}/remove_item")
+async def remove_cart_item(
+    user_id: str,
+    request: Request,
+    user = Depends(get_user_from_token)
+):
+    """Remove a specific item from the cart"""
+    try:
+        if str(user.get('user_id')) != str(user_id):
+            raise HTTPException(403, "Not authorized to access this cart")
+            
+        # Parse the request body
+        data = await request.json()
+        item_name = data.get('item_name')
+        store = data.get('store')
+        
+        if not item_name or not store:
+            raise HTTPException(400, "item_name and store are required")
+            
+        logger.info(f"Removing item '{item_name}' from '{store}' for user {user_id}")
+            
+        if user_id in internal_carts:
+            if store not in internal_carts[user_id]:
+                raise HTTPException(400, f"Invalid store: {store}")
+                
+            # Find and remove the item
+            internal_carts[user_id][store] = [
+                item for item in internal_carts[user_id][store] 
+                if item.name != item_name
+            ]
+            
+        return {"status": "success"}
+    except Exception as e:
+        logger.error(f"Error removing cart item: {str(e)}")
+        return {"status": "error", "message": str(e)}
+
+@router.patch("/internal/{user_id}/update_quantity")
+async def update_cart_item_quantity(
+    user_id: str,
+    request: Request,
+    user = Depends(get_user_from_token)
+):
+    """Update the quantity of a specific item in the cart"""
+    try:
+        if str(user.get('user_id')) != str(user_id):
+            raise HTTPException(403, "Not authorized to access this cart")
+            
+        # Parse the request body
+        data = await request.json()
+        item_name = data.get('item_name')
+        store = data.get('store')
+        quantity = data.get('quantity')
+        
+        if not item_name or not store or quantity is None:
+            raise HTTPException(400, "item_name, store, and quantity are required")
+            
+        try:
+            quantity = int(quantity)
+            if quantity <= 0:
+                raise ValueError("Quantity must be positive")
+        except ValueError:
+            raise HTTPException(400, "Invalid quantity value")
+            
+        logger.info(f"Updating quantity for '{item_name}' in '{store}' to {quantity}")
+            
+        if user_id in internal_carts:
+            if store not in internal_carts[user_id]:
+                raise HTTPException(400, f"Invalid store: {store}")
+                
+            # Find and update the item
+            item_found = False
+            for item in internal_carts[user_id][store]:
+                if item.name == item_name:
+                    item.quantity = quantity
+                    item_found = True
+                    break
+                    
+            if not item_found:
+                raise HTTPException(404, f"Item '{item_name}' not found in '{store}'")
+            
+        return {"status": "success"}
+    except Exception as e:
+        logger.error(f"Error updating cart item quantity: {str(e)}")
+        return {"status": "error", "message": str(e)}
