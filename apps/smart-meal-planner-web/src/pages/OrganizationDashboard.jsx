@@ -34,6 +34,7 @@ function OrganizationDashboard() {
   
   const navigate = useNavigate();
   const [tabValue, setTabValue] = useState(0);
+  const [selectedClientForRecipes, setSelectedClientForRecipes] = useState(null);
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteLoading, setInviteLoading] = useState(false);
@@ -200,6 +201,7 @@ function OrganizationDashboard() {
         >
           <Tab label="Clients" icon={<PersonIcon />} />
           <Tab label="Shared Menus" icon={<MenuIcon />} />
+          <Tab label="Client Recipes" icon={<FavoriteIcon />} />
           <Tab label="Settings" icon={<SettingsIcon />} />
         </Tabs>
       </Paper>
@@ -351,8 +353,92 @@ function OrganizationDashboard() {
         </>
       )}
 
-      {/* Settings Tab */}
+      {/* Client Recipes Tab */}
       {tabValue === 2 && (
+        <>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
+            <Typography variant="h5">
+              Client Saved Recipes
+            </Typography>
+          </Box>
+          
+          {!clients || clients.length === 0 ? (
+            <Paper sx={{ p: 3, textAlign: 'center' }}>
+              <Typography variant="body1">
+                You don't have any clients yet. Invite clients to see their saved recipes here.
+              </Typography>
+              <Button
+                variant="contained"
+                startIcon={<AddIcon />}
+                sx={{ mt: 2 }}
+                onClick={handleOpenInviteDialog}
+              >
+                Invite Client
+              </Button>
+            </Paper>
+          ) : (
+            <>
+              {!selectedClientForRecipes ? (
+                <Paper sx={{ p: 3 }}>
+                  <Typography variant="h6" gutterBottom>
+                    Select a Client
+                  </Typography>
+                  <Typography variant="body1" paragraph>
+                    Choose a client to view their saved recipes:
+                  </Typography>
+                  <Grid container spacing={2}>
+                    {clients.map((client) => (
+                      <Grid item xs={12} sm={6} md={4} key={client.id}>
+                        <Card sx={{ 
+                          cursor: 'pointer', 
+                          '&:hover': { boxShadow: 6 },
+                          height: '100%'
+                        }}>
+                          <CardContent onClick={() => setSelectedClientForRecipes(client)}>
+                            <Typography variant="h6">
+                              {client.name}
+                            </Typography>
+                            <Typography color="text.secondary">
+                              {client.email}
+                            </Typography>
+                          </CardContent>
+                          <CardActions>
+                            <Button 
+                              fullWidth
+                              variant="contained"
+                              onClick={() => setSelectedClientForRecipes(client)}
+                            >
+                              View Recipes
+                            </Button>
+                          </CardActions>
+                        </Card>
+                      </Grid>
+                    ))}
+                  </Grid>
+                </Paper>
+              ) : (
+                <Box>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+                    <Button 
+                      variant="outlined"
+                      onClick={() => setSelectedClientForRecipes(null)}
+                    >
+                      ← Back to Client Selection
+                    </Button>
+                  </Box>
+                  <ClientSavedRecipes 
+                    clientId={selectedClientForRecipes.id} 
+                    clientName={selectedClientForRecipes.name} 
+                  />
+                </Box>
+              )}
+            </>
+          )}
+        </>
+      )}
+
+      {/* Settings Tab */}
+      {tabValue === 3 && (
         <Paper sx={{ p: 3 }}>
           <Typography variant="h6" gutterBottom>
             Organization Settings
