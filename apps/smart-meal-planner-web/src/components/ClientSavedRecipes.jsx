@@ -3,21 +3,38 @@ import React, { useState, useEffect } from 'react';
 import { 
   Typography, Paper, Box, Grid, Card, CardContent, CardMedia, CardActions,
   Button, CircularProgress, Divider, Chip, Dialog, DialogTitle, DialogContent,
-  DialogActions, IconButton, Tooltip, Alert, Tab, Tabs
+  DialogActions, IconButton, Tooltip, Alert, Tab, Tabs, TextField, MenuItem,
+  Select, FormControl, InputLabel, Snackbar
 } from '@mui/material';
 import { 
   Star, StarBorder, Bookmark, BookmarkBorder, FavoriteBorder, Favorite,
-  RestaurantMenu, Add, MoreVert, VisibilityOff, Visibility, AddToQueue
+  RestaurantMenu, Add, MoreVert, VisibilityOff, Visibility, AddToQueue,
+  MenuBook, Restaurant
 } from '@mui/icons-material';
 import apiService from '../services/apiService';
+import { useNavigate } from 'react-router-dom';
 
 function ClientSavedRecipes({ clientId, clientName }) {
+  const navigate = useNavigate();
   const [savedRecipes, setSavedRecipes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selectedRecipe, setSelectedRecipe] = useState(null);
   const [recipeDetailsOpen, setRecipeDetailsOpen] = useState(false);
   const [tab, setTab] = useState(0);
+  
+  // Menu functionality
+  const [menuDialogOpen, setMenuDialogOpen] = useState(false);
+  const [menuOptions, setMenuOptions] = useState([]);
+  const [selectedMenuId, setSelectedMenuId] = useState('');
+  const [menuLoading, setMenuLoading] = useState(false);
+  const [menuActionType, setMenuActionType] = useState('add'); // 'add' or 'create'
+  const [recipeForMenu, setRecipeForMenu] = useState(null);
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
+  
+  // For new menu creation
+  const [newMenuName, setNewMenuName] = useState('');
 
   useEffect(() => {
     const fetchSavedRecipes = async () => {
@@ -50,10 +67,117 @@ function ClientSavedRecipes({ clientId, clientName }) {
     setRecipeDetailsOpen(false);
   };
 
+  const fetchMenuOptions = async () => {
+    try {
+      // Fetch menus created for this client
+      const menus = await apiService.getMenusForClient(clientId);
+      console.log('Available menus for client:', menus);
+      setMenuOptions(menus || []);
+      return menus;
+    } catch (err) {
+      console.error('Error fetching menus:', err);
+      return [];
+    }
+  };
+
   const handleAddToCustomMenu = (recipe) => {
-    // Placeholder for adding to custom menu functionality
-    console.log('Add to custom menu:', recipe);
-    // This will be implemented in a future update
+    // Set the recipe we want to add to a menu
+    setRecipeForMenu(recipe);
+    
+    // Start by fetching available menus
+    setMenuLoading(true);
+    fetchMenuOptions()
+      .then(menus => {
+        // If we have existing menus, set to 'add' mode, otherwise 'create' mode
+        if (menus && menus.length > 0) {
+          setMenuActionType('add');
+          setSelectedMenuId(menus[0]?.menu_id || '');
+        } else {
+          setMenuActionType('create');
+          setNewMenuName(`${clientName}'s Custom Menu`);
+        }
+        setMenuDialogOpen(true);
+      })
+      .finally(() => {
+        setMenuLoading(false);
+      });
+  };
+  
+  const handleCloseMenuDialog = () => {
+    setMenuDialogOpen(false);
+    setSelectedMenuId('');
+    setNewMenuName('');
+  };
+  
+  const handleAddRecipeToMenu = async () => {
+    if (!recipeForMenu) return;
+    
+    setMenuLoading(true);
+    try {
+      if (menuActionType === 'add' && selectedMenuId) {
+        // Add to existing menu
+        // Prepare the recipe in the format expected by the backend
+        const recipeToAdd = {
+          recipe_name: recipeForMenu.recipe_name,
+          ingredients: recipeForMenu.ingredients || [],
+          instructions: recipeForMenu.instructions || [],
+          image_url: recipeForMenu.image_url,
+          meal_time: 'dinner', // Default meal time
+          day_number: 1, // Default day number
+          notes: recipeForMenu.notes,
+          macros: recipeForMenu.macros || {},
+          complexity_level: recipeForMenu.complexity_level,
+          servings: recipeForMenu.servings || 1,
+          source: recipeForMenu.recipe_source || 'custom'
+        };
+        
+        const result = await apiService.addRecipeToCustomMenu(selectedMenuId, recipeToAdd);
+        console.log('Recipe added to menu:', result);
+        setSnackbarMessage(`Recipe added to menu successfully!`);
+      } else if (menuActionType === 'create' && newMenuName) {
+        // Create a new menu
+        const menuData = {
+          name: newMenuName,
+          recipes: [{
+            recipe_name: recipeForMenu.recipe_name,
+            ingredients: recipeForMenu.ingredients || [],
+            instructions: recipeForMenu.instructions || [],
+            image_url: recipeForMenu.image_url,
+            meal_time: 'dinner',
+            day_number: 1,
+            notes: recipeForMenu.notes,
+            macros: recipeForMenu.macros || {},
+            complexity_level: recipeForMenu.complexity_level,
+            servings: recipeForMenu.servings || 1,
+            source: recipeForMenu.recipe_source || 'custom'
+          }]
+        };
+        
+        const result = await apiService.saveCustomMenu(menuData, clientId);
+        console.log('New menu created with recipe:', result);
+        setSnackbarMessage(`New menu "${newMenuName}" created with recipe!`);
+      }
+      
+      setSnackbarOpen(true);
+      handleCloseMenuDialog();
+    } catch (err) {
+      console.error('Error adding recipe to menu:', err);
+      setSnackbarMessage(`Error: ${err.message || 'Failed to add recipe to menu'}`);
+      setSnackbarOpen(true);
+    } finally {
+      setMenuLoading(false);
+    }
+  };
+  
+  const handleViewInMenuBuilder = () => {
+    if (menuActionType === 'add' && selectedMenuId) {
+      // Navigate to menu builder with the selected menu ID
+      navigate(`/menu?menuId=${selectedMenuId}&clientId=${clientId}`);
+    } else if (menuActionType === 'create') {
+      // Navigate to menu builder for new menu
+      navigate(`/menu?clientId=${clientId}`);
+    }
+    handleCloseMenuDialog();
   };
 
   const handleTabChange = (event, newValue) => {
@@ -331,6 +455,119 @@ function ClientSavedRecipes({ clientId, clientName }) {
           </>
         )}
       </Dialog>
+
+      {/* Menu Dialog - for adding recipe to menu */}
+      <Dialog
+        open={menuDialogOpen}
+        onClose={handleCloseMenuDialog}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          {menuActionType === 'add' ? 'Add Recipe to Menu' : 'Create New Menu with Recipe'}
+        </DialogTitle>
+        <DialogContent dividers>
+          {menuLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+              <CircularProgress />
+            </Box>
+          ) : (
+            <>
+              {menuActionType === 'add' ? (
+                // Select existing menu
+                <FormControl fullWidth sx={{ mb: 2 }}>
+                  <InputLabel id="menu-select-label">Select Menu</InputLabel>
+                  <Select
+                    labelId="menu-select-label"
+                    id="menu-select"
+                    value={selectedMenuId}
+                    label="Select Menu"
+                    onChange={(e) => setSelectedMenuId(e.target.value)}
+                  >
+                    {menuOptions.map((menu) => (
+                      <MenuItem key={menu.menu_id} value={menu.menu_id}>
+                        {menu.name || menu.nickname || `Menu ${menu.menu_id}`}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              ) : (
+                // Create new menu
+                <TextField
+                  autoFocus
+                  margin="dense"
+                  id="menu-name"
+                  label="Menu Name"
+                  type="text"
+                  fullWidth
+                  variant="outlined"
+                  value={newMenuName}
+                  onChange={(e) => setNewMenuName(e.target.value)}
+                />
+              )}
+
+              {recipeForMenu && (
+                <Box sx={{ mt: 2 }}>
+                  <Typography variant="subtitle1" gutterBottom>
+                    Recipe to add:
+                  </Typography>
+                  <Paper sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
+                    {recipeForMenu.image_url && (
+                      <Box sx={{ width: 60, height: 60, overflow: 'hidden', borderRadius: 1 }}>
+                        <img 
+                          src={recipeForMenu.image_url} 
+                          alt={recipeForMenu.recipe_name} 
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        />
+                      </Box>
+                    )}
+                    <Box>
+                      <Typography variant="subtitle2">
+                        {recipeForMenu.recipe_name || 'Unnamed Recipe'}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {recipeForMenu.notes ? 
+                          (recipeForMenu.notes.length > 50 ? 
+                            `${recipeForMenu.notes.substring(0, 50)}...` : 
+                            recipeForMenu.notes) : 
+                          'No description'}
+                      </Typography>
+                    </Box>
+                  </Paper>
+                </Box>
+              )}
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseMenuDialog}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleViewInMenuBuilder}
+            startIcon={<MenuBook />}
+          >
+            View in Menu Builder
+          </Button>
+          <Button
+            onClick={handleAddRecipeToMenu}
+            variant="contained"
+            color="primary"
+            disabled={menuLoading || (menuActionType === 'add' && !selectedMenuId) || (menuActionType === 'create' && !newMenuName)}
+            startIcon={<Add />}
+          >
+            {menuActionType === 'add' ? 'Add to Menu' : 'Create Menu'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Snackbar for notifications */}
+      <Snackbar
+        open={snackbarOpen}
+        autoHideDuration={6000}
+        onClose={() => setSnackbarOpen(false)}
+        message={snackbarMessage}
+      />
     </Box>
   );
 }
