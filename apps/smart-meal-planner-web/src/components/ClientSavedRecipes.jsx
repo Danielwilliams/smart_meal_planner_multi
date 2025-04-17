@@ -44,21 +44,58 @@ function ClientSavedRecipes({ clientId, clientName }) {
         
         const recipes = await apiService.getClientSavedRecipes(clientId);
         console.log('Fetched client saved recipes:', recipes);
+        console.log('RECIPE DATA DETAILS:', JSON.stringify(recipes, null, 2));
         
-        // Process recipes to ensure necessary data is available
-        const processedRecipes = recipes.map(recipe => {
+        // Enhanced processing to ensure all necessary data is available
+        const recipePromises = recipes.map(async (recipe) => {
+          // Start with basic processing
+          let processedRecipe = { ...recipe };
+          
           // Use scraped_title as recipe_name if no recipe_name exists
-          if (!recipe.recipe_name && recipe.scraped_title) {
-            recipe.recipe_name = recipe.scraped_title;
+          if (!processedRecipe.recipe_name && processedRecipe.scraped_title) {
+            processedRecipe.recipe_name = processedRecipe.scraped_title;
           }
           
           // Use scraped_complexity as complexity_level if no complexity_level exists
-          if (!recipe.complexity_level && recipe.scraped_complexity) {
-            recipe.complexity_level = recipe.scraped_complexity;
+          if (!processedRecipe.complexity_level && processedRecipe.scraped_complexity) {
+            processedRecipe.complexity_level = processedRecipe.scraped_complexity;
           }
           
-          return recipe;
+          // If this is a scraped recipe but missing data, fetch details
+          if (processedRecipe.scraped_recipe_id && 
+              (!processedRecipe.image_url || !processedRecipe.ingredients || !processedRecipe.instructions)) {
+            console.log(`Pre-fetching details for recipe ${processedRecipe.id} with scraped_id ${processedRecipe.scraped_recipe_id}`);
+            
+            try {
+              // Fetch complete data
+              const scrapedDetails = await apiService.getScrapedRecipeById(processedRecipe.scraped_recipe_id);
+              
+              // Merge details, preferring scraped data over saved data
+              processedRecipe = {
+                ...processedRecipe,
+                image_url: scrapedDetails.image_url || processedRecipe.image_url,
+                ingredients: scrapedDetails.ingredients || processedRecipe.ingredients,
+                instructions: scrapedDetails.instructions || processedRecipe.instructions,
+                complexity_level: scrapedDetails.complexity || processedRecipe.complexity_level,
+                notes: scrapedDetails.description || processedRecipe.notes,
+                cuisine: scrapedDetails.cuisine || processedRecipe.cuisine,
+                servings: scrapedDetails.servings || processedRecipe.servings,
+                recipe_name: scrapedDetails.title || processedRecipe.recipe_name
+              };
+              
+              console.log(`Enhanced recipe ${processedRecipe.id} with scraped data`);
+            } catch (err) {
+              console.error(`Error pre-fetching scraped recipe details for ${processedRecipe.id}:`, err);
+              // Continue with the data we have
+            }
+          }
+          
+          return processedRecipe;
         });
+        
+        // Wait for all recipe processing to complete
+        const processedRecipes = await Promise.all(recipePromises);
+        console.log('Processed recipes with enhanced data:', processedRecipes);
         
         setSavedRecipes(processedRecipes);
       } catch (err) {
@@ -74,8 +111,41 @@ function ClientSavedRecipes({ clientId, clientName }) {
     }
   }, [clientId]);
 
-  const handleRecipeClick = (recipe) => {
-    setSelectedRecipe(recipe);
+  const handleRecipeClick = async (recipe) => {
+    console.log('Clicked recipe:', recipe);
+    
+    // If this is a scraped recipe, always fetch full details to ensure we have everything
+    if (recipe.scraped_recipe_id) {
+      try {
+        console.log(`Fetching full details for scraped recipe ${recipe.scraped_recipe_id}`);
+        const scrapedDetails = await apiService.getScrapedRecipeById(recipe.scraped_recipe_id);
+        console.log('Scraped recipe details:', scrapedDetails);
+        
+        // Merge the scraped details with the saved recipe, preferring the scraped data
+        const enhancedRecipe = {
+          ...recipe,
+          ingredients: scrapedDetails.ingredients || recipe.ingredients,
+          instructions: scrapedDetails.instructions || recipe.instructions,
+          image_url: scrapedDetails.image_url || recipe.image_url,
+          complexity_level: scrapedDetails.complexity || recipe.complexity_level,
+          notes: scrapedDetails.description || recipe.notes,
+          cuisine: scrapedDetails.cuisine || recipe.cuisine,
+          servings: scrapedDetails.servings || recipe.servings,
+          recipe_name: scrapedDetails.title || recipe.recipe_name
+        };
+        
+        console.log('Enhanced recipe with scraped details:', enhancedRecipe);
+        setSelectedRecipe(enhancedRecipe);
+      } catch (err) {
+        console.error(`Error fetching scraped recipe details: ${err.message}`);
+        // Fall back to just using the saved recipe
+        setSelectedRecipe(recipe);
+      }
+    } else {
+      // No need to fetch scraped details
+      setSelectedRecipe(recipe);
+    }
+    
     setRecipeDetailsOpen(true);
   };
 
@@ -285,15 +355,28 @@ function ClientSavedRecipes({ clientId, clientName }) {
                     <CardMedia
                       component="img"
                       height="140"
-                      image={recipe.image_url || `https://via.placeholder.com/300x140?text=${encodeURIComponent(recipe.recipe_name || 'Recipe')}`}
-                      alt={recipe.recipe_name || 'Saved recipe'}
+                      image={
+                        // First priority: Direct image_url if it exists
+                        recipe.image_url || 
+                        // Second priority: API endpoint with ID if we have scraped_recipe_id
+                        (recipe.scraped_recipe_id ? 
+                          `${process.env.REACT_APP_API_BASE_URL || 'https://smartmealplannermulti-production.up.railway.app'}/scraped-recipes/${recipe.scraped_recipe_id}/image` : 
+                          // Last resort: Placeholder with recipe name
+                          `https://via.placeholder.com/300x140?text=${encodeURIComponent(recipe.recipe_name || 'Recipe')}`)
+                      }
+                      alt={recipe.recipe_name || recipe.scraped_title || 'Saved recipe'}
                       onError={(e) => {
-                        console.log('Image failed to load:', recipe.image_url);
-                        // Fallback image based on recipe source or cuisine
-                        const fallbackImage = recipe.cuisine 
-                          ? `https://source.unsplash.com/300x140/?food,${recipe.cuisine}`
-                          : 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=300&h=140&q=80';
-                        e.target.src = fallbackImage;
+                        console.log('Image failed to load:', e.target.src);
+                        // Try using unsplash images as fallback
+                        try {
+                          // Fallback image based on recipe source or cuisine
+                          const fallbackImage = recipe.cuisine 
+                            ? `https://source.unsplash.com/300x140/?food,${recipe.cuisine}`
+                            : 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=300&h=140&q=80';
+                          e.target.src = fallbackImage;
+                        } catch (err) {
+                          console.error('Failed to load fallback image:', err);
+                        }
                       }}
                     />
                     <CardContent sx={{ flexGrow: 1 }}>
@@ -361,16 +444,29 @@ function ClientSavedRecipes({ clientId, clientName }) {
               <Box sx={{ mb: 2 }}>
                 <Box sx={{ maxWidth: '100%', maxHeight: '300px', overflow: 'hidden', mb: 2 }}>
                   <img 
-                    src={selectedRecipe.image_url || `https://via.placeholder.com/800x400?text=${encodeURIComponent(selectedRecipe.recipe_name || 'Recipe Details')}`}
+                    src={
+                      // First priority: Direct image_url if it exists
+                      selectedRecipe.image_url || 
+                      // Second priority: API endpoint with ID if we have scraped_recipe_id
+                      (selectedRecipe.scraped_recipe_id ? 
+                        `${process.env.REACT_APP_API_BASE_URL || 'https://smartmealplannermulti-production.up.railway.app'}/scraped-recipes/${selectedRecipe.scraped_recipe_id}/image` : 
+                        // Last resort: Placeholder with recipe name
+                        `https://via.placeholder.com/800x400?text=${encodeURIComponent(selectedRecipe.recipe_name || 'Recipe Details')}`)
+                    }
                     alt={selectedRecipe.recipe_name} 
                     style={{ width: '100%', objectFit: 'cover' }}
                     onError={(e) => {
-                      console.log('Detail image failed to load:', selectedRecipe.image_url);
-                      // Fallback image based on recipe source or cuisine
-                      const fallbackImage = selectedRecipe.cuisine 
-                        ? `https://source.unsplash.com/800x400/?food,${selectedRecipe.cuisine}`
-                        : 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=800&h=400&q=80';
-                      e.target.src = fallbackImage;
+                      console.log('Detail image failed to load:', e.target.src);
+                      // Try using unsplash images as fallback
+                      try {
+                        // Fallback image based on recipe source or cuisine
+                        const fallbackImage = selectedRecipe.cuisine 
+                          ? `https://source.unsplash.com/800x400/?food,${selectedRecipe.cuisine}`
+                          : 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=800&h=400&q=80';
+                        e.target.src = fallbackImage;
+                      } catch (err) {
+                        console.error('Failed to load fallback image:', err);
+                      }
                     }}
                   />
                 </Box>
