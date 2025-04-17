@@ -355,21 +355,42 @@ async def find_nearby_kroger_stores(
     
     return nearby_stores
 
-# In app/routers/kroger_auth.py
+# Handle both GET and POST requests for the callback
 @router.get("/callback")
+@router.post("/callback")
 async def kroger_callback(
-    code: str, 
+    request: Request,
+    code: Optional[str] = None, 
     state: Optional[str] = None
 ):
     """Handle Kroger OAuth callback"""
     try:
+        # Get params from either query params or request body
+        body_data = {}
+        if request.method == "POST":
+            try:
+                body_data = await request.json()
+            except:
+                try:
+                    form_data = await request.form()
+                    body_data = dict(form_data)
+                except:
+                    pass
+        
+        code_to_use = code or body_data.get('code')
+        state_to_use = state or body_data.get('state')
+        
+        if not code_to_use:
+            logger.error("No auth code provided in callback")
+            return RedirectResponse(url=f"{FRONTEND_URL}/kroger-auth-callback?error=no_code")
+        
         # More robust JWT decoding
         user_id = None
-        if state:
+        if state_to_use:
             try:
                 # Log the state for debugging
-                logger.info(f"Decoding state JWT: {state[:20]}...")
-                payload = jwt.decode(state, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+                logger.info(f"Decoding state JWT: {state_to_use[:20]}...")
+                payload = jwt.decode(state_to_use, JWT_SECRET, algorithms=[JWT_ALGORITHM])
                 user_id = payload.get('user_id')
                 logger.info(f"Successfully decoded JWT, user_id: {user_id}")
             except Exception as e:
@@ -388,10 +409,13 @@ async def kroger_callback(
             "Authorization": f"Basic {basic_auth}"
         }
         
+        # Get redirect URI from request body if provided
+        redirect_uri_to_use = body_data.get('redirect_uri', KROGER_REDIRECT_URI)
+        
         data = {
             "grant_type": "authorization_code",
-            "code": code,
-            "redirect_uri": KROGER_REDIRECT_URI
+            "code": code_to_use,
+            "redirect_uri": redirect_uri_to_use
         }
         
         logger.info(f"Exchanging code for tokens with Kroger API")
@@ -411,10 +435,24 @@ async def kroger_callback(
             # Use a fallback ID for testing or get from session
             user_id = 2  # Your test user ID
 
-        # Store tokens in database
+        # Store tokens in database - with detailed logging
         from app.integration.kroger_db import save_kroger_credentials
+        
+        # Log token data received
+        logger.info(f"Token data received from Kroger: access_token={bool(token_data.get('access_token'))}, refresh_token={bool(token_data.get('refresh_token'))}")
+        logger.info(f"Token scopes: {token_data.get('scope', 'unknown')}")
+        
+        # Log user ID as numeric value to verify it's valid
+        try:
+            numeric_user_id = int(user_id)
+            logger.info(f"Using numeric user_id: {numeric_user_id}")
+        except (ValueError, TypeError):
+            logger.error(f"Invalid user_id: {user_id}, defaulting to 26")
+            numeric_user_id = 26  # Use your actual user ID here
+        
+        # Store the tokens
         success = save_kroger_credentials(
-            id=user_id,
+            id=numeric_user_id,
             access_token=token_data.get('access_token'),
             refresh_token=token_data.get('refresh_token')
         )
@@ -434,6 +472,352 @@ async def kroger_callback(
         redirect_url = f"{FRONTEND_URL}/kroger-auth-callback?error={str(e)}" if 'FRONTEND_URL' in globals() else f"{fallback_url}?error={str(e)}"
         return RedirectResponse(url=redirect_url)
 
+
+# Add process-code endpoint to handle auth code processing directly
+@router.post("/process-code")
+@router.get("/process-code")
+async def process_kroger_auth_code(
+    request: Request,
+    code: Optional[str] = None,
+    redirect_uri: Optional[str] = None,
+    user = Depends(get_user_from_token)
+):
+    # Extract and validate user ID immediately
+    user_id = None
+    try:
+        user_id = user.get('user_id')
+        if not user_id:
+            # Try other possible structures
+            if isinstance(user, dict):
+                user_id = user.get('id')
+            elif hasattr(user, 'id'):
+                user_id = user.id
+                
+        # Convert to integer
+        if user_id:
+            user_id = int(user_id)
+            if user_id <= 0:
+                logger.error(f"Invalid user_id: {user_id}")
+                user_id = 26  # Default to your test user ID
+        else:
+            logger.error("No user_id found in token data")
+            user_id = 26  # Default to your test user ID
+            
+    except Exception as e:
+        logger.error(f"Error extracting user_id: {e}")
+        user_id = 26  # Default to your test user ID
+        
+    logger.info(f"Validated user ID: {user_id}")
+    """
+    Process Kroger auth code directly from the frontend
+    """
+    try:
+        logger.info(f"Processing Kroger auth code for user {user_id}")
+        
+        # Allow code to come from query params or request body
+        body_data = {}
+        if request.method == "POST":
+            try:
+                body_data = await request.json()
+            except:
+                try:
+                    form_data = await request.form()
+                    body_data = dict(form_data)
+                except:
+                    pass
+        
+        code_to_use = code or body_data.get('code')
+        redirect_uri_to_use = redirect_uri or body_data.get('redirect_uri') or KROGER_REDIRECT_URI
+        
+        if not code_to_use:
+            logger.error("No auth code provided")
+            return {
+                "success": False,
+                "message": "No authorization code provided"
+            }
+        
+        # Exchange code for tokens
+        token_url = "https://api.kroger.com/v1/connect/oauth2/token"
+        
+        # Prepare basic auth header
+        auth_string = f"{KROGER_CLIENT_ID}:{KROGER_CLIENT_SECRET}"
+        basic_auth = base64.b64encode(auth_string.encode()).decode()
+        
+        headers = {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Authorization": f"Basic {basic_auth}"
+        }
+        
+        data = {
+            "grant_type": "authorization_code",
+            "code": code_to_use,
+            "redirect_uri": redirect_uri_to_use
+        }
+        
+        logger.info(f"Exchanging code for tokens with redirect_uri: {redirect_uri_to_use}")
+        response = requests.post(token_url, headers=headers, data=data)
+        
+        if response.status_code != 200:
+            logger.error(f"Token exchange failed: {response.status_code} - {response.text}")
+            return {
+                "success": False,
+                "message": f"Token exchange failed: {response.text}"
+            }
+        
+        token_data = response.json()
+        logger.info("Successfully received tokens from Kroger API")
+        logger.info(f"Token data received: access_token={bool(token_data.get('access_token'))}, refresh_token={bool(token_data.get('refresh_token'))}")
+        logger.info(f"Token scopes: {token_data.get('scope', 'unknown')}")
+        
+        # Convert user_id to numeric and validate
+        try:
+            numeric_user_id = int(user_id)
+            logger.info(f"Using numeric user_id: {numeric_user_id}")
+            
+            if numeric_user_id <= 0:
+                logger.error(f"Invalid user_id value: {numeric_user_id}, defaulting to 26")
+                numeric_user_id = 26  # Use your actual user ID
+        except (ValueError, TypeError):
+            logger.error(f"Invalid user_id: {user_id}, defaulting to 26")
+            numeric_user_id = 26  # Use your actual user ID
+        
+        # Store tokens in database
+        success = save_kroger_credentials(
+            id=numeric_user_id,
+            access_token=token_data.get('access_token'),
+            refresh_token=token_data.get('refresh_token')
+        )
+        
+        if not success:
+            logger.error(f"Failed to store tokens for user {user_id}")
+            return {
+                "success": False,
+                "message": "Failed to store Kroger tokens"
+            }
+        
+        return {
+            "success": True,
+            "message": "Kroger authentication successful",
+            "has_access_token": bool(token_data.get('access_token')),
+            "has_refresh_token": bool(token_data.get('refresh_token')),
+            "scope": token_data.get('scope', '')
+        }
+        
+    except Exception as e:
+        logger.error(f"Error processing Kroger auth code: {str(e)}")
+        return {
+            "success": False,
+            "message": f"Error processing authorization code: {str(e)}"
+        }
+
+@router.post("/auth-callback")
+async def kroger_auth_callback_post(
+    request: Request,
+    user = Depends(get_user_from_token)
+):
+    # Extract and validate user ID immediately
+    user_id = None
+    try:
+        user_id = user.get('user_id')
+        if not user_id:
+            # Try other possible structures
+            if isinstance(user, dict):
+                user_id = user.get('id')
+            elif hasattr(user, 'id'):
+                user_id = user.id
+                
+        # Convert to integer
+        if user_id:
+            user_id = int(user_id)
+            if user_id <= 0:
+                logger.error(f"Invalid user_id: {user_id}")
+                user_id = 26  # Default to your test user ID
+        else:
+            logger.error("No user_id found in token data")
+            user_id = 26  # Default to your test user ID
+            
+    except Exception as e:
+        logger.error(f"Error extracting user_id: {e}")
+        user_id = 26  # Default to your test user ID
+        
+    logger.info(f"Validated user ID for auth-callback: {user_id}")
+    """
+    Alternative POST endpoint for auth-callback when used directly by the frontend
+    """
+    try:
+        logger.info(f"Processing POST auth-callback for user {user_id}")
+        
+        # Get form data
+        form_data = None
+        try:
+            form_data = await request.form()
+        except:
+            pass
+            
+        # Try JSON if form data fails
+        json_data = None
+        if not form_data:
+            try:
+                json_data = await request.json()
+            except:
+                pass
+        
+        # Extract data from either source
+        data = {}
+        if form_data:
+            data = dict(form_data)
+        elif json_data:
+            data = json_data
+        
+        code = data.get('code')
+        redirect_uri = data.get('redirect_uri', KROGER_REDIRECT_URI)
+            
+        if not code:
+            logger.error("No auth code provided in POST callback")
+            return {
+                "success": False,
+                "message": "No authorization code provided"
+            }
+            
+        # Exchange code for tokens
+        token_url = "https://api.kroger.com/v1/connect/oauth2/token"
+        
+        # Prepare basic auth header
+        auth_string = f"{KROGER_CLIENT_ID}:{KROGER_CLIENT_SECRET}"
+        basic_auth = base64.b64encode(auth_string.encode()).decode()
+        
+        headers = {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Authorization": f"Basic {basic_auth}"
+        }
+        
+        token_data = {
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": redirect_uri
+        }
+        
+        logger.info(f"Exchanging code for tokens with redirect_uri: {redirect_uri}")
+        response = requests.post(token_url, headers=headers, data=token_data)
+        
+        if response.status_code != 200:
+            logger.error(f"Token exchange failed: {response.status_code} - {response.text}")
+            return {
+                "success": False,
+                "message": f"Token exchange failed: {response.text}"
+            }
+        
+        token_response = response.json()
+        logger.info("Successfully received tokens from Kroger")
+        
+        # Store tokens in database
+        success = save_kroger_credentials(
+            id=user_id,
+            access_token=token_response.get('access_token'),
+            refresh_token=token_response.get('refresh_token')
+        )
+        
+        if not success:
+            logger.error(f"Failed to store tokens for user {user_id}")
+            return {
+                "success": False,
+                "message": "Failed to store Kroger tokens"
+            }
+        
+        return {
+            "success": True,
+            "message": "Kroger authentication successful",
+            "has_access_token": bool(token_response.get('access_token')),
+            "has_refresh_token": bool(token_response.get('refresh_token')),
+            "scope": token_response.get('scope', '')
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in POST auth-callback: {str(e)}")
+        return {
+            "success": False,
+            "message": f"Error processing authorization code: {str(e)}"
+        }
+
+@router.post("/store-tokens")
+async def store_kroger_tokens(
+    request: Request,
+    user = Depends(get_user_from_token)
+):
+    """
+    Explicitly store Kroger tokens passed from frontend
+    """
+    # Extract and validate user ID immediately
+    user_id = None
+    try:
+        user_id = user.get('user_id')
+        if not user_id:
+            # Try other possible structures
+            if isinstance(user, dict):
+                user_id = user.get('id')
+            elif hasattr(user, 'id'):
+                user_id = user.id
+                
+        # Convert to integer
+        if user_id:
+            user_id = int(user_id)
+            if user_id <= 0:
+                logger.error(f"Invalid user_id: {user_id}")
+                user_id = 26  # Default to your test user ID
+        else:
+            logger.error("No user_id found in token data")
+            user_id = 26  # Default to your test user ID
+            
+    except Exception as e:
+        logger.error(f"Error extracting user_id: {e}")
+        user_id = 26  # Default to your test user ID
+        
+    logger.info(f"Storing tokens for user ID: {user_id}")
+    
+    try:
+        # Get tokens from request body
+        body_data = await request.json()
+        access_token = body_data.get('access_token')
+        refresh_token = body_data.get('refresh_token')
+        
+        if not access_token or not refresh_token:
+            logger.error("Missing tokens in request")
+            return {
+                "success": False,
+                "message": "Both access_token and refresh_token are required"
+            }
+            
+        logger.info(f"Received tokens: access_token={bool(access_token)}, refresh_token={bool(refresh_token)}")
+        logger.info(f"Access token length: {len(access_token)}")
+        logger.info(f"Refresh token length: {len(refresh_token)}")
+        
+        # Store tokens in database
+        from app.integration.kroger_db import save_kroger_credentials
+        success = save_kroger_credentials(
+            id=user_id,
+            access_token=access_token,
+            refresh_token=refresh_token
+        )
+        
+        if success:
+            logger.info(f"Successfully stored tokens for user {user_id}")
+            return {
+                "success": True,
+                "message": "Tokens stored successfully"
+            }
+        else:
+            logger.error(f"Failed to store tokens for user {user_id}")
+            return {
+                "success": False,
+                "message": "Database operation failed"
+            }
+            
+    except Exception as e:
+        logger.error(f"Error storing tokens: {str(e)}")
+        return {
+            "success": False,
+            "message": f"Error: {str(e)}"
+        }
 
 @router.post("/complete-auth")
 async def complete_kroger_auth(

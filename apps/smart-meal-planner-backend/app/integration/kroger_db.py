@@ -15,9 +15,32 @@ def save_kroger_credentials(
     """
     Save only user-specific Kroger tokens
     """
+    logger.info(f"SAVING KROGER CREDENTIALS for user {id}")
+    logger.info(f"Access token present: {bool(access_token)}")
+    logger.info(f"Access token length: {len(access_token) if access_token else 0}")
+    logger.info(f"Refresh token present: {bool(refresh_token)}")
+    logger.info(f"Refresh token length: {len(refresh_token) if refresh_token else 0}")
+    logger.info(f"Store location ID: {store_location_id or 'None'}")
+    
+    # Verify user ID is valid
+    if not id or id <= 0:
+        logger.error(f"Invalid user ID: {id}")
+        return False
+    
     conn = get_db_connection()
     try:
+        # First verify the user exists
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT id FROM user_profiles WHERE id = %s", (id,))
+            user_result = cur.fetchone()
+            
+            if not user_result:
+                logger.error(f"User with ID {id} not found in database")
+                return False
+                
+            logger.info(f"User ID {id} exists in database: {user_result}")
+            
+            # Build update statement
             update_fields = []
             params = []
             
@@ -44,12 +67,35 @@ def save_kroger_credentials(
                 WHERE id = %s
                 """
                 
+                logger.info(f"Executing query: {query} with param count: {len(params)}")
                 cur.execute(query, params)
                 conn.commit()
                 
-                logger.info(f"Updated Kroger tokens for user {id}")
-                return cur.rowcount > 0
+                rows_affected = cur.rowcount
+                logger.info(f"Updated Kroger tokens for user {id}, rows affected: {rows_affected}")
+                
+                # Verify the update was successful by reading back
+                verification_query = """
+                SELECT 
+                    kroger_access_token IS NOT NULL as has_access_token,
+                    kroger_refresh_token IS NOT NULL as has_refresh_token,
+                    kroger_connected_at IS NOT NULL as has_connected_at,
+                    kroger_store_location_id
+                FROM user_profiles 
+                WHERE id = %s
+                """
+                
+                cur.execute(verification_query, (id,))
+                verification_result = cur.fetchone()
+                
+                if verification_result:
+                    logger.info(f"Verification result: {verification_result}")
+                else:
+                    logger.error(f"Verification failed: Could not read back user data")
+                
+                return rows_affected > 0
             
+            logger.warning("No fields to update")
             return False
     
     except Exception as e:

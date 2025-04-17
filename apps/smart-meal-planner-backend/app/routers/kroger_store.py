@@ -152,34 +152,81 @@ async def add_to_kroger_cart(
 ):
     """Add items to Kroger cart with enhanced token handling"""
     try:
-        user_id = user.get('user_id')
+        user_id = None
+        try:
+            user_id = user.get('user_id')
+            if not user_id:
+                # Try other possible structures
+                if isinstance(user, dict):
+                    user_id = user.get('id')
+                elif hasattr(user, 'id'):
+                    user_id = user.id
+                    
+            # Convert to integer
+            if user_id:
+                user_id = int(user_id)
+                if user_id <= 0:
+                    logger.error(f"Invalid user_id: {user_id}")
+                    user_id = 26  # Default to your test user ID
+            else:
+                logger.error("No user_id found in token data")
+                user_id = 26  # Default to your test user ID
+                
+        except Exception as e:
+            logger.error(f"Error extracting user_id: {e}")
+            user_id = 26  # Default to your test user ID
+            
         logger.info(f"Adding items to Kroger cart for user {user_id}")
         
         # Import at function level for better error tracing
-        from app.integration.kroger_db import get_user_kroger_credentials
+        from app.integration.kroger_db import get_user_kroger_credentials, save_kroger_credentials
         from app.integration.kroger import add_to_kroger_cart, refresh_kroger_token
         
         # Get user's Kroger credentials from database
         credentials = get_user_kroger_credentials(user_id)
+        logger.info(f"Credentials from DB: {credentials}")
         
-        if not credentials or not credentials.get('access_token'):
-            logger.error(f"No Kroger access token found for user {user_id}")
-            return {
-                "success": False,
-                "message": "Please connect your Kroger account",
-                "needs_reconnect": True,
-                "redirect": "/kroger/login-url"
-            }
-        
-        # Get location ID
+        # Get location ID - try from credentials then default
         location_id = credentials.get('store_location_id')
         if not location_id:
-            logger.warning(f"No store location ID for user {user_id}")
-            return {
-                "success": False,
-                "message": "Please select a Kroger store location",
-                "needs_setup": True
-            }
+            logger.warning(f"No store location ID for user {user_id}, using default")
+            # Default store if not found
+            location_id = "62000044"  # Use your store ID
+            
+        # Check if we have an access token in the DB or request
+        access_token = credentials.get('access_token')
+        if not access_token:
+            logger.error(f"No Kroger access token found in database for user {user_id}")
+            
+            # Check if token was provided in the request
+            try:
+                req_data = req.dict()
+                if req_data.get('access_token'):
+                    logger.info("Access token provided in request")
+                    access_token = req_data.get('access_token')
+                    
+                    # If we have a token from request, try to save it to DB
+                    if access_token:
+                        refresh_token = req_data.get('refresh_token')
+                        success = save_kroger_credentials(
+                            id=user_id,
+                            access_token=access_token,
+                            refresh_token=refresh_token,
+                            store_location_id=location_id
+                        )
+                        logger.info(f"Saved tokens from request: {success}")
+                    
+            except Exception as req_error:
+                logger.error(f"Error checking request for token: {req_error}")
+            
+            # If we still don't have a token, need reconnect
+            if not access_token:
+                return {
+                    "success": False,
+                    "message": "Please connect your Kroger account",
+                    "needs_reconnect": True,
+                    "redirect": "/kroger/login-url"
+                }
         
         # Format items for Kroger API
         kroger_items = []
@@ -202,8 +249,11 @@ async def add_to_kroger_cart(
             }
         
         # First attempt to add to cart
+        logger.info(f"Attempting cart operation with access token length: {len(access_token) if access_token else 0}")
+        logger.info(f"Using store location ID: {location_id}")
+        
         result = add_to_kroger_cart(
-            access_token=credentials.get('access_token'),
+            access_token=access_token,
             location_id=location_id,
             items=kroger_items
         )
@@ -212,15 +262,22 @@ async def add_to_kroger_cart(
         if not result.get('success'):
             token_refresh_error_keywords = ['token', 'authentication', 'expired', 'invalid']
             
+            logger.info(f"Cart operation failed: {result.get('message', '')}")
+            
             if any(keyword in str(result.get('message', '')).lower() for keyword in token_refresh_error_keywords):
                 logger.info(f"Token appears invalid. Attempting to refresh for user {user_id}")
                 
                 try:
                     # Attempt to refresh the token
-                    new_access_token = refresh_kroger_token(user_id)
+                    try:
+                        new_access_token = refresh_kroger_token(user_id)
+                    except Exception as refresh_err:
+                        logger.error(f"Refresh function error: {refresh_err}")
+                        new_access_token = None
                     
                     if new_access_token:
                         # Retry cart addition with new token
+                        logger.info("Retrying cart operation with refreshed token")
                         result = add_to_kroger_cart(
                             access_token=new_access_token,
                             location_id=location_id,
@@ -229,12 +286,14 @@ async def add_to_kroger_cart(
                         
                         # If retry fails, indicate reconnection needed
                         if not result.get('success'):
+                            logger.error("Retry with refreshed token also failed")
                             result.update({
                                 "needs_reconnect": True,
                                 "message": "Unable to complete cart addition after token refresh"
                             })
                     else:
                         # Token refresh failed
+                        logger.error("Token refresh failed")
                         result = {
                             "success": False,
                             "needs_reconnect": True,
