@@ -44,7 +44,23 @@ function ClientSavedRecipes({ clientId, clientName }) {
         
         const recipes = await apiService.getClientSavedRecipes(clientId);
         console.log('Fetched client saved recipes:', recipes);
-        setSavedRecipes(recipes);
+        
+        // Process recipes to ensure necessary data is available
+        const processedRecipes = recipes.map(recipe => {
+          // Use scraped_title as recipe_name if no recipe_name exists
+          if (!recipe.recipe_name && recipe.scraped_title) {
+            recipe.recipe_name = recipe.scraped_title;
+          }
+          
+          // Use scraped_complexity as complexity_level if no complexity_level exists
+          if (!recipe.complexity_level && recipe.scraped_complexity) {
+            recipe.complexity_level = recipe.scraped_complexity;
+          }
+          
+          return recipe;
+        });
+        
+        setSavedRecipes(processedRecipes);
       } catch (err) {
         console.error('Error fetching client saved recipes:', err);
         setError('Failed to load saved recipes. Please try again later.');
@@ -114,21 +130,27 @@ function ClientSavedRecipes({ clientId, clientName }) {
     
     setMenuLoading(true);
     try {
+      // Get recipe data - preference for scraped recipe data when available
+      const recipeName = recipeForMenu.recipe_name || recipeForMenu.scraped_title || 'Unnamed Recipe';
+      const recipeNotes = recipeForMenu.notes || '';
+      const recipeComplexity = recipeForMenu.complexity_level || recipeForMenu.scraped_complexity || 'medium';
+      const recipeSource = recipeForMenu.recipe_source || (recipeForMenu.scraped_recipe_id ? 'scraped' : 'custom');
+      
       if (menuActionType === 'add' && selectedMenuId) {
         // Add to existing menu
         // Prepare the recipe in the format expected by the backend
         const recipeToAdd = {
-          recipe_name: recipeForMenu.recipe_name,
+          recipe_name: recipeName,
           ingredients: recipeForMenu.ingredients || [],
           instructions: recipeForMenu.instructions || [],
-          image_url: recipeForMenu.image_url,
           meal_time: 'dinner', // Default meal time
           day_number: 1, // Default day number
-          notes: recipeForMenu.notes,
+          notes: recipeNotes,
           macros: recipeForMenu.macros || {},
-          complexity_level: recipeForMenu.complexity_level,
+          complexity_level: recipeComplexity,
           servings: recipeForMenu.servings || 1,
-          source: recipeForMenu.recipe_source || 'custom'
+          source: recipeSource,
+          scraped_recipe_id: recipeForMenu.scraped_recipe_id
         };
         
         const result = await apiService.addRecipeToCustomMenu(selectedMenuId, recipeToAdd);
@@ -139,17 +161,17 @@ function ClientSavedRecipes({ clientId, clientName }) {
         const menuData = {
           name: newMenuName,
           recipes: [{
-            recipe_name: recipeForMenu.recipe_name,
+            recipe_name: recipeName,
             ingredients: recipeForMenu.ingredients || [],
             instructions: recipeForMenu.instructions || [],
-            image_url: recipeForMenu.image_url,
             meal_time: 'dinner',
             day_number: 1,
-            notes: recipeForMenu.notes,
+            notes: recipeNotes,
             macros: recipeForMenu.macros || {},
-            complexity_level: recipeForMenu.complexity_level,
+            complexity_level: recipeComplexity,
             servings: recipeForMenu.servings || 1,
-            source: recipeForMenu.recipe_source || 'custom'
+            source: recipeSource,
+            scraped_recipe_id: recipeForMenu.scraped_recipe_id
           }]
         };
         

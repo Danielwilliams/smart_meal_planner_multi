@@ -98,8 +98,7 @@ async def add_saved_recipe(
             appliance_used=req.appliance_used,
             servings=req.servings,
             scraped_recipe_id=req.scraped_recipe_id,
-            recipe_source=recipe_source,
-            image_url=req.image_url
+            recipe_source=recipe_source
         )
         
         if saved_id:

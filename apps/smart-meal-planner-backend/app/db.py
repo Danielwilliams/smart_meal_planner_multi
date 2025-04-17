@@ -36,7 +36,7 @@ def get_db_connection():
 def save_recipe(user_id, menu_id=None, recipe_id=None, recipe_name=None, day_number=None, 
                meal_time=None, notes=None, macros=None, ingredients=None, 
                instructions=None, complexity_level=None, appliance_used=None, servings=None,
-               scraped_recipe_id=None, recipe_source=None, image_url=None):
+               scraped_recipe_id=None, recipe_source=None):
     """Save a recipe or entire menu to user's favorites with complete recipe data"""
     conn = None
     try:
@@ -130,8 +130,7 @@ def save_recipe(user_id, menu_id=None, recipe_id=None, recipe_name=None, day_num
                         ADD COLUMN IF NOT EXISTS instructions JSONB,
                         ADD COLUMN IF NOT EXISTS complexity_level VARCHAR(50),
                         ADD COLUMN IF NOT EXISTS appliance_used VARCHAR(100),
-                        ADD COLUMN IF NOT EXISTS servings INTEGER,
-                        ADD COLUMN IF NOT EXISTS image_url TEXT
+                        ADD COLUMN IF NOT EXISTS servings INTEGER
                     """)
                     logger.info("Added missing columns to saved_recipes table")
                 
@@ -144,12 +143,12 @@ def save_recipe(user_id, menu_id=None, recipe_id=None, recipe_name=None, day_num
                         INSERT INTO saved_recipes
                         (user_id, menu_id, recipe_id, recipe_name, day_number, meal_time, 
                          notes, macros, ingredients, instructions, complexity_level, 
-                         appliance_used, servings, scraped_recipe_id, recipe_source, image_url)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                         appliance_used, servings, scraped_recipe_id, recipe_source)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         RETURNING id
                     """, (user_id, menu_id, recipe_id, recipe_name, day_number, meal_time, 
                           notes, macros_json, ingredients_json, instructions_json,
-                          complexity_level, appliance_used, servings, scraped_recipe_id, recipe_source, image_url))
+                          complexity_level, appliance_used, servings, scraped_recipe_id, recipe_source))
                 else:
                     # Basic insert with original columns only
                     cur.execute("""
@@ -298,20 +297,15 @@ def unsave_recipe(user_id, saved_id=None, menu_id=None, recipe_id=None, meal_tim
             conn.close()
 
 def get_user_saved_recipes(user_id):
-    """Get all saved recipes for a user including image_url from scraped_recipes if available"""
+    """Get all saved recipes for a user"""
     conn = None
     try:
         logger.info(f"Getting saved recipes for user: {user_id}")
         conn = get_db_connection()
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("""
-                SELECT sr.*, 
-                       m.nickname as menu_nickname,
-                       COALESCE(sr.image_url, sc.image_url) as image_url,
-                       sc.title as scraped_title,
-                       sc.cuisine as cuisine,
-                       sc.source as source,
-                       sc.complexity as scraped_complexity
+                SELECT sr.*, m.nickname as menu_nickname, sc.image_url, sc.title as scraped_title,
+                       sc.complexity as scraped_complexity, sc.cuisine
                 FROM saved_recipes sr
                 LEFT JOIN menus m ON sr.menu_id = m.id
                 LEFT JOIN scraped_recipes sc ON sr.scraped_recipe_id = sc.id
@@ -320,30 +314,6 @@ def get_user_saved_recipes(user_id):
             """, (user_id,))
             
             results = cur.fetchall()
-            
-            # Process results to ensure image_url is present
-            for recipe in results:
-                # Use scraped recipe title if saved recipe has no name
-                if recipe.get('recipe_name') is None and recipe.get('scraped_title'):
-                    recipe['recipe_name'] = recipe.get('scraped_title')
-                
-                # Ensure complexity level is set if available from scraped recipe
-                if recipe.get('complexity_level') is None and recipe.get('scraped_complexity'):
-                    recipe['complexity_level'] = recipe.get('scraped_complexity')
-                
-                # Check if we have a valid image_url or fall back to a default
-                if not recipe.get('image_url'):
-                    # Set a default image URL based on cuisine or recipe type
-                    cuisine = recipe.get('cuisine', '').lower()
-                    if 'italian' in cuisine:
-                        recipe['image_url'] = 'https://images.unsplash.com/photo-1598866594230-a7c12756260f?q=80&w=1008&auto=format&fit=crop'
-                    elif 'mexican' in cuisine:
-                        recipe['image_url'] = 'https://images.unsplash.com/photo-1565299585323-38d6b0865b47?q=80&w=1080&auto=format&fit=crop'
-                    elif 'asian' in cuisine or 'chinese' in cuisine or 'japanese' in cuisine:
-                        recipe['image_url'] = 'https://images.unsplash.com/photo-1607330289024-1535c6b4e1c6?q=80&w=1064&auto=format&fit=crop'
-                    else:
-                        recipe['image_url'] = 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?q=80&w=1170&auto=format&fit=crop'
-            
             logger.info(f"Found {len(results)} saved recipes for user {user_id}")
             return results
     except Exception as e:

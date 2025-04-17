@@ -194,7 +194,6 @@ class SaveRecipeRequest(BaseModel):
     complexity_level: Optional[str] = None
     appliance_used: Optional[str] = None
     servings: Optional[int] = None
-    image_url: Optional[str] = None
 
 
 class OrganizationBase(BaseModel):
