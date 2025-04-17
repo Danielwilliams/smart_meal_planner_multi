@@ -263,8 +263,16 @@ function ClientSavedRecipes({ clientId, clientName }) {
                     <CardMedia
                       component="img"
                       height="140"
-                      image={recipe.image_url || 'https://via.placeholder.com/300x140?text=No+Image'}
+                      image={recipe.image_url || `https://via.placeholder.com/300x140?text=${encodeURIComponent(recipe.recipe_name || 'Recipe')}`}
                       alt={recipe.recipe_name || 'Saved recipe'}
+                      onError={(e) => {
+                        console.log('Image failed to load:', recipe.image_url);
+                        // Fallback image based on recipe source or cuisine
+                        const fallbackImage = recipe.cuisine 
+                          ? `https://source.unsplash.com/300x140/?food,${recipe.cuisine}`
+                          : 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=300&h=140&q=80';
+                        e.target.src = fallbackImage;
+                      }}
                     />
                     <CardContent sx={{ flexGrow: 1 }}>
                       <Typography variant="h6" component="div" noWrap>
@@ -329,15 +337,21 @@ function ClientSavedRecipes({ clientId, clientName }) {
             </DialogTitle>
             <DialogContent dividers>
               <Box sx={{ mb: 2 }}>
-                {selectedRecipe.image_url && (
-                  <Box sx={{ maxWidth: '100%', maxHeight: '300px', overflow: 'hidden', mb: 2 }}>
-                    <img 
-                      src={selectedRecipe.image_url} 
-                      alt={selectedRecipe.recipe_name} 
-                      style={{ width: '100%', objectFit: 'cover' }}
-                    />
-                  </Box>
-                )}
+                <Box sx={{ maxWidth: '100%', maxHeight: '300px', overflow: 'hidden', mb: 2 }}>
+                  <img 
+                    src={selectedRecipe.image_url || `https://via.placeholder.com/800x400?text=${encodeURIComponent(selectedRecipe.recipe_name || 'Recipe Details')}`}
+                    alt={selectedRecipe.recipe_name} 
+                    style={{ width: '100%', objectFit: 'cover' }}
+                    onError={(e) => {
+                      console.log('Detail image failed to load:', selectedRecipe.image_url);
+                      // Fallback image based on recipe source or cuisine
+                      const fallbackImage = selectedRecipe.cuisine 
+                        ? `https://source.unsplash.com/800x400/?food,${selectedRecipe.cuisine}`
+                        : 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=800&h=400&q=80';
+                      e.target.src = fallbackImage;
+                    }}
+                  />
+                </Box>
                 
                 <Typography variant="h6" gutterBottom>Description</Typography>
                 <Typography paragraph>
@@ -512,15 +526,17 @@ function ClientSavedRecipes({ clientId, clientName }) {
                     Recipe to add:
                   </Typography>
                   <Paper sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
-                    {recipeForMenu.image_url && (
-                      <Box sx={{ width: 60, height: 60, overflow: 'hidden', borderRadius: 1 }}>
-                        <img 
-                          src={recipeForMenu.image_url} 
-                          alt={recipeForMenu.recipe_name} 
-                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                        />
-                      </Box>
-                    )}
+                    <Box sx={{ width: 60, height: 60, overflow: 'hidden', borderRadius: 1 }}>
+                      <img 
+                        src={recipeForMenu.image_url || `https://via.placeholder.com/60x60?text=${encodeURIComponent(recipeForMenu.recipe_name?.charAt(0) || 'R')}`}
+                        alt={recipeForMenu.recipe_name} 
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        onError={(e) => {
+                          // Simple fallback for the small thumbnail
+                          e.target.src = 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=60&h=60&q=80';
+                        }}
+                      />
+                    </Box>
                     <Box>
                       <Typography variant="subtitle2">
                         {recipeForMenu.recipe_name || 'Unnamed Recipe'}
