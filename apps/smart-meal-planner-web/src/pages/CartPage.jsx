@@ -754,6 +754,7 @@ const handleAddToCart = async (items, store) => {
             );
             setLoading(prev => ({ ...prev, cart: false }));
             return;
+          }
         }
         
         // Check if it was a timeout
