@@ -730,6 +730,34 @@ const handleAddToCart = async (items, store) => {
     try {
       setLoading(prev => ({ ...prev, cart: true }));
       
+      // For Kroger, first check if store selection is already done to avoid redundant prompts
+      if (store === 'kroger') {
+        // Check for store selection flags
+        const storeLocation = localStorage.getItem('kroger_store_location') || 
+                              localStorage.getItem('kroger_store_location_id');
+        const storeSelected = localStorage.getItem('kroger_store_selected') === 'true' || 
+                              localStorage.getItem('kroger_store_configured') === 'true' ||
+                              sessionStorage.getItem('kroger_store_selection_complete') === 'true' ||
+                              localStorage.getItem('kroger_store_selection_done') === 'true';
+                              
+        console.log('Kroger store selection check before cart operation:', {
+          storeLocation,
+          storeSelected
+        });
+        
+        // If we have a stored location and selection flag, set additional flags to prevent prompts
+        if (storeLocation && storeSelected) {
+          console.log('Store already selected, setting additional flags to prevent prompts');
+          // Setting these flags will prevent the StoreSelector from showing
+          sessionStorage.setItem('kroger_store_selection_complete', 'true');
+          localStorage.setItem('kroger_store_selection_done', 'true');
+          localStorage.setItem('kroger_store_selected', 'true');
+          localStorage.setItem('kroger_store_configured', 'true');
+          // Remove any store selection needed flag
+          sessionStorage.removeItem('kroger_needs_store_selection');
+        }
+      }
+      
       let response;
       
       // Use dedicated Kroger service for Kroger items
@@ -740,6 +768,47 @@ const handleAddToCart = async (items, store) => {
         // Check for reconnection needed - we need a user-authorized token with cart.basic:write scope
         if (!response.success) {
           console.log('Kroger error response:', response);
+          
+          // Check for needs_setup flag (store selection needed)
+          if (response.needs_setup) {
+            console.log('Store selection needed according to response');
+            // Try checking if we already have store location in localStorage before showing selector
+            const storeLocation = localStorage.getItem('kroger_store_location') || 
+                                 localStorage.getItem('kroger_store_location_id');
+                                 
+            if (storeLocation) {
+              console.log('Found store location in localStorage:', storeLocation);
+              // Use the stored location to update backend
+              try {
+                console.log('Updating backend with stored location');
+                await apiService.updateKrogerLocation(storeLocation);
+                // Retry cart operation
+                console.log('Retrying cart operation with stored location');
+                response = await krogerAuthService.addToKrogerCart(items);
+                
+                // If retry succeeds, continue with success flow
+                if (response.success) {
+                  console.log('Retry succeeded with stored location');
+                  setSnackbarMessage(`Items added to Kroger cart successfully`);
+                  setSnackbarOpen(true);
+                  await loadInternalCart();
+                  clearSearchResults(store);
+                  setShowKrogerCartDialog(true);
+                  setLoading(prev => ({ ...prev, cart: false }));
+                  return;
+                }
+              } catch (updateErr) {
+                console.error('Error updating backend with stored location:', updateErr);
+                // Fall through to store selector if update fails
+              }
+            }
+            
+            // If we got here, we need to show store selector
+            setCurrentStore('kroger');
+            setShowStoreSelector(true);
+            setLoading(prev => ({ ...prev, cart: false }));
+            return;
+          }
           
           // Check for needs_reconnect flag or specific error messages
           if (response.needs_reconnect || 

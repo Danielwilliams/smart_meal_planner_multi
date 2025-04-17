@@ -230,7 +230,7 @@ const searchStores = async (lat, lon) => {
     onClose();
   };
 
-  // Improved handler for store selection
+  // Enhanced handler for store selection with improved persistence
   const handleStoreSelect = (storeId) => {
     if (!storeId) {
       console.error('No store ID provided for selection');
@@ -243,33 +243,75 @@ const searchStores = async (lat, lon) => {
     // Immediately close the dialog to improve user experience
     handleClose();
     
-    // Set the location in localStorage right away for fast client-side tracking
-    localStorage.setItem('kroger_store_location', storeId);
-    localStorage.setItem('kroger_store_selected', 'true');
-    localStorage.setItem('kroger_store_timestamp', Date.now().toString());
-    localStorage.setItem('kroger_store_location_id', storeId);
-    localStorage.setItem('kroger_store_configured', 'true');
+    // FIRST SET OF ACTIONS: Set ALL possible flags in localStorage for maximum compatibility
+    // This ensures that no matter which flag is being checked, it will be found
     
-    // Set flags to prevent location selection loops
-    sessionStorage.setItem('kroger_store_selection_complete', 'true');
+    // Original kroger_store_location flag
+    localStorage.setItem('kroger_store_location', storeId);
+    // Additional location ID format 
+    localStorage.setItem('kroger_store_location_id', storeId);
+    // Store selection flags
+    localStorage.setItem('kroger_store_selected', 'true');
+    localStorage.setItem('kroger_store_configured', 'true');
     localStorage.setItem('kroger_store_selection_done', 'true');
+    // Session storage flags to prevent prompts in current session
+    sessionStorage.setItem('kroger_store_selection_complete', 'true');
+    // Timestamps for diagnostics
+    localStorage.setItem('kroger_store_timestamp', Date.now().toString());
     localStorage.setItem('kroger_store_selection_timestamp', Date.now().toString());
     
-    // Clear the store selection needed flag
+    // SECOND SET OF ACTIONS: Clear any flags that might trigger store selection
     sessionStorage.removeItem('kroger_needs_store_selection');
     
-    // Try to update the store location on the backend - critical for persistence!
+    // Log all the flags we've set for debugging
+    console.log('Store selection flags set:', {
+      'kroger_store_location': localStorage.getItem('kroger_store_location'),
+      'kroger_store_location_id': localStorage.getItem('kroger_store_location_id'),
+      'kroger_store_selected': localStorage.getItem('kroger_store_selected'),
+      'kroger_store_configured': localStorage.getItem('kroger_store_configured'),
+      'kroger_store_selection_done': localStorage.getItem('kroger_store_selection_done'),
+      'kroger_store_selection_complete (session)': sessionStorage.getItem('kroger_store_selection_complete'),
+      'kroger_needs_store_selection (session)': sessionStorage.getItem('kroger_needs_store_selection')
+    });
+    
+    // THIRD SET OF ACTIONS: Update backend in multiple ways for robustness
     console.log("Updating store location in backend DB...");
-    apiService.updateKrogerLocation(storeId)
-      .then(response => {
-        console.log("Backend store location update response:", response);
-        if (response && response.success) {
-          console.log("Successfully updated store location in backend DB");
-        } else {
-          console.warn("Failed to update store location in backend DB, but continuing with client-side tracking");
+    
+    // First attempt: Standard API call with error handling
+    const updateBackend = async () => {
+      try {
+        // Try POST method first
+        console.log("Attempting to update store location via POST method");
+        const postResponse = await apiService.updateKrogerLocation(storeId);
+        
+        console.log("Backend POST response:", postResponse);
+        if (postResponse && postResponse.success) {
+          console.log("Successfully updated store location in backend via POST");
+          return true;
         }
-      })
-      .catch(err => {
+        
+        // If we get here, POST failed, try alternative approach
+        console.log("POST failed, trying alternative backend update approach");
+        
+        // Try direct API call as fallback
+        const alternativeResponse = await fetch(`${apiService.API_BASE_URL}/kroger/store-location?location_id=${storeId}`, {
+          method: 'GET',
+          credentials: 'include',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (alternativeResponse.ok) {
+          console.log("Alternative backend update succeeded");
+          return true;
+        }
+        
+        console.warn("Failed to update store location in backend, but continuing with client-side tracking");
+        return false;
+        
+      } catch (err) {
         console.error("Error updating store location in backend:", err);
         
         // Check if this is a database schema issue
@@ -278,12 +320,23 @@ const searchStores = async (lat, lon) => {
           console.log("Database schema issue detected in error, storing locally only");
           localStorage.setItem('database_schema_issue', 'true');
         }
-      });
+        
+        return false;
+      }
+    };
     
-    // Call the parent handler after attempting the backend update
-    setTimeout(() => {
-      onStoreSelect(storeId);
-    }, 300);  // Slightly longer delay to ensure backend update has time to complete
+    // Start backend update process asynchronously
+    updateBackend().then(success => {
+      if (success) {
+        console.log("Backend update completed successfully");
+      } else {
+        console.log("Using client-side storage as fallback");
+      }
+    });
+    
+    // Call the parent handler immediately - don't wait for backend to complete
+    // This ensures the user experience isn't interrupted if backend is slow
+    onStoreSelect(storeId);
   };
 
   return (

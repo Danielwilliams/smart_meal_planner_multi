@@ -172,6 +172,7 @@ const refreshKrogerTokenInternal = async () => {
  * Add items to Kroger cart
  * Tries both backend API and direct API approach
  * Ensures proper token management for cart operations, which require user authorization
+ * Now with improved store selection handling to prevent redundant prompts
  */
 const addToKrogerCart = async (items) => {
   console.log('Adding items to Kroger cart:', items);
@@ -182,6 +183,23 @@ const addToKrogerCart = async (items) => {
       success: false,
       message: 'No valid items provided'
     };
+  }
+  
+  // ENHANCEMENT: Check and consolidate store selection flags before proceeding
+  // This helps prevent repeated store selection prompts
+  const storeLocation = localStorage.getItem('kroger_store_location') || 
+                        localStorage.getItem('kroger_store_location_id');
+  const storeSelected = localStorage.getItem('kroger_store_selected') === 'true' || 
+                         localStorage.getItem('kroger_store_configured') === 'true';
+  
+  // If we have a store location but selection flags aren't set properly, fix them
+  if (storeLocation && !storeSelected) {
+    console.log('Found store location but selection flags not set, fixing flags');
+    localStorage.setItem('kroger_store_selected', 'true');
+    localStorage.setItem('kroger_store_configured', 'true');
+    localStorage.setItem('kroger_store_selection_done', 'true');
+    sessionStorage.setItem('kroger_store_selection_complete', 'true');
+    sessionStorage.removeItem('kroger_needs_store_selection');
   }
   
   // Check client-side connection state and ensure we have proper scopes for cart operations
@@ -201,14 +219,54 @@ const addToKrogerCart = async (items) => {
     };
   }
   
-  // Check if store is selected
+  // Check if store is selected - add all possible flag locations
   const storeLocation = localStorage.getItem('kroger_store_location') || 
                        localStorage.getItem('kroger_store_location_id');
   const storeSelected = localStorage.getItem('kroger_store_selected') === 'true' || 
                        localStorage.getItem('kroger_store_configured') === 'true' ||
-                       sessionStorage.getItem('kroger_store_selection_complete') === 'true';
+                       sessionStorage.getItem('kroger_store_selection_complete') === 'true' ||
+                       localStorage.getItem('kroger_store_selection_done') === 'true';
+  
+  // Log store selection state for debugging
+  console.log('Store selection check:', {
+    storeLocation,
+    storeSelected,
+    locationFromLocalStorage: localStorage.getItem('kroger_store_location'),
+    locationIdFromLocalStorage: localStorage.getItem('kroger_store_location_id'),
+    storeSelectedFlag: localStorage.getItem('kroger_store_selected'),
+    storeConfiguredFlag: localStorage.getItem('kroger_store_configured'),
+    selectionCompleteFlag: sessionStorage.getItem('kroger_store_selection_complete'),
+    selectionDoneFlag: localStorage.getItem('kroger_store_selection_done')
+  });
   
   if (!storeLocation || !storeSelected) {
+    // First try to check if the store location might be in the backend
+    try {
+      console.log('No store location in client storage, checking backend status');
+      const statusPromise = authAxios.get('/kroger/connection-status', { timeout: 3000 });
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Backend status check timed out')), 3000)
+      );
+      
+      const statusResponse = await Promise.race([statusPromise, timeoutPromise]);
+      
+      if (statusResponse?.data?.is_connected && statusResponse?.data?.store_location) {
+        console.log('Found store location in backend:', statusResponse.data.store_location);
+        // Update localStorage with backend data
+        localStorage.setItem('kroger_store_location', statusResponse.data.store_location);
+        localStorage.setItem('kroger_store_location_id', statusResponse.data.store_location);
+        localStorage.setItem('kroger_store_selected', 'true');
+        localStorage.setItem('kroger_store_configured', 'true');
+        sessionStorage.setItem('kroger_store_selection_complete', 'true');
+        localStorage.setItem('kroger_store_selection_done', 'true');
+        
+        // Continue with the cart operation
+        return;
+      }
+    } catch (statusErr) {
+      console.log('Backend status check failed:', statusErr.message);
+    }
+    
     return {
       success: false,
       needs_setup: true,
