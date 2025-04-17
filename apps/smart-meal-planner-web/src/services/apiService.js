@@ -747,6 +747,17 @@ const apiService = {
       return [];
     }
   },
+  
+  getClientSavedRecipes: async (clientId) => {
+    try {
+      console.log(`Fetching saved recipes for client ${clientId}`);
+      const response = await axiosInstance.get(`/saved-recipes/client/${clientId}`);
+      return response.data.saved_recipes || [];
+    } catch (err) {
+      console.error(`Error fetching saved recipes for client ${clientId}:`, err);
+      return [];
+    }
+  },
 
   async checkRecipeSaved(menuId, recipeId = null, mealTime = null) {
     try {

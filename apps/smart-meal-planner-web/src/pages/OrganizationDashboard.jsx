@@ -13,11 +13,13 @@ import {
   Person as PersonIcon,
   Menu as MenuIcon,
   Share as ShareIcon,
-  Settings as SettingsIcon
+  Settings as SettingsIcon,
+  Favorite as FavoriteIcon
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import { useOrganization } from '../context/OrganizationContext';
 import apiService from '../services/apiService';
+import ClientSavedRecipes from '../components/ClientSavedRecipes';
 
 function OrganizationDashboard() {
   const { user } = useAuth();
@@ -41,6 +43,8 @@ function OrganizationDashboard() {
   const [sharedMenus, setSharedMenus] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [selectedClient, setSelectedClient] = useState(null);
+  const [clientTab, setClientTab] = useState(0);
 
   // Redirect if not authenticated or not an organization account
   useEffect(() => {
@@ -132,19 +136,32 @@ function OrganizationDashboard() {
     }
   };
 
-  const handleViewClient = (clientId) => {
-    // Go to the client profile which includes preferences, menus, etc.
-    navigate(`/organization/clients/${clientId}`);
+  const handleViewClient = (client) => {
+    // Set the selected client to show details in the dashboard
+    setSelectedClient(client);
+    setClientTab(0); // Default to profile tab
   };
 
-  const handleCreateMenu = (clientId) => {
-    // Navigate to client profile page to use the menu generator for this client
-    navigate(`/organization/clients/${clientId}`);
+  const handleCreateMenu = (client) => {
+    // Option 1: Navigate to client profile page
+    // navigate(`/organization/clients/${client.id}`);
+    
+    // Option 2: Show client details and select the saved recipes tab
+    setSelectedClient(client);
+    setClientTab(1); // Set to saved recipes tab
   };
 
   const handleShareMenu = (clientId) => {
     // Navigate to client profile page, then tab to the menus section
     navigate(`/organization/clients/${clientId}`, { state: { initialTab: 1 } });
+  };
+  
+  const handleClientTabChange = (event, newValue) => {
+    setClientTab(newValue);
+  };
+  
+  const handleCloseClientDetails = () => {
+    setSelectedClient(null);
   };
 
   if (loading || orgLoading) {
@@ -242,7 +259,7 @@ function OrganizationDashboard() {
                       </Button>
                       <Button 
                         size="small" 
-                        onClick={() => handleViewClient(client.id)}
+                        onClick={() => handleViewClient(client)}
                       >
                         Manage Profile
                       </Button>
@@ -250,7 +267,7 @@ function OrganizationDashboard() {
                         size="small" 
                         color="primary"
                         variant="contained"
-                        onClick={() => handleCreateMenu(client.id)}
+                        onClick={() => handleCreateMenu(client)}
                       >
                         Create Menu
                       </Button>
@@ -382,6 +399,137 @@ function OrganizationDashboard() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Client Details Panel - shown when a client is selected */}
+      {selectedClient && (
+        <Dialog
+          open={!!selectedClient}
+          onClose={handleCloseClientDetails}
+          maxWidth="lg"
+          fullWidth
+        >
+          <DialogTitle>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="h6">
+                Client: {selectedClient.name}
+              </Typography>
+              <Button
+                variant="outlined"
+                onClick={handleCloseClientDetails}
+              >
+                Close
+              </Button>
+            </Box>
+          </DialogTitle>
+          <DialogContent dividers>
+            <Paper sx={{ mb: 3 }}>
+              <Tabs
+                value={clientTab}
+                onChange={handleClientTabChange}
+                indicatorColor="primary"
+                textColor="primary"
+                variant="fullWidth"
+              >
+                <Tab label="Profile" icon={<PersonIcon />} />
+                <Tab label="Saved Recipes" icon={<FavoriteIcon />} />
+                <Tab label="Menus" icon={<MenuIcon />} />
+              </Tabs>
+            </Paper>
+
+            {/* Profile Tab */}
+            {clientTab === 0 && (
+              <Paper sx={{ p: 3 }}>
+                <Grid container spacing={3}>
+                  <Grid item xs={12} md={6}>
+                    <Typography variant="h6" gutterBottom>
+                      Contact Information
+                    </Typography>
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="body1">
+                        <strong>Name:</strong> {selectedClient.name}
+                      </Typography>
+                      <Typography variant="body1">
+                        <strong>Email:</strong> {selectedClient.email}
+                      </Typography>
+                      <Typography variant="body1">
+                        <strong>Role:</strong> {selectedClient.role || 'Client'}
+                      </Typography>
+                    </Box>
+                    
+                    <Box sx={{ mt: 3 }}>
+                      <Button
+                        variant="contained"
+                        onClick={() => navigate(`/organization/clients/${selectedClient.id}/preferences`)}
+                      >
+                        Manage Preferences
+                      </Button>
+                    </Box>
+                  </Grid>
+                  
+                  <Grid item xs={12} md={6}>
+                    <Typography variant="h6" gutterBottom>
+                      Actions
+                    </Typography>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      <Button 
+                        variant="outlined" 
+                        startIcon={<MenuIcon />}
+                        onClick={() => navigate(`/organization/clients/${selectedClient.id}`)}
+                      >
+                        View Full Profile
+                      </Button>
+                      
+                      <Button 
+                        variant="outlined" 
+                        color="primary"
+                        startIcon={<AddIcon />}
+                        onClick={() => navigate(`/menu?clientId=${selectedClient.id}`)}
+                      >
+                        Create New Menu
+                      </Button>
+                      
+                      <Button 
+                        variant="outlined" 
+                        color="secondary"
+                        startIcon={<ShareIcon />}
+                        onClick={() => navigate(`/organization/clients/${selectedClient.id}`, { state: { initialTab: 1 } })}
+                      >
+                        Manage Shared Menus
+                      </Button>
+                    </Box>
+                  </Grid>
+                </Grid>
+              </Paper>
+            )}
+
+            {/* Saved Recipes Tab */}
+            {clientTab === 1 && (
+              <ClientSavedRecipes 
+                clientId={selectedClient.id} 
+                clientName={selectedClient.name} 
+              />
+            )}
+
+            {/* Menus Tab */}
+            {clientTab === 2 && (
+              <Paper sx={{ p: 3, textAlign: 'center' }}>
+                <Typography variant="h6" gutterBottom>
+                  Client Menus
+                </Typography>
+                <Typography variant="body1" paragraph>
+                  This feature will allow you to view and manage all menus created for this client.
+                </Typography>
+                <Button
+                  variant="contained"
+                  onClick={() => navigate(`/organization/clients/${selectedClient.id}`, { state: { initialTab: 1 } })}
+                >
+                  Go to Client Menus
+                </Button>
+              </Paper>
+            )}
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* Snackbar notifications */}
       <Snackbar

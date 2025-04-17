@@ -173,6 +173,72 @@ async def list_saved_recipes(
             detail=f"Error fetching saved recipes: {str(e)}"
         )
 
+@router.get("/client/{client_id}")
+async def get_client_saved_recipes(
+    client_id: int,
+    user = Depends(get_user_from_token)
+):
+    """
+    Get all saved recipes for a specific client.
+    Only accessible by organization owners for their clients.
+    """
+    trainer_id = user.get('user_id')
+    
+    try:
+        # Verify the trainer has access to this client
+        conn = get_db_connection()
+        
+        try:
+            with conn.cursor() as cur:
+                # Check if user is an organization owner
+                cur.execute("""
+                    SELECT id FROM organizations WHERE owner_id = %s
+                """, (trainer_id,))
+                
+                org_result = cur.fetchone()
+                if not org_result:
+                    logger.warning(f"User {trainer_id} attempted to access client {client_id} saved recipes but is not an organization owner")
+                    raise HTTPException(
+                        status_code=403,
+                        detail="Only organization owners can access client saved recipes"
+                    )
+                    
+                org_id = org_result[0]
+                
+                # Check if client belongs to this organization
+                cur.execute("""
+                    SELECT 1 FROM organization_clients
+                    WHERE organization_id = %s AND client_id = %s
+                """, (org_id, client_id))
+                
+                if not cur.fetchone():
+                    logger.warning(f"User {trainer_id} attempted to access client {client_id} saved recipes but client is not in their organization")
+                    raise HTTPException(
+                        status_code=403,
+                        detail="This client does not belong to your organization"
+                    )
+        finally:
+            conn.close()
+        
+        # Now get the client's saved recipes
+        saved_recipes = get_user_saved_recipes(client_id)
+        
+        return {
+            "status": "success",
+            "client_id": client_id,
+            "saved_recipes": saved_recipes
+        }
+    
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching client saved recipes: {str(e)}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Error fetching client saved recipes: {str(e)}"
+        )
+
 @router.get("/check")
 async def check_recipe_saved(
     menu_id: Optional[int] = None,
