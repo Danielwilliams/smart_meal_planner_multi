@@ -30,9 +30,9 @@ async def get_scraped_recipes(
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         
-        # Base query - include the columns needed for ORDER BY
+        # Base query - don't use DISTINCT as it can limit results
         query = """
-            SELECT DISTINCT
+            SELECT 
                 r.id, r.title, r.complexity, r.source, r.cuisine,
                 r.prep_time, r.cook_time, r.total_time, r.image_url, 
                 r.is_verified, r.date_scraped, rc.component_type
@@ -73,9 +73,9 @@ async def get_scraped_recipes(
         if where_clauses:
             query += " WHERE " + " AND ".join(where_clauses)
             
-        # Add ordering and limits
+        # Add ordering and limits - use ID for consistent pagination
         query += """
-            ORDER BY r.is_verified DESC, r.date_scraped DESC
+            ORDER BY r.id DESC
             LIMIT %s OFFSET %s
         """
         
@@ -88,9 +88,9 @@ async def get_scraped_recipes(
         cursor.execute(query, params)
         recipes = cursor.fetchall()
         
-        # Count query for pagination
+        # Count query for pagination - don't use DISTINCT as it can limit results
         count_query = """
-            SELECT COUNT(DISTINCT r.id) as total
+            SELECT COUNT(r.id) as total
             FROM scraped_recipes r
         """
         
