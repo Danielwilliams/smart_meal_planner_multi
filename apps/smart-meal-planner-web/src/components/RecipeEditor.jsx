@@ -1,5 +1,5 @@
 // src/components/RecipeEditor.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -18,13 +18,16 @@ import {
   Paper,
   Box,
   Alert,
-  Snackbar
+  Snackbar,
+  Input
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
 import CheckIcon from '@mui/icons-material/Check';
 import EditIcon from '@mui/icons-material/Edit';
 import CloseIcon from '@mui/icons-material/Close';
+import UploadIcon from '@mui/icons-material/Upload';
+import ImageIcon from '@mui/icons-material/Image';
 import axios from 'axios';
 
 const RecipeEditor = ({ open, onClose, recipeId, onSave }) => {
@@ -32,10 +35,12 @@ const RecipeEditor = ({ open, onClose, recipeId, onSave }) => {
   const [recipe, setRecipe] = useState(null);
   const [title, setTitle] = useState('');
   const [imageUrl, setImageUrl] = useState('');
+  const [uploadingImage, setUploadingImage] = useState(false);
   const [ingredients, setIngredients] = useState([]);
   const [newIngredient, setNewIngredient] = useState('');
   const [instructions, setInstructions] = useState([]);
   const [newInstruction, setNewInstruction] = useState('');
+  const fileInputRef = useRef(null);
   const [editingIngredientIndex, setEditingIngredientIndex] = useState(null);
   const [editingIngredientText, setEditingIngredientText] = useState('');
   const [editingInstructionIndex, setEditingInstructionIndex] = useState(null);
@@ -60,6 +65,57 @@ const RecipeEditor = ({ open, onClose, recipeId, onSave }) => {
       message,
       severity
     });
+  };
+  
+  // Handle image upload to S3
+  const handleImageUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    // Check file type
+    if (!file.type.includes('image/')) {
+      showAlert('Please select an image file', 'error');
+      return;
+    }
+    
+    // Check file size (limit to 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      showAlert('Image file size must be less than 5MB', 'error');
+      return;
+    }
+    
+    try {
+      setUploadingImage(true);
+      
+      // Create form data
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      // Upload image
+      const response = await axios.post(
+        `${API_BASE_URL}/recipe-admin/upload-image`,
+        formData,
+        {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+            'Content-Type': 'multipart/form-data'
+          }
+        }
+      );
+      
+      if (response.data.success && response.data.image_url) {
+        // Update image URL with the one returned from server
+        setImageUrl(response.data.image_url);
+        showAlert('Image uploaded successfully', 'success');
+      } else {
+        showAlert('Failed to upload image', 'error');
+      }
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      showAlert(`Error uploading image: ${error.response?.data?.detail || error.message}`, 'error');
+    } finally {
+      setUploadingImage(false);
+    }
   };
 
   const handleCloseAlert = () => {
@@ -437,16 +493,37 @@ const RecipeEditor = ({ open, onClose, recipeId, onSave }) => {
             </Grid>
             
             <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Image URL"
-                value={imageUrl}
-                onChange={(e) => setImageUrl(e.target.value)}
-                margin="normal"
-                placeholder="https://example.com/image.jpg"
-                helperText="Enter the URL to an image for this recipe"
-              />
-              {imageUrl && (
+              <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                <TextField
+                  fullWidth
+                  label="Image URL"
+                  value={imageUrl}
+                  onChange={(e) => setImageUrl(e.target.value)}
+                  margin="normal"
+                  placeholder="https://example.com/image.jpg"
+                  helperText="Enter URL or upload an image"
+                  disabled={uploadingImage}
+                />
+                <input
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  ref={fileInputRef}
+                  onChange={handleImageUpload}
+                />
+                <Button
+                  variant="contained"
+                  color="primary"
+                  startIcon={uploadingImage ? <CircularProgress size={20} /> : <UploadIcon />}
+                  onClick={() => fileInputRef.current.click()}
+                  disabled={uploadingImage}
+                  sx={{ mt: 2, height: '56px' }}
+                >
+                  {uploadingImage ? 'Uploading...' : 'Upload'}
+                </Button>
+              </Box>
+              
+              {imageUrl ? (
                 <Box 
                   sx={{ 
                     mt: 2, 
@@ -466,6 +543,25 @@ const RecipeEditor = ({ open, onClose, recipeId, onSave }) => {
                       objectFit: 'contain'
                     }} 
                   />
+                </Box>
+              ) : (
+                <Box 
+                  sx={{ 
+                    mt: 2, 
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    border: '1px dashed #aaa',
+                    borderRadius: '4px',
+                    p: 3,
+                    bgcolor: '#f9f9f9'
+                  }}
+                >
+                  <ImageIcon sx={{ fontSize: 60, color: '#aaa', mb: 1 }} />
+                  <Typography variant="body2" color="textSecondary">
+                    No image selected. Enter a URL or upload an image.
+                  </Typography>
                 </Box>
               )}
             </Grid>
