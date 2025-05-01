@@ -1,11 +1,11 @@
 # app/utils/auth_utils.py
 
-from fastapi import HTTPException, Request
+from fastapi import HTTPException, Request, Depends
 import jwt
 import logging
-from psycopg2.extras import RealDictCursor  # Add this import
+from psycopg2.extras import RealDictCursor
 from app.config import JWT_SECRET, JWT_ALGORITHM
-from app.db import get_db_connection  # Add this import
+from app.db import get_db_connection
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +78,8 @@ async def get_user_organization_role(user_id: int):
             if org_owner:
                 return {
                     "organization_id": org_owner["organization_id"],
-                    "role": "owner"
+                    "role": "owner",
+                    "is_admin": True
                 }
             
             # Check if user is a client of any organization
@@ -91,13 +92,26 @@ async def get_user_organization_role(user_id: int):
             if org_client:
                 return {
                     "organization_id": org_client["organization_id"],
-                    "role": org_client["role"]
+                    "role": org_client["role"],
+                    "is_admin": org_client["role"] == "admin"
                 }
+            
+            # Check if user has admin role in the system
+            cur.execute("""
+                SELECT "Role" FROM users
+                WHERE id = %s
+            """, (user_id,))
+            user_record = cur.fetchone()
+            
+            is_admin = False
+            if user_record and user_record.get("Role") == "admin":
+                is_admin = True
             
             # User has no organizational affiliation
             return {
                 "organization_id": None,
-                "role": None
+                "role": None,
+                "is_admin": is_admin
             }
     finally:
         conn.close()
@@ -135,3 +149,19 @@ async def is_organization_admin(user_id: int) -> bool:
             return org_admin is not None
     finally:
         conn.close()
+
+def admin_required(user = Depends(get_user_from_token)):
+    """Middleware to require admin permissions"""
+    if not user:
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required"
+        )
+    
+    if not user.get("is_admin"):
+        raise HTTPException(
+            status_code=403,
+            detail="Admin permissions required"
+        )
+    
+    return user

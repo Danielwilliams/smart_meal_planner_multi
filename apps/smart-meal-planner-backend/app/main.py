@@ -7,6 +7,9 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from dotenv import load_dotenv
 
+# Import S3 helper for initialization
+from app.utils.s3.s3_utils import s3_helper
+
 # Import regular routers
 from app.routers import (
     auth, 
@@ -200,6 +203,18 @@ async def startup_event():
         from app.migrations import run_migrations
         run_migrations()
         logger.info("Database migrations completed")
+        
+        # Check S3 configuration
+        logger.info("Checking S3 configuration...")
+        try:
+            # The import and initialization happens at module level
+            # This just logs whether S3 is properly configured
+            if hasattr(s3_helper, 'bucket_name') and s3_helper.bucket_name:
+                logger.info(f"S3 configuration found: bucket={s3_helper.bucket_name}, region={s3_helper.region}")
+            else:
+                logger.warning("S3 configuration is incomplete. Image upload functionality will not work properly.")
+        except Exception as s3_error:
+            logger.warning(f"S3 initialization error: {str(s3_error)}")
     except Exception as e:
         logger.error(f"Error during application startup: {str(e)}")
         # Don't re-raise, just log the error

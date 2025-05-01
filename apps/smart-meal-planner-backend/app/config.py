@@ -27,6 +27,16 @@ DB_PASSWORD = parsed_url.password
 DB_HOST = parsed_url.hostname
 DB_PORT = parsed_url.port
 
+# AWS S3 Configuration
+AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
+AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
+AWS_REGION = os.getenv("AWS_REGION", "us-east-1")  # Default to us-east-1 if not specified
+S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME")
+
+# Log S3 configuration status
+if not all([AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, S3_BUCKET_NAME]):
+    logger.warning("S3 configuration incomplete. Image upload functionality may not work properly.")
+
 
 
 # JWT configuration
@@ -84,6 +94,18 @@ def validate_environment():
     if missing_vars:
         logger.error(f"Missing critical environment variables: {', '.join(missing_vars)}")
         return False
+    
+    # Check S3 configuration but don't fail validation if missing
+    s3_vars = [
+        ("AWS_ACCESS_KEY_ID", AWS_ACCESS_KEY_ID),
+        ("AWS_SECRET_ACCESS_KEY", AWS_SECRET_ACCESS_KEY),
+        ("S3_BUCKET_NAME", S3_BUCKET_NAME)
+    ]
+    
+    missing_s3_vars = [var for var, value in s3_vars if not value]
+    if missing_s3_vars:
+        logger.warning(f"Missing S3 configuration variables: {', '.join(missing_s3_vars)}")
+    
     return True
 
 # Run validation on import
