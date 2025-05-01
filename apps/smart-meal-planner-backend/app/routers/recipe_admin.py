@@ -8,7 +8,7 @@ from psycopg2.extras import RealDictCursor
 from typing import List, Optional, Dict, Any
 import json
 from ..db import get_db_connection
-from ..utils.auth_utils import admin_required
+from ..utils.auth_utils import admin_required, get_user_from_token
 from ..utils.s3.s3_utils import s3_helper
 
 logger = logging.getLogger(__name__)
@@ -159,6 +159,85 @@ async def delete_recipe_image(
         if conn:
             conn.rollback()
         raise HTTPException(status_code=500, detail=f"Error deleting recipe image: {str(e)}")
+    finally:
+        if conn:
+            conn.close()
+            
+@router.get("/component-types")
+async def get_component_types(user = Depends(get_user_from_token)):
+    """
+    Get all component types and their counts
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        cursor.execute("""
+            SELECT 
+                component_type, 
+                COUNT(*) as count
+            FROM recipe_components
+            GROUP BY component_type
+            ORDER BY count DESC
+        """)
+        
+        component_types = cursor.fetchall()
+        return component_types
+    except Exception as e:
+        logger.error(f"Error fetching component types: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error fetching component types: {str(e)}")
+    finally:
+        if conn:
+            conn.close()
+            
+@router.get("/check-component/{recipe_id}")
+async def check_recipe_component(
+    recipe_id: int,
+    user = Depends(get_user_from_token)
+):
+    """
+    Check component type and preferences for a specific recipe
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Get recipe details
+        cursor.execute("""
+            SELECT * FROM scraped_recipes
+            WHERE id = %s
+        """, (recipe_id,))
+        
+        recipe = cursor.fetchone()
+        if not recipe:
+            raise HTTPException(status_code=404, detail="Recipe not found")
+            
+        # Get component type if any
+        cursor.execute("""
+            SELECT * FROM recipe_components
+            WHERE recipe_id = %s
+        """, (recipe_id,))
+        
+        component = cursor.fetchone()
+        
+        # Get preferences if any
+        cursor.execute("""
+            SELECT * FROM recipe_preferences
+            WHERE recipe_id = %s
+        """, (recipe_id,))
+        
+        preferences = cursor.fetchone()
+        
+        return {
+            "recipe": recipe,
+            "component": component,
+            "preferences": preferences
+        }
+    except Exception as e:
+        logger.error(f"Error checking recipe component: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error checking recipe component: {str(e)}")
     finally:
         if conn:
             conn.close()
