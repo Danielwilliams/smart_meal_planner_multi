@@ -174,8 +174,12 @@ const RecipeAdminPanel = () => {
     const checkAdmin = async () => {
       if (!user) return;
       
-      // Check if user is an organization admin or has account_type of 'admin'
-      const isAdmin = user.account_type === 'admin' || await isOrganizationAdmin();
+      // Check if user is an organization admin or has account_type of 'admin' or Role of 'admin'
+      const isAdmin = 
+        user.account_type === 'admin' || 
+        user.Role === 'admin' || 
+        await isOrganizationAdmin();
+        
       setIsAdminUser(isAdmin);
       
       if (!isAdmin) {

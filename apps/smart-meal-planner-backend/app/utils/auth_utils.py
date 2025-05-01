@@ -106,6 +106,12 @@ async def get_user_organization_role(user_id: int):
             is_admin = False
             if user_record and user_record.get("Role") == "admin":
                 is_admin = True
+                return {
+                    "organization_id": None,
+                    "role": "admin",
+                    "is_admin": True,
+                    "Role": "admin"  # Add Role field for frontend compatibility
+                }
             
             # User has no organizational affiliation
             return {
