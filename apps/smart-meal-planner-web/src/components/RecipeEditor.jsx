@@ -91,15 +91,26 @@ const RecipeEditor = ({ open, onClose, recipeId, onSave }) => {
       const formData = new FormData();
       formData.append('file', file);
       
-      // Upload image
+      // Get the authentication token
+      const token = localStorage.getItem('access_token');
+      console.log("Auth token available:", !!token);
+      
+      if (!token) {
+        showAlert('Authentication token not found. Please log in again.', 'error');
+        return;
+      }
+      
+      // Upload image with explicit headers
       const response = await axios.post(
         `${API_BASE_URL}/recipe-admin/upload-image`,
         formData,
         {
           headers: {
-            'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
-            'Content-Type': 'multipart/form-data'
-          }
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'multipart/form-data',
+            'Accept': 'application/json'
+          },
+          withCredentials: false
         }
       );
       

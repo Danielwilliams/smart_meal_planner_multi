@@ -18,7 +18,7 @@ router = APIRouter(prefix="/recipe-admin", tags=["RecipeAdmin"])
 @router.post("/upload-image")
 async def upload_recipe_image(
     file: UploadFile = File(...),
-    user = Depends(admin_required)
+    user = Depends(get_user_from_token)
 ):
     """
     Upload a recipe image to S3 and return the image URL
