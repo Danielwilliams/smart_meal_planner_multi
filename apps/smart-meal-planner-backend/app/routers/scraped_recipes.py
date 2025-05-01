@@ -104,17 +104,26 @@ async def get_scraped_recipes(
         total = cursor.fetchone()["total"]
         
         # Check if each recipe is saved by the current user
-        user_id = user.get('user_id')
+        user_id = None
+        if user:
+            user_id = user.get('user_id')
+        
         for recipe in recipes:
-            cursor.execute("""
-                SELECT id FROM saved_recipes 
-                WHERE user_id = %s AND scraped_recipe_id = %s
-            """, (user_id, recipe['id']))
-            saved = cursor.fetchone()
-            if saved:
-                recipe['is_saved'] = True
-                recipe['saved_id'] = saved['id']
+            # Only query saved status if we have a user_id
+            if user_id:
+                cursor.execute("""
+                    SELECT id FROM saved_recipes 
+                    WHERE user_id = %s AND scraped_recipe_id = %s
+                """, (user_id, recipe['id']))
+                saved = cursor.fetchone()
+                if saved:
+                    recipe['is_saved'] = True
+                    recipe['saved_id'] = saved['id']
+                else:
+                    recipe['is_saved'] = False
+                    recipe['saved_id'] = None
             else:
+                # Default for non-authenticated users or system requests
                 recipe['is_saved'] = False
                 recipe['saved_id'] = None
         
