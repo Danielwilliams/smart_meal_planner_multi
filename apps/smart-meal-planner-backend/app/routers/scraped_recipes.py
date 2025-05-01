@@ -179,17 +179,25 @@ async def get_scraped_recipe_by_id(
         if not recipe:
             raise HTTPException(status_code=404, detail="Recipe not found")
             
-        # Check if recipe is saved by the user
-        user_id = user.get('user_id')
-        cursor.execute("""
-            SELECT id FROM saved_recipes 
-            WHERE user_id = %s AND scraped_recipe_id = %s
-        """, (user_id, recipe_id))
-        saved = cursor.fetchone()
-        if saved:
-            recipe['is_saved'] = True
-            recipe['saved_id'] = saved['id']
+        # Check if recipe is saved by the user (if user is authenticated)
+        user_id = None
+        if user:
+            user_id = user.get('user_id')
+            
+        if user_id:
+            cursor.execute("""
+                SELECT id FROM saved_recipes 
+                WHERE user_id = %s AND scraped_recipe_id = %s
+            """, (user_id, recipe_id))
+            saved = cursor.fetchone()
+            if saved:
+                recipe['is_saved'] = True
+                recipe['saved_id'] = saved['id']
+            else:
+                recipe['is_saved'] = False
+                recipe['saved_id'] = None
         else:
+            # Default for non-authenticated users or system requests
             recipe['is_saved'] = False
             recipe['saved_id'] = None
             
