@@ -85,14 +85,26 @@ class S3Helper:
                 region_name=self.region
             )
             
-            # Test connection with a simple operation
-            buckets = self.s3_client.list_buckets()
-            bucket_names = [b['Name'] for b in buckets.get('Buckets', [])]
-            logger.info(f"Successfully connected to AWS S3. Available buckets: {bucket_names}")
-            
-            # Verify our bucket exists
-            if self.bucket_name not in bucket_names:
-                logger.warning(f"Bucket '{self.bucket_name}' not found in available buckets: {bucket_names}")
+            # Test connection with a simple operation that only requires bucket-specific permissions
+            # We'll try to list objects in the bucket instead of listing all buckets
+            try:
+                # Just try to list objects in the specific bucket (max 1 item)
+                # This only requires permission to the specific bucket
+                resp = self.s3_client.list_objects_v2(
+                    Bucket=self.bucket_name,
+                    MaxKeys=1
+                )
+                logger.info(f"Successfully connected to AWS S3 bucket '{self.bucket_name}'")
+                if 'Contents' in resp and len(resp['Contents']) > 0:
+                    logger.info(f"Bucket contains at least {len(resp['Contents'])} objects")
+                else:
+                    logger.info(f"Bucket exists but is empty")
+            except self.s3_client.exceptions.NoSuchBucket:
+                logger.warning(f"Bucket '{self.bucket_name}' does not exist")
+                raise ValueError(f"Bucket '{self.bucket_name}' does not exist")
+            except Exception as bucket_err:
+                logger.warning(f"Could not verify bucket '{self.bucket_name}': {str(bucket_err)}")
+                # Continue anyway, as we might have permission to put objects but not list them
             
         except Exception as e:
             logger.error(f"Failed to initialize S3 client: {str(e)}")
@@ -267,8 +279,25 @@ def force_initialize_s3_helper():
                     region_name=aws_region
                 )
                 
-                # Try a simple operation
-                s3_client.list_buckets()
+                # Try a bucket-specific operation instead of listing all buckets
+                try:
+                    # Just check that we can access the specific bucket we need
+                    s3_client.head_bucket(Bucket=bucket_name)
+                    logger.info(f"Successfully verified bucket exists: {bucket_name}")
+                except s3_client.exceptions.NoSuchBucket:
+                    logger.error(f"Bucket does not exist: {bucket_name}")
+                    raise ValueError(f"S3 bucket '{bucket_name}' does not exist")
+                except Exception as e:
+                    # If we can't access bucket info, try listing objects as a fallback
+                    logger.warning(f"Could not verify bucket with head_bucket: {str(e)}")
+                    try:
+                        # Try with list_objects_v2 instead
+                        s3_client.list_objects_v2(Bucket=bucket_name, MaxKeys=1)
+                        logger.info(f"Successfully verified bucket with list_objects: {bucket_name}")
+                    except Exception as list_err:
+                        logger.warning(f"Could not list objects in bucket: {str(list_err)}")
+                        # Continue anyway - we'll try upload operations directly
+                
                 logger.info(f"Successfully connected to AWS with direct boto3 client")
                 
                 # Now create the full helper

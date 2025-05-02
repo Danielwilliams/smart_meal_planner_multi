@@ -254,17 +254,38 @@ async def test_s3_config(user = Depends(get_user_from_token)):
                     region_name=aws_region or "us-east-2"
                 )
                 
-                # List buckets to test connection
-                buckets = s3_client.list_buckets()
-                bucket_names = [bucket['Name'] for bucket in buckets['Buckets']]
+                # Test bucket access directly without listing all buckets
+                bucket_exists = False
+                bucket_access = False
                 
-                # Check if specified bucket exists
-                bucket_exists = s3_bucket_name in bucket_names
+                try:
+                    # Try to check if bucket exists with head_bucket
+                    s3_client.head_bucket(Bucket=s3_bucket_name)
+                    bucket_exists = True
+                    bucket_access = True
+                    logger.info(f"Successfully verified bucket exists with head_bucket: {s3_bucket_name}")
+                except s3_client.exceptions.NoSuchBucket:
+                    bucket_exists = False
+                    logger.warning(f"Bucket does not exist: {s3_bucket_name}")
+                except Exception as head_err:
+                    logger.warning(f"Error with head_bucket: {str(head_err)}")
+                    # Try listing objects instead
+                    try:
+                        resp = s3_client.list_objects_v2(Bucket=s3_bucket_name, MaxKeys=1)
+                        bucket_exists = True
+                        bucket_access = True
+                        logger.info(f"Successfully verified bucket with list_objects: {s3_bucket_name}")
+                    except s3_client.exceptions.NoSuchBucket:
+                        bucket_exists = False
+                        logger.warning(f"Confirmed bucket does not exist with list_objects: {s3_bucket_name}")
+                    except Exception as list_err:
+                        logger.warning(f"Could not list objects: {str(list_err)}")
+                        # We're not sure if the bucket exists or if we just don't have permission
                 
                 diagnostics.update({
                     "connection_test": "success",
-                    "available_buckets": bucket_names,
-                    "specified_bucket_exists": bucket_exists
+                    "bucket_exists": bucket_exists,
+                    "bucket_access": bucket_access
                 })
                 
                 # Check bucket permissions if the bucket exists
