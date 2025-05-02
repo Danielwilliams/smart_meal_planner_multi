@@ -322,13 +322,21 @@ def standardize_ingredient(ing: Any):
 def combine_amount_and_unit(amount_float: float, unit: str, name: str) -> str:
     """
     Combine amount, unit and name into display string without pieces,
-    preserving numbers in names and ensuring proper pluralization
+    preserving numbers in names and ensuring proper pluralization.
+    Uses pounds as the standard weight unit for large quantities.
     """
     import logging
     logger = logging.getLogger(__name__)
     
     if amount_float is None:
         return name
+    
+    # Convert grams to pounds for large quantities
+    if unit.lower() == 'g' and amount_float >= 450:  # 450g ≈ 1 lb
+        g_to_lbs = 0.00220462
+        amount_float = amount_float * g_to_lbs
+        unit = 'lbs'
+        logger.info(f"Converted large gram quantity to pounds: {amount_float:.1f} lbs")
     
     try:
         # Format the amount
@@ -339,6 +347,10 @@ def combine_amount_and_unit(amount_float: float, unit: str, name: str) -> str:
         # Check for simple whole numbers to make them cleaner
         if fraction.denominator == 1:
             quantity_str = str(fraction.numerator)
+            
+        # Format pound weights to one decimal place
+        if unit.lower() in ['lb', 'lbs'] and '/' not in quantity_str:
+            quantity_str = f"{quantity_val:.1f}".rstrip('0').rstrip('.') if '.' in f"{quantity_val:.1f}" else f"{quantity_val:.0f}"
         
         # Function to properly pluralize words based on quantity
         def pluralize_if_needed(item_name, quantity):
@@ -532,6 +544,13 @@ def aggregate_grocery_list(menu_dict: Dict[str, Any]):
                         standardized_amount = amount * conversion_factor
                         standardized_unit = 'g'
                         logger.info(f"Converted {amount} cups of {name} to {standardized_amount}g")
+                
+                # Convert large gram quantities to pounds for better aggregation
+                if standardized_unit == 'g' and standardized_amount >= 450:  # 450g ≈ 1 lb
+                    lbs_amount = standardized_amount * UNIT_CONVERSIONS['g_to_lbs']
+                    standardized_amount = lbs_amount
+                    standardized_unit = 'lbs'
+                    logger.info(f"Converted {amount}g of {name} to {standardized_amount:.2f} lbs")
                 
                 key = (name, standardized_unit)
                 if standardized_amount is not None:

@@ -597,11 +597,12 @@ const combineItems = (items) => {
       
       // If we have a quantity and the name doesn't already start with it
       if (data.quantity > 0) {
-        // For gram quantities, make sure to include the unit
+        // For gram quantities, make sure to include the unit or convert to pounds
         if (isGrams(data.originalItem)) {
-          if (data.quantity >= 1000) {
-            // Convert to kg for large quantities
-            return `${(data.quantity/1000).toFixed(1)} kg ${displayName}`.trim();
+          if (data.quantity >= 450) {
+            // Convert to lbs for large quantities (450g ≈ 1 lb)
+            const lbs = data.quantity * CONVERSION_RATES.g_to_lbs;
+            return `${lbs.toFixed(1)} lbs ${displayName}`.trim();
           } else {
             return `${data.quantity}g ${displayName}`.trim();
           }
