@@ -32,6 +32,7 @@ def run_migrations():
     add_ai_model_used_to_menus()
     create_shared_menus_table()
     add_prep_time_to_saved_recipes()
+    add_notes_to_scraped_recipes()
     
     logger.info("Database migrations completed successfully")
 
@@ -487,6 +488,55 @@ def add_prep_time_to_saved_recipes():
         if conn:
             conn.rollback()
         logger.error(f"Error adding prep_time column to saved_recipes: {str(e)}")
+        # Don't re-raise, just log the error
+    finally:
+        if conn:
+            conn.close()
+            
+def add_notes_to_scraped_recipes():
+    """
+    Add the notes column to the scraped_recipes table if it doesn't exist
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            # Check if the table exists
+            cursor.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' AND table_name = 'scraped_recipes'
+                )
+            """)
+            
+            if not cursor.fetchone()[0]:
+                logger.warning("scraped_recipes table doesn't exist - skipping notes column addition")
+                return
+                
+            # Check if the column already exists
+            cursor.execute("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_schema = 'public'
+                  AND table_name = 'scraped_recipes' 
+                  AND column_name = 'notes'
+            """)
+            
+            if not cursor.fetchone():
+                logger.info("Adding notes column to scraped_recipes table")
+                cursor.execute("""
+                    ALTER TABLE scraped_recipes 
+                    ADD COLUMN notes TEXT DEFAULT NULL
+                """)
+                conn.commit()
+                logger.info("notes column added successfully to scraped_recipes table")
+            else:
+                logger.info("notes column already exists in scraped_recipes table")
+                
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        logger.error(f"Error adding notes column to scraped_recipes: {str(e)}")
         # Don't re-raise, just log the error
     finally:
         if conn:

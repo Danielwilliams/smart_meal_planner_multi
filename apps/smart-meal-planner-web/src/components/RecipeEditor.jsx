@@ -40,6 +40,7 @@ const RecipeEditor = ({ open, onClose, recipeId, onSave }) => {
   const [newIngredient, setNewIngredient] = useState('');
   const [instructions, setInstructions] = useState([]);
   const [newInstruction, setNewInstruction] = useState('');
+  const [notes, setNotes] = useState('');
   const fileInputRef = useRef(null);
   const [editingIngredientIndex, setEditingIngredientIndex] = useState(null);
   const [editingIngredientText, setEditingIngredientText] = useState('');
@@ -219,6 +220,8 @@ const RecipeEditor = ({ open, onClose, recipeId, onSave }) => {
       setTitle(recipeData.title || '');
       // Make sure to set the image URL exactly as it is in the database
       setImageUrl(recipeData.image_url || '');
+      // Set notes if they exist
+      setNotes(recipeData.notes || '');
       
       // First check recipe_data, then fall back to direct ingredients/instructions properties
       const recipeDataSource = recipeData.recipe_data || recipeData;
@@ -365,6 +368,7 @@ const RecipeEditor = ({ open, onClose, recipeId, onSave }) => {
         title: title,
         image_url: imageUrl,
         instructions: instructions,
+        notes: notes, // Add notes to the update data
         // Store ingredients in metadata since there's no ingredients column in scraped_recipes
         metadata: {
           ingredients_list: ingredients,
@@ -708,6 +712,24 @@ const RecipeEditor = ({ open, onClose, recipeId, onSave }) => {
                     <AddIcon />
                   </IconButton>
                 </Box>
+              </Paper>
+            </Grid>
+            
+            <Grid item xs={12}>
+              <Typography variant="h6" gutterBottom>
+                Recipe Notes
+              </Typography>
+              <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+                <TextField
+                  fullWidth
+                  multiline
+                  rows={4}
+                  label="Notes"
+                  placeholder="Add your personal notes about this recipe here..."
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  margin="normal"
+                />
               </Paper>
             </Grid>
             

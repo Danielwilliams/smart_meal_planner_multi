@@ -485,6 +485,12 @@ async def update_recipe(
             update_values.append(recipe_data['image_url'])
         else:
             logger.warning(f"No image_url found in update data: {recipe_data.keys()}")
+            
+        # Handle notes update
+        if 'notes' in recipe_data:
+            logger.info(f"Updating notes: {recipe_data['notes'][:50]}...")
+            update_fields.append("notes = %s")
+            update_values.append(recipe_data['notes'])
         
         # Handle instructions update
         if 'instructions' in recipe_data:
@@ -549,7 +555,7 @@ async def update_recipe(
             UPDATE scraped_recipes
             SET {", ".join(update_fields)}
             WHERE id = %s
-            RETURNING id, title, image_url, instructions, metadata
+            RETURNING id, title, image_url, instructions, metadata, notes
         """
         
         # Add recipe_id to values
