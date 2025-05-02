@@ -356,85 +356,26 @@ const parseIngredient = (ingredientStr) => {
     const prefix = prefixMatch[1];
     const remainder = prefixMatch[2].trim();
     
-    // Handle specific prefixes based on the text
-    if (remainder.includes('chicken breast')) {
-      return {
-        name: 'chicken breast',
-        quantity: parseFloat(prefix),
-        unit: 'g'
-      };
+    // For regular grocery items with 3-4 digit prefixes, we assume these are gram quantities
+    // The only exception is if the item contains words like "oz", "ounce", "pound", etc.
+    let unit = 'g'; // Default unit is grams
+    
+    // Check if the remainder contains a unit hint
+    if (/\b(oz|ounce|lb|pound|lbs)\b/i.test(remainder)) {
+      unit = /\b(oz|ounce)\b/i.test(remainder) ? 'oz' : 'lbs';
     }
-    else if (remainder.includes('beef strip')) {
-      return {
-        name: 'beef strips',
-        quantity: parseFloat(prefix),
-        unit: 'g'
-      };
-    }
-    else if (remainder.includes('broccoli')) {
-      return {
-        name: 'broccoli',
-        quantity: parseFloat(prefix),
-        unit: 'g'
-      };
-    }
-    else if (remainder.includes('tomato') && !remainder.includes('cherry')) {
-      return {
-        name: 'tomato',
-        quantity: parseFloat(prefix),
-        unit: 'g'
-      };
-    }
-    else if (remainder.includes('bell pepper')) {
-      return {
-        name: 'bell pepper',
-        quantity: parseFloat(prefix),
-        unit: 'g'
-      };
-    }
-    else if (remainder.includes('carrot')) {
-      return {
-        name: 'carrot',
-        quantity: parseFloat(prefix),
-        unit: 'g'
-      };
-    }
-    else if (remainder.includes('potato')) {
-      return {
-        name: 'potato',
-        quantity: parseFloat(prefix),
-        unit: 'g'
-      };
-    }
-    else if (remainder.includes('rice')) {
-      return {
-        name: 'rice',
-        quantity: parseFloat(prefix),
-        unit: 'g'
-      };
-    }
-    else if (remainder.includes('mozzarella')) {
-      return {
-        name: 'mozzarella',
-        quantity: parseFloat(prefix),
-        unit: 'oz'
-      };
-    }
-    else if (remainder.includes('chicken thigh')) {
-      return {
-        name: 'chicken thigh',
-        quantity: parseFloat(prefix),
-        unit: 'g'
-      };
-    }
-    else {
-      // For unknown prefixes, use the remainder as name
-      return {
-        name: remainder,
-        quantity: parseFloat(prefix),
-        unit: 'g'  // Assume grams as default
-      };
-    }
+    
+    // Normalize the name by removing units and extra spaces
+    let name = remainder
+      .replace(/\b(oz|ounce|lb|pound|lbs|gram|g)\b/i, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    
+    return {
+      name: name,
+      quantity: parseFloat(prefix),
+      unit: unit
+    };
   }
   
   // Extract quantity and unit using regex for standard formats
