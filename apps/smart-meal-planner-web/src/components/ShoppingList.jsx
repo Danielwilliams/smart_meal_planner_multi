@@ -11,15 +11,14 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  TextField,
   Alert
 } from '@mui/material';
 import StoreSelector from './StoreSelector';
 import apiService from '../services/apiService';
-import _ from 'lodash';
 
 // Unit conversion constants
 const CONVERSION_RATES = {
+  g_to_kg: 0.001,     // 1g = 0.001 kg
   g_to_lbs: 0.00220462,  // 1g = 0.00220462 lbs
   oz_to_lbs: 0.0625,     // 1oz = 0.0625 lbs
   g_to_oz: 0.035274,     // 1g = 0.035274 oz
@@ -27,19 +26,12 @@ const CONVERSION_RATES = {
     // Approximate conversions for common ingredients
     'rice': 200,         // 1 cup rice ≈ 200g
     'broccoli': 150,     // 1 cup chopped broccoli ≈ 150g
-    'bell peppers': 150, // 1 cup chopped bell peppers ≈ 150g
-    'carrots': 110,      // 1 cup chopped carrots ≈ 110g
+    'bell pepper': 150,  // 1 cup chopped bell peppers ≈ 150g
+    'carrot': 110,       // 1 cup chopped carrots ≈ 110g
     'default': 130       // Default for unknown ingredients
   },
   tbsp_to_ml: 15,        // 1 tbsp ≈ 15ml
   tsp_to_ml: 5           // 1 tsp ≈ 5ml
-};
-
-// Special unit mapping for specific ingredients
-const SPECIAL_UNITS = {
-  'tomato sauce': 'oz',
-  'oil': 'tbsp',
-  'olive oil': 'tbsp'
 };
 
 // Unit mapping for standardization
@@ -51,10 +43,13 @@ const UNIT_MAPPINGS = {
     'can': 'cans',
     'leaf': 'leaves',
     'tbsp': 'tbsp',
+    'tsp': 'tsp',
     'oz': 'oz',
     'g': 'g',
+    'kg': 'kg',
     'ml': 'ml',
-    'lb': 'lbs'
+    'lb': 'lbs',
+    'clove': 'cloves'
   },
   plural: {
     'cups': 'cups',
@@ -63,75 +58,52 @@ const UNIT_MAPPINGS = {
     'cans': 'cans',
     'leaves': 'leaves',
     'tbsp': 'tbsp',
+    'tsp': 'tsp',
     'oz': 'oz',
     'g': 'g',
+    'kg': 'kg',
     'ml': 'ml',
-    'lbs': 'lbs'
+    'lbs': 'lbs',
+    'cloves': 'cloves'
   }
 };
 
-// Special case formatting for quantities
-const SPECIAL_CASES = {
-  'egg': (quantity) => `${quantity} eggs`,
-  'eggs': (quantity) => `${quantity} eggs`,
-  'black bean': (quantity) => quantity > 1 ? `${quantity} black beans` : `${quantity} black bean`,
-  'black beans': (quantity) => `${quantity} black beans`,
-  'bacon strip': (quantity) => quantity > 1 ? `${quantity} bacon strips` : `${quantity} bacon strip`,
-  'bacon strips': (quantity) => `${quantity} bacon strips`,
-  'basil leaves': (quantity) => `${quantity} basil leaves`,
-  'basil leaf': (quantity) => quantity > 1 ? `${quantity} basil leaves` : `${quantity} basil leaf`,
-  'lettuce leaves': (quantity) => `${quantity} lettuce leaves`,
-  'lettuce leaf': (quantity) => quantity > 1 ? `${quantity} lettuce leaves` : `${quantity} lettuce leaf`,
-  'avocado': (quantity) => quantity > 1 ? `${quantity} avocados` : `${quantity} avocado`,
+// Unit abbreviation mapping
+const UNIT_ABBREVIATIONS = {
+  'tablespoon': 'tbsp',
+  'tablespoons': 'tbsp',
+  'tbsps': 'tbsp',
+  'tbsp.': 'tbsp',
+  'teaspoon': 'tsp',
+  'teaspoons': 'tsp',
+  'tsps': 'tsp',
+  'tsp.': 'tsp',
+  'pound': 'lbs',
+  'pounds': 'lbs',
+  'lb': 'lbs',
+  'lbs.': 'lbs',
+  'ounce': 'oz',
+  'ounces': 'oz',
+  'ozs': 'oz',
+  'oz.': 'oz',
+  'gram': 'g',
+  'grams': 'g',
+  'g.': 'g',
+  'kilogram': 'kg',
+  'kilograms': 'kg',
+  'kg.': 'kg',
+  'milliliter': 'ml',
+  'milliliters': 'ml',
+  'ml.': 'ml',
+  'cup': 'cups',
+  'c.': 'cups',
+  'piece': 'pieces',
+  'pcs': 'pieces',
+  'slice': 'slices',
+  'can': 'cans',
+  'leaf': 'leaves',
+  'clove': 'cloves'
 };
-
-// Common ingredient compound words
-const COMPOUND_WORDS = {
-  'mixed greens': true,
-  'mixed berries': true,
-  'balsamic glaze': true,
-  'cherry tomatoes': true,
-  'cherry tomato': true,
-  'water chestnut': true,
-  'tomato sauce': true,
-  'bell pepper': true,
-  'bell peppers': true,
-  'beef strips': true,
-  'beef strip': true,
-  'chicken breast': true,
-  'chicken thigh': true,
-  'bacon strip': true,
-  'bacon strips': true,
-  'greek yogurt': true,
-  'black bean': true,
-  'black beans': true,
-  'cheddar cheese': true,
-  'olive oil': true,
-  'chicken broth': true
-};
-
-// Words that naturally end in 's' but aren't plural
-const WORDS_ENDING_IN_S = [
-  'hummus',
-  'berries',
-  'greens',
-  'pancreas',
-  'chassis',
-  'analysis',
-  'molasses',
-  'leaves',
-  'grass',
-  'mass',
-  'pass',
-  'bass',
-  'glass',
-  'class',
-  'express',
-  'asparagus',
-  'brussels sprouts',
-  'swiss chard',
-  'confectioners sugar'
-];
 
 // Uncountable food nouns that shouldn't be pluralized
 const UNCOUNTABLE_NOUNS = [
@@ -180,447 +152,387 @@ const UNCOUNTABLE_NOUNS = [
   'oats',
   'feta',
   'bacon',
-  'chicken breast',
-  'chicken thigh',
   'mozzarella',
   'cheddar',
   'chicken broth',
   'basil',
-  'mixed greens'
+  'mixed greens',
+  'ginger',
+  'dressing',
+  'olive oil',
+  'soy sauce',
+  'hot sauce',
+  'ground beef',
+  'ground turkey',
+  'ground chicken'
+];
+
+// Common ingredient compound words
+const COMPOUND_WORDS = {
+  'mixed greens': true,
+  'mixed berries': true,
+  'balsamic glaze': true,
+  'cherry tomatoes': true,
+  'cherry tomato': true,
+  'water chestnut': true,
+  'tomato sauce': true,
+  'bell pepper': true,
+  'bell peppers': true,
+  'beef strips': true,
+  'beef strip': true,
+  'chicken breast': true,
+  'chicken breasts': true,
+  'chicken thighs': true,
+  'chicken thigh': true,
+  'bacon strip': true,
+  'bacon strips': true,
+  'greek yogurt': true,
+  'black bean': true,
+  'black beans': true,
+  'cheddar cheese': true,
+  'olive oil': true,
+  'chicken broth': true,
+  'cooking oil': true,
+  'cookin oil': true,
+  'feta cheese': true,
+  'ground beef': true,
+  'ground turkey': true,
+  'ground chicken': true,
+  'soy sauce': true,
+  'hot sauce': true
+};
+
+// Words that naturally end in 's' but aren't plural
+const WORDS_ENDING_IN_S = [
+  'hummus',
+  'berries',
+  'greens',
+  'pancreas',
+  'chassis',
+  'analysis',
+  'molasses',
+  'leaves',
+  'grass',
+  'mass',
+  'pass',
+  'bass',
+  'glass',
+  'class',
+  'express',
+  'asparagus',
+  'brussels sprouts',
+  'swiss chard',
+  'confectioners sugar',
+  'beans'
 ];
 
 // Function to format units consistently
 const formatUnit = (unit, quantity, itemName) => {
   if (!unit) return '';
-
-  // Check for special unit cases based on item name
-  if (itemName && SPECIAL_UNITS[itemName.toLowerCase()]) {
-    return SPECIAL_UNITS[itemName.toLowerCase()];
-  }
   
   // Clean up unit
   let normalizedUnit = unit.toLowerCase()
     .replace(/\.+/g, '.')  // Clean up dots
     .replace(/\s+/g, ' ');  // Normalize spaces
 
+  // Map abbreviated or full unit names to standard forms
+  normalizedUnit = UNIT_ABBREVIATIONS[normalizedUnit] || normalizedUnit;
+  
   // Remove duplicate unit words
   normalizedUnit = normalizedUnit.replace(/\b(cup|cups|tbsp|tbsps|tsp|tsps|g|oz|ozs|ml|piece|pieces|slice|slices)\s+\1s?\b/gi, '$1');
   normalizedUnit = normalizedUnit.replace(/\b(cup)s?\s+(cup)s?\b/gi, 'cups');
   normalizedUnit = normalizedUnit.replace(/\b(tbsp|tbs|tablespoon)s?\s+(tbsp|tbs|tablespoon)s?\b/gi, 'tbsp');
   normalizedUnit = normalizedUnit.replace(/\b(tsp|teaspoon)s?\s+(tsp|teaspoon)s?\b/gi, 'tsp');
   
-  // Standardize unit formats
-  normalizedUnit = normalizedUnit
-    .replace(/\b(cup|cups)\b/gi, 'cups')
-    .replace(/\b(piece|pieces)\b/gi, 'pieces')
-    .replace(/\b(slice|slices)\b/gi, 'slices')
-    .replace(/\b(leaf|leaves)\b/gi, 'leaves')
-    .replace(/\b(ml)\b/gi, 'ml')
-    .replace(/\b(g)\b/gi, 'g')
-    .replace(/\b(oz|ozs)\b/gi, 'oz')
-    .replace(/\b(tbsp|tbsps|tbs|tablespoon|tablespoons)\.?\b/gi, 'tbsp')
-    .replace(/\b(tsp|tsps|teaspoon|teaspoons)\.?\b/gi, 'tsp')
-    .replace(/\b(lbs|lb)\s+(?:oz|ozs?)\b/gi, 'lbs')
-    .trim();
-
   // Get rid of any remaining duplicate units
   normalizedUnit = normalizedUnit.split(/\s+/)[0];
 
   return normalizedUnit;
 };
 
+// Parse quantity from string, handling fractions and mixed numbers
+const parseQuantity = (quantityStr) => {
+  if (!quantityStr) return 0;
+  
+  // Handle fractions like "1/2"
+  if (quantityStr.includes('/')) {
+    const [numerator, denominator] = quantityStr.split('/');
+    return parseFloat(numerator) / parseFloat(denominator);
+  }
+  
+  // Handle mixed numbers like "1 1/2"
+  const mixedMatch = quantityStr.match(/(\d+)\s+(\d+)\/(\d+)/);
+  if (mixedMatch) {
+    const whole = parseFloat(mixedMatch[1]);
+    const numerator = parseFloat(mixedMatch[2]);
+    const denominator = parseFloat(mixedMatch[3]);
+    return whole + (numerator / denominator);
+  }
+  
+  // Handle plain numbers
+  return parseFloat(quantityStr);
+};
+
 // Function to normalize ingredient names
 const normalizeItemName = (name) => {
-  // First check for compound words
-  const lowerName = name.toLowerCase();
-  for (const compound of Object.keys(COMPOUND_WORDS)) {
-    if (lowerName.includes(compound)) {
-      return {
-        name: compound,
-        wasPlural: compound.endsWith('s')
-      };
-    }
-  }
-
-  // Extract the quantity at the beginning if present
-  const quantityMatch = name.match(/^(\d+(?:\.\d+)?)\s+(.+)$/);
-  let itemNamePart = name;
-  
-  if (quantityMatch) {
-    itemNamePart = quantityMatch[2];
-  }
-
   // Fix misspellings
-  itemNamePart = itemNamePart
+  let fixedName = name
     .replace(/tomatoe/i, 'tomato')
-    .replace(/potatoe/i, 'potato');
-
-  // Process the name part without removing the initial quantities
-  let normalized = itemNamePart
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .replace(/g\s+/, ' ')
-    .replace(/lbs?\s+/, ' ')
-    .replace(/pieces?\s+/, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-  // Remove trailing commas if present
-  normalized = normalized.replace(/,+$/, '');
-
-  // Store plural information
-  const hasPlural = normalized.endsWith('s') && 
-    !normalized.endsWith('ss') && // Skip words ending in 'ss' like 'glass'
-    !normalized.endsWith('us'); // Skip words ending in 'us' like 'hummus'
-
-  // Don't remove trailing 's' for words in our exception list
-  if (!WORDS_ENDING_IN_S.some(word => normalized.includes(word))) {
-    normalized = normalized.replace(/s$/, '');
+    .replace(/potatoe/i, 'potato')
+    .replace(/cookin oil/i, 'cooking oil');
+  
+  // Extract quantities and units using regex
+  const regex = /^(?:(\d+(?:\.\d+)?(?:\s*\d+\/\d+)?|\d+\/\d+)\s*)?([a-zA-Z\.]+)?(?:\s+(?:of|worth|sized?))?\s*(.+)$/i;
+  const match = fixedName.match(regex);
+  
+  if (match) {
+    const [, quantity, unit, itemPart] = match;
+    
+    // Normalize the item name part
+    let normalizedName = itemPart
+      .toLowerCase()
+      .replace(/\s+/g, ' ')
+      .replace(/,\s*$/, '') // Remove trailing comma
+      .trim();
+    
+    // First check for compound words
+    for (const compound of Object.keys(COMPOUND_WORDS)) {
+      if (normalizedName.includes(compound)) {
+        return {
+          name: compound,
+          quantity: quantity ? parseQuantity(quantity) : null,
+          unit: unit ? formatUnit(unit, quantity, compound) : null,
+          wasPlural: compound.endsWith('s')
+        };
+      }
+    }
+    
+    // Store plural information
+    const hasPlural = normalizedName.endsWith('s') && 
+      !WORDS_ENDING_IN_S.some(word => normalizedName.includes(word));
+    
+    // Standardize common ingredients
+    if (normalizedName.includes('chicken breast')) {
+      normalizedName = 'chicken breast';
+    } else if (normalizedName.includes('chicken thigh')) {
+      normalizedName = 'chicken thigh';
+    } else if (normalizedName.includes('beef strip')) {
+      normalizedName = 'beef strip';
+    } else if (normalizedName.includes('bell pepper')) {
+      normalizedName = 'bell pepper';
+    } else if (normalizedName === 'balsamic') {
+      normalizedName = 'balsamic glaze';
+    } else if (normalizedName === 'mixed green') {
+      normalizedName = 'mixed greens';
+    }
+    
+    return {
+      name: normalizedName,
+      quantity: quantity ? parseQuantity(quantity) : null,
+      unit: unit ? formatUnit(unit, quantity, normalizedName) : null,
+      wasPlural: hasPlural
+    };
   }
 
-  // Standardize common ingredients
-  if (normalized.includes('chicken breast')) {
-    normalized = 'chicken breast';
-  } else if (normalized.includes('chicken thigh')) {
-    normalized = 'chicken thigh';
-  } else if (normalized.includes('beef strip')) {
-    normalized = 'beef strip';
-  } else if (normalized.includes('bell pepper')) {
-    normalized = 'bell pepper';
-  }
-
+  // If regex fails, return basic normalization
   return {
-    name: normalized,
-    wasPlural: hasPlural
+    name: fixedName.toLowerCase().trim(),
+    quantity: null,
+    unit: null,
+    wasPlural: fixedName.endsWith('s')
   };
 };
 
-// Format quantity, unit, and name into a display string
-const formatUnitAndName = (quantity, unit, name) => {
-  // Check for special cases
-  const normalizedName = name.toLowerCase().trim();
-  if (SPECIAL_CASES[normalizedName]) {
-    return SPECIAL_CASES[normalizedName](quantity);
+// Extract quantity and unit from an ingredient string
+const parseIngredient = (ingredientStr) => {
+  if (!ingredientStr || typeof ingredientStr !== 'string') {
+    return { name: '', quantity: 0, unit: '' };
   }
-
-  // Function to check if a name needs pluralization
-  const shouldPluralize = (itemName, qty) => {
-    // Don't pluralize if quantity is 1 or it already ends with 's'
-    if (qty <= 1 || itemName.endsWith('s')) return false;
-    
-    // Check if this is a word that shouldn't be pluralized
-    const lowerName = itemName.toLowerCase();
-    
-    // Check the word is in our UNCOUNTABLE_NOUNS list
-    if (UNCOUNTABLE_NOUNS.includes(lowerName)) return false;
-    
-    // Check if the word contains any uncountable nouns (for compound words)
-    for (const uncountable of UNCOUNTABLE_NOUNS) {
-      if (lowerName.includes(uncountable) && 
-          (lowerName.endsWith(uncountable) || lowerName.startsWith(uncountable))) {
-        return false;
-      }
-    }
-    
-    // If it passes all checks, it should be pluralized
-    return true;
+  
+  // Handle ingredient strings with numeric prefixes (what was incorrectly assumed to be product codes)
+  // These are actually just ingredient strings with quantities at the beginning
+  // Examples: "1905 chicken breast" should be treated as "1905g chicken breast"
+  const prefixMatch = ingredientStr.match(/^(\d{3,4})\s+(.+)$/);
+  if (prefixMatch) {
+    const quantity = prefixMatch[1];
+    const name = prefixMatch[2];
+    return {
+      name: name,
+      quantity: parseFloat(quantity),
+      unit: 'g'  // Assuming these are in grams
+    };
+  }
+  
+  // Extract quantity and unit using regex for standard formats
+  // Examples: "2 cups rice", "500g chicken", "1/2 tsp salt"
+  const standardMatch = ingredientStr.match(/^([\d\/\.\s]+)\s*([a-zA-Z\.]+)?\s+(.+)$/);
+  if (standardMatch) {
+    const [, quantityStr, unit, name] = standardMatch;
+    return {
+      name: name.trim(),
+      quantity: parseQuantity(quantityStr),
+      unit: unit ? formatUnit(unit, quantityStr, name) : ''
+    };
+  }
+  
+  // If no quantity at beginning, check for quantity embedded in the string
+  // Examples: "chicken breast 500g", "rice 2 cups"
+  const embeddedMatch = ingredientStr.match(/(.+?)\s+([\d\/\.]+)\s*([a-zA-Z\.]+)?$/);
+  if (embeddedMatch) {
+    const [, name, quantityStr, unit] = embeddedMatch;
+    return {
+      name: name.trim(),
+      quantity: parseQuantity(quantityStr),
+      unit: unit ? formatUnit(unit, quantityStr, name) : ''
+    };
+  }
+  
+  // For strings with just numbers and no units
+  // Examples: "2 eggs", "3 tomatoes"
+  const simpleMatch = ingredientStr.match(/^([\d\/\.]+)\s+(.+)$/);
+  if (simpleMatch) {
+    const [, quantityStr, name] = simpleMatch;
+    return {
+      name: name.trim(),
+      quantity: parseQuantity(quantityStr),
+      unit: ''
+    };
+  }
+  
+  // Default case: just a name with no clear quantity or unit
+  return {
+    name: ingredientStr.trim(),
+    quantity: 1,  // Default to quantity of 1
+    unit: ''
   };
-
-  // Handle compound words
-  for (const compound of Object.keys(COMPOUND_WORDS)) {
-    if (normalizedName.includes(compound)) {
-      let displayCompound = compound;
-      
-      // Check if we need to pluralize the compound word
-      if (shouldPluralize(compound, quantity)) {
-        // Special case for compound phrases ending in specific words
-        if (compound.endsWith('tomato')) {
-          displayCompound = compound.replace(/tomato$/, 'tomatoes');
-        } else if (compound.endsWith('potato')) {
-          displayCompound = compound.replace(/potato$/, 'potatoes');
-        } else if (compound.endsWith('y') && !compound.endsWith(' jelly')) {
-          displayCompound = compound.replace(/y$/, 'ies');
-        } else if (compound.endsWith('sh') || compound.endsWith('ch') || 
-                  compound.endsWith('x') || compound.endsWith('z')) {
-          displayCompound = `${compound}es`;
-        } else if (!compound.endsWith('s')) {
-          displayCompound = `${compound}s`;
-        }
-      }
-      
-      if (!unit) return `${quantity} ${displayCompound}`;
-      const formattedUnit = formatUnit(unit, quantity, compound);
-      return `${quantity} ${formattedUnit} ${displayCompound}`.trim();
-    }
-  }
-  
-  // Regular formatting
-  if (!unit) return `${quantity} ${normalizedName}`;
-  const formattedUnit = formatUnit(unit, quantity, normalizedName);
-  return `${quantity} ${formattedUnit} ${normalizedName}`.trim();
 };
 
-// Extract and convert the base quantity from an item string
-const getBaseQuantity = (item) => {
-  // Match quantity and unit patterns
-  // "500g chicken", "2 cups rice", "1/2 tbsp salt", etc.
-  const unitMatch = item.match(/^(\d+(?:\.\d+)?)\s*([a-zA-Z]+)/);
-  if (unitMatch) {
-    const quantity = parseFloat(unitMatch[1]);
-    return quantity || 0;
+// Function to pluralize a name properly
+const pluralizeName = (name, quantity) => {
+  // Don't pluralize if quantity <= 1 or it's an uncountable noun
+  if (quantity <= 1 || UNCOUNTABLE_NOUNS.includes(name.toLowerCase())) {
+    return name;
   }
   
-  // Match quantity without unit
-  // "2 eggs", "3 avocados", etc.
-  const numberMatch = item.match(/^(\d+(?:\.\d+)?)\s+/);
-  if (numberMatch) {
-    const quantity = parseFloat(numberMatch[1]);
-    return quantity || 0;
+  // Don't pluralize if already plural or in exception list
+  if (name.endsWith('s') || WORDS_ENDING_IN_S.some(word => name.includes(word))) {
+    return name;
   }
   
-  // If no match found at start, try to extract any number
-  const anyNumbers = item.match(/\d+(?:\.\d+)?/g) || [];
-  return anyNumbers[0] ? parseFloat(anyNumbers[0]) : 0;
-};
-
-// Check if an item is measured in grams
-const isGrams = (item) => {
-  return /\d+\s*g\b/i.test(item);
-};
-
-// Check if an item is measured in pounds
-const isPounds = (item) => {
-  return /\d+\s*lbs?\b/i.test(item);
-};
-
-// Check if an item is measured in ounces
-const isOunces = (item) => {
-  return /\d+\s*oz\b/i.test(item);
-};
-
-// Convert an item to pounds for weight aggregation
-const convertToLbs = (item) => {
-  const quantity = getBaseQuantity(item);
-  
-  // For zero quantities, don't try to convert
-  if (quantity === 0) {
-    return null;
+  // Handle special cases
+  if (name.endsWith('y') && !['key', 'bay', 'day'].includes(name)) {
+    return name.replace(/y$/, 'ies');
+  } else if (name.endsWith('sh') || name.endsWith('ch') || name.endsWith('x') || name.endsWith('z')) {
+    return `${name}es`;
+  } else if (name === 'tomato' || name.endsWith(' tomato')) {
+    return name.replace(/tomato$/, 'tomatoes');
+  } else if (name === 'potato' || name.endsWith(' potato')) {
+    return name.replace(/potato$/, 'potatoes');
+  } else if (name === 'leaf' || name.endsWith(' leaf')) {
+    return name.replace(/leaf$/, 'leaves');
+  } else {
+    // Default pluralization
+    return `${name}s`;
   }
-  
-  if (isGrams(item)) {
-    // Convert grams to pounds if over threshold
-    if (quantity >= 200) {
-      return quantity * CONVERSION_RATES.g_to_lbs;
-    }
-  }
-  
-  if (isOunces(item)) {
-    // Convert ounces to pounds if over threshold
-    if (quantity >= 16) {
-      return quantity * CONVERSION_RATES.oz_to_lbs;
-    }
-  }
-  
-  if (isPounds(item)) {
-    return quantity;
-  }
-  
-  return null;
 };
 
 // Combine and aggregate multiple items into categorized groups
 const combineItems = (items) => {
   const groupedItems = {};
 
-  // Fix misspellings of common plurals
-  const fixMisspellings = (name) => {
-    // Fix common misspellings
-    if (/tomatoe/i.test(name)) {
-      return name.replace(/tomatoe/i, 'tomato');
-    }
-    if (/potatoe/i.test(name)) {
-      return name.replace(/potatoe/i, 'potato');
-    }
-    return name;
-  };
-
+  // Process each item
   items.forEach(item => {
-    if (!item.trim()) return;
+    if (!item || (typeof item === 'string' && !item.trim())) return;
     
-    // Fix any common misspellings
-    const fixedItem = fixMisspellings(item);
+    // Parse the ingredient string
+    const itemStr = typeof item === 'string' ? item : (item.name || '');
+    const parsedItem = parseIngredient(itemStr);
+    const normalizedInfo = normalizeItemName(parsedItem.name);
     
-    // Check if the item starts with a number
-    const hasLeadingNumber = /^\s*\d+/.test(fixedItem);
+    // Use normalized name as the key for grouping
+    const itemKey = normalizedInfo.name;
+    if (!itemKey) return;
     
-    // For items with leading numbers, we want to preserve them
-    const nameInfo = normalizeItemName(fixedItem);
-    // Handle the new return value from normalizeItemName
-    const baseName = typeof nameInfo === 'object' ? nameInfo.name : nameInfo;
-    const wasPlural = typeof nameInfo === 'object' ? nameInfo.wasPlural : false;
+    // Get quantity and unit, prioritizing parsed values
+    const quantity = parsedItem.quantity !== null ? parsedItem.quantity : normalizedInfo.quantity;
+    const unit = parsedItem.unit || normalizedInfo.unit;
     
-    const itemKey = baseName; // Use as the key for grouping
-    
+    // Initialize the group if needed
     if (!groupedItems[itemKey]) {
       groupedItems[itemKey] = {
-        items: [],
-        totalLbs: 0,
-        hasWeight: false,
-        originalUnit: null,
-        quantity: 0,
-        originalItem: fixedItem, // Store the original item to preserve formatting
-        wasPlural: wasPlural // Store plural flag
+        name: itemKey,
+        quantities: [],
+        wasPlural: normalizedInfo.wasPlural
       };
-    } else {
-      // Update plural flag if any version was plural
-      groupedItems[itemKey].wasPlural = groupedItems[itemKey].wasPlural || wasPlural;
     }
-
-    const weightInLbs = convertToLbs(item);
-    if (weightInLbs !== null && weightInLbs >= 0.5) {
-      groupedItems[itemKey].hasWeight = true;
-      groupedItems[itemKey].totalLbs += weightInLbs;
-    } else {
-      const quantity = getBaseQuantity(item);
-      
-      // Extract unit from the item
-      let unit = '';
-      if (isGrams(item)) unit = 'g';
-      else if (isOunces(item)) unit = 'oz';
-      else if (isPounds(item)) unit = 'lbs';
-      else {
-        // Try to extract other units
-        const unitMatch = item.match(/\b(cups|cup|tbsp|tsp|pieces|slices|cans|leaves)\b/i);
-        if (unitMatch) {
-          unit = unitMatch[1].toLowerCase();
-        }
-      }
-      
-      if (!groupedItems[itemKey].originalUnit) {
-        groupedItems[itemKey].originalUnit = unit;
-      }
-      
-      // Always add the quantity, even if units differ
-      groupedItems[itemKey].quantity += quantity;
-      
-      // If this is the first item or has no quantity, set the original unit
-      if (unit === groupedItems[itemKey].originalUnit || 
-          !groupedItems[itemKey].quantity || 
-          groupedItems[itemKey].quantity === quantity) {
-        groupedItems[itemKey].originalUnit = unit;
-      } else {
-        // Store different unit items separately for reference
-        groupedItems[itemKey].items.push(item);
-      }
-      
-      // If this item has a leading number but current original doesn't, use this one as original
-      if (hasLeadingNumber && !/^\s*\d+/.test(groupedItems[itemKey].originalItem)) {
-        groupedItems[itemKey].originalItem = item;
-      }
+    
+    // Add this quantity/unit pair to the list
+    if (quantity !== null && quantity > 0) {
+      groupedItems[itemKey].quantities.push({
+        amount: quantity,
+        unit: unit || ''
+      });
     }
   });
 
-  return Object.entries(groupedItems)
-    .filter(([name]) => name.trim())
-    .map(([name, data]) => {
-      // Function to pluralize an item name if needed
-      const pluralizeName = (itemName, quantity) => {
-        // Strip trailing commas before pluralizing
-        itemName = itemName.replace(/,+$/, '');
-        
-        // Don't pluralize if it's already plural or quantity is 1
-        if (data.wasPlural || quantity <= 1) return itemName;
-        
-        // Skip pluralization for uncountable nouns
-        for (const uncountable of UNCOUNTABLE_NOUNS) {
-          if (itemName.includes(uncountable)) {
-            return itemName;
-          }
+  // Format all items for display
+  return Object.values(groupedItems)
+    .filter(group => group.name && group.name.trim())
+    .map(group => {
+      // If no quantities were found, just return the name
+      if (!group.quantities.length) {
+        return group.name;
+      }
+      
+      // Combine like units
+      const unitGroups = {};
+      group.quantities.forEach(({ amount, unit }) => {
+        const normalizedUnit = unit ? unit.toLowerCase() : '';
+        if (!unitGroups[normalizedUnit]) {
+          unitGroups[normalizedUnit] = 0;
+        }
+        unitGroups[normalizedUnit] += amount;
+      });
+      
+      // Special conversion for large quantities
+      Object.entries(unitGroups).forEach(([unit, amount]) => {
+        // Convert grams to kg for large quantities
+        if (unit === 'g' && amount >= 1000) {
+          delete unitGroups[unit];
+          unitGroups['kg'] = amount / 1000;
         }
         
-        // Handle special cases for specific items
-        if (itemName.includes('strip')) {
-          return itemName.replace(/strip$/, 'strips');
+        // Convert g to lbs for certain items that make more sense in pounds
+        else if (unit === 'g' && amount >= 450 && 
+                ['chicken', 'beef', 'pork', 'meat', 'steak', 'fish'].some(meat => 
+                  group.name.includes(meat))) {
+          delete unitGroups[unit];
+          unitGroups['lbs'] = parseFloat((amount * CONVERSION_RATES.g_to_lbs).toFixed(1));
         }
-        
-        // Handle special plural cases
-        if (itemName.endsWith('y') && !['key', 'bay', 'day'].includes(itemName)) {
-          return itemName.replace(/y$/, 'ies');
-        } else if (itemName.endsWith('sh') || itemName.endsWith('ch') || 
-                  itemName.endsWith('s') || itemName.endsWith('x') || 
-                  itemName.endsWith('z')) {
-          return `${itemName}es`;
-        } else if (itemName === 'tomato' || itemName.endsWith(' tomato')) {
-          return itemName.replace(/tomato$/, 'tomatoes');
-        } else if (itemName === 'potato' || itemName.endsWith(' potato')) {
-          return itemName.replace(/potato$/, 'potatoes');
-        } else if (itemName === 'leaf' || itemName.endsWith(' leaf')) {
-          return itemName.replace(/leaf$/, 'leaves');
-        } else {
-          // Default pluralization
-          return `${itemName}s`;
-        }
-      };
+      });
       
-      // Determine if we need to pluralize based on quantity
-      let displayName = name;
-      if (data.quantity && data.quantity > 1) {
-        displayName = pluralizeName(name, data.quantity);
+      // If we have exactly one unit group, format accordingly
+      if (Object.keys(unitGroups).length === 1) {
+        const [unit, amount] = Object.entries(unitGroups)[0];
+        const unitStr = unit ? ` ${unit}` : '';
+        const displayName = amount > 1 ? pluralizeName(group.name, amount) : group.name;
+        return `${amount}${unitStr} ${displayName}`.trim();
       }
       
-      // Special handling for common ingredients
-      // Special handling for lettuce leaves - format properly
-      if (displayName.includes('lettuce leaves')) {
-        return `${data.quantity} lettuce leaves`;
-      }
+      // If we have multiple different units, list them separately
+      let formattedUnits = Object.entries(unitGroups)
+        .map(([unit, amount]) => {
+          const unitStr = unit ? ` ${unit}` : '';
+          return `${amount}${unitStr}`;
+        })
+        .join(' + ');
       
-      // Special handling for basil leaves
-      if (displayName.includes('basil leaves')) {
-        return `${data.quantity} basil leaves`;
-      }
+      // Use plural form if total is > 1 across all units
+      const totalAmount = Object.values(unitGroups).reduce((sum, amount) => sum + amount, 0);
+      const displayName = totalAmount > 1 ? pluralizeName(group.name, totalAmount) : group.name;
       
-      // Handle black beans
-      if (displayName.includes('black bean')) {
-        return `${data.quantity} black beans`;
-      }
-      
-      // Handle avocados
-      if (displayName.includes('avocado') && data.quantity > 1) {
-        return `${data.quantity} avocados`;
-      }
-      
-      if (data.hasWeight && data.totalLbs >= 0.5) {
-        // Format to 1 decimal place but remove trailing zeros
-        const weightStr = data.totalLbs.toFixed(1).replace(/\.0$/, '');
-        return `${weightStr} lbs ${displayName}`.trim();
-      }
-      
-      // If we have a quantity and the name doesn't already start with it
-      if (data.quantity > 0) {
-        // For gram quantities, make sure to include the unit or convert to pounds
-        if (isGrams(data.originalItem)) {
-          if (data.quantity >= 450) {
-            // Convert to lbs for large quantities (450g ≈ 1 lb)
-            const lbs = data.quantity * CONVERSION_RATES.g_to_lbs;
-            return `${lbs.toFixed(1)} lbs ${displayName}`.trim();
-          } else {
-            return `${data.quantity}g ${displayName}`.trim();
-          }
-        }
-        
-        // For ounce quantities, make sure to include the unit
-        if (isOunces(data.originalItem)) {
-          return `${data.quantity}oz ${displayName}`.trim();
-        }
-        
-        // Try to extract the item's quantity and use formatUnitAndName
-        return formatUnitAndName(data.quantity, data.originalUnit, displayName);
-      }
-      
-      // Fall back to the original item if we couldn't process it properly
-      return data.originalItem.trim() || data.items[0]?.trim() || '';
-    })
-    .filter(item => item);
+      return `${formattedUnits} ${displayName}`.trim();
+    });
 };
 
 const ShoppingListItem = ({ 
