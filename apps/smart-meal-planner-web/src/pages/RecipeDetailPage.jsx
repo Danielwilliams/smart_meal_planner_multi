@@ -371,6 +371,21 @@ const RecipeDetailPage = () => {
           </Paper>
         </Grid>
         
+        {/* Recipe Notes Section */}
+        {recipe.notes && (
+          <Grid item xs={12}>
+            <Paper sx={{ p: 3, mt: 2 }}>
+              <Typography variant="h5" gutterBottom>
+                Recipe Notes
+              </Typography>
+              <Divider sx={{ mb: 2 }} />
+              <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
+                {recipe.notes}
+              </Typography>
+            </Paper>
+          </Grid>
+        )}
+        
         {/* Add Detailed Nutrition Section */}
         {nutritionData && (
           <Grid item xs={12}>
