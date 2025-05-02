@@ -87,6 +87,10 @@ def sanitize_name(raw_name: str) -> str:
     """
     clean = raw_name.lower().strip()
     
+    # Fix common misspellings
+    clean = clean.replace('tomatoe', 'tomato')
+    clean = clean.replace('potatoe', 'potato')
+    
     # IMPORTANT: We don't remove leading digits/fractions anymore
     # This was causing quantities to be stripped out
     # We'll only clean up extra spaces around numbers
@@ -100,7 +104,25 @@ def sanitize_name(raw_name: str) -> str:
     for dpat in DESCRIPTORS:
         clean = re.sub(dpat, "", clean)
     
-    # Remove trailing punctuation
+    # Special handling for items with commas that might be causing issues
+    # This helps with entries like "800 g chicken thigh, boneless"
+    if ',' in clean:
+        # Save the part after the comma as an adjective to preserve
+        parts = clean.split(',')
+        main_part = parts[0].strip()
+        adjective = ','.join(parts[1:]).strip()
+        
+        # Special handling for numbered quantities
+        if re.match(r'^\d+', main_part):
+            return main_part  # Keep just the main part with the number
+
+        # If there are meaningful adjectives like "boneless", keep them
+        if adjective and len(adjective) < 20:  # Not too long
+            clean = f"{main_part} {adjective}"
+        else:
+            clean = main_part
+    
+    # Remove trailing punctuation 
     clean = re.sub(r"[,\.\;]+$", "", clean)
     
     # Apply regex replacements
@@ -123,8 +145,23 @@ def parse_quantity_unit(ingredient_str: str):
     # Log the input for debugging
     logger.debug(f"Parsing ingredient: {ingredient_str}")
     
+    # Fix common misspellings
+    cleaned = ingredient_str.replace('tomatoe', 'tomato')
+    cleaned = cleaned.replace('potatoe', 'potato')
+    
+    # Special check for ingredient codes (like 1105 chicken breast)
+    # These are large numbers (3+ digits) at the start that should be preserved
+    ingredient_code_match = re.match(r'^(\d{3,})\s+(.+)$', cleaned)
+    if ingredient_code_match:
+        code = ingredient_code_match.group(1)
+        rest = ingredient_code_match.group(2)
+        logger.debug(f"Found ingredient code: {code} for {rest}")
+        # Return the entire string as the name, with no unit or quantity
+        # This preserves codes like "1105 chicken breast"
+        return (None, "", cleaned)
+    
     # Remove any piece/pieces references first
-    cleaned = re.sub(r'\b(?:piece|pieces)\b\s*', '', ingredient_str, flags=re.IGNORECASE).strip()
+    cleaned = re.sub(r'\b(?:piece|pieces)\b\s*', '', cleaned, flags=re.IGNORECASE).strip()
     
     # Match patterns for:
     # 1. "8 chicken breasts"
