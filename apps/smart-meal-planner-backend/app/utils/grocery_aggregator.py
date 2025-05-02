@@ -149,16 +149,46 @@ def parse_quantity_unit(ingredient_str: str):
     cleaned = ingredient_str.replace('tomatoe', 'tomato')
     cleaned = cleaned.replace('potatoe', 'potato')
     
-    # Special check for ingredient codes (like 1105 chicken breast)
-    # These are large numbers (3+ digits) at the start that should be preserved
-    ingredient_code_match = re.match(r'^(\d{3,})\s+(.+)$', cleaned)
-    if ingredient_code_match:
-        code = ingredient_code_match.group(1)
-        rest = ingredient_code_match.group(2)
-        logger.debug(f"Found ingredient code: {code} for {rest}")
-        # Return the entire string as the name, with no unit or quantity
-        # This preserves codes like "1105 chicken breast"
-        return (None, "", cleaned)
+    # Check for ingredients with explicit quantity measurements at the beginning
+    # Examples: "500g Chicken Breast", "1 lb Beef Strips", "800g chicken thigh"
+    quantity_match = re.match(r'^(\d+(?:\.\d+)?)\s*([a-zA-Z]+)?\s+(.+)$', cleaned)
+    if quantity_match:
+        raw_quantity = quantity_match.group(1)
+        unit = quantity_match.group(2) or ""
+        ingredient = quantity_match.group(3)
+        
+        logger.debug(f"Found quantity: {raw_quantity}{unit} for {ingredient}")
+        
+        # Convert the quantity to a number
+        quantity = safe_convert_to_float(raw_quantity)
+        
+        # Normalize the ingredient name
+        ingredient = ingredient.lower().strip()
+        
+        # Standardize common meat cuts and ingredients
+        if re.search(r'chicken\s+breast', ingredient, re.IGNORECASE):
+            ingredient = 'chicken breast'
+        elif re.search(r'chicken\s+thigh', ingredient, re.IGNORECASE):
+            ingredient = 'chicken thigh'
+        elif re.search(r'beef\s+strip', ingredient, re.IGNORECASE):
+            ingredient = 'beef strips'
+        elif re.search(r'bell\s+pepper', ingredient, re.IGNORECASE):
+            ingredient = 'bell peppers'
+        elif re.search(r'tomatoe?s?$', ingredient, re.IGNORECASE):
+            ingredient = 'tomatoes'
+        elif re.search(r'potatoe?s?$', ingredient, re.IGNORECASE):
+            ingredient = 'potatoes'
+        
+        # Properly pluralize names for quantities > 1
+        if quantity > 1:
+            if ingredient.endswith('y') and not any(ingredient.endswith(x) for x in ['key', 'bay']):
+                ingredient = ingredient[:-1] + 'ies'
+            elif ingredient.endswith('o') and not any(ingredient.endswith(x) for x in ['photo', 'piano']):
+                ingredient = ingredient + 'es'
+            elif not ingredient.endswith('s') and not any(ingredient in ['rice', 'beef', 'chicken', 'pork']):
+                ingredient = ingredient + 's'
+        
+        return (quantity, unit, ingredient)
     
     # Remove any piece/pieces references first
     cleaned = re.sub(r'\b(?:piece|pieces)\b\s*', '', cleaned, flags=re.IGNORECASE).strip()
@@ -414,6 +444,21 @@ def aggregate_grocery_list(menu_dict: Dict[str, Any]):
     logger.info(f"Aggregating grocery list from input type: {type(menu_dict)}")
     aggregated = {}
     
+    # Unit conversion for commonly used measures
+    UNIT_CONVERSIONS = {
+        'g_to_lbs': 0.00220462,  # 1g = 0.00220462 lbs
+        'oz_to_lbs': 0.0625,     # 1oz = 0.0625 lbs
+        'cup_to_g': {
+            'rice': 200,         # 1 cup rice ≈ 200g
+            'broccoli': 150,     # 1 cup chopped broccoli ≈ 150g
+            'bell peppers': 150, # 1 cup chopped bell peppers ≈ 150g
+            'carrots': 110,      # 1 cup chopped carrots ≈ 110g
+            'default': 130       # Default for unknown ingredients
+        },
+        'tbsp_to_ml': 15,        # 1 tbsp ≈ 15ml
+        'tsp_to_ml': 5           # 1 tsp ≈ 5ml
+    }
+    
     # If null, return empty list
     if menu_dict is None:
         logger.warning("Input menu_dict is None")
@@ -476,11 +521,23 @@ def aggregate_grocery_list(menu_dict: Dict[str, Any]):
                     logger.warning(f"Skipping ingredient {i} with empty name")
                     continue
                     
-                key = (name, unit)
-                if amount is not None:
+                # Try to convert to standard units when possible for better aggregation
+                standardized_amount = amount
+                standardized_unit = unit.lower() if unit else ""
+                
+                # Convert cups to grams for some ingredients
+                if standardized_unit in ['cup', 'cups'] and amount is not None:
+                    if name.lower() in UNIT_CONVERSIONS['cup_to_g']:
+                        conversion_factor = UNIT_CONVERSIONS['cup_to_g'][name.lower()]
+                        standardized_amount = amount * conversion_factor
+                        standardized_unit = 'g'
+                        logger.info(f"Converted {amount} cups of {name} to {standardized_amount}g")
+                
+                key = (name, standardized_unit)
+                if standardized_amount is not None:
                     current = aggregated_dict.get(key, 0.0)
-                    aggregated_dict[key] = current + amount
-                    logger.info(f"Added amount {amount} to {name}, total now: {aggregated_dict[key]}")
+                    aggregated_dict[key] = current + standardized_amount
+                    logger.info(f"Added amount {standardized_amount} to {name}, total now: {aggregated_dict[key]}")
                 elif key not in aggregated_dict:
                     aggregated_dict[key] = None
                     logger.info(f"Added {name} without amount")
@@ -543,11 +600,43 @@ def aggregate_grocery_list(menu_dict: Dict[str, Any]):
         # If not a dict but something else (like a list), try to process it
         extract_ingredients_deep(menu_dict, aggregated)
     
-    # Generate final list with smart formatting
+    # Generate final list with smart formatting and categorization
     results = []
+    
+    # Organize by categories for better readability
+    categories = {
+        'protein': ['chicken', 'beef', 'egg', 'bacon', 'pork', 'fish', 'salmon', 'tuna', 'bean'],
+        'produce': ['broccoli', 'bell pepper', 'tomato', 'lettuce', 'greens', 'carrot', 'cucumber', 
+                   'onion', 'garlic', 'potato', 'avocado', 'basil', 'ginger'],
+        'dairy': ['mozzarella', 'cheddar', 'cheese', 'yogurt', 'milk', 'cream', 'butter', 'feta'],
+        'grains': ['rice', 'quinoa', 'pasta', 'bread', 'oat'],
+        'condiments': ['sauce', 'oil', 'vinegar', 'soy sauce', 'balsamic', 'glaze', 'dressing',
+                      'salsa', 'ketchup', 'mustard', 'mayo', 'olive oil']
+    }
+    
+    def get_category(ingredient_name):
+        """Determine category based on ingredient name"""
+        for category, keywords in categories.items():
+            for keyword in keywords:
+                if keyword in ingredient_name.lower():
+                    return category
+        return 'other'
+    
+    # Format by category
+    categorized = {}
     for (name, unit), total_amt in aggregated.items():
+        category = get_category(name)
+        if category not in categorized:
+            categorized[category] = []
+            
         line = combine_amount_and_unit(total_amt, unit, name)
-        results.append({"name": line, "quantity": ""})
+        categorized[category].append(line)
+    
+    # Sort items within each category
+    for category, items in categorized.items():
+        sorted_items = sorted(items)
+        for item in sorted_items:
+            results.append({"name": item, "quantity": "", "category": category})
     
     logger.info(f"Generated grocery list with {len(results)} items")
     return results

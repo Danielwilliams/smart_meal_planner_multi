@@ -18,10 +18,31 @@ import StoreSelector from './StoreSelector';
 import apiService from '../services/apiService';
 import _ from 'lodash';
 
-const SPECIAL_UNITS = {
-  'tomato sauce': 'oz'
+// Unit conversion constants
+const CONVERSION_RATES = {
+  g_to_lbs: 0.00220462,  // 1g = 0.00220462 lbs
+  oz_to_lbs: 0.0625,     // 1oz = 0.0625 lbs
+  g_to_oz: 0.035274,     // 1g = 0.035274 oz
+  cup_to_g: {
+    // Approximate conversions for common ingredients
+    'rice': 200,         // 1 cup rice ≈ 200g
+    'broccoli': 150,     // 1 cup chopped broccoli ≈ 150g
+    'bell peppers': 150, // 1 cup chopped bell peppers ≈ 150g
+    'carrots': 110,      // 1 cup chopped carrots ≈ 110g
+    'default': 130       // Default for unknown ingredients
+  },
+  tbsp_to_ml: 15,        // 1 tbsp ≈ 15ml
+  tsp_to_ml: 5           // 1 tsp ≈ 5ml
 };
 
+// Special unit mapping for specific ingredients
+const SPECIAL_UNITS = {
+  'tomato sauce': 'oz',
+  'oil': 'tbsp',
+  'olive oil': 'tbsp'
+};
+
+// Unit mapping for standardization
 const UNIT_MAPPINGS = {
   singular: {
     'cup': 'cups',
@@ -32,7 +53,8 @@ const UNIT_MAPPINGS = {
     'tbsp': 'tbsp',
     'oz': 'oz',
     'g': 'g',
-    'ml': 'ml'
+    'ml': 'ml',
+    'lb': 'lbs'
   },
   plural: {
     'cups': 'cups',
@@ -43,15 +65,27 @@ const UNIT_MAPPINGS = {
     'tbsp': 'tbsp',
     'oz': 'oz',
     'g': 'g',
-    'ml': 'ml'
+    'ml': 'ml',
+    'lbs': 'lbs'
   }
 };
 
+// Special case formatting for quantities
 const SPECIAL_CASES = {
   'egg': (quantity) => `${quantity} eggs`,
   'eggs': (quantity) => `${quantity} eggs`,
+  'black bean': (quantity) => quantity > 1 ? `${quantity} black beans` : `${quantity} black bean`,
+  'black beans': (quantity) => `${quantity} black beans`,
+  'bacon strip': (quantity) => quantity > 1 ? `${quantity} bacon strips` : `${quantity} bacon strip`,
+  'bacon strips': (quantity) => `${quantity} bacon strips`,
+  'basil leaves': (quantity) => `${quantity} basil leaves`,
+  'basil leaf': (quantity) => quantity > 1 ? `${quantity} basil leaves` : `${quantity} basil leaf`,
+  'lettuce leaves': (quantity) => `${quantity} lettuce leaves`,
+  'lettuce leaf': (quantity) => quantity > 1 ? `${quantity} lettuce leaves` : `${quantity} lettuce leaf`,
+  'avocado': (quantity) => quantity > 1 ? `${quantity} avocados` : `${quantity} avocado`,
 };
 
+// Common ingredient compound words
 const COMPOUND_WORDS = {
   'mixed greens': true,
   'mixed berries': true,
@@ -61,15 +95,22 @@ const COMPOUND_WORDS = {
   'water chestnut': true,
   'tomato sauce': true,
   'bell pepper': true,
-  'greek yogurt': true
+  'bell peppers': true,
+  'beef strips': true,
+  'beef strip': true,
+  'chicken breast': true,
+  'chicken thigh': true,
+  'bacon strip': true,
+  'bacon strips': true,
+  'greek yogurt': true,
+  'black bean': true,
+  'black beans': true,
+  'cheddar cheese': true,
+  'olive oil': true,
+  'chicken broth': true
 };
 
-const CONVERSION_RATES = {
-  g_to_lbs: 0.00220462,
-  oz_to_lbs: 0.0625,
-  g_to_oz: 0.035274
-};
-
+// Words that naturally end in 's' but aren't plural
 const WORDS_ENDING_IN_S = [
   'hummus',
   'berries',
@@ -148,6 +189,7 @@ const UNCOUNTABLE_NOUNS = [
   'mixed greens'
 ];
 
+// Function to format units consistently
 const formatUnit = (unit, quantity, itemName) => {
   if (!unit) return '';
 
@@ -161,14 +203,13 @@ const formatUnit = (unit, quantity, itemName) => {
     .replace(/\.+/g, '.')  // Clean up dots
     .replace(/\s+/g, ' ');  // Normalize spaces
 
-  // Remove duplicate unit words with a more comprehensive pattern
-  // This handles cases like "cups cups", "tbsp tbsps", "cup cup" etc.
+  // Remove duplicate unit words
   normalizedUnit = normalizedUnit.replace(/\b(cup|cups|tbsp|tbsps|tsp|tsps|g|oz|ozs|ml|piece|pieces|slice|slices)\s+\1s?\b/gi, '$1');
   normalizedUnit = normalizedUnit.replace(/\b(cup)s?\s+(cup)s?\b/gi, 'cups');
   normalizedUnit = normalizedUnit.replace(/\b(tbsp|tbs|tablespoon)s?\s+(tbsp|tbs|tablespoon)s?\b/gi, 'tbsp');
   normalizedUnit = normalizedUnit.replace(/\b(tsp|teaspoon)s?\s+(tsp|teaspoon)s?\b/gi, 'tsp');
   
-  // Handle each unit type - standardize the format
+  // Standardize unit formats
   normalizedUnit = normalizedUnit
     .replace(/\b(cup|cups)\b/gi, 'cups')
     .replace(/\b(piece|pieces)\b/gi, 'pieces')
@@ -188,53 +229,73 @@ const formatUnit = (unit, quantity, itemName) => {
   return normalizedUnit;
 };
 
+// Function to normalize ingredient names
 const normalizeItemName = (name) => {
   // First check for compound words
   const lowerName = name.toLowerCase();
   for (const compound of Object.keys(COMPOUND_WORDS)) {
     if (lowerName.includes(compound)) {
-      return compound;
+      return {
+        name: compound,
+        wasPlural: compound.endsWith('s')
+      };
     }
   }
 
   // Extract the quantity at the beginning if present
   const quantityMatch = name.match(/^(\d+(?:\.\d+)?)\s+(.+)$/);
-  let quantity = '';
   let itemNamePart = name;
   
   if (quantityMatch) {
-    quantity = quantityMatch[1];
     itemNamePart = quantityMatch[2];
   }
+
+  // Fix misspellings
+  itemNamePart = itemNamePart
+    .replace(/tomatoe/i, 'tomato')
+    .replace(/potatoe/i, 'potato');
 
   // Process the name part without removing the initial quantities
   let normalized = itemNamePart
     .toLowerCase()
     .replace(/\s+/g, ' ')
-    // Don't remove all numbers anymore: .replace(/\d+/g, '')
     .replace(/g\s+/, ' ')
     .replace(/lbs?\s+/, ' ')
     .replace(/pieces?\s+/, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 
-  // Store the original ending for plural restoration later
+  // Remove trailing commas if present
+  normalized = normalized.replace(/,+$/, '');
+
+  // Store plural information
   const hasPlural = normalized.endsWith('s') && 
     !normalized.endsWith('ss') && // Skip words ending in 'ss' like 'glass'
     !normalized.endsWith('us'); // Skip words ending in 'us' like 'hummus'
-    
+
   // Don't remove trailing 's' for words in our exception list
   if (!WORDS_ENDING_IN_S.some(word => normalized.includes(word))) {
     normalized = normalized.replace(/s$/, '');
   }
 
-  // Store the normalized form with an indicator if it was plural
+  // Standardize common ingredients
+  if (normalized.includes('chicken breast')) {
+    normalized = 'chicken breast';
+  } else if (normalized.includes('chicken thigh')) {
+    normalized = 'chicken thigh';
+  } else if (normalized.includes('beef strip')) {
+    normalized = 'beef strip';
+  } else if (normalized.includes('bell pepper')) {
+    normalized = 'bell pepper';
+  }
+
   return {
     name: normalized,
     wasPlural: hasPlural
   };
 };
 
+// Format quantity, unit, and name into a display string
 const formatUnitAndName = (quantity, unit, name) => {
   // Check for special cases
   const normalizedName = name.toLowerCase().trim();
@@ -293,75 +354,51 @@ const formatUnitAndName = (quantity, unit, name) => {
     }
   }
   
-  // For regular names, we assume pluralization has been handled by the caller
-  // as we now track plural information at the ingredient level
-  
   // Regular formatting
   if (!unit) return `${quantity} ${normalizedName}`;
   const formattedUnit = formatUnit(unit, quantity, normalizedName);
   return `${quantity} ${formattedUnit} ${normalizedName}`.trim();
 };
 
+// Extract and convert the base quantity from an item string
 const getBaseQuantity = (item) => {
-  // Get the first number in the string, even if it's at the beginning
-  const numbers = item.match(/^\s*(\d+(?:\.\d+)?)|(\d+(?:\.\d+)?)/g) || [];
-  
-  // For this specific menu we need to treat these product codes as actual gram quantities
-  const recipeCodeToGramsMap = {
-    '1105': 500, // 500g chicken breast
-    '602': 453,  // 1lb (453g) beef strips
-    '800': 800,  // 800g product
-    '804': 400,  // Recipe had 2 cups (400g) broccoli
-    '1107': 300, // Recipe had 300g bell peppers
-    '408': 400,  // 400g tomatoes
-    '216': 8     // 8oz mozzarella (convert to 216g)
-  };
-  
-  // Check if this item starts with one of our known recipe codes
-  const recipeCodeMatch = item.match(/^(\d{3,})\s+/);
-  if (recipeCodeMatch) {
-    const code = recipeCodeMatch[1];
-    // If we have a mapped quantity for this code, use it
-    if (recipeCodeToGramsMap[code]) {
-      return recipeCodeToGramsMap[code];
-    }
+  // Match quantity and unit patterns
+  // "500g chicken", "2 cups rice", "1/2 tbsp salt", etc.
+  const unitMatch = item.match(/^(\d+(?:\.\d+)?)\s*([a-zA-Z]+)/);
+  if (unitMatch) {
+    const quantity = parseFloat(unitMatch[1]);
+    return quantity || 0;
   }
   
-  return numbers[0] ? parseFloat(numbers[0]) : 0;
+  // Match quantity without unit
+  // "2 eggs", "3 avocados", etc.
+  const numberMatch = item.match(/^(\d+(?:\.\d+)?)\s+/);
+  if (numberMatch) {
+    const quantity = parseFloat(numberMatch[1]);
+    return quantity || 0;
+  }
+  
+  // If no match found at start, try to extract any number
+  const anyNumbers = item.match(/\d+(?:\.\d+)?/g) || [];
+  return anyNumbers[0] ? parseFloat(anyNumbers[0]) : 0;
 };
 
+// Check if an item is measured in grams
 const isGrams = (item) => {
-  // Check for explicit gram notation
-  if (/\d+\s*g\b/.test(item.toLowerCase())) {
-    return true;
-  }
-  
-  // For this specific menu, these codes represent gram quantities
-  const gramCodes = ['1105', '602', '800', '804', '1107', '408'];
-  const codeMatch = item.match(/^(\d{3,})\s+/);
-  if (codeMatch && gramCodes.includes(codeMatch[1])) {
-    return true;
-  }
-  
-  return false;
+  return /\d+\s*g\b/i.test(item);
 };
 
-const isPounds = (item) => /\d+\s*(lbs?)\b/.test(item.toLowerCase());
+// Check if an item is measured in pounds
+const isPounds = (item) => {
+  return /\d+\s*lbs?\b/i.test(item);
+};
 
+// Check if an item is measured in ounces
 const isOunces = (item) => {
-  // Check for explicit ounce notation
-  if (/\d+\s*(oz)\b/.test(item.toLowerCase())) {
-    return true;
-  }
-  
-  // Check for our special code that represents ounces
-  if (item.match(/^216\s+/)) {
-    return true;
-  }
-  
-  return false;
+  return /\d+\s*oz\b/i.test(item);
 };
 
+// Convert an item to pounds for weight aggregation
 const convertToLbs = (item) => {
   const quantity = getBaseQuantity(item);
   
@@ -371,22 +408,16 @@ const convertToLbs = (item) => {
   }
   
   if (isGrams(item)) {
-    // For large gram quantities, convert to pounds
+    // Convert grams to pounds if over threshold
     if (quantity >= 200) {
       return quantity * CONVERSION_RATES.g_to_lbs;
-    } else {
-      // Small quantities are better left in grams
-      return null;
     }
   }
   
   if (isOunces(item)) {
-    // For large ounce quantities, convert to pounds
+    // Convert ounces to pounds if over threshold
     if (quantity >= 16) {
       return quantity * CONVERSION_RATES.oz_to_lbs;
-    } else {
-      // Small quantities are better left in ounces
-      return null;
     }
   }
   
@@ -394,19 +425,10 @@ const convertToLbs = (item) => {
     return quantity;
   }
   
-  // For our specific ingredient codes, convert appropriately
-  const codeMatch = item.match(/^(\d{3,})\s+/);
-  if (codeMatch) {
-    const code = codeMatch[1];
-    // These codes represent gram quantities
-    if (['1105', '602', '800', '804', '1107', '408'].includes(code)) {
-      return quantity * CONVERSION_RATES.g_to_lbs;
-    }
-  }
-  
   return null;
 };
 
+// Combine and aggregate multiple items into categorized groups
 const combineItems = (items) => {
   const groupedItems = {};
 
@@ -460,14 +482,25 @@ const combineItems = (items) => {
       groupedItems[itemKey].totalLbs += weightInLbs;
     } else {
       const quantity = getBaseQuantity(item);
-      const unitMatch = item.match(/cups|pieces|tbsp|slices|cans|leaves|g|ml|oz/i);
-      const unit = unitMatch ? unitMatch[0].toLowerCase() : '';
+      
+      // Extract unit from the item
+      let unit = '';
+      if (isGrams(item)) unit = 'g';
+      else if (isOunces(item)) unit = 'oz';
+      else if (isPounds(item)) unit = 'lbs';
+      else {
+        // Try to extract other units
+        const unitMatch = item.match(/\b(cups|cup|tbsp|tsp|pieces|slices|cans|leaves)\b/i);
+        if (unitMatch) {
+          unit = unitMatch[1].toLowerCase();
+        }
+      }
       
       if (!groupedItems[itemKey].originalUnit) {
         groupedItems[itemKey].originalUnit = unit;
       }
       
-      // Always add the quantity, even if units differ - we'll handle display later
+      // Always add the quantity, even if units differ
       groupedItems[itemKey].quantity += quantity;
       
       // If this is the first item or has no quantity, set the original unit
@@ -495,9 +528,6 @@ const combineItems = (items) => {
         // Strip trailing commas before pluralizing
         itemName = itemName.replace(/,+$/, '');
         
-        // Check if it's a numbered item (like '1105 chicken breast')
-        const isNumberedItem = /^\d+\s+/.test(itemName);
-        
         // Don't pluralize if it's already plural or quantity is 1
         if (data.wasPlural || quantity <= 1) return itemName;
         
@@ -507,13 +537,8 @@ const combineItems = (items) => {
             return itemName;
           }
         }
-
-        // Skip pluralization for numbered ingredients (like "1105 chicken breast")
-        if (isNumberedItem) {
-          return itemName;
-        }
         
-        // Handle special cases for specific items from your list
+        // Handle special cases for specific items
         if (itemName.includes('strip')) {
           return itemName.replace(/strip$/, 'strips');
         }
@@ -537,42 +562,31 @@ const combineItems = (items) => {
         }
       };
       
-      // Function to handle our special recipe codes and add appropriate units
-      const processRecipeCode = (name, quantity) => {
-        // Extract the code if present
-        const codeMatch = name.match(/^(\d{3,})\s+(.+)$/);
-        if (!codeMatch) return null;
-        
-        const code = codeMatch[1];
-        const ingredient = codeMatch[2];
-        
-        // Handle specific codes
-        const specialCases = {
-          '1105': `${quantity}g chicken breast`,
-          '602': `${quantity}g beef strips`,
-          '800': `${quantity}g ${ingredient}`,
-          '804': `${quantity}g broccoli`,
-          '1107': `${quantity}g bell peppers`, 
-          '408': `${quantity}g tomatoes`,
-          '216': `${quantity}oz mozzarella`
-        };
-        
-        return specialCases[code] || null;
-      };
-      
       // Determine if we need to pluralize based on quantity
       let displayName = name;
       if (data.quantity && data.quantity > 1) {
         displayName = pluralizeName(name, data.quantity);
       }
       
-      // Check if we have a special recipe code to process
-      const codeMatch = name.match(/^(\d{3,})\s+/);
-      if (codeMatch && data.quantity > 0) {
-        const processedItem = processRecipeCode(name, data.quantity);
-        if (processedItem) {
-          return processedItem;
-        }
+      // Special handling for common ingredients
+      // Special handling for lettuce leaves - format properly
+      if (displayName.includes('lettuce leaves')) {
+        return `${data.quantity} lettuce leaves`;
+      }
+      
+      // Special handling for basil leaves
+      if (displayName.includes('basil leaves')) {
+        return `${data.quantity} basil leaves`;
+      }
+      
+      // Handle black beans
+      if (displayName.includes('black bean')) {
+        return `${data.quantity} black beans`;
+      }
+      
+      // Handle avocados
+      if (displayName.includes('avocado') && data.quantity > 1) {
+        return `${data.quantity} avocados`;
       }
       
       if (data.hasWeight && data.totalLbs >= 0.5) {
@@ -584,7 +598,7 @@ const combineItems = (items) => {
       // If we have a quantity and the name doesn't already start with it
       if (data.quantity > 0) {
         // For gram quantities, make sure to include the unit
-        if (isGrams(data.originalItem) && !data.originalItem.includes(' g ')) {
+        if (isGrams(data.originalItem)) {
           if (data.quantity >= 1000) {
             // Convert to kg for large quantities
             return `${(data.quantity/1000).toFixed(1)} kg ${displayName}`.trim();
