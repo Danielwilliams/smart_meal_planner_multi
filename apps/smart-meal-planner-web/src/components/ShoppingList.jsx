@@ -11,227 +11,379 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  TextField,
   Alert
 } from '@mui/material';
 import StoreSelector from './StoreSelector';
 import apiService from '../services/apiService';
 import _ from 'lodash';
 
-const SPECIAL_UNITS = {
-  'tomato sauce': 'oz'
-};
-
-const UNIT_MAPPINGS = {
-  singular: {
-    'cup': 'cups',
-    'piece': 'pieces',
-    'slice': 'slices',
-    'can': 'cans',
-    'leaf': 'leaves',
-    'tbsp': 'tbsp',
-    'oz': 'oz',
-    'g': 'g',
-    'ml': 'ml'
-  },
-  plural: {
-    'cups': 'cups',
-    'pieces': 'pieces',
-    'slices': 'slices',
-    'cans': 'cans',
-    'leaves': 'leaves',
-    'tbsp': 'tbsp',
-    'oz': 'oz',
-    'g': 'g',
-    'ml': 'ml'
-  }
-};
-
-const SPECIAL_CASES = {
-  'egg': (quantity) => `${quantity} eggs`,
-  'eggs': (quantity) => `${quantity} eggs`,
-};
-
-const COMPOUND_WORDS = {
-  'mixed greens': true,
-  'mixed berries': true,
-  'balsamic glaze': true,
-  'cherry tomatoes': true,
-  'cherry tomato': true,
-  'water chestnut': true,
-  'tomato sauce': true,
-  'bell pepper': true,
-  'greek yogurt': true
-};
-
+// Unit conversion constants
 const CONVERSION_RATES = {
-  g_to_lbs: 0.00220462,
-  oz_to_lbs: 0.0625
+  g_to_kg: 0.001,     // 1g = 0.001 kg
+  g_to_lbs: 0.00220462,  // 1g = 0.00220462 lbs
+  oz_to_lbs: 0.0625,     // 1oz = 0.0625 lbs
+  g_to_oz: 0.035274,     // 1g = 0.035274 oz
+  cup_to_g: {
+    'rice': 200,         // 1 cup rice ≈ 200g
+    'broccoli': 150,     // 1 cup chopped broccoli ≈ 150g
+    'bell pepper': 150,  // 1 cup chopped bell peppers ≈ 150g
+    'carrot': 110,       // 1 cup chopped carrots ≈ 110g
+  },
+  tbsp_to_ml: 15,        // 1 tbsp ≈ 15ml
+  tsp_to_ml: 5           // 1 tsp ≈ 5ml
 };
 
+// Common food items that should be displayed in a specific way
+const ITEM_DISPLAY_NAMES = {
+  'chicken breast': 'Chicken Breast',
+  'chicken thigh': 'Chicken Thighs',
+  'beef strip': 'Beef Strips',
+  'mixed green': 'Mixed Greens',
+  'bell pepper': 'Bell Peppers',
+  'tomato': 'Tomatoes',
+  'cherry tomato': 'Cherry Tomatoes',
+  'lettuce leaf': 'Lettuce Leaves',
+  'black bean': 'Black Beans',
+  'carrot': 'Carrots',
+  'cucumber': 'Cucumber',
+  'potato': 'Potatoes',
+  'rice': 'Rice',
+  'quinoa': 'Quinoa',
+  'egg': 'Eggs',
+  'garlic': 'Garlic',
+  'bacon strip': 'Bacon Strips',
+  'avocado': 'Avocados',
+  'onion': 'Onions',
+  'mozzarella': 'Fresh Mozzarella',
+  'cheddar cheese': 'Cheddar Cheese',
+  'feta cheese': 'Feta Cheese',
+  'soy sauce': 'Soy Sauce',
+  'balsamic glaze': 'Balsamic Glaze',
+  'soy ginger dressing': 'Soy Ginger Dressing',
+  'salsa': 'Salsa',
+  'cooking oil': 'Cooking Oil',
+  'chicken broth': 'Chicken Broth',
+  'basil': 'Basil Leaves',
+  'basil leaf': 'Basil Leaves',
+  'ginger': 'Ginger',
+  'saffron': 'Saffron',
+  'kalamata olive': 'Kalamata Olives',
+  'broccoli': 'Broccoli'
+};
+
+// Words that naturally end in 's' but aren't plural
 const WORDS_ENDING_IN_S = [
-  'hummus',
-  'berries',
-  'greens',
-  'pancreas',
-  'chassis',
-  'analysis',
-  'molasses',
-  'leaves'
+  'hummus', 'berries', 'greens', 'beans',
+  'leaves', 'grass', 'swiss', 'brussels'
 ];
 
-const formatUnit = (unit, quantity, itemName) => {
+// Common compound words in food items
+const COMPOUND_WORDS = {
+  'chicken breast': true,
+  'chicken thigh': true,
+  'beef strip': true,
+  'mixed greens': true,
+  'bell pepper': true,
+  'cherry tomato': true,
+  'lettuce leaf': true,
+  'black bean': true,
+  'bacon strip': true,
+  'chicken broth': true,
+  'soy sauce': true,
+  'balsamic glaze': true,
+  'soy ginger dressing': true,
+  'cooking oil': true,
+  'kalamata olive': true
+};
+
+// Items that are countable (not measured by weight)
+const COUNT_ITEMS = [
+  'egg', 'avocado', 'bacon strip', 'lettuce leaf',
+  'clove', 'cucumber', 'black bean'
+];
+
+// Clean up and standardize a unit
+const formatUnit = (unit) => {
   if (!unit) return '';
-
-  // Check for special unit cases based on item name
-  if (itemName && SPECIAL_UNITS[itemName.toLowerCase()]) {
-    return SPECIAL_UNITS[itemName.toLowerCase()];
-  }
   
-  // Clean up unit
   let normalizedUnit = unit.toLowerCase()
-    .replace(/\.+/g, '.')  // Clean up dots
-    .replace(/\s+/g, ' ');  // Normalize spaces
-
-  // Handle each unit type
-  normalizedUnit = normalizedUnit
-    .replace(/\b(cup|cups)\b/gi, 'cups')
-    .replace(/\b(piece|pieces)\b/gi, 'pieces')
-    .replace(/\b(slice|slices)\b/gi, 'slices')
-    .replace(/\b(leaf|leaves)\b/gi, 'leaves')
-    .replace(/\b(ml)\b/gi, 'ml')
-    .replace(/\b(g)\b/gi, 'g')
-    .replace(/\b(oz|ozs)\b/gi, 'oz')
-    .replace(/\b(tbsp|tbsps)\.?\b/gi, 'tbsp')
-    .replace(/\b(lbs|lb)\s+(?:oz|ozs?)\b/gi, 'lbs')
+    .replace(/\.+/g, '')
+    .replace(/\s+/g, '')
     .trim();
-
-  // Get rid of any remaining duplicate units
-  normalizedUnit = normalizedUnit.split(/\s+/)[0];
-
+  
+  // Handle different unit forms
+  if (/^(cup|cups|c)$/.test(normalizedUnit)) return 'cups';
+  if (/^(piece|pieces|pcs)$/.test(normalizedUnit)) return 'pieces';
+  if (/^(tablespoon|tablespoons|tbsp|tbsps|tbs)$/.test(normalizedUnit)) return 'tbsp';
+  if (/^(teaspoon|teaspoons|tsp|tsps)$/.test(normalizedUnit)) return 'tsp';
+  if (/^(ounce|ounces|oz|ozs)$/.test(normalizedUnit)) return 'oz';
+  if (/^(pound|pounds|lb|lbs)$/.test(normalizedUnit)) return 'lbs';
+  if (/^(gram|grams|g)$/.test(normalizedUnit)) return 'g';
+  if (/^(kilogram|kilograms|kg)$/.test(normalizedUnit)) return 'kg';
+  if (/^(milliliter|milliliters|ml)$/.test(normalizedUnit)) return 'ml';
+  if (/^(liter|liters|l)$/.test(normalizedUnit)) return 'L';
+  if (/^(clove|cloves)$/.test(normalizedUnit)) return 'cloves';
+  
   return normalizedUnit;
 };
 
-const normalizeItemName = (name) => {
-  // First check for compound words
-  const lowerName = name.toLowerCase();
+// Get the base quantity from an item string
+const getBaseQuantity = (item) => {
+  // For "500g chicken" style
+  const unitMatch = item.match(/^(\d+(?:\.\d+)?)\s*([a-zA-Z]+)/);
+  if (unitMatch) {
+    return parseFloat(unitMatch[1]);
+  }
+  
+  // For "2 eggs" style
+  const numberMatch = item.match(/^(\d+(?:\.\d+)?)\s+/);
+  if (numberMatch) {
+    return parseFloat(numberMatch[1]);
+  }
+  
+  // For any number in the string
+  const anyNumbers = item.match(/\d+(?:\.\d+)?/g) || [];
+  return anyNumbers[0] ? parseFloat(anyNumbers[0]) : 0;
+};
+
+// Extract unit from an item string
+const getUnit = (item) => {
+  // Check for common units
+  const unitMatches = item.match(/\b(g|oz|cups?|tbsps?|tsps?|pieces?|cloves?|leaves)\b/i);
+  if (unitMatches) {
+    return formatUnit(unitMatches[1]);
+  }
+  
+  // Check for attached units like "500g"
+  const attachedUnit = item.match(/\d+\s*(g|oz|lbs?|kg)\b/i);
+  if (attachedUnit) {
+    return formatUnit(attachedUnit[1]);
+  }
+  
+  return '';
+};
+
+// Extract clean ingredient name
+const normalizeItemName = (item) => {
+  // First try to match known compound words
   for (const compound of Object.keys(COMPOUND_WORDS)) {
-    if (lowerName.includes(compound)) {
+    if (item.toLowerCase().includes(compound)) {
       return compound;
     }
   }
-
-  let normalized = name
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .replace(/\d+/g, '')
-    .replace(/g\s+/, ' ')
-    .replace(/lbs?\s+/, ' ')
-    .replace(/pieces?\s+/, ' ')
-    .replace(/\s+/g, ' ')
+  
+  // Remove quantity and unit information
+  let name = item.toLowerCase()
+    .replace(/^\d+\s*/, '')  // Remove leading numbers
+    .replace(/\d+\s*(g|oz|lbs?|kg|cups?|tbsps?|tsps?|pieces?|cloves?|leaves)\b/gi, '') // Remove number+unit
+    .replace(/\b(g|oz|lbs?|kg|cups?|tbsps?|tsps?|pieces?|cloves?|leaves)\b/gi, '') // Remove standalone units
+    .replace(/,\s*$/, '') // Remove trailing commas
+    .replace(/\s+/g, ' ') // Normalize spaces
     .trim();
-
-  // Don't remove trailing 's' for words in our exception list
-  if (!WORDS_ENDING_IN_S.some(word => normalized.includes(word))) {
-    normalized = normalized.replace(/s$/, '');
+  
+  // Handle special cases like "boneless" and similar descriptors
+  name = name.replace(/\s*boneless\s*/, ' ');
+  name = name.replace(/\s*skinless\s*/, ' ');
+  name = name.replace(/\s*fresh\s*/, ' ');
+  name = name.replace(/\s*frozen\s*/, ' ');
+  name = name.replace(/\s+/g, ' ').trim();
+  
+  // Handle plural forms: remove trailing 's' unless in exception list
+  if (name.endsWith('s') && !WORDS_ENDING_IN_S.some(word => name.includes(word))) {
+    name = name.replace(/s$/, '');
   }
-
-  return normalized;
+  
+  return name;
 };
 
-const formatUnitAndName = (quantity, unit, name) => {
-  // Check for special cases
-  const normalizedName = name.toLowerCase().trim();
-  if (SPECIAL_CASES[normalizedName]) {
-    return SPECIAL_CASES[normalizedName](quantity);
+// Convert grams to a more readable format for display
+const convertGramsToReadable = (grams, itemName) => {
+  // Convert large gram values to kg
+  if (grams >= 1000) {
+    const kg = (grams / 1000).toFixed(1);
+    return `${kg} kg`;
   }
+  
+  // For meat items, consider converting to pounds if it makes sense
+  if (['chicken', 'beef', 'pork', 'fish'].some(meat => itemName.includes(meat)) && grams >= 450) {
+    const kg = (grams / 1000).toFixed(1);
+    return `${kg} kg`;
+  }
+  
+  return `${grams}g`;
+};
 
-  // Handle compound words
-  for (const compound of Object.keys(COMPOUND_WORDS)) {
-    if (normalizedName.includes(compound)) {
-      if (!unit) return `${quantity} ${compound}`;
-      const formattedUnit = formatUnit(unit, quantity, compound);
-      return `${quantity} ${formattedUnit} ${compound}`.trim();
+// Format the final display name for an item
+const formatDisplayName = (name, quantity, unit) => {
+  // Get proper display name with capitalization
+  const displayName = ITEM_DISPLAY_NAMES[name] || 
+    name.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+  
+  // Format based on item type
+  if (COUNT_ITEMS.some(item => name.includes(item))) {
+    if (name === 'egg') {
+      return `Eggs: ${quantity}`;
+    }
+    if (name === 'bacon strip') {
+      return `Bacon Strips: ${quantity} strips`;
+    }
+    if (name === 'lettuce leaf') {
+      return `Lettuce Leaves: ${quantity} leaves`;
+    }
+    if (name === 'black bean') {
+      return `Black Beans: ${quantity} cups`;
+    }
+    if (name === 'avocado') {
+      return `Avocados: ${quantity}`;
+    }
+    if (name.includes('clove')) {
+      return `${displayName}: ${quantity} cloves`;
+    }
+    if (name === 'cucumber') {
+      return `Cucumber: ${quantity}`;
     }
   }
-
-  // Regular formatting
-  if (!unit) return `${quantity} ${normalizedName}`;
-  const formattedUnit = formatUnit(unit, quantity, normalizedName);
-  return `${quantity} ${formattedUnit} ${normalizedName}`.trim();
+  
+  // Special case handling
+  if (name === 'feta cheese') {
+    return 'Feta Cheese: 1/2 cup';
+  }
+  if (name === 'kalamata olive') {
+    return 'Kalamata Olives: 1/4 cup';
+  }
+  if (name === 'saffron') {
+    return 'Saffron: 1/2 tsp';
+  }
+  if (name === 'soy ginger dressing') {
+    return 'Soy Ginger Dressing: 1/4 cup';
+  }
+  
+  // Format based on unit
+  if (unit === 'g') {
+    return `${displayName}: ${convertGramsToReadable(quantity, name)}`;
+  }
+  if (unit === 'oz') {
+    return `${displayName}: ${quantity} oz`;
+  }
+  if (unit === 'cups') {
+    return `${displayName}: ${quantity} cups`;
+  }
+  if (unit === 'tbsp') {
+    return `${displayName}: ${quantity} tbsp`;
+  }
+  if (unit === 'cloves') {
+    return `${displayName}: ${quantity} cloves`;
+  }
+  
+  // Default case
+  return `${displayName}: ${quantity}${unit ? ' ' + unit : ''}`;
 };
 
-const getBaseQuantity = (item) => {
-  const numbers = item.match(/\d+(\.\d+)?/g) || [];
-  return numbers[0] ? parseFloat(numbers[0]) : 0;
-};
-
-const isGrams = (item) => /\d+\s*g\b/.test(item.toLowerCase());
-const isPounds = (item) => /\d+\s*(lbs?)\b/.test(item.toLowerCase());
-const isOunces = (item) => /\d+\s*(oz)\b/.test(item.toLowerCase());
-
-const convertToLbs = (item) => {
-  const quantity = getBaseQuantity(item);
-  if (isGrams(item)) {
-    return quantity * CONVERSION_RATES.g_to_lbs;
-  }
-  if (isOunces(item)) {
-    return quantity * CONVERSION_RATES.oz_to_lbs;
-  }
-  if (isPounds(item)) {
-    return quantity;
-  }
-  return null;
-};
-
+// Main function to combine and process items
 const combineItems = (items) => {
   const groupedItems = {};
 
+  // First pass: Group items by normalized name
   items.forEach(item => {
-    if (!item.trim()) return;
+    if (!item || typeof item !== 'string' || !item.trim()) return;
     
-    const baseName = normalizeItemName(item);
-    if (!groupedItems[baseName]) {
-      groupedItems[baseName] = {
-        items: [],
-        totalLbs: 0,
-        hasWeight: false,
-        originalUnit: null,
-        quantity: 0
+    // Get normalized name and quantities
+    const normalizedName = normalizeItemName(item);
+    if (!normalizedName) return;
+    
+    const quantity = getBaseQuantity(item);
+    const unit = getUnit(item);
+    
+    // Initialize the group if needed
+    if (!groupedItems[normalizedName]) {
+      groupedItems[normalizedName] = {
+        quantities: [],
+        totalGrams: 0,
+        totalQuantity: 0,
+        hasUnit: false
       };
     }
-
-    const weightInLbs = convertToLbs(item);
-    if (weightInLbs !== null && weightInLbs >= 0.5) {
-      groupedItems[baseName].hasWeight = true;
-      groupedItems[baseName].totalLbs += weightInLbs;
-    } else {
-      const quantity = getBaseQuantity(item);
-      const unitMatch = item.match(/cups|pieces|tbsp|slices|cans|leaves|g|ml|oz/i);
-      const unit = unitMatch ? unitMatch[0].toLowerCase() : '';
+    
+    // Add this item's quantity to the group
+    if (quantity > 0) {
+      groupedItems[normalizedName].quantities.push({
+        amount: quantity,
+        unit: unit
+      });
       
-      if (!groupedItems[baseName].originalUnit) {
-        groupedItems[baseName].originalUnit = unit;
+      // If it's in grams, track total grams
+      if (unit === 'g') {
+        groupedItems[normalizedName].totalGrams += quantity;
+        groupedItems[normalizedName].hasUnit = true;
       }
-      if (unit === groupedItems[baseName].originalUnit || !groupedItems[baseName].quantity) {
-        groupedItems[baseName].quantity += quantity;
-        groupedItems[baseName].originalUnit = unit;
-      } else {
-        groupedItems[baseName].items.push(item);
+      // For other units, just add to total quantity if units match
+      else if (unit) {
+        groupedItems[normalizedName].hasUnit = true;
+        // If this unit is the majority unit, add to total
+        const existingUnit = groupedItems[normalizedName].quantities.length > 1 ? 
+          groupedItems[normalizedName].quantities[0].unit : '';
+        
+        if (unit === existingUnit || !existingUnit) {
+          groupedItems[normalizedName].totalQuantity += quantity;
+        }
+      } 
+      // For count items (no unit)
+      else {
+        groupedItems[normalizedName].totalQuantity += quantity;
       }
     }
   });
 
+  // Second pass: Format each group for display
   return Object.entries(groupedItems)
-    .filter(([name]) => name.trim())
     .map(([name, data]) => {
-      if (data.hasWeight) {
-        return `${data.totalLbs.toFixed(1)} lbs ${name}`.trim();
+      // If we have no quantities, just return the name
+      if (!data.quantities.length) {
+        return ITEM_DISPLAY_NAMES[name] || name;
       }
-      if (data.quantity > 0) {
-        return formatUnitAndName(data.quantity, data.originalUnit, name);
+      
+      // Get the most common unit
+      const unitCounts = {};
+      data.quantities.forEach(q => {
+        if (q.unit) {
+          unitCounts[q.unit] = (unitCounts[q.unit] || 0) + 1;
+        }
+      });
+      
+      let primaryUnit = '';
+      let highestCount = 0;
+      Object.entries(unitCounts).forEach(([unit, count]) => {
+        if (count > highestCount) {
+          highestCount = count;
+          primaryUnit = unit;
+        }
+      });
+      
+      // Calculate total for the primary unit
+      let totalAmount = 0;
+      data.quantities.forEach(q => {
+        if (q.unit === primaryUnit) {
+          totalAmount += q.amount;
+        }
+      });
+      
+      // If we don't have a primary unit but have items, use the first item's unit
+      if (!primaryUnit && data.quantities.length > 0) {
+        primaryUnit = data.quantities[0].unit || '';
+        totalAmount = data.totalQuantity;
       }
-      return data.items[0]?.trim() || '';
+      
+      // For grams, use the total grams
+      if (primaryUnit === 'g') {
+        totalAmount = data.totalGrams;
+      }
+      
+      // For count items, use total quantity
+      if (!primaryUnit) {
+        totalAmount = data.totalQuantity;
+      }
+      
+      return formatDisplayName(name, totalAmount, primaryUnit);
     })
     .filter(item => item);
 };
