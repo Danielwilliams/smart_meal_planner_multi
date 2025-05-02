@@ -77,7 +77,63 @@ const WORDS_ENDING_IN_S = [
   'chassis',
   'analysis',
   'molasses',
-  'leaves'
+  'leaves',
+  'grass',
+  'mass',
+  'pass',
+  'bass',
+  'glass',
+  'class',
+  'express',
+  'asparagus',
+  'brussels sprouts',
+  'swiss chard',
+  'confectioners sugar'
+];
+
+// Uncountable food nouns that shouldn't be pluralized
+const UNCOUNTABLE_NOUNS = [
+  'rice',
+  'milk',
+  'water',
+  'oil',
+  'butter',
+  'flour',
+  'cheese',
+  'salt',
+  'pepper',
+  'sugar',
+  'cinnamon',
+  'bread',
+  'garlic',
+  'beef',
+  'chicken',
+  'pork',
+  'fish',
+  'salmon',
+  'tuna',
+  'pasta',
+  'spaghetti',
+  'yogurt',
+  'corn',
+  'broccoli',
+  'spinach',
+  'lettuce',
+  'celery',
+  'parsley',
+  'cilantro',
+  'mint',
+  'honey',
+  'juice',
+  'vinegar',
+  'cream',
+  'salsa',
+  'sauce',
+  'chocolate',
+  'mustard',
+  'ketchup',
+  'mayo',
+  'mayonnaise'
 ];
 
 const formatUnit = (unit, quantity, itemName) => {
@@ -129,22 +185,42 @@ const normalizeItemName = (name) => {
     }
   }
 
-  let normalized = name
+  // Extract the quantity at the beginning if present
+  const quantityMatch = name.match(/^(\d+(?:\.\d+)?)\s+(.+)$/);
+  let quantity = '';
+  let itemNamePart = name;
+  
+  if (quantityMatch) {
+    quantity = quantityMatch[1];
+    itemNamePart = quantityMatch[2];
+  }
+
+  // Process the name part without removing the initial quantities
+  let normalized = itemNamePart
     .toLowerCase()
     .replace(/\s+/g, ' ')
-    .replace(/\d+/g, '')
+    // Don't remove all numbers anymore: .replace(/\d+/g, '')
     .replace(/g\s+/, ' ')
     .replace(/lbs?\s+/, ' ')
     .replace(/pieces?\s+/, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 
+  // Store the original ending for plural restoration later
+  const hasPlural = normalized.endsWith('s') && 
+    !normalized.endsWith('ss') && // Skip words ending in 'ss' like 'glass'
+    !normalized.endsWith('us'); // Skip words ending in 'us' like 'hummus'
+    
   // Don't remove trailing 's' for words in our exception list
   if (!WORDS_ENDING_IN_S.some(word => normalized.includes(word))) {
     normalized = normalized.replace(/s$/, '');
   }
 
-  return normalized;
+  // Store the normalized form with an indicator if it was plural
+  return {
+    name: normalized,
+    wasPlural: hasPlural
+  };
 };
 
 const formatUnitAndName = (quantity, unit, name) => {
@@ -154,15 +230,60 @@ const formatUnitAndName = (quantity, unit, name) => {
     return SPECIAL_CASES[normalizedName](quantity);
   }
 
+  // Function to check if a name needs pluralization
+  const shouldPluralize = (itemName, qty) => {
+    // Don't pluralize if quantity is 1 or it already ends with 's'
+    if (qty <= 1 || itemName.endsWith('s')) return false;
+    
+    // Check if this is a word that shouldn't be pluralized
+    const lowerName = itemName.toLowerCase();
+    
+    // Check the word is in our UNCOUNTABLE_NOUNS list
+    if (UNCOUNTABLE_NOUNS.includes(lowerName)) return false;
+    
+    // Check if the word contains any uncountable nouns (for compound words)
+    for (const uncountable of UNCOUNTABLE_NOUNS) {
+      if (lowerName.includes(uncountable) && 
+          (lowerName.endsWith(uncountable) || lowerName.startsWith(uncountable))) {
+        return false;
+      }
+    }
+    
+    // If it passes all checks, it should be pluralized
+    return true;
+  };
+
   // Handle compound words
   for (const compound of Object.keys(COMPOUND_WORDS)) {
     if (normalizedName.includes(compound)) {
-      if (!unit) return `${quantity} ${compound}`;
+      let displayCompound = compound;
+      
+      // Check if we need to pluralize the compound word
+      if (shouldPluralize(compound, quantity)) {
+        // Special case for compound phrases ending in specific words
+        if (compound.endsWith('tomato')) {
+          displayCompound = compound.replace(/tomato$/, 'tomatoes');
+        } else if (compound.endsWith('potato')) {
+          displayCompound = compound.replace(/potato$/, 'potatoes');
+        } else if (compound.endsWith('y') && !compound.endsWith(' jelly')) {
+          displayCompound = compound.replace(/y$/, 'ies');
+        } else if (compound.endsWith('sh') || compound.endsWith('ch') || 
+                  compound.endsWith('x') || compound.endsWith('z')) {
+          displayCompound = `${compound}es`;
+        } else if (!compound.endsWith('s')) {
+          displayCompound = `${compound}s`;
+        }
+      }
+      
+      if (!unit) return `${quantity} ${displayCompound}`;
       const formattedUnit = formatUnit(unit, quantity, compound);
-      return `${quantity} ${formattedUnit} ${compound}`.trim();
+      return `${quantity} ${formattedUnit} ${displayCompound}`.trim();
     }
   }
-
+  
+  // For regular names, we assume pluralization has been handled by the caller
+  // as we now track plural information at the ingredient level
+  
   // Regular formatting
   if (!unit) return `${quantity} ${normalizedName}`;
   const formattedUnit = formatUnit(unit, quantity, normalizedName);
@@ -170,7 +291,8 @@ const formatUnitAndName = (quantity, unit, name) => {
 };
 
 const getBaseQuantity = (item) => {
-  const numbers = item.match(/\d+(\.\d+)?/g) || [];
+  // Get the first number in the string, even if it's at the beginning
+  const numbers = item.match(/^\s*(\d+(?:\.\d+)?)|(\d+(?:\.\d+)?)/g) || [];
   return numbers[0] ? parseFloat(numbers[0]) : 0;
 };
 
@@ -198,34 +320,61 @@ const combineItems = (items) => {
   items.forEach(item => {
     if (!item.trim()) return;
     
-    const baseName = normalizeItemName(item);
-    if (!groupedItems[baseName]) {
-      groupedItems[baseName] = {
+    // Check if the item starts with a number
+    const hasLeadingNumber = /^\s*\d+/.test(item);
+    
+    // For items with leading numbers, we want to preserve them
+    const nameInfo = normalizeItemName(item);
+    // Handle the new return value from normalizeItemName
+    const baseName = typeof nameInfo === 'object' ? nameInfo.name : nameInfo;
+    const wasPlural = typeof nameInfo === 'object' ? nameInfo.wasPlural : false;
+    
+    const itemKey = baseName; // Use as the key for grouping
+    
+    if (!groupedItems[itemKey]) {
+      groupedItems[itemKey] = {
         items: [],
         totalLbs: 0,
         hasWeight: false,
         originalUnit: null,
-        quantity: 0
+        quantity: 0,
+        originalItem: item, // Store the original item to preserve formatting
+        wasPlural: wasPlural // Store plural flag
       };
+    } else {
+      // Update plural flag if any version was plural
+      groupedItems[itemKey].wasPlural = groupedItems[itemKey].wasPlural || wasPlural;
     }
 
     const weightInLbs = convertToLbs(item);
     if (weightInLbs !== null && weightInLbs >= 0.5) {
-      groupedItems[baseName].hasWeight = true;
-      groupedItems[baseName].totalLbs += weightInLbs;
+      groupedItems[itemKey].hasWeight = true;
+      groupedItems[itemKey].totalLbs += weightInLbs;
     } else {
       const quantity = getBaseQuantity(item);
       const unitMatch = item.match(/cups|pieces|tbsp|slices|cans|leaves|g|ml|oz/i);
       const unit = unitMatch ? unitMatch[0].toLowerCase() : '';
       
-      if (!groupedItems[baseName].originalUnit) {
-        groupedItems[baseName].originalUnit = unit;
+      if (!groupedItems[itemKey].originalUnit) {
+        groupedItems[itemKey].originalUnit = unit;
       }
-      if (unit === groupedItems[baseName].originalUnit || !groupedItems[baseName].quantity) {
-        groupedItems[baseName].quantity += quantity;
-        groupedItems[baseName].originalUnit = unit;
+      
+      // Always add the quantity, even if units differ - we'll handle display later
+      groupedItems[itemKey].quantity += quantity;
+      
+      // If this is the first item or has no quantity, set the original unit
+      if (unit === groupedItems[itemKey].originalUnit || 
+          !groupedItems[itemKey].quantity || 
+          groupedItems[itemKey].quantity === quantity) {
+        groupedItems[itemKey].originalUnit = unit;
       } else {
-        groupedItems[baseName].items.push(item);
+        // Store different unit items separately for reference
+        groupedItems[itemKey].items.push(item);
+      }
+      
+      // If this item has a leading number but current original doesn't, use this one as original
+      if (hasLeadingNumber && !/^\s*\d+/.test(groupedItems[itemKey].originalItem)) {
+        groupedItems[itemKey].originalItem = item;
       }
     }
   });
@@ -233,13 +382,46 @@ const combineItems = (items) => {
   return Object.entries(groupedItems)
     .filter(([name]) => name.trim())
     .map(([name, data]) => {
+      // Function to pluralize an item name if needed
+      const pluralizeName = (itemName, quantity) => {
+        // Don't pluralize if it's already plural or quantity is 1
+        if (data.wasPlural || quantity <= 1) return itemName;
+        
+        // Handle special plural cases
+        if (itemName.endsWith('y') && !['key', 'bay', 'day'].includes(itemName)) {
+          return itemName.replace(/y$/, 'ies');
+        } else if (itemName.endsWith('sh') || itemName.endsWith('ch') || 
+                  itemName.endsWith('s') || itemName.endsWith('x') || 
+                  itemName.endsWith('z')) {
+          return `${itemName}es`;
+        } else if (itemName === 'tomato') {
+          return 'tomatoes';
+        } else if (itemName === 'potato') {
+          return 'potatoes';
+        } else {
+          // Default pluralization
+          return `${itemName}s`;
+        }
+      };
+      
+      // Determine if we need to pluralize based on quantity
+      let displayName = name;
+      if (data.quantity && data.quantity > 1) {
+        displayName = pluralizeName(name, data.quantity);
+      }
+      
       if (data.hasWeight) {
-        return `${data.totalLbs.toFixed(1)} lbs ${name}`.trim();
+        return `${data.totalLbs.toFixed(1)} lbs ${displayName}`.trim();
       }
+      
+      // If we have a quantity and the name doesn't already start with it
       if (data.quantity > 0) {
-        return formatUnitAndName(data.quantity, data.originalUnit, name);
+        // Try to extract the item's quantity and use formatUnitAndName
+        return formatUnitAndName(data.quantity, data.originalUnit, displayName);
       }
-      return data.items[0]?.trim() || '';
+      
+      // Fall back to the original item if we couldn't process it properly
+      return data.originalItem.trim() || data.items[0]?.trim() || '';
     })
     .filter(item => item);
 };

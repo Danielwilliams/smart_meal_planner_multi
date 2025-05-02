@@ -83,12 +83,14 @@ def sanitize_unit(unit_str: str) -> str:
 
 def sanitize_name(raw_name: str) -> str:
     """
-    Clean up ingredient names
+    Clean up ingredient names while preserving numbers
     """
     clean = raw_name.lower().strip()
     
-    # Remove leading digits/fractions
-    clean = re.sub(r"^[\d/\.\s]+", "", clean).strip()
+    # IMPORTANT: We don't remove leading digits/fractions anymore
+    # This was causing quantities to be stripped out
+    # We'll only clean up extra spaces around numbers
+    clean = re.sub(r"(\d+)\s+", r"\1 ", clean).strip()
     
     # Remove filler phrases
     for fpat in FILLERS:
@@ -113,7 +115,14 @@ def sanitize_name(raw_name: str) -> str:
 def parse_quantity_unit(ingredient_str: str):
     """
     Parse quantity and unit from ingredient string with better handling of amounts
+    and preserving numbers in names
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    # Log the input for debugging
+    logger.debug(f"Parsing ingredient: {ingredient_str}")
+    
     # Remove any piece/pieces references first
     cleaned = re.sub(r'\b(?:piece|pieces)\b\s*', '', ingredient_str, flags=re.IGNORECASE).strip()
     
@@ -121,6 +130,7 @@ def parse_quantity_unit(ingredient_str: str):
     # 1. "8 chicken breasts"
     # 2. "1/2 cup milk"
     # 3. "1.5 tbsp sugar"
+    # 4. "800 g chicken" - number with unit
     patterns = [
         # Pattern for number + unit + ingredient
         r'^(\d+(?:/\d+)?|\d+(?:\.\d+)?)\s*([a-zA-Z]+)?\s+(.+)$',
@@ -142,12 +152,26 @@ def parse_quantity_unit(ingredient_str: str):
                 name = groups[1]
                 
             # Remove any remaining piece references from unit
-            if unit.lower() in ['piece', 'pieces']:
+            if unit and unit.lower() in ['piece', 'pieces']:
                 unit = ''
                 
+            # Check for numbers in the name - might be part of the name (like "800 chicken")
+            # This is particularly important for items that start with numbers
+            if re.match(r'^\d+\s+\w+', name):
+                logger.debug(f"Found number in name: {name}")
+                # We'll keep it as is, since it might be intentional
+            
+            logger.debug(f"Parsed: amount={amount}, unit='{unit}', name='{name}'")
             return (amount, unit, name.strip())
     
-    # If no patterns match, return original string as name
+    # If no patterns match, check if it's just a number
+    number_only_match = re.match(r'^(\d+(?:/\d+)?|\d+(?:\.\d+)?)$', cleaned)
+    if number_only_match:
+        amount = safe_convert_to_float(number_only_match.group(1))
+        return (amount, "", "")
+    
+    # If still no match, return original string as name
+    logger.debug(f"No patterns matched, returning as name: {cleaned}")
     return (None, "", cleaned)
 
 def standardize_ingredient(ing: Any):
@@ -230,8 +254,12 @@ def standardize_ingredient(ing: Any):
 
 def combine_amount_and_unit(amount_float: float, unit: str, name: str) -> str:
     """
-    Combine amount, unit and name into display string without pieces
+    Combine amount, unit and name into display string without pieces,
+    preserving numbers in names and ensuring proper pluralization
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
     if amount_float is None:
         return name
     
@@ -239,23 +267,102 @@ def combine_amount_and_unit(amount_float: float, unit: str, name: str) -> str:
         # Format the amount
         fraction = Fraction(amount_float).limit_denominator(16)
         quantity_str = str(fraction)
+        quantity_val = float(amount_float)
         
         # Check for simple whole numbers to make them cleaner
         if fraction.denominator == 1:
             quantity_str = str(fraction.numerator)
         
+        # Function to properly pluralize words based on quantity
+        def pluralize_if_needed(item_name, quantity):
+            # Skip pluralization for uncountable nouns
+            uncountable = [
+                'rice', 'milk', 'water', 'oil', 'butter', 'flour', 'cheese',
+                'salt', 'pepper', 'sugar', 'cinnamon', 'bread', 'garlic',
+                'beef', 'chicken', 'pork', 'fish', 'salmon', 'tuna', 'pasta',
+                'spaghetti', 'yogurt', 'corn', 'broccoli', 'spinach', 'lettuce',
+                'celery', 'parsley', 'cilantro', 'mint', 'honey', 'juice',
+                'vinegar', 'cream', 'salsa', 'sauce', 'chocolate', 'mustard',
+                'ketchup', 'mayo', 'mayonnaise', 'hummus', 'asparagus'
+            ]
+            
+            # Words that naturally end in 's' but aren't plural
+            s_ending_words = [
+                'hummus', 'molasses', 'asparagus', 'brussels sprouts', 'swiss chard'
+            ]
+            
+            # Check if it's an uncountable noun
+            is_uncountable = False
+            item_lower = item_name.lower()
+            
+            if item_lower in uncountable:
+                is_uncountable = True
+            else:
+                # Check if item contains an uncountable noun
+                for word in uncountable:
+                    if item_lower.endswith(word) or item_lower.startswith(word):
+                        is_uncountable = True
+                        break
+            
+            # Check if it naturally ends in 's'
+            ends_in_natural_s = any(item_lower == word or item_lower.endswith(' ' + word) for word in s_ending_words)
+            
+            # Don't pluralize if already plural, naturally ends in 's', quantity is 1, or uncountable
+            if (quantity <= 1 or 
+                (item_name.endswith('s') and not ends_in_natural_s) or 
+                is_uncountable):
+                return item_name
+                
+            # Special cases
+            if item_name.endswith('y') and not any(item_name.endswith(x) for x in ['key', 'bay', 'day']):
+                return item_name[:-1] + 'ies'
+            elif item_name.endswith('sh') or item_name.endswith('ch') or item_name.endswith('x') or item_name.endswith('z'):
+                return item_name + 'es'
+            elif item_name == 'tomato':
+                return 'tomatoes'
+            elif item_name == 'potato':
+                return 'potatoes'
+            else:
+                return item_name + 's'
+        
+        # Check if the name already starts with a number
+        has_leading_number = re.match(r'^\d+', name.strip())
+        
+        # If name already starts with a number, we might want to preserve it 
+        # as it could be part of the name (e.g. "800 g chicken")
+        if has_leading_number:
+            logger.debug(f"Name starts with number: {name}")
+            # In most cases, we'll keep the name as is and just add the quantity
+            # to avoid replacing meaningful numbers in names
+            return f"{quantity_str} {name}"
+        
         # Clean up name to prevent cases where unit is already in the name
         # Extract first word to check if it matches the unit
-        first_word = name.split()[0].lower() if name and ' ' in name else ""
+        name_parts = name.split()
+        first_word = name_parts[0].lower() if name and name_parts else ""
+        
+        # Process name for pluralization if quantity > 1
+        pluralized_name = name
+        if quantity_val > 1:
+            # For multi-word names, only pluralize the last word if appropriate
+            if len(name_parts) > 1:
+                last_word = name_parts[-1].lower()
+                pluralized_last = pluralize_if_needed(last_word, quantity_val)
+                if pluralized_last != last_word:
+                    name_parts[-1] = pluralized_last
+                    pluralized_name = ' '.join(name_parts)
+            else:
+                # For single word names
+                pluralized_name = pluralize_if_needed(name, quantity_val)
         
         # Check if the unit is already in the name (to avoid "2 cups cups milk")
         if unit and unit.lower() not in ['piece', 'pieces']:
             # If the name already starts with the unit, don't repeat it
             if first_word == unit.lower() or first_word == unit.lower() + 's':
-                return f"{quantity_str} {name}"
+                return f"{quantity_str} {pluralized_name}"
             else:
-                return f"{quantity_str} {unit} {name}"
-        return f"{quantity_str} {name}"
+                return f"{quantity_str} {unit} {pluralized_name}"
+        return f"{quantity_str} {pluralized_name}"
     except (ValueError, TypeError):
         return name
 
