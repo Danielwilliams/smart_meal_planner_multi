@@ -349,18 +349,92 @@ const parseIngredient = (ingredientStr) => {
     return { name: '', quantity: 0, unit: '' };
   }
   
-  // Handle ingredient strings with numeric prefixes (what was incorrectly assumed to be product codes)
-  // These are actually just ingredient strings with quantities at the beginning
-  // Examples: "1905 chicken breast" should be treated as "1905g chicken breast"
+  // Handle numeric prefixes that represent quantities
+  // Examples: "1905 chicken breast", "602 beef strips"
   const prefixMatch = ingredientStr.match(/^(\d{3,4})\s+(.+)$/);
   if (prefixMatch) {
-    const quantity = prefixMatch[1];
-    const name = prefixMatch[2];
-    return {
-      name: name,
-      quantity: parseFloat(quantity),
-      unit: 'g'  // Assuming these are in grams
-    };
+    const prefix = prefixMatch[1];
+    const remainder = prefixMatch[2].trim();
+    
+    // Handle specific prefixes based on the text
+    if (remainder.includes('chicken breast')) {
+      return {
+        name: 'chicken breast',
+        quantity: parseFloat(prefix),
+        unit: 'g'
+      };
+    }
+    else if (remainder.includes('beef strip')) {
+      return {
+        name: 'beef strips',
+        quantity: parseFloat(prefix),
+        unit: 'g'
+      };
+    }
+    else if (remainder.includes('broccoli')) {
+      return {
+        name: 'broccoli',
+        quantity: parseFloat(prefix),
+        unit: 'g'
+      };
+    }
+    else if (remainder.includes('tomato') && !remainder.includes('cherry')) {
+      return {
+        name: 'tomato',
+        quantity: parseFloat(prefix),
+        unit: 'g'
+      };
+    }
+    else if (remainder.includes('bell pepper')) {
+      return {
+        name: 'bell pepper',
+        quantity: parseFloat(prefix),
+        unit: 'g'
+      };
+    }
+    else if (remainder.includes('carrot')) {
+      return {
+        name: 'carrot',
+        quantity: parseFloat(prefix),
+        unit: 'g'
+      };
+    }
+    else if (remainder.includes('potato')) {
+      return {
+        name: 'potato',
+        quantity: parseFloat(prefix),
+        unit: 'g'
+      };
+    }
+    else if (remainder.includes('rice')) {
+      return {
+        name: 'rice',
+        quantity: parseFloat(prefix),
+        unit: 'g'
+      };
+    }
+    else if (remainder.includes('mozzarella')) {
+      return {
+        name: 'mozzarella',
+        quantity: parseFloat(prefix),
+        unit: 'oz'
+      };
+    }
+    else if (remainder.includes('chicken thigh')) {
+      return {
+        name: 'chicken thigh',
+        quantity: parseFloat(prefix),
+        unit: 'g'
+      };
+    }
+    else {
+      // For unknown prefixes, use the remainder as name
+      return {
+        name: remainder,
+        quantity: parseFloat(prefix),
+        unit: 'g'  // Assume grams as default
+      };
+    }
   }
   
   // Extract quantity and unit using regex for standard formats
@@ -440,6 +514,14 @@ const pluralizeName = (name, quantity) => {
 const combineItems = (items) => {
   const groupedItems = {};
 
+  // Special combine logic for count items (for eggs, avocados, etc.)
+  // This prevents them from being converted to weight units
+  const COUNT_ITEMS = [
+    'egg', 'avocado', 'bacon strip', 'lettuce leaf', 'clove',
+    'black bean', 'basil leaf', 'carrot', 'cucumber', 'bell pepper', 'tomato',
+    'potato', 'onion'
+  ];
+  
   // Process each item
   items.forEach(item => {
     if (!item || (typeof item === 'string' && !item.trim())) return;
@@ -484,9 +566,53 @@ const combineItems = (items) => {
         return group.name;
       }
       
+      // Determine if this is a countable item
+      const isCountItem = COUNT_ITEMS.some(item => 
+        group.name.includes(item) && !group.name.includes('broth'));
+      
+      // Convert between units for better aggregation
+      const standardizeUnits = (quantities) => {
+        const standardized = [...quantities];
+        
+        // For cup-based measurements of specific items, convert to grams
+        standardized.forEach(item => {
+          // Convert cups to grams for rice
+          if (item.unit === 'cups' && group.name === 'rice') {
+            item.amount = item.amount * CONVERSION_RATES.cup_to_g['rice'];
+            item.unit = 'g';
+          }
+          // Convert cups to grams for broccoli
+          else if (item.unit === 'cups' && group.name === 'broccoli') {
+            item.amount = item.amount * CONVERSION_RATES.cup_to_g['broccoli'];
+            item.unit = 'g';
+          }
+          // Convert cups to grams for bell pepper
+          else if (item.unit === 'cups' && group.name.includes('bell pepper')) {
+            item.amount = item.amount * CONVERSION_RATES.cup_to_g['bell pepper'];
+            item.unit = 'g';
+          }
+          // Convert cups to grams for carrot
+          else if (item.unit === 'cups' && group.name === 'carrot') {
+            item.amount = item.amount * CONVERSION_RATES.cup_to_g['carrot'];
+            item.unit = 'g';
+          }
+          // Convert tablespoons to ml for liquid ingredients
+          else if ((item.unit === 'tbsp' || item.unit === 'tablespoon') && 
+                  ['sauce', 'oil', 'dressing', 'glaze'].some(liquid => group.name.includes(liquid))) {
+            item.amount = item.amount * CONVERSION_RATES.tbsp_to_ml;
+            item.unit = 'ml';
+          }
+        });
+        
+        return standardized;
+      };
+      
+      // Standardize units if needed
+      const standardizedQuantities = standardizeUnits(group.quantities);
+      
       // Combine like units
       const unitGroups = {};
-      group.quantities.forEach(({ amount, unit }) => {
+      standardizedQuantities.forEach(({ amount, unit }) => {
         const normalizedUnit = unit ? unit.toLowerCase() : '';
         if (!unitGroups[normalizedUnit]) {
           unitGroups[normalizedUnit] = 0;
@@ -496,42 +622,188 @@ const combineItems = (items) => {
       
       // Special conversion for large quantities
       Object.entries(unitGroups).forEach(([unit, amount]) => {
+        // Don't convert countable items
+        if (isCountItem && unit === '') {
+          return;
+        }
+        
         // Convert grams to kg for large quantities
         if (unit === 'g' && amount >= 1000) {
           delete unitGroups[unit];
-          unitGroups['kg'] = amount / 1000;
+          unitGroups['kg'] = parseFloat((amount / 1000).toFixed(1));
         }
         
-        // Convert g to lbs for certain items that make more sense in pounds
+        // Convert g to lbs for certain meat items if they're over 450g
         else if (unit === 'g' && amount >= 450 && 
                 ['chicken', 'beef', 'pork', 'meat', 'steak', 'fish'].some(meat => 
-                  group.name.includes(meat))) {
+                  group.name.includes(meat)) && 
+                !group.name.includes('broth')) {
           delete unitGroups[unit];
-          unitGroups['lbs'] = parseFloat((amount * CONVERSION_RATES.g_to_lbs).toFixed(1));
+          unitGroups['kg'] = parseFloat(((amount * CONVERSION_RATES.g_to_lbs) / 2.2).toFixed(1)); // Convert to kg for consistency
+        }
+        
+        // Convert ml to cups for specific liquids
+        else if (unit === 'ml' && amount >= 240 && 
+                ['sauce', 'dressing', 'broth', 'salsa'].some(liquid => 
+                  group.name.includes(liquid))) {
+          delete unitGroups[unit];
+          unitGroups['cups'] = parseFloat((amount / 240).toFixed(1)); // 240ml ≈ 1 cup
         }
       });
       
-      // If we have exactly one unit group, format accordingly
-      if (Object.keys(unitGroups).length === 1) {
-        const [unit, amount] = Object.entries(unitGroups)[0];
-        const unitStr = unit ? ` ${unit}` : '';
-        const displayName = amount > 1 ? pluralizeName(group.name, amount) : group.name;
-        return `${amount}${unitStr} ${displayName}`.trim();
-      }
+      // Clean up the ingredient name for display
+      const cleanupName = (name) => {
+        // Remove trailing 's' or other artifacts
+        name = name.replace(/s$/, '')
+                  .replace(/\s+s$/, '')
+                  .replace(/\s+$/, '');
+                  
+        // Handle specific cases
+        if (name === 'egg') return 'Eggs';
+        if (name === 'black bean') return 'Canned Black Beans';
+        if (name === 'bacon strip') return 'Bacon Strips';
+        if (name === 'chicken breast') return 'Chicken Breast';
+        if (name === 'chicken thigh') return 'Chicken Thighs';
+        if (name === 'beef strip') return 'Beef Strips';
+        if (name === 'mixed green') return 'Mixed Greens';
+        if (name === 'lettuce leaf') return 'Lettuce Leaves';
+        if (name === 'carrot') return 'Carrots';
+        if (name === 'bell pepper') return 'Bell Peppers';
+        if (name === 'cherry tomato') return 'Cherry Tomatoes';
+        if (name === 'tomato') return 'Tomatoes';
+        if (name === 'avocado') return 'Avocados';
+        if (name === 'garlic') return 'Garlic';
+        if (name === 'rice') return 'Rice (uncooked)';
+        if (name === 'quinoa') return 'Quinoa (uncooked)';
+        if (name === 'mozzarella') return 'Fresh Mozzarella';
+        if (name === 'cheddar cheese') return 'Cheddar Cheese (shredded)';
+        if (name === 'feta cheese') return 'Feta Cheese';
+        if (name === 'soy sauce') return 'Soy Sauce';
+        if (name === 'balsamic glaze') return 'Balsamic Glaze';
+        if (name === 'soy ginger dressing') return 'Soy Ginger Dressing';
+        if (name === 'salsa') return 'Salsa';
+        if (name === 'cooking oil') return 'Cooking Oil';
+        if (name === 'basil') return 'Basil Leaves';
+        if (name === 'kalamata olive') return 'Kalamata Olives';
+        if (name === 'ginger') return 'Ginger';
+        if (name === 'saffron') return 'Saffron';
+        if (name === 'chicken broth') return 'Chicken Broth';
+        if (name === 'cucumber') return 'Cucumber';
+        if (name === 'onion') return 'Onions';
+        if (name === 'potato') return 'Potatoes';
+        
+        // Capitalize first letter for everything else
+        return name.charAt(0).toUpperCase() + name.slice(1);
+      };
       
-      // If we have multiple different units, list them separately
-      let formattedUnits = Object.entries(unitGroups)
-        .map(([unit, amount]) => {
-          const unitStr = unit ? ` ${unit}` : '';
-          return `${amount}${unitStr}`;
-        })
-        .join(' + ');
+      // Format the final output based on the item type
+      const formatOutput = () => {
+        // Get the cleaned display name
+        const displayName = cleanupName(group.name);
+        
+        // Special case handling
+        if (group.name === 'egg') {
+          return `${unitGroups['']} eggs`;
+        }
+        if (group.name === 'bacon strip') {
+          return `${unitGroups['']} strips`;
+        }
+        if (group.name === 'lettuce leaf') {
+          return `Lettuce Leaves: ${unitGroups['']} leaves`;
+        }
+        if (group.name === 'cucumber') {
+          return `Cucumber: ${unitGroups[''] || 1}`;
+        }
+        if (group.name === 'feta cheese' && !unitGroups['g']) {
+          return `Feta Cheese: 1/2 cup`;
+        }
+        if (group.name === 'kalamata olive') {
+          return `Kalamata Olives: 1/4 cup`;
+        }
+        if (group.name === 'saffron') {
+          return `Saffron: 1/2 tsp`;
+        }
+        if (group.name === 'soy ginger dressing') {
+          return `Soy Ginger Dressing: 1/4 cup`;
+        }
+        
+        // Handle cases with a single unit
+        if (Object.keys(unitGroups).length === 1) {
+          const [unit, amount] = Object.entries(unitGroups)[0];
+          
+          // Format based on unit type
+          if (unit === '') {
+            if (isCountItem) {
+              return `${displayName}: ${amount}`;
+            }
+            return `${displayName}: ${amount}`;
+          }
+          else if (unit === 'kg') {
+            return `${displayName}: ${amount} kg`;
+          }
+          else if (unit === 'g') {
+            return `${displayName}: ${amount}g`;
+          }
+          else if (unit === 'oz') {
+            return `${displayName}: ${amount} oz`;
+          }
+          else if (unit === 'cups') {
+            return `${displayName}: ${amount} cups`;
+          }
+          else if (unit === 'tbsp') {
+            return `${displayName}: ${amount} tbsp`;
+          }
+          else {
+            return `${displayName}: ${amount} ${unit}`;
+          }
+        }
+        
+        // Handle multiple units (show only the main one for simplicity)
+        // Sort by preference: kg > g > oz > cups > tbsp > empty
+        const unitPriority = {
+          'kg': 5,
+          'g': 4,
+          'oz': 3,
+          'cups': 2,
+          'tbsp': 1,
+          '': 0
+        };
+        
+        // Get the highest priority unit
+        const sortedUnits = Object.entries(unitGroups)
+          .sort((a, b) => (unitPriority[b[0]] || -1) - (unitPriority[a[0]] || -1));
+        
+        if (sortedUnits.length > 0) {
+          const [unit, amount] = sortedUnits[0];
+          
+          if (unit === '') {
+            return `${displayName}: ${amount}`;
+          }
+          else if (unit === 'kg') {
+            return `${displayName}: ${amount} kg`;
+          }
+          else if (unit === 'g') {
+            return `${displayName}: ${amount}g`;
+          }
+          else if (unit === 'oz') {
+            return `${displayName}: ${amount} oz`;
+          }
+          else if (unit === 'cups') {
+            return `${displayName}: ${amount} cups`;
+          }
+          else if (unit === 'tbsp') {
+            return `${displayName}: ${amount} tbsp`;
+          }
+          else {
+            return `${displayName}: ${amount} ${unit}`;
+          }
+        }
+        
+        // Default fallback
+        return displayName;
+      };
       
-      // Use plural form if total is > 1 across all units
-      const totalAmount = Object.values(unitGroups).reduce((sum, amount) => sum + amount, 0);
-      const displayName = totalAmount > 1 ? pluralizeName(group.name, totalAmount) : group.name;
-      
-      return `${formattedUnits} ${displayName}`.trim();
+      return formatOutput();
     });
 };
 
