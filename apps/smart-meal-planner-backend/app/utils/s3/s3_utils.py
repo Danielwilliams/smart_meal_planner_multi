@@ -238,22 +238,12 @@ def force_initialize_s3_helper():
     else:
         logger.error("Missing required S3 environment variables for runtime initialization")
         
-    # If we reach here, we couldn't initialize
-    # Use hardcoded values as a last resort for testing
-    try:
-        logger.warning("Attempting to create S3Helper with HARDCODED values for TESTING only")
-        # If we're still failing, let's try hardcoded values as a last resort for testing
-        os.environ["AWS_ACCESS_KEY_ID"] = "AKIAYG7OC5QDAK5NPY7T"  # WARNING: This is temporary for testing!
-        os.environ["AWS_SECRET_ACCESS_KEY"] = "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"  # WARNING: Temporary!
-        os.environ["S3_BUCKET_NAME"] = "smartmealplanneriomultiuser-images"
-        os.environ["AWS_REGION"] = "us-east-2"
-        
-        test_helper = S3Helper()
-        s3_helper = test_helper
-        logger.info("Created S3Helper with hardcoded test values")
-        return test_helper
-    except Exception as e:
-        logger.error(f"Failed to initialize S3Helper with hardcoded values: {str(e)}", exc_info=True)
+    # Log that we couldn't initialize
+    logger.error("Failed to initialize S3 helper with environment variables")
+    logger.error("Please set the AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, S3_BUCKET_NAME, and AWS_REGION environment variables in your Railway deployment")
+    
+    # NEVER use hardcoded credentials - this is a security risk!
+    # Instead, return the existing helper which will raise appropriate errors
         
     return s3_helper
 
