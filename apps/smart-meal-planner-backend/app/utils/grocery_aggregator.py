@@ -244,9 +244,17 @@ def combine_amount_and_unit(amount_float: float, unit: str, name: str) -> str:
         if fraction.denominator == 1:
             quantity_str = str(fraction.numerator)
         
-        # Build the string
+        # Clean up name to prevent cases where unit is already in the name
+        # Extract first word to check if it matches the unit
+        first_word = name.split()[0].lower() if name and ' ' in name else ""
+        
+        # Check if the unit is already in the name (to avoid "2 cups cups milk")
         if unit and unit.lower() not in ['piece', 'pieces']:
-            return f"{quantity_str} {unit} {name}"
+            # If the name already starts with the unit, don't repeat it
+            if first_word == unit.lower() or first_word == unit.lower() + 's':
+                return f"{quantity_str} {name}"
+            else:
+                return f"{quantity_str} {unit} {name}"
         return f"{quantity_str} {name}"
     except (ValueError, TypeError):
         return name

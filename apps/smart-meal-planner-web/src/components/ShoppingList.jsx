@@ -93,7 +93,14 @@ const formatUnit = (unit, quantity, itemName) => {
     .replace(/\.+/g, '.')  // Clean up dots
     .replace(/\s+/g, ' ');  // Normalize spaces
 
-  // Handle each unit type
+  // Remove duplicate unit words with a more comprehensive pattern
+  // This handles cases like "cups cups", "tbsp tbsps", "cup cup" etc.
+  normalizedUnit = normalizedUnit.replace(/\b(cup|cups|tbsp|tbsps|tsp|tsps|g|oz|ozs|ml|piece|pieces|slice|slices)\s+\1s?\b/gi, '$1');
+  normalizedUnit = normalizedUnit.replace(/\b(cup)s?\s+(cup)s?\b/gi, 'cups');
+  normalizedUnit = normalizedUnit.replace(/\b(tbsp|tbs|tablespoon)s?\s+(tbsp|tbs|tablespoon)s?\b/gi, 'tbsp');
+  normalizedUnit = normalizedUnit.replace(/\b(tsp|teaspoon)s?\s+(tsp|teaspoon)s?\b/gi, 'tsp');
+  
+  // Handle each unit type - standardize the format
   normalizedUnit = normalizedUnit
     .replace(/\b(cup|cups)\b/gi, 'cups')
     .replace(/\b(piece|pieces)\b/gi, 'pieces')
@@ -102,7 +109,8 @@ const formatUnit = (unit, quantity, itemName) => {
     .replace(/\b(ml)\b/gi, 'ml')
     .replace(/\b(g)\b/gi, 'g')
     .replace(/\b(oz|ozs)\b/gi, 'oz')
-    .replace(/\b(tbsp|tbsps)\.?\b/gi, 'tbsp')
+    .replace(/\b(tbsp|tbsps|tbs|tablespoon|tablespoons)\.?\b/gi, 'tbsp')
+    .replace(/\b(tsp|tsps|teaspoon|teaspoons)\.?\b/gi, 'tsp')
     .replace(/\b(lbs|lb)\s+(?:oz|ozs?)\b/gi, 'lbs')
     .trim();
 
