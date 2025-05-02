@@ -33,12 +33,18 @@ async def upload_recipe_image(
         logger.debug(f"Content type: {file.content_type}")
         logger.debug(f"User: {user.get('user_id') if user else 'None'}")
         
+        from ..utils.s3.s3_utils import force_initialize_s3_helper
+        
+        # Force initialize S3 helper if it wasn't properly initialized at startup
+        logger.info("Force initializing S3 helper to ensure it has latest environment variables...")
+        s3 = force_initialize_s3_helper()
+        
         # Check if s3_helper is properly configured
-        logger.debug(f"S3 helper bucket name: {s3_helper.bucket_name if hasattr(s3_helper, 'bucket_name') else 'None'}")
+        logger.debug(f"S3 helper bucket name: {s3.bucket_name if hasattr(s3, 'bucket_name') else 'None'}")
         
         # Upload image to S3
         logger.info("Initiating upload to S3...")
-        image_url = await s3_helper.upload_image(file)
+        image_url = await s3.upload_image(file)
         logger.info(f"Image successfully uploaded to {image_url}")
         
         return {
@@ -70,6 +76,11 @@ async def update_recipe_image(
     """
     conn = None
     try:
+        # Force initialize S3 helper
+        from ..utils.s3.s3_utils import force_initialize_s3_helper
+        logger.info("Force initializing S3 helper for image update...")
+        s3 = force_initialize_s3_helper()
+        
         # First, get the current image URL if it exists
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -85,11 +96,14 @@ async def update_recipe_image(
         
         # Delete old image if it exists and is in our S3 bucket
         old_image_url = recipe.get('image_url')
-        if old_image_url and s3_helper.bucket_name in old_image_url:
-            s3_helper.delete_image(old_image_url)
+        if old_image_url and s3.bucket_name and s3.bucket_name in old_image_url:
+            logger.info(f"Deleting old image: {old_image_url}")
+            s3.delete_image(old_image_url)
         
         # Upload new image
-        new_image_url = await s3_helper.upload_image(file)
+        logger.info("Uploading new image...")
+        new_image_url = await s3.upload_image(file)
+        logger.info(f"New image uploaded to: {new_image_url}")
         
         # Update recipe with new image URL
         cursor.execute("""
@@ -109,7 +123,8 @@ async def update_recipe_image(
         }
     except ValueError as e:
         logger.error(f"S3 configuration error: {str(e)}")
-        raise HTTPException(status_code=500, detail="S3 configuration is incomplete. Contact the administrator.")
+        error_detail = f"S3 configuration is incomplete: {str(e)}. Check AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, S3_BUCKET_NAME, and AWS_REGION environment variables."
+        raise HTTPException(status_code=500, detail=error_detail)
     except HTTPException:
         raise
     except Exception as e:
@@ -131,6 +146,11 @@ async def delete_recipe_image(
     """
     conn = None
     try:
+        # Force initialize S3 helper
+        from ..utils.s3.s3_utils import force_initialize_s3_helper
+        logger.info("Force initializing S3 helper for image deletion...")
+        s3 = force_initialize_s3_helper()
+        
         # Get the current image URL
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -149,8 +169,9 @@ async def delete_recipe_image(
             raise HTTPException(status_code=400, detail="Recipe doesn't have an image to delete")
         
         # Delete image from S3 if it's from our bucket
-        if s3_helper.bucket_name in image_url:
-            if not s3_helper.delete_image(image_url):
+        if s3.bucket_name and s3.bucket_name in image_url:
+            logger.info(f"Deleting image from S3: {image_url}")
+            if not s3.delete_image(image_url):
                 logger.warning(f"Failed to delete image from S3: {image_url}")
         
         # Update recipe to remove image reference
@@ -171,7 +192,8 @@ async def delete_recipe_image(
         }
     except ValueError as e:
         logger.error(f"S3 configuration error: {str(e)}")
-        raise HTTPException(status_code=500, detail="S3 configuration is incomplete. Contact the administrator.")
+        error_detail = f"S3 configuration is incomplete: {str(e)}. Check AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, S3_BUCKET_NAME, and AWS_REGION environment variables."
+        raise HTTPException(status_code=500, detail=error_detail)
     except HTTPException:
         raise
     except Exception as e:
@@ -189,20 +211,36 @@ async def test_s3_config(user = Depends(get_user_from_token)):
     Test S3 configuration and return diagnostic information
     """
     try:
+        # Force initialize to get the very latest environment variables
+        from ..utils.s3.s3_utils import force_initialize_s3_helper
+        logger.info("Force initializing S3 helper for configuration test...")
+        s3_helper_instance = force_initialize_s3_helper()
+        
         # Get environment variables (masking sensitive data)
         aws_access_key = os.getenv("AWS_ACCESS_KEY_ID")
         aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
         s3_bucket_name = os.getenv("S3_BUCKET_NAME")
         aws_region = os.getenv("AWS_REGION")
         
+        # Show all relevant environment variables (safely)
+        env_vars = {}
+        for key, value in os.environ.items():
+            if "AWS" in key or "S3" in key:
+                if "KEY" in key or "SECRET" in key:
+                    env_vars[key] = "PRESENT" if value else "MISSING"
+                else:
+                    env_vars[key] = value
+        
         # Prepare diagnostics (safely)
         diagnostics = {
+            "environment_variables": env_vars,
             "aws_access_key_present": bool(aws_access_key),
             "aws_secret_key_present": bool(aws_secret_key),
             "s3_bucket_name": s3_bucket_name,
             "aws_region": aws_region,
-            "s3_helper_initialized": hasattr(s3_helper, "s3_client"),
-            "s3_helper_bucket": getattr(s3_helper, "bucket_name", None)
+            "s3_helper_initialized": hasattr(s3_helper_instance, "s3_client"),
+            "s3_helper_bucket": getattr(s3_helper_instance, "bucket_name", None),
+            "s3_helper_region": getattr(s3_helper_instance, "region", None) if hasattr(s3_helper_instance, "region") else None
         }
         
         # Test S3 connection if credentials are present
@@ -213,7 +251,7 @@ async def test_s3_config(user = Depends(get_user_from_token)):
                     's3',
                     aws_access_key_id=aws_access_key,
                     aws_secret_access_key=aws_secret_key,
-                    region_name=aws_region or "us-east-1"
+                    region_name=aws_region or "us-east-2"
                 )
                 
                 # List buckets to test connection
