@@ -33,8 +33,85 @@ def run_migrations():
     create_shared_menus_table()
     add_prep_time_to_saved_recipes()
     add_notes_to_scraped_recipes()
+    update_recipe_components_structure()
     
     logger.info("Database migrations completed successfully")
+
+def update_recipe_components_structure():
+    """
+    Update the recipe_components table to make the name field optional
+    and ensure proper structure for component type updates
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            # First check if the table exists
+            cursor.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name = 'recipe_components'
+                )
+            """)
+            
+            if not cursor.fetchone()[0]:
+                logger.info("recipe_components table does not exist yet, skipping update")
+                return
+                
+            # Check if name column exists and is NOT NULL
+            cursor.execute("""
+                SELECT column_name, is_nullable 
+                FROM information_schema.columns 
+                WHERE table_schema = 'public' 
+                AND table_name = 'recipe_components' 
+                AND column_name = 'name'
+            """)
+            name_column = cursor.fetchone()
+            
+            if name_column and name_column[1] == 'NO':  # 'NO' means NOT NULL
+                logger.info("Making name column optional in recipe_components table")
+                cursor.execute("""
+                    ALTER TABLE recipe_components 
+                    ALTER COLUMN name DROP NOT NULL
+                """)
+                conn.commit()
+                
+            # Check if component_type allows NULL values
+            cursor.execute("""
+                SELECT column_name, is_nullable 
+                FROM information_schema.columns 
+                WHERE table_schema = 'public' 
+                AND table_name = 'recipe_components' 
+                AND column_name = 'component_type'
+            """)
+            component_type_column = cursor.fetchone()
+            
+            if component_type_column and component_type_column[1] == 'YES':  # 'YES' means nullable
+                logger.info("Making component_type column required in recipe_components table")
+                # First set any NULL values to 'unknown'
+                cursor.execute("""
+                    UPDATE recipe_components
+                    SET component_type = 'unknown'
+                    WHERE component_type IS NULL
+                """)
+                
+                # Then make it NOT NULL
+                cursor.execute("""
+                    ALTER TABLE recipe_components 
+                    ALTER COLUMN component_type SET NOT NULL
+                """)
+                conn.commit()
+            
+            logger.info("Successfully updated recipe_components table structure")
+            
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        logger.error(f"Error updating recipe_components structure: {str(e)}")
+    finally:
+        if conn:
+            conn.close()
 
 def add_for_client_id_to_menus():
     """
