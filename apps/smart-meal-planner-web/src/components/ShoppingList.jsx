@@ -274,21 +274,25 @@ const formatDisplayName = (name, quantity, unit) => {
   }
   
   // Special case handling with default units
-  if (name === 'feta cheese') {
+  if (name === 'feta cheese' || name.includes('feta')) {
     return 'Feta Cheese: 1/2 cup';
   }
-  if (name === 'kalamata olive' || name === 'kalamata olives') {
+  if (name === 'kalamata olive' || name === 'kalamata olives' || name.includes('kalamata')) {
     return 'Kalamata Olives: 1/4 cup';
   }
-  if (name === 'saffron') {
+  if (name === 'saffron' || name.includes('saffron')) {
     return 'Saffron: 1/2 tsp';
   }
-  if (name === 'soy ginger dressing') {
+  if (name === 'soy ginger dressing' || name.includes('ginger dressing') || (name.includes('soy') && name.includes('ginger'))) {
     return 'Soy Ginger Dressing: 1/4 cup';
   }
   // Make sure balsamic glaze has units
   if (name === 'balsamic glaze' && !unit) {
     return 'Balsamic Glaze: 4 tbsp';
+  }
+  // Make sure chicken broth has units
+  if (name === 'chicken broth' && !unit) {
+    return `Chicken Broth: ${quantity} cups`;
   }
   
   // Format based on unit
