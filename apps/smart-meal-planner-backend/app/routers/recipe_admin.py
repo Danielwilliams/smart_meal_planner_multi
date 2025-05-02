@@ -135,6 +135,118 @@ async def update_recipe_image(
     finally:
         if conn:
             conn.close()
+            
+@router.post("/tag-recipes")
+async def tag_recipes(
+    tag_data: Dict[str, Any],
+    user = Depends(admin_required)
+):
+    """
+    Tag multiple recipes with a component type
+    """
+    conn = None
+    try:
+        # Extract data
+        recipe_ids = tag_data.get('recipe_ids', [])
+        component_type = tag_data.get('component_type')
+        
+        if not recipe_ids or not component_type:
+            raise HTTPException(
+                status_code=400, 
+                detail="Both recipe_ids and component_type are required"
+            )
+            
+        logger.info(f"Tagging {len(recipe_ids)} recipes with component type: {component_type}")
+        
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Process each recipe
+        results = []
+        for recipe_id in recipe_ids:
+            try:
+                # Check if recipe exists
+                cursor.execute("""
+                    SELECT id FROM scraped_recipes 
+                    WHERE id = %s
+                """, (recipe_id,))
+                
+                if not cursor.fetchone():
+                    results.append({
+                        "recipe_id": recipe_id,
+                        "success": False,
+                        "message": "Recipe not found"
+                    })
+                    continue
+                
+                # Check if component already exists
+                cursor.execute("""
+                    SELECT recipe_id, component_type FROM recipe_components
+                    WHERE recipe_id = %s
+                """, (recipe_id,))
+                
+                existing = cursor.fetchone()
+                
+                if existing:
+                    # Update existing component
+                    cursor.execute("""
+                        UPDATE recipe_components
+                        SET component_type = %s
+                        WHERE recipe_id = %s
+                        RETURNING recipe_id, component_type
+                    """, (component_type, recipe_id))
+                    updated = cursor.fetchone()
+                    
+                    results.append({
+                        "recipe_id": recipe_id,
+                        "success": True,
+                        "message": f"Updated component type from '{existing['component_type']}' to '{component_type}'",
+                        "data": updated
+                    })
+                else:
+                    # Insert new component
+                    cursor.execute("""
+                        INSERT INTO recipe_components (recipe_id, component_type)
+                        VALUES (%s, %s)
+                        RETURNING recipe_id, component_type
+                    """, (recipe_id, component_type))
+                    created = cursor.fetchone()
+                    
+                    results.append({
+                        "recipe_id": recipe_id,
+                        "success": True,
+                        "message": f"Added component type '{component_type}'",
+                        "data": created
+                    })
+            except Exception as e:
+                logger.error(f"Error processing recipe {recipe_id}: {str(e)}", exc_info=True)
+                results.append({
+                    "recipe_id": recipe_id,
+                    "success": False,
+                    "message": f"Error: {str(e)}"
+                })
+                # Continue processing other recipes
+        
+        # Commit all changes
+        conn.commit()
+        
+        # Count successes and failures
+        successes = sum(1 for r in results if r['success'])
+        failures = len(results) - successes
+        
+        return {
+            "success": True,
+            "message": f"Processed {len(results)} recipes: {successes} successful, {failures} failed",
+            "results": results
+        }
+    except Exception as e:
+        logger.error(f"Error tagging recipes: {str(e)}", exc_info=True)
+        if conn:
+            conn.rollback()
+        raise HTTPException(status_code=500, detail=f"Error tagging recipes: {str(e)}")
+    finally:
+        if conn:
+            conn.close()
 
 @router.delete("/delete-recipe-image/{recipe_id}")
 async def delete_recipe_image(
@@ -201,6 +313,118 @@ async def delete_recipe_image(
         if conn:
             conn.rollback()
         raise HTTPException(status_code=500, detail=f"Error deleting recipe image: {str(e)}")
+    finally:
+        if conn:
+            conn.close()
+            
+@router.post("/tag-recipes")
+async def tag_recipes(
+    tag_data: Dict[str, Any],
+    user = Depends(admin_required)
+):
+    """
+    Tag multiple recipes with a component type
+    """
+    conn = None
+    try:
+        # Extract data
+        recipe_ids = tag_data.get('recipe_ids', [])
+        component_type = tag_data.get('component_type')
+        
+        if not recipe_ids or not component_type:
+            raise HTTPException(
+                status_code=400, 
+                detail="Both recipe_ids and component_type are required"
+            )
+            
+        logger.info(f"Tagging {len(recipe_ids)} recipes with component type: {component_type}")
+        
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Process each recipe
+        results = []
+        for recipe_id in recipe_ids:
+            try:
+                # Check if recipe exists
+                cursor.execute("""
+                    SELECT id FROM scraped_recipes 
+                    WHERE id = %s
+                """, (recipe_id,))
+                
+                if not cursor.fetchone():
+                    results.append({
+                        "recipe_id": recipe_id,
+                        "success": False,
+                        "message": "Recipe not found"
+                    })
+                    continue
+                
+                # Check if component already exists
+                cursor.execute("""
+                    SELECT recipe_id, component_type FROM recipe_components
+                    WHERE recipe_id = %s
+                """, (recipe_id,))
+                
+                existing = cursor.fetchone()
+                
+                if existing:
+                    # Update existing component
+                    cursor.execute("""
+                        UPDATE recipe_components
+                        SET component_type = %s
+                        WHERE recipe_id = %s
+                        RETURNING recipe_id, component_type
+                    """, (component_type, recipe_id))
+                    updated = cursor.fetchone()
+                    
+                    results.append({
+                        "recipe_id": recipe_id,
+                        "success": True,
+                        "message": f"Updated component type from '{existing['component_type']}' to '{component_type}'",
+                        "data": updated
+                    })
+                else:
+                    # Insert new component
+                    cursor.execute("""
+                        INSERT INTO recipe_components (recipe_id, component_type)
+                        VALUES (%s, %s)
+                        RETURNING recipe_id, component_type
+                    """, (recipe_id, component_type))
+                    created = cursor.fetchone()
+                    
+                    results.append({
+                        "recipe_id": recipe_id,
+                        "success": True,
+                        "message": f"Added component type '{component_type}'",
+                        "data": created
+                    })
+            except Exception as e:
+                logger.error(f"Error processing recipe {recipe_id}: {str(e)}", exc_info=True)
+                results.append({
+                    "recipe_id": recipe_id,
+                    "success": False,
+                    "message": f"Error: {str(e)}"
+                })
+                # Continue processing other recipes
+        
+        # Commit all changes
+        conn.commit()
+        
+        # Count successes and failures
+        successes = sum(1 for r in results if r['success'])
+        failures = len(results) - successes
+        
+        return {
+            "success": True,
+            "message": f"Processed {len(results)} recipes: {successes} successful, {failures} failed",
+            "results": results
+        }
+    except Exception as e:
+        logger.error(f"Error tagging recipes: {str(e)}", exc_info=True)
+        if conn:
+            conn.rollback()
+        raise HTTPException(status_code=500, detail=f"Error tagging recipes: {str(e)}")
     finally:
         if conn:
             conn.close()
@@ -394,6 +618,118 @@ async def get_component_types(user = Depends(get_user_from_token)):
         if conn:
             conn.close()
             
+@router.post("/tag-recipes")
+async def tag_recipes(
+    tag_data: Dict[str, Any],
+    user = Depends(admin_required)
+):
+    """
+    Tag multiple recipes with a component type
+    """
+    conn = None
+    try:
+        # Extract data
+        recipe_ids = tag_data.get('recipe_ids', [])
+        component_type = tag_data.get('component_type')
+        
+        if not recipe_ids or not component_type:
+            raise HTTPException(
+                status_code=400, 
+                detail="Both recipe_ids and component_type are required"
+            )
+            
+        logger.info(f"Tagging {len(recipe_ids)} recipes with component type: {component_type}")
+        
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Process each recipe
+        results = []
+        for recipe_id in recipe_ids:
+            try:
+                # Check if recipe exists
+                cursor.execute("""
+                    SELECT id FROM scraped_recipes 
+                    WHERE id = %s
+                """, (recipe_id,))
+                
+                if not cursor.fetchone():
+                    results.append({
+                        "recipe_id": recipe_id,
+                        "success": False,
+                        "message": "Recipe not found"
+                    })
+                    continue
+                
+                # Check if component already exists
+                cursor.execute("""
+                    SELECT recipe_id, component_type FROM recipe_components
+                    WHERE recipe_id = %s
+                """, (recipe_id,))
+                
+                existing = cursor.fetchone()
+                
+                if existing:
+                    # Update existing component
+                    cursor.execute("""
+                        UPDATE recipe_components
+                        SET component_type = %s
+                        WHERE recipe_id = %s
+                        RETURNING recipe_id, component_type
+                    """, (component_type, recipe_id))
+                    updated = cursor.fetchone()
+                    
+                    results.append({
+                        "recipe_id": recipe_id,
+                        "success": True,
+                        "message": f"Updated component type from '{existing['component_type']}' to '{component_type}'",
+                        "data": updated
+                    })
+                else:
+                    # Insert new component
+                    cursor.execute("""
+                        INSERT INTO recipe_components (recipe_id, component_type)
+                        VALUES (%s, %s)
+                        RETURNING recipe_id, component_type
+                    """, (recipe_id, component_type))
+                    created = cursor.fetchone()
+                    
+                    results.append({
+                        "recipe_id": recipe_id,
+                        "success": True,
+                        "message": f"Added component type '{component_type}'",
+                        "data": created
+                    })
+            except Exception as e:
+                logger.error(f"Error processing recipe {recipe_id}: {str(e)}", exc_info=True)
+                results.append({
+                    "recipe_id": recipe_id,
+                    "success": False,
+                    "message": f"Error: {str(e)}"
+                })
+                # Continue processing other recipes
+        
+        # Commit all changes
+        conn.commit()
+        
+        # Count successes and failures
+        successes = sum(1 for r in results if r['success'])
+        failures = len(results) - successes
+        
+        return {
+            "success": True,
+            "message": f"Processed {len(results)} recipes: {successes} successful, {failures} failed",
+            "results": results
+        }
+    except Exception as e:
+        logger.error(f"Error tagging recipes: {str(e)}", exc_info=True)
+        if conn:
+            conn.rollback()
+        raise HTTPException(status_code=500, detail=f"Error tagging recipes: {str(e)}")
+    finally:
+        if conn:
+            conn.close()
+            
 @router.get("/check-component/{recipe_id}")
 async def check_recipe_component(
     recipe_id: int,
@@ -441,6 +777,118 @@ async def check_recipe_component(
     except Exception as e:
         logger.error(f"Error checking recipe component: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error checking recipe component: {str(e)}")
+    finally:
+        if conn:
+            conn.close()
+            
+@router.post("/tag-recipes")
+async def tag_recipes(
+    tag_data: Dict[str, Any],
+    user = Depends(admin_required)
+):
+    """
+    Tag multiple recipes with a component type
+    """
+    conn = None
+    try:
+        # Extract data
+        recipe_ids = tag_data.get('recipe_ids', [])
+        component_type = tag_data.get('component_type')
+        
+        if not recipe_ids or not component_type:
+            raise HTTPException(
+                status_code=400, 
+                detail="Both recipe_ids and component_type are required"
+            )
+            
+        logger.info(f"Tagging {len(recipe_ids)} recipes with component type: {component_type}")
+        
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Process each recipe
+        results = []
+        for recipe_id in recipe_ids:
+            try:
+                # Check if recipe exists
+                cursor.execute("""
+                    SELECT id FROM scraped_recipes 
+                    WHERE id = %s
+                """, (recipe_id,))
+                
+                if not cursor.fetchone():
+                    results.append({
+                        "recipe_id": recipe_id,
+                        "success": False,
+                        "message": "Recipe not found"
+                    })
+                    continue
+                
+                # Check if component already exists
+                cursor.execute("""
+                    SELECT recipe_id, component_type FROM recipe_components
+                    WHERE recipe_id = %s
+                """, (recipe_id,))
+                
+                existing = cursor.fetchone()
+                
+                if existing:
+                    # Update existing component
+                    cursor.execute("""
+                        UPDATE recipe_components
+                        SET component_type = %s
+                        WHERE recipe_id = %s
+                        RETURNING recipe_id, component_type
+                    """, (component_type, recipe_id))
+                    updated = cursor.fetchone()
+                    
+                    results.append({
+                        "recipe_id": recipe_id,
+                        "success": True,
+                        "message": f"Updated component type from '{existing['component_type']}' to '{component_type}'",
+                        "data": updated
+                    })
+                else:
+                    # Insert new component
+                    cursor.execute("""
+                        INSERT INTO recipe_components (recipe_id, component_type)
+                        VALUES (%s, %s)
+                        RETURNING recipe_id, component_type
+                    """, (recipe_id, component_type))
+                    created = cursor.fetchone()
+                    
+                    results.append({
+                        "recipe_id": recipe_id,
+                        "success": True,
+                        "message": f"Added component type '{component_type}'",
+                        "data": created
+                    })
+            except Exception as e:
+                logger.error(f"Error processing recipe {recipe_id}: {str(e)}", exc_info=True)
+                results.append({
+                    "recipe_id": recipe_id,
+                    "success": False,
+                    "message": f"Error: {str(e)}"
+                })
+                # Continue processing other recipes
+        
+        # Commit all changes
+        conn.commit()
+        
+        # Count successes and failures
+        successes = sum(1 for r in results if r['success'])
+        failures = len(results) - successes
+        
+        return {
+            "success": True,
+            "message": f"Processed {len(results)} recipes: {successes} successful, {failures} failed",
+            "results": results
+        }
+    except Exception as e:
+        logger.error(f"Error tagging recipes: {str(e)}", exc_info=True)
+        if conn:
+            conn.rollback()
+        raise HTTPException(status_code=500, detail=f"Error tagging recipes: {str(e)}")
     finally:
         if conn:
             conn.close()
@@ -600,6 +1048,118 @@ async def update_recipe(
     finally:
         if conn:
             conn.close()
+            
+@router.post("/tag-recipes")
+async def tag_recipes(
+    tag_data: Dict[str, Any],
+    user = Depends(admin_required)
+):
+    """
+    Tag multiple recipes with a component type
+    """
+    conn = None
+    try:
+        # Extract data
+        recipe_ids = tag_data.get('recipe_ids', [])
+        component_type = tag_data.get('component_type')
+        
+        if not recipe_ids or not component_type:
+            raise HTTPException(
+                status_code=400, 
+                detail="Both recipe_ids and component_type are required"
+            )
+            
+        logger.info(f"Tagging {len(recipe_ids)} recipes with component type: {component_type}")
+        
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Process each recipe
+        results = []
+        for recipe_id in recipe_ids:
+            try:
+                # Check if recipe exists
+                cursor.execute("""
+                    SELECT id FROM scraped_recipes 
+                    WHERE id = %s
+                """, (recipe_id,))
+                
+                if not cursor.fetchone():
+                    results.append({
+                        "recipe_id": recipe_id,
+                        "success": False,
+                        "message": "Recipe not found"
+                    })
+                    continue
+                
+                # Check if component already exists
+                cursor.execute("""
+                    SELECT recipe_id, component_type FROM recipe_components
+                    WHERE recipe_id = %s
+                """, (recipe_id,))
+                
+                existing = cursor.fetchone()
+                
+                if existing:
+                    # Update existing component
+                    cursor.execute("""
+                        UPDATE recipe_components
+                        SET component_type = %s
+                        WHERE recipe_id = %s
+                        RETURNING recipe_id, component_type
+                    """, (component_type, recipe_id))
+                    updated = cursor.fetchone()
+                    
+                    results.append({
+                        "recipe_id": recipe_id,
+                        "success": True,
+                        "message": f"Updated component type from '{existing['component_type']}' to '{component_type}'",
+                        "data": updated
+                    })
+                else:
+                    # Insert new component
+                    cursor.execute("""
+                        INSERT INTO recipe_components (recipe_id, component_type)
+                        VALUES (%s, %s)
+                        RETURNING recipe_id, component_type
+                    """, (recipe_id, component_type))
+                    created = cursor.fetchone()
+                    
+                    results.append({
+                        "recipe_id": recipe_id,
+                        "success": True,
+                        "message": f"Added component type '{component_type}'",
+                        "data": created
+                    })
+            except Exception as e:
+                logger.error(f"Error processing recipe {recipe_id}: {str(e)}", exc_info=True)
+                results.append({
+                    "recipe_id": recipe_id,
+                    "success": False,
+                    "message": f"Error: {str(e)}"
+                })
+                # Continue processing other recipes
+        
+        # Commit all changes
+        conn.commit()
+        
+        # Count successes and failures
+        successes = sum(1 for r in results if r['success'])
+        failures = len(results) - successes
+        
+        return {
+            "success": True,
+            "message": f"Processed {len(results)} recipes: {successes} successful, {failures} failed",
+            "results": results
+        }
+    except Exception as e:
+        logger.error(f"Error tagging recipes: {str(e)}", exc_info=True)
+        if conn:
+            conn.rollback()
+        raise HTTPException(status_code=500, detail=f"Error tagging recipes: {str(e)}")
+    finally:
+        if conn:
+            conn.close()
 
 @router.patch("/update-nutrition/{recipe_id}")
 async def update_recipe_nutrition(
@@ -669,6 +1229,118 @@ async def update_recipe_nutrition(
         if conn:
             conn.rollback()
         raise HTTPException(status_code=500, detail=f"Error updating nutrition: {str(e)}")
+    finally:
+        if conn:
+            conn.close()
+            
+@router.post("/tag-recipes")
+async def tag_recipes(
+    tag_data: Dict[str, Any],
+    user = Depends(admin_required)
+):
+    """
+    Tag multiple recipes with a component type
+    """
+    conn = None
+    try:
+        # Extract data
+        recipe_ids = tag_data.get('recipe_ids', [])
+        component_type = tag_data.get('component_type')
+        
+        if not recipe_ids or not component_type:
+            raise HTTPException(
+                status_code=400, 
+                detail="Both recipe_ids and component_type are required"
+            )
+            
+        logger.info(f"Tagging {len(recipe_ids)} recipes with component type: {component_type}")
+        
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Process each recipe
+        results = []
+        for recipe_id in recipe_ids:
+            try:
+                # Check if recipe exists
+                cursor.execute("""
+                    SELECT id FROM scraped_recipes 
+                    WHERE id = %s
+                """, (recipe_id,))
+                
+                if not cursor.fetchone():
+                    results.append({
+                        "recipe_id": recipe_id,
+                        "success": False,
+                        "message": "Recipe not found"
+                    })
+                    continue
+                
+                # Check if component already exists
+                cursor.execute("""
+                    SELECT recipe_id, component_type FROM recipe_components
+                    WHERE recipe_id = %s
+                """, (recipe_id,))
+                
+                existing = cursor.fetchone()
+                
+                if existing:
+                    # Update existing component
+                    cursor.execute("""
+                        UPDATE recipe_components
+                        SET component_type = %s
+                        WHERE recipe_id = %s
+                        RETURNING recipe_id, component_type
+                    """, (component_type, recipe_id))
+                    updated = cursor.fetchone()
+                    
+                    results.append({
+                        "recipe_id": recipe_id,
+                        "success": True,
+                        "message": f"Updated component type from '{existing['component_type']}' to '{component_type}'",
+                        "data": updated
+                    })
+                else:
+                    # Insert new component
+                    cursor.execute("""
+                        INSERT INTO recipe_components (recipe_id, component_type)
+                        VALUES (%s, %s)
+                        RETURNING recipe_id, component_type
+                    """, (recipe_id, component_type))
+                    created = cursor.fetchone()
+                    
+                    results.append({
+                        "recipe_id": recipe_id,
+                        "success": True,
+                        "message": f"Added component type '{component_type}'",
+                        "data": created
+                    })
+            except Exception as e:
+                logger.error(f"Error processing recipe {recipe_id}: {str(e)}", exc_info=True)
+                results.append({
+                    "recipe_id": recipe_id,
+                    "success": False,
+                    "message": f"Error: {str(e)}"
+                })
+                # Continue processing other recipes
+        
+        # Commit all changes
+        conn.commit()
+        
+        # Count successes and failures
+        successes = sum(1 for r in results if r['success'])
+        failures = len(results) - successes
+        
+        return {
+            "success": True,
+            "message": f"Processed {len(results)} recipes: {successes} successful, {failures} failed",
+            "results": results
+        }
+    except Exception as e:
+        logger.error(f"Error tagging recipes: {str(e)}", exc_info=True)
+        if conn:
+            conn.rollback()
+        raise HTTPException(status_code=500, detail=f"Error tagging recipes: {str(e)}")
     finally:
         if conn:
             conn.close()
