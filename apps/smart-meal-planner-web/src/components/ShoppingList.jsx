@@ -244,40 +244,62 @@ const convertGramsToReadable = (grams, itemName) => {
 
 // Common food items with default units when no unit is specified
 const DEFAULT_UNITS = {
+  // Liquids and Broths
   'chicken broth': { unit: 'cups' },
   'beef broth': { unit: 'cups' },
   'vegetable broth': { unit: 'cups' },
   'water': { unit: 'cups' },
   'milk': { unit: 'cups' },
+  
+  // Oils
   'olive oil': { unit: 'tbsp' },
   'cooking oil': { unit: 'tbsp' },
   'vegetable oil': { unit: 'tbsp' },
+  
+  // Vinegars and Sauces
   'balsamic glaze': { unit: 'tbsp', defaultQty: 4 },
   'balsamic vinegar': { unit: 'tbsp' },
   'red wine vinegar': { unit: 'tbsp' },
   'apple cider vinegar': { unit: 'tbsp' },
   'soy sauce': { unit: 'tbsp' },
   'fish sauce': { unit: 'tbsp' },
+  
+  // Spices and Seasonings (full names to avoid partial matches with produce)
+  'ground pepper': { unit: 'tsp' },
+  'black pepper': { unit: 'tsp' },
   'vanilla extract': { unit: 'tsp' },
   'almond extract': { unit: 'tsp' },
   'saffron': { unit: 'tsp', defaultQty: 0.5 },
+  'salt': { unit: 'tsp' },
+  'ground ginger': { unit: 'tsp' },
+  'ginger powder': { unit: 'tsp' },
+  
+  // Ingredients that need special handling
   'feta cheese': { unit: 'cup', defaultQty: 0.5 },
   'parmesan cheese': { unit: 'cup' },
   'cheddar cheese': { unit: 'cup' },
-  'ginger': { unit: 'tbsp' },
-  'salt': { unit: 'tsp' },
-  'pepper': { unit: 'tsp' },
+  
+  // Fresh produce often measured by weight
+  'fresh ginger': { unit: 'g' },
+  
+  // Olives
   'kalamata olive': { unit: 'cup', defaultQty: 0.25 },
   'black olive': { unit: 'cup' },
   'green olive': { unit: 'cup' },
+  
+  // Dressings
   'soy ginger dressing': { unit: 'cup', defaultQty: 0.25 },
   'ranch dressing': { unit: 'cup' },
   'italian dressing': { unit: 'cup' },
   'caesar dressing': { unit: 'cup' },
+  
+  // Sweeteners
   'honey': { unit: 'tbsp' },
   'maple syrup': { unit: 'tbsp' },
   'sugar': { unit: 'cup' },
   'brown sugar': { unit: 'cup' },
+  
+  // Grains and flours
   'flour': { unit: 'cup' },
   'rice': { unit: 'cup' },
   'quinoa': { unit: 'cup' }
@@ -316,7 +338,13 @@ const formatDisplayName = (name, quantity, unit) => {
   
   // Check for items with default units in our database
   for (const [itemName, defaults] of Object.entries(DEFAULT_UNITS)) {
-    if (name.includes(itemName)) {
+    // More precise matching to avoid situations like "bell pepper" matching "pepper"
+    // Either the name exactly matches the item, or it's surrounded by word boundaries
+    if (name === itemName || 
+        name.match(new RegExp(`\\b${itemName}\\b`)) ||
+        // For special cases where we might want partial matches for compound words
+        (itemName.includes(' ') && name.includes(itemName))) {
+      
       // Use default quantity if provided and no quantity was found
       const displayQty = (!quantity || quantity === 0) && defaults.defaultQty ? 
                          defaults.defaultQty : quantity;
