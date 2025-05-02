@@ -154,10 +154,30 @@ const getBaseQuantity = (item) => {
 
 // Extract unit from an item string
 const getUnit = (item) => {
+  // Special case for greens with numeric quantities
+  const greensMatch = item.match(/^(mixed greens|mixed green):\s*(\d+)$/i); 
+  if (greensMatch) {
+    return 'cups';
+  }
+  
+  // Special case - if "rice" or "quinoa" have 3-4 digit quantities, treat them as grams
+  // This fixes items like "Rice: 406" to properly display as grams/pounds
+  const riceMatch = item.match(/^(rice|quinoa):\s*(\d{3})$/i);
+  if (riceMatch) {
+    return 'g';
+  }
+  
   // Check for format like "Chicken Breast: 1905" or "Item: 123" 
   const colonFormat = item.match(/^(.+):\s*(\d{3,4})$/);
   if (colonFormat) {
-    // For 3-4 digit quantities after colon, assume grams
+    const itemName = colonFormat[1].toLowerCase();
+    
+    // Look for food types to determine the appropriate unit
+    if (['rice', 'quinoa', 'chicken', 'beef', 'broccoli', 'pepper', 'tomato', 'potato', 'carrot'].some(food => itemName.includes(food))) {
+      return 'g';  // Most foods with 3-4 digit quantities are in grams
+    }
+    
+    // Assume grams for large numbers unless it's a countable item
     return 'g';
   }
   
@@ -282,6 +302,13 @@ const DEFAULT_UNITS = {
   // Fresh produce often measured by weight
   'fresh ginger': { unit: 'g' },
   
+  // Produce with volume measurements
+  'mixed greens': { unit: 'cups' },
+  'spinach': { unit: 'cups' },
+  'lettuce': { unit: 'cups' },
+  'arugula': { unit: 'cups' },
+  'kale': { unit: 'cups' },
+  
   // Olives
   'kalamata olive': { unit: 'cup', defaultQty: 0.25 },
   'black olive': { unit: 'cup' },
@@ -336,6 +363,15 @@ const formatDisplayName = (name, quantity, unit) => {
     }
   }
   
+  // Special handling for large gram quantities with no units
+  // This is to handle cases like "Rice: 406" where 406 is actually grams
+  if (quantity >= 100 && Number.isInteger(quantity) && !unit) {
+    // Rice (and other grains) should be treated as grams when large numbers
+    if (['rice', 'quinoa', 'pasta', 'noodle'].some(grain => name.includes(grain))) {
+      return `${displayName}: ${convertGramsToReadable(quantity, name)}`;
+    }
+  }
+
   // Check for items with default units in our database
   for (const [itemName, defaults] of Object.entries(DEFAULT_UNITS)) {
     // More precise matching to avoid situations like "bell pepper" matching "pepper"
@@ -348,11 +384,23 @@ const formatDisplayName = (name, quantity, unit) => {
       // Use default quantity if provided and no quantity was found
       const displayQty = (!quantity || quantity === 0) && defaults.defaultQty ? 
                          defaults.defaultQty : quantity;
+      
+      // For rice and similar items with large integer quantities, assume they're in grams
+      if (['rice', 'quinoa'].includes(itemName) && 
+          displayQty >= 100 && Number.isInteger(displayQty)) {
+        return `${displayName}: ${convertGramsToReadable(displayQty, name)}`;
+      }
+      
       return `${displayName}: ${displayQty} ${defaults.unit}`;
     }
   }
   
-  // Format based on unit
+  // Check if this is a 3-4 digit gram quantity from prefixed patterns like "406 rice"
+  if (unit === 'g' && quantity >= 100 && Number.isInteger(quantity)) {
+    return `${displayName}: ${convertGramsToReadable(quantity, name)}`;
+  }
+  
+  // Regular unit formatting
   if (unit === 'g') {
     return `${displayName}: ${convertGramsToReadable(quantity, name)}`;
   }
