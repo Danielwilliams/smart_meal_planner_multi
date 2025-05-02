@@ -8,6 +8,8 @@ import boto3
 from botocore.exceptions import ClientError
 from fastapi import UploadFile, HTTPException
 
+# Configure more detailed logging
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 class S3Helper:
@@ -16,8 +18,14 @@ class S3Helper:
         self.aws_access_key = os.getenv("AWS_ACCESS_KEY_ID")
         self.aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
         
+        # Debug logging of environment variables (masked for security)
+        logger.debug(f"AWS_ACCESS_KEY_ID: {'SET' if self.aws_access_key else 'NOT SET'}")
+        logger.debug(f"AWS_SECRET_ACCESS_KEY: {'SET' if self.aws_secret_key else 'NOT SET'}")
+        
         # Parse region from STS URL if provided, or use environment variable
         aws_region_or_url = os.getenv("AWS_REGION", "us-east-1")
+        logger.debug(f"AWS_REGION raw value: {aws_region_or_url}")
+        
         if "amazonaws.com" in aws_region_or_url:
             # Extract region from URL like https://sts.us-east-2.amazonaws.com
             parts = aws_region_or_url.split('.')
@@ -33,19 +41,41 @@ class S3Helper:
             self.region = aws_region_or_url
             
         self.bucket_name = os.getenv("S3_BUCKET_NAME")
+        logger.debug(f"S3_BUCKET_NAME: {self.bucket_name}")
         
+        # More detailed validation
+        missing_vars = []
+        if not self.aws_access_key:
+            missing_vars.append("AWS_ACCESS_KEY_ID")
+        if not self.aws_secret_key:
+            missing_vars.append("AWS_SECRET_ACCESS_KEY")
+        if not self.bucket_name:
+            missing_vars.append("S3_BUCKET_NAME")
+            
         # Validate required configuration
-        if not all([self.aws_access_key, self.aws_secret_key, self.bucket_name]):
-            logger.error("Missing required S3 configuration. Check AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, and S3_BUCKET_NAME")
-            raise ValueError("Missing required S3 configuration")
+        if missing_vars:
+            error_msg = f"Missing required S3 configuration: {', '.join(missing_vars)}"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+        
+        logger.info(f"Initializing S3 client with region: {self.region}, bucket: {self.bucket_name}")
         
         # Initialize S3 client
-        self.s3_client = boto3.client(
-            's3',
-            aws_access_key_id=self.aws_access_key,
-            aws_secret_access_key=self.aws_secret_key,
-            region_name=self.region
-        )
+        try:
+            self.s3_client = boto3.client(
+                's3',
+                aws_access_key_id=self.aws_access_key,
+                aws_secret_access_key=self.aws_secret_key,
+                region_name=self.region
+            )
+            
+            # Test connection with a simple operation
+            self.s3_client.list_buckets()
+            logger.info("Successfully connected to AWS S3")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize S3 client: {str(e)}")
+            raise ValueError(f"S3 client initialization failed: {str(e)}")
     
     async def upload_image(self, file: UploadFile, folder: str = "recipe-images"):
         """
@@ -59,21 +89,29 @@ class S3Helper:
             str: The URL of the uploaded image
         """
         try:
+            # Log file information
+            logger.debug(f"Upload request received for file: {file.filename}, content-type: {file.content_type}")
+            logger.debug(f"Using bucket: {self.bucket_name}, region: {self.region}")
+            
             # Generate a unique filename to avoid collisions
             file_extension = os.path.splitext(file.filename)[1] if file.filename else ".jpg"
             unique_filename = f"{uuid.uuid4()}{file_extension}"
             s3_path = f"{folder}/{unique_filename}"
+            logger.debug(f"Generated S3 path: {s3_path}")
             
             # Read file content
             file_content = await file.read()
+            logger.debug(f"Read file content: {len(file_content)} bytes")
             
             # Upload to S3
-            self.s3_client.put_object(
+            logger.debug(f"Attempting to upload to S3 bucket: {self.bucket_name}")
+            response = self.s3_client.put_object(
                 Bucket=self.bucket_name,
                 Key=s3_path,
                 Body=file_content,
                 ContentType=file.content_type or "image/jpeg"
             )
+            logger.debug(f"S3 put_object response: {response}")
             
             # Generate URL with region-specific endpoint format
             if self.region == "us-east-1":
@@ -86,11 +124,28 @@ class S3Helper:
             return url
             
         except ClientError as e:
-            logger.error(f"S3 upload error: {str(e)}")
-            raise HTTPException(status_code=500, detail=f"Error uploading image: {str(e)}")
+            error_code = e.response['Error']['Code'] if 'Error' in e.response else 'Unknown'
+            error_message = e.response['Error']['Message'] if 'Error' in e.response else str(e)
+            logger.error(f"S3 upload error: Code={error_code}, Message={error_message}")
+            logger.error(f"Error details: {e}")
+            
+            # Provide more context in the error message
+            if error_code == 'InvalidAccessKeyId':
+                detail = "Invalid AWS access key. Check AWS_ACCESS_KEY_ID environment variable."
+            elif error_code == 'SignatureDoesNotMatch':
+                detail = "Invalid AWS secret key. Check AWS_SECRET_ACCESS_KEY environment variable."
+            elif error_code == 'NoSuchBucket':
+                detail = f"Bucket '{self.bucket_name}' does not exist. Check S3_BUCKET_NAME environment variable."
+            elif error_code == 'AccessDenied':
+                detail = "Access denied. Check IAM permissions for the provided credentials."
+            else:
+                detail = f"Error uploading image: {error_code} - {error_message}"
+                
+            raise HTTPException(status_code=500, detail=detail)
+            
         except Exception as e:
-            logger.error(f"Unexpected error uploading to S3: {str(e)}")
-            raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+            logger.error(f"Unexpected error uploading to S3: {str(e)}", exc_info=True)
+            raise HTTPException(status_code=500, detail=f"Unexpected error uploading image: {str(e)}")
         finally:
             # Reset file position for potential future reads
             await file.seek(0)

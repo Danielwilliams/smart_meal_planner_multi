@@ -1,7 +1,11 @@
 """
 Admin endpoints for managing scraped recipes
 """
+import os
+import uuid
 import logging
+import boto3
+from botocore.exceptions import ClientError
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import JSONResponse
 from psycopg2.extras import RealDictCursor
@@ -24,8 +28,18 @@ async def upload_recipe_image(
     Upload a recipe image to S3 and return the image URL
     """
     try:
+        # Log incoming request details
+        logger.debug(f"Image upload request received: filename={file.filename}, size={file.size if hasattr(file, 'size') else 'unknown'}")
+        logger.debug(f"Content type: {file.content_type}")
+        logger.debug(f"User: {user.get('user_id') if user else 'None'}")
+        
+        # Check if s3_helper is properly configured
+        logger.debug(f"S3 helper bucket name: {s3_helper.bucket_name if hasattr(s3_helper, 'bucket_name') else 'None'}")
+        
         # Upload image to S3
+        logger.info("Initiating upload to S3...")
         image_url = await s3_helper.upload_image(file)
+        logger.info(f"Image successfully uploaded to {image_url}")
         
         return {
             "success": True,
@@ -34,9 +48,15 @@ async def upload_recipe_image(
         }
     except ValueError as e:
         logger.error(f"S3 configuration error: {str(e)}")
-        raise HTTPException(status_code=500, detail="S3 configuration is incomplete. Contact the administrator.")
+        # Include more details in the error message
+        error_detail = f"S3 configuration is incomplete: {str(e)}. Check AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, S3_BUCKET_NAME, and AWS_REGION environment variables."
+        raise HTTPException(status_code=500, detail=error_detail)
+    except HTTPException as e:
+        # Re-raise HTTP exceptions directly
+        logger.error(f"HTTP exception during image upload: {str(e)}")
+        raise
     except Exception as e:
-        logger.error(f"Image upload error: {str(e)}", exc_info=True)
+        logger.error(f"Unexpected error during image upload: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error uploading image: {str(e)}")
 
 @router.patch("/update-recipe-image/{recipe_id}")
@@ -163,6 +183,91 @@ async def delete_recipe_image(
         if conn:
             conn.close()
             
+@router.get("/test-s3-config")
+async def test_s3_config(user = Depends(get_user_from_token)):
+    """
+    Test S3 configuration and return diagnostic information
+    """
+    try:
+        # Get environment variables (masking sensitive data)
+        aws_access_key = os.getenv("AWS_ACCESS_KEY_ID")
+        aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+        s3_bucket_name = os.getenv("S3_BUCKET_NAME")
+        aws_region = os.getenv("AWS_REGION")
+        
+        # Prepare diagnostics (safely)
+        diagnostics = {
+            "aws_access_key_present": bool(aws_access_key),
+            "aws_secret_key_present": bool(aws_secret_key),
+            "s3_bucket_name": s3_bucket_name,
+            "aws_region": aws_region,
+            "s3_helper_initialized": hasattr(s3_helper, "s3_client"),
+            "s3_helper_bucket": getattr(s3_helper, "bucket_name", None)
+        }
+        
+        # Test S3 connection if credentials are present
+        if all([aws_access_key, aws_secret_key, s3_bucket_name]):
+            try:
+                # Create a test client
+                s3_client = boto3.client(
+                    's3',
+                    aws_access_key_id=aws_access_key,
+                    aws_secret_access_key=aws_secret_key,
+                    region_name=aws_region or "us-east-1"
+                )
+                
+                # List buckets to test connection
+                buckets = s3_client.list_buckets()
+                bucket_names = [bucket['Name'] for bucket in buckets['Buckets']]
+                
+                # Check if specified bucket exists
+                bucket_exists = s3_bucket_name in bucket_names
+                
+                diagnostics.update({
+                    "connection_test": "success",
+                    "available_buckets": bucket_names,
+                    "specified_bucket_exists": bucket_exists
+                })
+                
+                # Check bucket permissions if the bucket exists
+                if bucket_exists:
+                    try:
+                        # Test list objects permission
+                        s3_client.list_objects_v2(Bucket=s3_bucket_name, MaxKeys=1)
+                        diagnostics["list_permission"] = True
+                    except ClientError:
+                        diagnostics["list_permission"] = False
+                    
+                    try:
+                        # Test put object permission with a tiny test file
+                        test_key = f"test/permission-check-{uuid.uuid4()}.txt"
+                        s3_client.put_object(Bucket=s3_bucket_name, Key=test_key, Body=b"test")
+                        diagnostics["write_permission"] = True
+                        
+                        # Try to delete the test file
+                        s3_client.delete_object(Bucket=s3_bucket_name, Key=test_key)
+                        diagnostics["delete_permission"] = True
+                    except ClientError:
+                        diagnostics["write_permission"] = False
+                        diagnostics["delete_permission"] = False
+                
+            except Exception as e:
+                diagnostics.update({
+                    "connection_test": "failure",
+                    "error": str(e)
+                })
+        else:
+            diagnostics["connection_test"] = "skipped_missing_credentials"
+        
+        return {
+            "success": True,
+            "diagnostics": diagnostics,
+            "message": "S3 configuration diagnostics completed"
+        }
+    except Exception as e:
+        logger.error(f"Error testing S3 configuration: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error testing S3 configuration: {str(e)}")
+
 @router.get("/component-types")
 async def get_component_types(user = Depends(get_user_from_token)):
     """
