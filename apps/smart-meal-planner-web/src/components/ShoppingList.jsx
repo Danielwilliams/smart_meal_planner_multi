@@ -129,6 +129,12 @@ const formatUnit = (unit) => {
 
 // Get the base quantity from an item string
 const getBaseQuantity = (item) => {
+  // For "Item: 1905" format
+  const colonFormat = item.match(/^(.+):\s*(\d{3,4})$/);
+  if (colonFormat) {
+    return parseFloat(colonFormat[2]);
+  }
+  
   // For "500g chicken" style
   const unitMatch = item.match(/^(\d+(?:\.\d+)?)\s*([a-zA-Z]+)/);
   if (unitMatch) {
@@ -148,6 +154,20 @@ const getBaseQuantity = (item) => {
 
 // Extract unit from an item string
 const getUnit = (item) => {
+  // Check for format like "Chicken Breast: 1905" or "Item: 123" 
+  const colonFormat = item.match(/^(.+):\s*(\d{3,4})$/);
+  if (colonFormat) {
+    // For 3-4 digit quantities after colon, assume grams
+    return 'g';
+  }
+  
+  // Also check for older format with digit prefix like "1905 chicken breast"
+  const prefixMatch = item.match(/^(\d{3,4})\s+(.+)$/);
+  if (prefixMatch) {
+    // For 3-4 digit prefixes with meat, vegetables, etc., assume grams
+    return 'g';
+  }
+  
   // Check for common units
   const unitMatches = item.match(/\b(g|oz|cups?|tbsps?|tsps?|pieces?|cloves?|leaves)\b/i);
   if (unitMatches) {
@@ -165,6 +185,21 @@ const getUnit = (item) => {
 
 // Extract clean ingredient name
 const normalizeItemName = (item) => {
+  // Check for "Item: 1905" format and extract just the item name
+  const colonFormat = item.match(/^(.+):\s*\d{3,4}$/);
+  if (colonFormat) {
+    const itemName = colonFormat[1].trim().toLowerCase();
+    
+    // First check for compound words in the extracted name
+    for (const compound of Object.keys(COMPOUND_WORDS)) {
+      if (itemName.includes(compound)) {
+        return compound;
+      }
+    }
+    
+    return itemName;
+  }
+  
   // First try to match known compound words
   for (const compound of Object.keys(COMPOUND_WORDS)) {
     if (item.toLowerCase().includes(compound)) {
@@ -198,16 +233,10 @@ const normalizeItemName = (item) => {
 
 // Convert grams to a more readable format for display
 const convertGramsToReadable = (grams, itemName) => {
-  // Convert large gram values to kg
-  if (grams >= 1000) {
-    const kg = (grams / 1000).toFixed(1);
-    return `${kg} kg`;
-  }
-  
-  // For meat items, consider converting to pounds if it makes sense
-  if (['chicken', 'beef', 'pork', 'fish'].some(meat => itemName.includes(meat)) && grams >= 450) {
-    const kg = (grams / 1000).toFixed(1);
-    return `${kg} kg`;
+  // For meat items, produce, and other large quantities, convert to pounds
+  if (grams >= 450) { // 450g ≈ 1 lb
+    const lbs = (grams * CONVERSION_RATES.g_to_lbs).toFixed(1);
+    return `${lbs} lbs`;
   }
   
   return `${grams}g`;
@@ -244,11 +273,11 @@ const formatDisplayName = (name, quantity, unit) => {
     }
   }
   
-  // Special case handling
+  // Special case handling with default units
   if (name === 'feta cheese') {
     return 'Feta Cheese: 1/2 cup';
   }
-  if (name === 'kalamata olive') {
+  if (name === 'kalamata olive' || name === 'kalamata olives') {
     return 'Kalamata Olives: 1/4 cup';
   }
   if (name === 'saffron') {
@@ -256,6 +285,10 @@ const formatDisplayName = (name, quantity, unit) => {
   }
   if (name === 'soy ginger dressing') {
     return 'Soy Ginger Dressing: 1/4 cup';
+  }
+  // Make sure balsamic glaze has units
+  if (name === 'balsamic glaze' && !unit) {
+    return 'Balsamic Glaze: 4 tbsp';
   }
   
   // Format based on unit
