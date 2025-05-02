@@ -11,13 +11,308 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  TextField,
   Alert
 } from '@mui/material';
 import StoreSelector from './StoreSelector';
 import apiService from '../services/apiService';
+import _ from 'lodash';
 
-// Simple ShoppingList component that displays categorized items
-// and allows adding them to cart
+const SPECIAL_UNITS = {
+  'tomato sauce': 'oz'
+};
+
+const UNIT_MAPPINGS = {
+  singular: {
+    'cup': 'cups',
+    'piece': 'pieces',
+    'slice': 'slices',
+    'can': 'cans',
+    'leaf': 'leaves',
+    'tbsp': 'tbsp',
+    'oz': 'oz',
+    'g': 'g',
+    'ml': 'ml'
+  },
+  plural: {
+    'cups': 'cups',
+    'pieces': 'pieces',
+    'slices': 'slices',
+    'cans': 'cans',
+    'leaves': 'leaves',
+    'tbsp': 'tbsp',
+    'oz': 'oz',
+    'g': 'g',
+    'ml': 'ml'
+  }
+};
+
+const SPECIAL_CASES = {
+  'egg': (quantity) => `${quantity} eggs`,
+  'eggs': (quantity) => `${quantity} eggs`,
+};
+
+const COMPOUND_WORDS = {
+  'mixed greens': true,
+  'mixed berries': true,
+  'balsamic glaze': true,
+  'cherry tomatoes': true,
+  'cherry tomato': true,
+  'water chestnut': true,
+  'tomato sauce': true,
+  'bell pepper': true,
+  'greek yogurt': true
+};
+
+const CONVERSION_RATES = {
+  g_to_lbs: 0.00220462,
+  oz_to_lbs: 0.0625
+};
+
+const WORDS_ENDING_IN_S = [
+  'hummus',
+  'berries',
+  'greens',
+  'pancreas',
+  'chassis',
+  'analysis',
+  'molasses',
+  'leaves'
+];
+
+const formatUnit = (unit, quantity, itemName) => {
+  if (!unit) return '';
+
+  // Check for special unit cases based on item name
+  if (itemName && SPECIAL_UNITS[itemName.toLowerCase()]) {
+    return SPECIAL_UNITS[itemName.toLowerCase()];
+  }
+  
+  // Clean up unit
+  let normalizedUnit = unit.toLowerCase()
+    .replace(/\.+/g, '.')  // Clean up dots
+    .replace(/\s+/g, ' ');  // Normalize spaces
+
+  // Handle each unit type
+  normalizedUnit = normalizedUnit
+    .replace(/\b(cup|cups)\b/gi, 'cups')
+    .replace(/\b(piece|pieces)\b/gi, 'pieces')
+    .replace(/\b(slice|slices)\b/gi, 'slices')
+    .replace(/\b(leaf|leaves)\b/gi, 'leaves')
+    .replace(/\b(ml)\b/gi, 'ml')
+    .replace(/\b(g)\b/gi, 'g')
+    .replace(/\b(oz|ozs)\b/gi, 'oz')
+    .replace(/\b(tbsp|tbsps)\.?\b/gi, 'tbsp')
+    .replace(/\b(lbs|lb)\s+(?:oz|ozs?)\b/gi, 'lbs')
+    .trim();
+
+  // Get rid of any remaining duplicate units
+  normalizedUnit = normalizedUnit.split(/\s+/)[0];
+
+  return normalizedUnit;
+};
+
+const normalizeItemName = (name) => {
+  // First check for compound words
+  const lowerName = name.toLowerCase();
+  for (const compound of Object.keys(COMPOUND_WORDS)) {
+    if (lowerName.includes(compound)) {
+      return compound;
+    }
+  }
+
+  let normalized = name
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .replace(/\d+/g, '')
+    .replace(/g\s+/, ' ')
+    .replace(/lbs?\s+/, ' ')
+    .replace(/pieces?\s+/, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  // Don't remove trailing 's' for words in our exception list
+  if (!WORDS_ENDING_IN_S.some(word => normalized.includes(word))) {
+    normalized = normalized.replace(/s$/, '');
+  }
+
+  return normalized;
+};
+
+const formatUnitAndName = (quantity, unit, name) => {
+  // Check for special cases
+  const normalizedName = name.toLowerCase().trim();
+  if (SPECIAL_CASES[normalizedName]) {
+    return SPECIAL_CASES[normalizedName](quantity);
+  }
+
+  // Handle compound words
+  for (const compound of Object.keys(COMPOUND_WORDS)) {
+    if (normalizedName.includes(compound)) {
+      if (!unit) return `${quantity} ${compound}`;
+      const formattedUnit = formatUnit(unit, quantity, compound);
+      return `${quantity} ${formattedUnit} ${compound}`.trim();
+    }
+  }
+
+  // Regular formatting
+  if (!unit) return `${quantity} ${normalizedName}`;
+  const formattedUnit = formatUnit(unit, quantity, normalizedName);
+  return `${quantity} ${formattedUnit} ${normalizedName}`.trim();
+};
+
+const getBaseQuantity = (item) => {
+  const numbers = item.match(/\d+(\.\d+)?/g) || [];
+  return numbers[0] ? parseFloat(numbers[0]) : 0;
+};
+
+const isGrams = (item) => /\d+\s*g\b/.test(item.toLowerCase());
+const isPounds = (item) => /\d+\s*(lbs?)\b/.test(item.toLowerCase());
+const isOunces = (item) => /\d+\s*(oz)\b/.test(item.toLowerCase());
+
+const convertToLbs = (item) => {
+  const quantity = getBaseQuantity(item);
+  if (isGrams(item)) {
+    return quantity * CONVERSION_RATES.g_to_lbs;
+  }
+  if (isOunces(item)) {
+    return quantity * CONVERSION_RATES.oz_to_lbs;
+  }
+  if (isPounds(item)) {
+    return quantity;
+  }
+  return null;
+};
+
+const combineItems = (items) => {
+  const groupedItems = {};
+
+  items.forEach(item => {
+    if (!item.trim()) return;
+    
+    const baseName = normalizeItemName(item);
+    if (!groupedItems[baseName]) {
+      groupedItems[baseName] = {
+        items: [],
+        totalLbs: 0,
+        hasWeight: false,
+        originalUnit: null,
+        quantity: 0
+      };
+    }
+
+    const weightInLbs = convertToLbs(item);
+    if (weightInLbs !== null && weightInLbs >= 0.5) {
+      groupedItems[baseName].hasWeight = true;
+      groupedItems[baseName].totalLbs += weightInLbs;
+    } else {
+      const quantity = getBaseQuantity(item);
+      const unitMatch = item.match(/cups|pieces|tbsp|slices|cans|leaves|g|ml|oz/i);
+      const unit = unitMatch ? unitMatch[0].toLowerCase() : '';
+      
+      if (!groupedItems[baseName].originalUnit) {
+        groupedItems[baseName].originalUnit = unit;
+      }
+      if (unit === groupedItems[baseName].originalUnit || !groupedItems[baseName].quantity) {
+        groupedItems[baseName].quantity += quantity;
+        groupedItems[baseName].originalUnit = unit;
+      } else {
+        groupedItems[baseName].items.push(item);
+      }
+    }
+  });
+
+  return Object.entries(groupedItems)
+    .filter(([name]) => name.trim())
+    .map(([name, data]) => {
+      if (data.hasWeight) {
+        return `${data.totalLbs.toFixed(1)} lbs ${name}`.trim();
+      }
+      if (data.quantity > 0) {
+        return formatUnitAndName(data.quantity, data.originalUnit, name);
+      }
+      return data.items[0]?.trim() || '';
+    })
+    .filter(item => item);
+};
+
+const ShoppingListItem = ({ 
+  item, 
+  selectedStore, 
+  onAddToCart, 
+  onAddToMixedCart,
+  onKrogerNeededSetup
+}) => {
+  const handleStoreClick = async (store, itemName) => {
+    if (store === 'kroger') {
+      try {
+        // Check if we have a configured Kroger store in localStorage
+        const isConfigured = localStorage.getItem('kroger_store_configured') === 'true';
+        const locationId = localStorage.getItem('kroger_store_location_id');
+        
+        // If not configured, show the setup dialog
+        if (!isConfigured || !locationId) {
+          console.log("Kroger store not configured, showing setup dialog");
+          onKrogerNeededSetup(itemName);
+          return;
+        }
+        
+        // If configured, try to add to cart
+        if (selectedStore === 'mixed') {
+          onAddToMixedCart(itemName, 'kroger');
+        } else {
+          onAddToCart(itemName, 'kroger');
+        }
+      } catch (err) {
+        console.error("Error checking Kroger configuration:", err);
+        onKrogerNeededSetup(itemName);
+      }
+    } else {
+      // For Walmart, just proceed normally
+      if (selectedStore === 'mixed') {
+        onAddToMixedCart(itemName, store);
+      } else {
+        onAddToCart(itemName, store);
+      }
+    }
+  };
+  
+  return (
+    <Grid item xs={12} sm={6}>
+      <Typography>{item}</Typography>
+      
+      {selectedStore === 'mixed' ? (
+        <Box sx={{ mt: 1 }}>
+          <Button 
+            variant="outlined" 
+            size="small" 
+            sx={{ mr: 1 }}
+            onClick={() => handleStoreClick('walmart', item)}
+          >
+            Add to Walmart
+          </Button>
+          <Button 
+            variant="outlined" 
+            size="small" 
+            onClick={() => handleStoreClick('kroger', item)}
+          >
+            Add to Kroger
+          </Button>
+        </Box>
+      ) : (
+        <Button 
+          variant="outlined" 
+          size="small" 
+          sx={{ mt: 1 }}
+          onClick={() => handleStoreClick(selectedStore, item)}
+        >
+          Add to {selectedStore.charAt(0).toUpperCase() + selectedStore.slice(1)} Cart
+        </Button>
+      )}
+    </Grid>
+  );
+};
+
 const ShoppingList = ({ 
   categories, 
   selectedStore,
@@ -27,7 +322,6 @@ const ShoppingList = ({
   const [showStoreSelector, setShowStoreSelector] = useState(false);
   const [pendingItem, setPendingItem] = useState(null);
   const [error, setError] = useState('');
-  const [processedList, setProcessedList] = useState({});
   
   // Check if we have a configured Kroger store already
   useEffect(() => {
@@ -48,145 +342,11 @@ const ShoppingList = ({
       refreshLocation();
     }
   }, []);
-
-  // Process the ingredients list when categories change
-  useEffect(() => {
-    if (categories) {
-      // First, send the raw list to the backend for processing
-      processShoppingList();
-    }
-  }, [categories]);
-
-  // Process the shopping list using the backend
-  const processShoppingList = async () => {
-    try {
-      // Simple client-side processing
-      // In a real implementation, this could be sent to the backend
-      const processedCategories = {};
-      
-      for (const [category, items] of Object.entries(categories)) {
-        // Basic processing for display - normally would be more sophisticated
-        const processedItems = items
-          .filter(item => item && typeof item === 'string' && item.trim())
-          .map(item => {
-            // Extract product codes and quantities if present
-            if (/^\d{3,4}\s+/.test(item)) {
-              const [prefix, ...rest] = item.split(' ');
-              const remainder = rest.join(' ');
-              
-              // Handle common formats
-              if (remainder.includes('chicken breast')) {
-                return `Chicken Breast: ${prefix}g`;
-              } 
-              else if (remainder.includes('beef') && remainder.includes('strip')) {
-                return `Beef Strips: ${prefix}g`;
-              }
-              else if (remainder.includes('chicken thigh')) {
-                return `Chicken Thighs: ${prefix}g`;
-              }
-              else if (remainder.includes('broccoli')) {
-                return `Broccoli: ${prefix}g`;
-              }
-              else if (remainder.includes('bell pepper')) {
-                return `Bell Peppers: ${prefix}g`;
-              }
-              else if (remainder.includes('tomato') && !remainder.includes('cherry')) {
-                return `Tomatoes: ${prefix}g`;
-              }
-              else if (remainder.includes('carrot')) {
-                return `Carrots: ${prefix}g`;
-              }
-              else if (remainder.includes('potato')) {
-                return `Potatoes: ${prefix}g`;
-              }
-              else if (remainder.includes('rice')) {
-                return `Rice: ${prefix}g`;
-              }
-              else if (remainder.includes('mozzarella')) {
-                return `Mozzarella: ${prefix} oz`;
-              }
-              else {
-                // For unknown items, just use the remainder with quantity
-                const displayName = remainder.charAt(0).toUpperCase() + remainder.slice(1);
-                return `${displayName}: ${prefix}g`;
-              }
-            }
-            // Handle simple number format (e.g., "4 eggs")
-            else if (/^\d+\s+/.test(item)) {
-              const [number, ...rest] = item.split(' ');
-              const itemName = rest.join(' ');
-              
-              // Special cases for common items
-              if (itemName.includes('egg')) {
-                return `Eggs: ${number}`;
-              }
-              else if (itemName.includes('avocado')) {
-                return `Avocados: ${number}`;
-              }
-              else if (itemName.includes('black bean')) {
-                return `Black Beans: ${number} cups`;
-              }
-              else if (itemName.includes('bacon strip')) {
-                return `Bacon Strips: ${number}`;
-              }
-              else if (itemName.includes('lettuce leaf')) {
-                return `Lettuce Leaves: ${number}`;
-              }
-              else if (itemName.includes('quinoa')) {
-                return `Quinoa: ${number} cups`;
-              }
-              else if (itemName.includes('garlic')) {
-                return `Garlic: ${number} cloves`;
-              }
-              else if (itemName.includes('mixed green')) {
-                return `Mixed Greens: ${number} cups`;
-              }
-              else {
-                // Basic capitalization for other items
-                const displayName = itemName.charAt(0).toUpperCase() + itemName.slice(1);
-                return `${displayName}: ${number}`;
-              }
-            }
-            // Handle items without quantities
-            else {
-              // Special cases for common items
-              if (item.includes('feta cheese')) {
-                return 'Feta Cheese: 1/2 cup';
-              }
-              else if (item.includes('soy ginger dressing')) {
-                return 'Soy Ginger Dressing: 1/4 cup';
-              }
-              else if (item.includes('kalamata olive')) {
-                return 'Kalamata Olives: 1/4 cup';
-              }
-              else if (item.includes('saffron')) {
-                return 'Saffron: 1/2 tsp';
-              }
-              else if (item.includes('cooking oil')) {
-                return 'Cooking Oil: 2 tbsp';
-              }
-              else if (item.includes('cucumber')) {
-                return 'Cucumber: 1';
-              }
-              else if (item.includes('salsa')) {
-                return 'Salsa: 1 cup';
-              }
-              else {
-                // Basic capitalization for other items
-                return item.charAt(0).toUpperCase() + item.slice(1);
-              }
-            }
-          });
-        
-        processedCategories[category] = processedItems;
-      }
-      
-      setProcessedList(processedCategories);
-    } catch (err) {
-      console.error('Error processing shopping list:', err);
-      setError('Failed to process shopping list');
-    }
-  };
+  
+  const processedCategories = Object.entries(categories).reduce((acc, [category, items]) => {
+    acc[category] = combineItems(items);
+    return acc;
+  }, {});
   
   const handleKrogerNeededSetup = (item) => {
     setPendingItem(item);
@@ -235,87 +395,9 @@ const ShoppingList = ({
     }
   };
 
-  // Helper component for each individual shopping list item
-  const ShoppingListItem = ({ 
-    item, 
-    selectedStore, 
-    onAddToCart, 
-    onAddToMixedCart,
-    onKrogerNeededSetup
-  }) => {
-    const handleStoreClick = async (store, itemName) => {
-      if (store === 'kroger') {
-        try {
-          // Check if we have a configured Kroger store in localStorage
-          const isConfigured = localStorage.getItem('kroger_store_configured') === 'true';
-          const locationId = localStorage.getItem('kroger_store_location_id');
-          
-          // If not configured, show the setup dialog
-          if (!isConfigured || !locationId) {
-            console.log("Kroger store not configured, showing setup dialog");
-            onKrogerNeededSetup(itemName);
-            return;
-          }
-          
-          // If configured, try to add to cart
-          if (selectedStore === 'mixed') {
-            onAddToMixedCart(itemName, 'kroger');
-          } else {
-            onAddToCart(itemName, 'kroger');
-          }
-        } catch (err) {
-          console.error("Error checking Kroger configuration:", err);
-          onKrogerNeededSetup(itemName);
-        }
-      } else {
-        // For Walmart, just proceed normally
-        if (selectedStore === 'mixed') {
-          onAddToMixedCart(itemName, store);
-        } else {
-          onAddToCart(itemName, store);
-        }
-      }
-    };
-    
-    return (
-      <Grid item xs={12} sm={6}>
-        <Typography>{item}</Typography>
-        
-        {selectedStore === 'mixed' ? (
-          <Box sx={{ mt: 1 }}>
-            <Button 
-              variant="outlined" 
-              size="small" 
-              sx={{ mr: 1 }}
-              onClick={() => handleStoreClick('walmart', item)}
-            >
-              Add to Walmart
-            </Button>
-            <Button 
-              variant="outlined" 
-              size="small" 
-              onClick={() => handleStoreClick('kroger', item)}
-            >
-              Add to Kroger
-            </Button>
-          </Box>
-        ) : (
-          <Button 
-            variant="outlined" 
-            size="small" 
-            sx={{ mt: 1 }}
-            onClick={() => handleStoreClick(selectedStore, item)}
-          >
-            Add to {selectedStore.charAt(0).toUpperCase() + selectedStore.slice(1)} Cart
-          </Button>
-        )}
-      </Grid>
-    );
-  };
-
   return (
     <>
-      {Object.entries(processedList).map(([category, items]) => (
+      {Object.entries(processedCategories).map(([category, items]) => (
         <Paper key={category} elevation={3} sx={{ my: 2, p: 2 }}>
           <Typography variant="h6">{category}</Typography>
           <Grid container spacing={2}>
