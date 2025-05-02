@@ -326,6 +326,7 @@ const RecipeAdminPanel = () => {
                   ...recipe, 
                   ingredients: ingredients,
                   instructions: recipeResponse.data.instructions || [],
+                  notes: recipeResponse.data.notes || '',
                   // Add component and preferences data
                   component_type: componentType,
                   diet_type: preferences.diet_type,
@@ -1085,6 +1086,34 @@ const RecipeAdminPanel = () => {
                                         )}
                                       </Box>
                                     </Box>
+                                    
+                                    {/* Recipe Notes Section */}
+                                    {recipe.notes && (
+                                      <Box sx={{ mt: 3 }}>
+                                        <Typography variant="subtitle2" color="primary">Recipe Notes</Typography>
+                                        <Paper 
+                                          variant="outlined" 
+                                          sx={{ 
+                                            p: 2, 
+                                            mt: 1, 
+                                            backgroundColor: 'background.paper',
+                                            maxHeight: '200px',
+                                            overflow: 'auto'
+                                          }}
+                                        >
+                                          <Typography 
+                                            variant="body2" 
+                                            component="div" 
+                                            sx={{ 
+                                              whiteSpace: 'pre-wrap',
+                                              color: 'text.primary' 
+                                            }}
+                                          >
+                                            {recipe.notes}
+                                          </Typography>
+                                        </Paper>
+                                      </Box>
+                                    )}
                                   </Grid>
                                 </Grid>
                               </Box>
