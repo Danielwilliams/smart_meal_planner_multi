@@ -146,11 +146,19 @@ async def tag_recipes(
     """
     conn = None
     try:
+        # Log the raw input data for debugging
+        logger.info(f"Raw tag_data received: {tag_data}")
+        
         # Extract data
         recipe_ids = tag_data.get('recipe_ids', [])
         component_type = tag_data.get('component_type')
         
+        # More detailed logging of extracted data
+        logger.info(f"Extracted recipe_ids: {recipe_ids} (type: {type(recipe_ids)})")
+        logger.info(f"Extracted component_type: {component_type} (type: {type(component_type)})")
+        
         if not recipe_ids or not component_type:
+            logger.error(f"Missing required data. recipe_ids: {recipe_ids}, component_type: {component_type}")
             raise HTTPException(
                 status_code=400, 
                 detail="Both recipe_ids and component_type are required"
@@ -158,13 +166,54 @@ async def tag_recipes(
             
         logger.info(f"Tagging {len(recipe_ids)} recipes with component type: {component_type}")
         
+        # Verify DB connection is working
         conn = get_db_connection()
+        logger.info("Database connection established successfully")
+        
         cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # First, verify that recipe_components table exists
+        cursor.execute("""
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_schema = 'public' 
+                AND table_name = 'recipe_components'
+            )
+        """)
+        table_exists = cursor.fetchone()
+        logger.info(f"recipe_components table exists: {table_exists}")
+        
+        if not table_exists or not table_exists.get('exists', False):
+            # Table doesn't exist, create it
+            logger.warning("recipe_components table doesn't exist! Creating it now...")
+            cursor.execute("""
+                CREATE TABLE recipe_components (
+                    id SERIAL PRIMARY KEY,
+                    recipe_id INTEGER REFERENCES scraped_recipes(id),
+                    component_type VARCHAR(100) NOT NULL,
+                    name VARCHAR(255),
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            conn.commit()
+            logger.info("Created recipe_components table!")
+        
+        # Check table structure
+        cursor.execute("""
+            SELECT column_name, data_type, is_nullable 
+            FROM information_schema.columns 
+            WHERE table_schema = 'public' 
+            AND table_name = 'recipe_components'
+        """)
+        columns = cursor.fetchall()
+        logger.info(f"recipe_components table structure: {columns}")
         
         # Process each recipe
         results = []
         for recipe_id in recipe_ids:
             try:
+                logger.info(f"Processing recipe_id: {recipe_id}")
+                
                 # Check if recipe exists and get title
                 cursor.execute("""
                     SELECT id, title FROM scraped_recipes 
@@ -173,6 +222,7 @@ async def tag_recipes(
                 
                 recipe = cursor.fetchone()
                 if not recipe:
+                    logger.warning(f"Recipe {recipe_id} not found in database!")
                     results.append({
                         "recipe_id": recipe_id,
                         "success": False,
@@ -180,69 +230,58 @@ async def tag_recipes(
                     })
                     continue
                 
+                logger.info(f"Recipe found: {recipe}")
                 recipe_title = recipe.get('title', f"Recipe {recipe_id}")
                 
                 # Check if component already exists
                 cursor.execute("""
-                    SELECT recipe_id, component_type FROM recipe_components
+                    SELECT * FROM recipe_components
                     WHERE recipe_id = %s
                 """, (recipe_id,))
                 
                 existing = cursor.fetchone()
+                logger.info(f"Existing component record: {existing}")
                 
                 if existing:
                     # Update existing component
-                    cursor.execute("""
+                    update_sql = """
                         UPDATE recipe_components
                         SET component_type = %s
                         WHERE recipe_id = %s
-                        RETURNING recipe_id, component_type
-                    """, (component_type, recipe_id))
+                        RETURNING *
+                    """
+                    logger.info(f"Executing update SQL: {update_sql} with params: [{component_type}, {recipe_id}]")
+                    
+                    cursor.execute(update_sql, (component_type, recipe_id))
                     updated = cursor.fetchone()
                     
-                    # Log complete SQL and parameters for debugging
-                    logger.info(f"UPDATE recipe_components SET component_type = '{component_type}' WHERE recipe_id = {recipe_id}")
+                    if updated:
+                        logger.info(f"Update successful, returned: {updated}")
+                    else:
+                        logger.error("Update query didn't return any data!")
                     
                     results.append({
                         "recipe_id": recipe_id,
                         "success": True,
-                        "message": f"Updated component type from '{existing['component_type']}' to '{component_type}'",
+                        "message": f"Updated component type from '{existing.get('component_type', 'unknown')}' to '{component_type}'",
                         "data": updated
                     })
                 else:
-                    # Check if the name column is required 
-                    cursor.execute("""
-                        SELECT column_name, is_nullable 
-                        FROM information_schema.columns 
-                        WHERE table_schema = 'public' 
-                        AND table_name = 'recipe_components' 
-                        AND column_name = 'name'
-                    """)
+                    # Insert new component
+                    insert_sql = """
+                        INSERT INTO recipe_components (recipe_id, component_type, name)
+                        VALUES (%s, %s, %s)
+                        RETURNING *
+                    """
+                    logger.info(f"Executing insert SQL: {insert_sql} with params: [{recipe_id}, {component_type}, {recipe_title}]")
                     
-                    name_column = cursor.fetchone()
-                    name_required = name_column and name_column[1] == 'NO'  # 'NO' means NOT NULL
-                    
-                    # Insert new component - with or without name depending on schema
-                    if name_required:
-                        # Log detailed info about the SQL we'll execute
-                        logger.info(f"Inserting with name (required): INSERT INTO recipe_components (recipe_id, component_type, name) VALUES ({recipe_id}, '{component_type}', '{recipe_title}')")
-                        
-                        cursor.execute("""
-                            INSERT INTO recipe_components (recipe_id, component_type, name)
-                            VALUES (%s, %s, %s)
-                            RETURNING recipe_id, component_type
-                        """, (recipe_id, component_type, recipe_title))
-                    else:
-                        # If name is optional, still include it but don't require it
-                        logger.info(f"Inserting with name (optional): INSERT INTO recipe_components (recipe_id, component_type, name) VALUES ({recipe_id}, '{component_type}', '{recipe_title}')")
-                        
-                        cursor.execute("""
-                            INSERT INTO recipe_components (recipe_id, component_type, name)
-                            VALUES (%s, %s, %s)
-                            RETURNING recipe_id, component_type
-                        """, (recipe_id, component_type, recipe_title))
-                        
+                    cursor.execute(insert_sql, (recipe_id, component_type, recipe_title))
                     created = cursor.fetchone()
+                    
+                    if created:
+                        logger.info(f"Insert successful, returned: {created}")
+                    else:
+                        logger.error("Insert query didn't return any data!")
                     
                     results.append({
                         "recipe_id": recipe_id,
@@ -250,15 +289,15 @@ async def tag_recipes(
                         "message": f"Added component type '{component_type}'",
                         "data": created
                     })
-                    
-                # For debugging, check what was actually stored
-                cursor.execute("""
-                    SELECT * FROM recipe_components
-                    WHERE recipe_id = %s
-                """, (recipe_id,))
                 
-                actual_record = cursor.fetchone()
-                logger.info(f"Actual stored record: {actual_record}")
+                # Verify the change by doing a direct select
+                cursor.execute("SELECT * FROM recipe_components WHERE recipe_id = %s", (recipe_id,))
+                verification = cursor.fetchone()
+                logger.info(f"Verification SELECT result: {verification}")
+                
+                # Force a commit after each recipe to ensure changes are saved even if later ones fail
+                conn.commit()
+                logger.info(f"Changes committed for recipe {recipe_id}")
                 
             except Exception as e:
                 logger.error(f"Error processing recipe {recipe_id}: {str(e)}", exc_info=True)
@@ -269,12 +308,20 @@ async def tag_recipes(
                 })
                 # Continue processing other recipes
         
-        # Commit all changes
+        # Final commit of all changes
         conn.commit()
+        logger.info("All changes committed to database")
         
         # Count successes and failures
         successes = sum(1 for r in results if r['success'])
         failures = len(results) - successes
+        
+        # Check again after all operations to verify status
+        logger.info("Verifying final state of component records...")
+        for recipe_id in recipe_ids:
+            cursor.execute("SELECT * FROM recipe_components WHERE recipe_id = %s", (recipe_id,))
+            final_state = cursor.fetchone()
+            logger.info(f"Final state for recipe {recipe_id}: {final_state}")
         
         return {
             "success": True,
@@ -285,10 +332,21 @@ async def tag_recipes(
         logger.error(f"Error tagging recipes: {str(e)}", exc_info=True)
         if conn:
             conn.rollback()
+            logger.info("Transaction rolled back due to error")
         raise HTTPException(status_code=500, detail=f"Error tagging recipes: {str(e)}")
     finally:
         if conn:
+            # Final verification query to check database state
+            try:
+                with conn.cursor(cursor_factory=RealDictCursor) as final_cursor:
+                    final_cursor.execute("SELECT COUNT(*) FROM recipe_components")
+                    count = final_cursor.fetchone()
+                    logger.info(f"Total recipe_components records in database: {count}")
+            except Exception as e:
+                logger.error(f"Error in final verification: {str(e)}")
+                
             conn.close()
+            logger.info("Database connection closed")
 
 @router.delete("/delete-recipe-image/{recipe_id}")
 async def delete_recipe_image(
@@ -551,6 +609,7 @@ async def get_component_types(user = Depends(get_user_from_token)):
 @router.get("/check-component/{recipe_id}")
 async def check_recipe_component(
     recipe_id: int,
+    debug: bool = False,
     user = Depends(get_user_from_token)
 ):
     """
@@ -578,6 +637,7 @@ async def check_recipe_component(
         """, (recipe_id,))
         
         component = cursor.fetchone()
+        logger.info(f"Component data for recipe {recipe_id}: {component}")
         
         # Get preferences if any
         cursor.execute("""
@@ -587,11 +647,68 @@ async def check_recipe_component(
         
         preferences = cursor.fetchone()
         
-        return {
+        # If debug mode is enabled, include extra information
+        debug_info = None
+        if debug:
+            logger.info(f"Running debug check for recipe {recipe_id}")
+            
+            # Check if recipe_components table exists
+            cursor.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name = 'recipe_components'
+                )
+            """)
+            table_exists = cursor.fetchone()
+            
+            # Direct SQL checks
+            cursor.execute("SELECT COUNT(*) FROM recipe_components")
+            total_components = cursor.fetchone()
+            
+            # Check component_type column
+            cursor.execute("""
+                SELECT column_name, data_type, is_nullable 
+                FROM information_schema.columns 
+                WHERE table_schema = 'public' 
+                AND table_name = 'recipe_components'
+                AND column_name = 'component_type'
+            """)
+            component_type_info = cursor.fetchone()
+            
+            # Check if this specific recipe has a component
+            cursor.execute("""
+                SELECT COUNT(*) FROM recipe_components
+                WHERE recipe_id = %s
+            """, (recipe_id,))
+            has_component = cursor.fetchone()
+            
+            # Get the actual component data without any processing
+            cursor.execute("""
+                SELECT * FROM recipe_components
+                WHERE recipe_id = %s
+            """, (recipe_id,))
+            raw_component = cursor.fetchone()
+            
+            debug_info = {
+                "table_exists": table_exists,
+                "total_components": total_components,
+                "component_type_column": component_type_info,
+                "has_component_count": has_component,
+                "raw_component_data": raw_component,
+                "component_type": raw_component.get('component_type') if raw_component else None
+            }
+        
+        result = {
             "recipe": recipe,
             "component": component,
             "preferences": preferences
         }
+        
+        if debug_info:
+            result["debug_info"] = debug_info
+            
+        return result
     except Exception as e:
         logger.error(f"Error checking recipe component: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error checking recipe component: {str(e)}")

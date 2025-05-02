@@ -167,9 +167,13 @@ async def get_scraped_recipe_by_id(
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         
-        # Get the recipe details
+        # Get the recipe details with comprehensive component type information
         cursor.execute("""
-            SELECT r.*, rc.component_type
+            SELECT 
+                r.*, 
+                rc.component_type,
+                rc.id as component_id,
+                rc.name as component_name
             FROM scraped_recipes r
             LEFT JOIN recipe_components rc ON r.id = rc.recipe_id
             WHERE r.id = %s

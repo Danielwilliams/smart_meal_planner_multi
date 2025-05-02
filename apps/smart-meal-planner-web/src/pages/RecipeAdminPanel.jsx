@@ -310,7 +310,32 @@ const RecipeAdminPanel = () => {
         
         // Extract preferences data
         const preferences = componentResponse.data.preferences || {};
-        const componentType = componentResponse.data.component?.component_type;
+        
+        // Extract and log component type data with more details
+        const componentData = componentResponse.data.component;
+        console.log("Component data from API:", componentData);
+        
+        // Improved component type extraction with fallback
+        let componentType = null;
+        if (componentData && 'component_type' in componentData) {
+          componentType = componentData.component_type;
+          console.log(`Found component_type in response: "${componentType}"`);
+        } else {
+          console.log("No component_type found in response");
+          
+          // Try to directly check the recipe_components table via a debugging endpoint
+          try {
+            const debugResponse = await axios.get(`${API_BASE_URL}/recipe-admin/check-component/${recipeId}?debug=true`, {
+              headers: {
+                'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+                'Content-Type': 'application/json'
+              }
+            });
+            console.log("Debug component check response:", debugResponse.data);
+          } catch (err) {
+            console.error("Failed to run component debug check:", err);
+          }
+        }
         
         // Extract ingredients from metadata if available
         let ingredients = [];
@@ -477,8 +502,13 @@ const RecipeAdminPanel = () => {
         showAlert(`Tagging ${selectedRecipes.length} recipes as "${finalTag}"...`, 'info');
         setTagDialogOpen(false);
         
+        console.log(`Sending tagging request with ${selectedRecipes.length} recipe IDs:`, selectedRecipes);
+        const parsedRecipeIds = selectedRecipes.map(id => parseInt(id));
+        console.log("Parsed recipe IDs:", parsedRecipeIds);
+        console.log("Component type:", finalTag);
+        
         const response = await axios.post(`${API_BASE_URL}/recipe-admin/tag-recipes`, {
-          recipe_ids: selectedRecipes.map(id => parseInt(id)),
+          recipe_ids: parsedRecipeIds,
           component_type: finalTag
         }, {
           headers: {
@@ -490,16 +520,65 @@ const RecipeAdminPanel = () => {
         console.log('Tagging response:', response.data);
         setTaggingResult(response.data);
         
-        const tagged = response.data.tagged_count;
-        const failed = selectedRecipes.length - tagged;
+        // Process results from the response
+        const results = response.data.results || [];
+        const successes = results.filter(r => r.success);
+        const failures = results.filter(r => !r.success);
         
-        if (failed > 0) {
-          showAlert(`Tagged ${tagged} recipes as "${finalTag}". ${failed} recipes failed.`, 'warning');
+        console.log(`Tagging results: ${successes.length} successes, ${failures.length} failures`);
+        
+        if (failures.length > 0) {
+          showAlert(`Tagged ${successes.length} recipes as "${finalTag}". ${failures.length} recipes failed.`, 'warning');
+        } else if (successes.length > 0) {
+          showAlert(`Successfully tagged all ${successes.length} recipes as "${finalTag}"!`, 'success');
         } else {
-          showAlert(`Successfully tagged all ${tagged} recipes as "${finalTag}"!`, 'success');
+          showAlert(`No recipes were tagged. Please check the logs for details.`, 'error');
         }
         
+        // Immediately update the UI for the tagged recipes
+        setRecipes(prevRecipes => {
+          // Create a new array with updated component_type for tagged recipes
+          return prevRecipes.map(recipe => {
+            if (parsedRecipeIds.includes(recipe.id)) {
+              console.log(`Updating recipe ${recipe.id} in state with component_type: ${finalTag}`);
+              return {
+                ...recipe,
+                component_type: finalTag
+              };
+            }
+            return recipe;
+          });
+        });
+        
+        // Fetch updated component types to refresh the filter options
         await fetchComponentTypes();
+        
+        // Force refresh individual recipes to ensure we have the latest data
+        parsedRecipeIds.forEach(async (recipeId) => {
+          try {
+            // Get component and preferences data directly
+            const componentResponse = await axios.get(`${API_BASE_URL}/recipe-admin/check-component/${recipeId}?debug=true`, {
+              headers: {
+                'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+                'Content-Type': 'application/json'
+              }
+            });
+            
+            console.log(`Manual component refresh for recipe ${recipeId}:`, componentResponse.data);
+            
+            // Verify the component data is as expected
+            const component = componentResponse.data.component;
+            if (component && component.component_type === finalTag) {
+              console.log(`Confirmed: Recipe ${recipeId} has component_type ${finalTag}`);
+            } else {
+              console.warn(`Warning: Recipe ${recipeId} component verification failed`, component);
+            }
+          } catch (err) {
+            console.error(`Error refreshing recipe ${recipeId}:`, err);
+          }
+        });
+        
+        // Finally refresh all recipes to ensure everything is in sync
         fetchRecipes();
         setSelectedRecipes([]);
       } catch (error) {
@@ -891,9 +970,14 @@ const RecipeAdminPanel = () => {
                                 label={recipe.component_type} 
                                 size="small" 
                                 color="primary" 
+                                onClick={() => console.log("Current component data:", recipe)}
                               />
                             ) : (
-                              <Typography variant="body2" color="text.secondary">
+                              <Typography 
+                                variant="body2" 
+                                color="text.secondary"
+                                onClick={() => console.log("Recipe without component:", recipe)}
+                              >
                                 Not tagged
                               </Typography>
                             )}
