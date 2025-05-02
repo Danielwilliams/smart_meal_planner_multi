@@ -242,6 +242,47 @@ const convertGramsToReadable = (grams, itemName) => {
   return `${grams}g`;
 };
 
+// Common food items with default units when no unit is specified
+const DEFAULT_UNITS = {
+  'chicken broth': { unit: 'cups' },
+  'beef broth': { unit: 'cups' },
+  'vegetable broth': { unit: 'cups' },
+  'water': { unit: 'cups' },
+  'milk': { unit: 'cups' },
+  'olive oil': { unit: 'tbsp' },
+  'cooking oil': { unit: 'tbsp' },
+  'vegetable oil': { unit: 'tbsp' },
+  'balsamic glaze': { unit: 'tbsp', defaultQty: 4 },
+  'balsamic vinegar': { unit: 'tbsp' },
+  'red wine vinegar': { unit: 'tbsp' },
+  'apple cider vinegar': { unit: 'tbsp' },
+  'soy sauce': { unit: 'tbsp' },
+  'fish sauce': { unit: 'tbsp' },
+  'vanilla extract': { unit: 'tsp' },
+  'almond extract': { unit: 'tsp' },
+  'saffron': { unit: 'tsp', defaultQty: 0.5 },
+  'feta cheese': { unit: 'cup', defaultQty: 0.5 },
+  'parmesan cheese': { unit: 'cup' },
+  'cheddar cheese': { unit: 'cup' },
+  'ginger': { unit: 'tbsp' },
+  'salt': { unit: 'tsp' },
+  'pepper': { unit: 'tsp' },
+  'kalamata olive': { unit: 'cup', defaultQty: 0.25 },
+  'black olive': { unit: 'cup' },
+  'green olive': { unit: 'cup' },
+  'soy ginger dressing': { unit: 'cup', defaultQty: 0.25 },
+  'ranch dressing': { unit: 'cup' },
+  'italian dressing': { unit: 'cup' },
+  'caesar dressing': { unit: 'cup' },
+  'honey': { unit: 'tbsp' },
+  'maple syrup': { unit: 'tbsp' },
+  'sugar': { unit: 'cup' },
+  'brown sugar': { unit: 'cup' },
+  'flour': { unit: 'cup' },
+  'rice': { unit: 'cup' },
+  'quinoa': { unit: 'cup' }
+};
+
 // Format the final display name for an item
 const formatDisplayName = (name, quantity, unit) => {
   // Get proper display name with capitalization
@@ -273,26 +314,14 @@ const formatDisplayName = (name, quantity, unit) => {
     }
   }
   
-  // Special case handling with default units
-  if (name === 'feta cheese' || name.includes('feta')) {
-    return 'Feta Cheese: 1/2 cup';
-  }
-  if (name === 'kalamata olive' || name === 'kalamata olives' || name.includes('kalamata')) {
-    return 'Kalamata Olives: 1/4 cup';
-  }
-  if (name === 'saffron' || name.includes('saffron')) {
-    return 'Saffron: 1/2 tsp';
-  }
-  if (name === 'soy ginger dressing' || name.includes('ginger dressing') || (name.includes('soy') && name.includes('ginger'))) {
-    return 'Soy Ginger Dressing: 1/4 cup';
-  }
-  // Make sure balsamic glaze has units
-  if (name === 'balsamic glaze' && !unit) {
-    return 'Balsamic Glaze: 4 tbsp';
-  }
-  // Make sure chicken broth has units
-  if (name === 'chicken broth' && !unit) {
-    return `Chicken Broth: ${quantity} cups`;
+  // Check for items with default units in our database
+  for (const [itemName, defaults] of Object.entries(DEFAULT_UNITS)) {
+    if (name.includes(itemName)) {
+      // Use default quantity if provided and no quantity was found
+      const displayQty = (!quantity || quantity === 0) && defaults.defaultQty ? 
+                         defaults.defaultQty : quantity;
+      return `${displayName}: ${displayQty} ${defaults.unit}`;
+    }
   }
   
   // Format based on unit
