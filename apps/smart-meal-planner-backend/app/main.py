@@ -157,6 +157,28 @@ def create_app() -> FastAPI:
     @app.get("/health")
     async def health_check():
         return {"status": "healthy"}
+        
+    @app.get("/check-s3-vars")
+    async def check_s3_vars():
+        """Check S3 environment variables (safe, doesn't expose sensitive data)"""
+        s3_vars = {
+            "AWS_ACCESS_KEY_ID": bool(os.getenv("AWS_ACCESS_KEY_ID")),
+            "AWS_SECRET_ACCESS_KEY": bool(os.getenv("AWS_SECRET_ACCESS_KEY")),
+            "AWS_REGION": os.getenv("AWS_REGION", "us-east-1"),
+            "S3_BUCKET_NAME": os.getenv("S3_BUCKET_NAME")
+        }
+        
+        # Check s3_helper initialization
+        helper_status = {
+            "initialized": hasattr(s3_helper, "bucket_name") and s3_helper.bucket_name is not None,
+            "bucket_name": getattr(s3_helper, "bucket_name", None),
+            "region": getattr(s3_helper, "region", None) if hasattr(s3_helper, "region") else None
+        }
+        
+        return {
+            "s3_environment_vars": s3_vars,
+            "s3_helper_status": helper_status
+        }
 
     logger.info(f"FastAPI application created successfully in {ENVIRONMENT} mode")
     return app

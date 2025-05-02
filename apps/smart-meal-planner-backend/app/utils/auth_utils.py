@@ -98,13 +98,13 @@ async def get_user_organization_role(user_id: int):
             
             # Check if user has admin role in the system
             cur.execute("""
-                SELECT "Role" FROM users
+                SELECT role FROM users
                 WHERE id = %s
             """, (user_id,))
             user_record = cur.fetchone()
             
             is_admin = False
-            if user_record and user_record.get("Role") == "admin":
+            if user_record and user_record.get("role") == "admin":
                 is_admin = True
                 return {
                     "organization_id": None,
