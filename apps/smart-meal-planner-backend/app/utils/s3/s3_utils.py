@@ -15,17 +15,31 @@ logger = logging.getLogger(__name__)
 class S3Helper:
     def __init__(self):
         """Initialize S3 client connection using environment variables"""
-        self.aws_access_key = os.getenv("AWS_ACCESS_KEY_ID")
-        self.aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+        # Try to get environment variables directly from os.environ first, then fall back to os.getenv
+        # Railway may require direct access to os.environ
+        self.aws_access_key = os.environ.get("AWS_ACCESS_KEY_ID") or os.getenv("AWS_ACCESS_KEY_ID")
+        self.aws_secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY") or os.getenv("AWS_SECRET_ACCESS_KEY")
         
         # Debug logging of environment variables (masked for security)
         logger.debug(f"AWS_ACCESS_KEY_ID: {'SET' if self.aws_access_key else 'NOT SET'}")
         logger.debug(f"AWS_SECRET_ACCESS_KEY: {'SET' if self.aws_secret_key else 'NOT SET'}")
         
-        # Parse region from STS URL if provided, or use environment variable
-        aws_region_or_url = os.getenv("AWS_REGION", "us-east-2")
-        logger.debug(f"AWS_REGION raw value: {aws_region_or_url}")
+        # Try both methods for region and bucket name
+        bucket_direct = os.environ.get("S3_BUCKET_NAME")
+        bucket_getenv = os.getenv("S3_BUCKET_NAME")
+        region_direct = os.environ.get("AWS_REGION")
+        region_getenv = os.getenv("AWS_REGION", "us-east-2")
         
+        logger.debug(f"S3_BUCKET_NAME (direct): {bucket_direct}")
+        logger.debug(f"S3_BUCKET_NAME (getenv): {bucket_getenv}")
+        logger.debug(f"AWS_REGION (direct): {region_direct}")
+        logger.debug(f"AWS_REGION (getenv): {region_getenv}")
+        
+        # Use the first available value
+        aws_region_or_url = region_direct or region_getenv or "us-east-2"
+        logger.info(f"AWS_REGION raw value: {aws_region_or_url}")
+        
+        # Parse the region
         if "amazonaws.com" in aws_region_or_url:
             # Extract region from URL like https://sts.us-east-2.amazonaws.com
             parts = aws_region_or_url.split('.')
@@ -39,9 +53,10 @@ class S3Helper:
             logger.info(f"Extracted region '{self.region}' from URL: {aws_region_or_url}")
         else:
             self.region = aws_region_or_url
-            
-        self.bucket_name = os.getenv("S3_BUCKET_NAME")
-        logger.debug(f"S3_BUCKET_NAME: {self.bucket_name}")
+        
+        # Get bucket name
+        self.bucket_name = bucket_direct or bucket_getenv
+        logger.info(f"S3_BUCKET_NAME: {self.bucket_name}")
         
         # More detailed validation
         missing_vars = []
@@ -62,6 +77,7 @@ class S3Helper:
         
         # Initialize S3 client
         try:
+            logger.info(f"Creating boto3 S3 client with access_key={self.aws_access_key[:4]}*** and region={self.region}")
             self.s3_client = boto3.client(
                 's3',
                 aws_access_key_id=self.aws_access_key,
@@ -70,8 +86,13 @@ class S3Helper:
             )
             
             # Test connection with a simple operation
-            self.s3_client.list_buckets()
-            logger.info("Successfully connected to AWS S3")
+            buckets = self.s3_client.list_buckets()
+            bucket_names = [b['Name'] for b in buckets.get('Buckets', [])]
+            logger.info(f"Successfully connected to AWS S3. Available buckets: {bucket_names}")
+            
+            # Verify our bucket exists
+            if self.bucket_name not in bucket_names:
+                logger.warning(f"Bucket '{self.bucket_name}' not found in available buckets: {bucket_names}")
             
         except Exception as e:
             logger.error(f"Failed to initialize S3 client: {str(e)}")
@@ -208,43 +229,73 @@ def force_initialize_s3_helper():
     global s3_helper
     logger.info("Attempting to force initialize S3 helper")
     
-    # Debug print all environment variables
-    for key, value in os.environ.items():
-        if "S3" in key or "AWS" in key:
-            # Mask sensitive values
-            if "KEY" in key or "SECRET" in key:
-                logger.info(f"ENV: {key}=*******")
-            else:
-                logger.info(f"ENV: {key}={value}")
-    
-    # Check if environment variables are available now
-    aws_access_key = os.getenv("AWS_ACCESS_KEY_ID")
-    aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY") 
-    bucket_name = os.getenv("S3_BUCKET_NAME")
-    aws_region = os.getenv("AWS_REGION", "us-east-2")
-    
-    logger.info(f"S3 variables available: access_key={bool(aws_access_key)}, secret_key={bool(aws_secret_key)}, bucket={bucket_name}, region={aws_region}")
-    
-    # Try to initialize if we have all required values
-    if aws_access_key and aws_secret_key and bucket_name:
-        try:
-            logger.info("Attempting to create S3Helper with available credentials")
-            real_s3_helper = S3Helper()
-            logger.info(f"Successfully created S3Helper with bucket: {real_s3_helper.bucket_name}")
-            s3_helper = real_s3_helper
-            return real_s3_helper
-        except Exception as e:
-            logger.error(f"Failed to initialize S3Helper at runtime: {str(e)}", exc_info=True)
-    else:
-        logger.error("Missing required S3 environment variables for runtime initialization")
+    # Try reading from environment - Railway specific handling
+    try:
+        # Directly read from os.environ for Railway compatibility
+        aws_access_key = os.environ.get("AWS_ACCESS_KEY_ID") or os.getenv("AWS_ACCESS_KEY_ID")
+        aws_secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY") or os.getenv("AWS_SECRET_ACCESS_KEY")
+        bucket_name = os.environ.get("S3_BUCKET_NAME") or os.getenv("S3_BUCKET_NAME")
+        aws_region = os.environ.get("AWS_REGION") or os.getenv("AWS_REGION", "us-east-2")
+        
+        # Debug log (mask sensitive values)
+        logger.info(f"Access Key Present: {bool(aws_access_key)}")
+        logger.info(f"Secret Key Present: {bool(aws_secret_key)}")
+        logger.info(f"Bucket Name: {bucket_name}")
+        logger.info(f"Region: {aws_region}")
+        
+        # Explicitly update environment for Railway
+        if aws_access_key:
+            os.environ["AWS_ACCESS_KEY_ID"] = aws_access_key
+        if aws_secret_key:
+            os.environ["AWS_SECRET_ACCESS_KEY"] = aws_secret_key
+        if bucket_name:
+            os.environ["S3_BUCKET_NAME"] = bucket_name
+        if aws_region:
+            os.environ["AWS_REGION"] = aws_region
+        
+        # Try to initialize if we have all required values
+        if aws_access_key and aws_secret_key and bucket_name:
+            try:
+                # Log that we are creating an S3 client
+                logger.info(f"Creating boto3 S3 client with access_key={aws_access_key[:4]}*** and region={aws_region}")
+                
+                # Create an S3 client directly first to test connection
+                s3_client = boto3.client(
+                    's3',
+                    aws_access_key_id=aws_access_key,
+                    aws_secret_access_key=aws_secret_key,
+                    region_name=aws_region
+                )
+                
+                # Try a simple operation
+                s3_client.list_buckets()
+                logger.info(f"Successfully connected to AWS with direct boto3 client")
+                
+                # Now create the full helper
+                logger.info("Creating S3Helper with verified credentials")
+                real_s3_helper = S3Helper()
+                logger.info(f"Successfully created S3Helper with bucket: {real_s3_helper.bucket_name}")
+                s3_helper = real_s3_helper
+                return real_s3_helper
+            except Exception as e:
+                logger.error(f"Failed to initialize S3Helper at runtime: {str(e)}", exc_info=True)
+        else:
+            logger.error("Missing required S3 environment variables for runtime initialization")
+            missing_vars = []
+            if not aws_access_key:
+                missing_vars.append("AWS_ACCESS_KEY_ID")
+            if not aws_secret_key:
+                missing_vars.append("AWS_SECRET_ACCESS_KEY")
+            if not bucket_name:
+                missing_vars.append("S3_BUCKET_NAME")
+            logger.error(f"Missing variables: {', '.join(missing_vars)}")
+    except Exception as e:
+        logger.error(f"Unexpected error during environment variable processing: {str(e)}", exc_info=True)
         
     # Log that we couldn't initialize
     logger.error("Failed to initialize S3 helper with environment variables")
     logger.error("Please set the AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, S3_BUCKET_NAME, and AWS_REGION environment variables in your Railway deployment")
     
-    # NEVER use hardcoded credentials - this is a security risk!
-    # Instead, return the existing helper which will raise appropriate errors
-        
     return s3_helper
 
 # Try to create the singleton instance

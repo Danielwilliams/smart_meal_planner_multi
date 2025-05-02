@@ -306,6 +306,45 @@ async def test_s3_config(user = Depends(get_user_from_token)):
         logger.error(f"Error testing S3 configuration: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error testing S3 configuration: {str(e)}")
 
+@router.get("/check-env-vars")
+async def check_env_vars(user = Depends(get_user_from_token)):
+    """
+    Debug endpoint to check environment variables directly
+    """
+    try:
+        # Check environment variables using different methods
+        result = {
+            "os_environ_direct": {
+                "AWS_ACCESS_KEY_ID": "PRESENT" if "AWS_ACCESS_KEY_ID" in os.environ else "MISSING",
+                "AWS_SECRET_ACCESS_KEY": "PRESENT" if "AWS_SECRET_ACCESS_KEY" in os.environ else "MISSING",
+                "S3_BUCKET_NAME": os.environ.get("S3_BUCKET_NAME", "MISSING"),
+                "AWS_REGION": os.environ.get("AWS_REGION", "MISSING")
+            },
+            "os_getenv": {
+                "AWS_ACCESS_KEY_ID": "PRESENT" if os.getenv("AWS_ACCESS_KEY_ID") else "MISSING",
+                "AWS_SECRET_ACCESS_KEY": "PRESENT" if os.getenv("AWS_SECRET_ACCESS_KEY") else "MISSING",
+                "S3_BUCKET_NAME": os.getenv("S3_BUCKET_NAME", "MISSING"),
+                "AWS_REGION": os.getenv("AWS_REGION", "MISSING")
+            },
+            "railway_specific": {
+                "RAILWAY_ENV": os.environ.get("RAILWAY_ENV", "MISSING"),
+                "RAILWAY_SERVICE_NAME": os.environ.get("RAILWAY_SERVICE_NAME", "MISSING")
+            }
+        }
+        
+        # Add some Railway-specific environment info if available
+        return {
+            "success": True,
+            "environment_variables": result,
+            "railway_detected": "RAILWAY_ENV" in os.environ
+        }
+    except Exception as e:
+        logger.error(f"Error checking environment variables: {str(e)}", exc_info=True)
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
 @router.get("/component-types")
 async def get_component_types(user = Depends(get_user_from_token)):
     """
