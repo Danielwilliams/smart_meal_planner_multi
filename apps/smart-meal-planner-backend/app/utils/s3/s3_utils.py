@@ -136,14 +136,32 @@ class S3Helper:
             file_content = await file.read()
             logger.debug(f"Read file content: {len(file_content)} bytes")
             
-            # Upload to S3
+            # Try to upload with public-read ACL first, but if that fails due to ACL issues,
+            # we'll try again without the ACL parameter
             logger.debug(f"Attempting to upload to S3 bucket: {self.bucket_name}")
-            response = self.s3_client.put_object(
-                Bucket=self.bucket_name,
-                Key=s3_path,
-                Body=file_content,
-                ContentType=file.content_type or "image/jpeg"
-            )
+            try:
+                response = self.s3_client.put_object(
+                    Bucket=self.bucket_name,
+                    Key=s3_path,
+                    Body=file_content,
+                    ContentType=file.content_type or "image/jpeg",
+                    ACL='public-read'  # Attempting to make the object publicly readable
+                )
+                logger.info("Successfully uploaded with public-read ACL")
+            except ClientError as acl_error:
+                if 'AccessDenied' in str(acl_error) and 'ACL' in str(acl_error):
+                    logger.warning("Could not set public-read ACL. Trying without ACL parameter.")
+                    # Try again without ACL parameter
+                    response = self.s3_client.put_object(
+                        Bucket=self.bucket_name,
+                        Key=s3_path,
+                        Body=file_content,
+                        ContentType=file.content_type or "image/jpeg"
+                    )
+                    logger.warning("Image uploaded without ACL. You need to manually set bucket policy for public access.")
+                else:
+                    # Re-raise if it's not an ACL-related error
+                    raise
             logger.debug(f"S3 put_object response: {response}")
             
             # Generate URL with region-specific endpoint format

@@ -480,8 +480,11 @@ async def update_recipe(
         
         # Handle image_url update
         if 'image_url' in recipe_data:
+            logger.info(f"Updating image_url to: {recipe_data['image_url']}")
             update_fields.append("image_url = %s")
             update_values.append(recipe_data['image_url'])
+        else:
+            logger.warning(f"No image_url found in update data: {recipe_data.keys()}")
         
         # Handle instructions update
         if 'instructions' in recipe_data:
@@ -552,10 +555,17 @@ async def update_recipe(
         # Add recipe_id to values
         update_values.append(recipe_id)
         
+        # Log the final query and values for debugging
+        logger.info(f"Update query: {update_query}")
+        logger.info(f"Update values: {update_values}")
+        
         # Execute the update
         cursor.execute(update_query, update_values)
         updated_recipe = cursor.fetchone()
         conn.commit()
+        
+        # Log the returned recipe
+        logger.info(f"Updated recipe returned from database: {updated_recipe}")
         
         # Parse metadata if it's a string
         if updated_recipe and 'metadata' in updated_recipe and isinstance(updated_recipe['metadata'], str):

@@ -116,9 +116,20 @@ const RecipeEditor = ({ open, onClose, recipeId, onSave }) => {
       
       if (response.data.success && response.data.image_url) {
         // Update image URL with the one returned from server
+        console.log('Image uploaded successfully, received URL:', response.data.image_url);
         setImageUrl(response.data.image_url);
+        
+        // Log state after update (note: this will show the previous value due to React's state updates)
+        console.log('Image URL state variable after update (may show old value):', imageUrl);
+        
+        // Use setTimeout to verify the state variable after the update
+        setTimeout(() => {
+          console.log('Image URL state after update (setTimeout):', imageUrl);
+        }, 0);
+        
         showAlert('Image uploaded successfully', 'success');
       } else {
+        console.error('Upload response indicated failure:', response.data);
         showAlert('Failed to upload image', 'error');
       }
     } catch (error) {
@@ -347,6 +358,7 @@ const RecipeEditor = ({ open, onClose, recipeId, onSave }) => {
   const handleSave = async () => {
     try {
       setLoading(true);
+      console.log('⭐ Save button clicked, current image URL state:', imageUrl);
       
       // STEP 1: Update basic recipe information (no ingredients field)
       const basicUpdateData = {
@@ -365,7 +377,7 @@ const RecipeEditor = ({ open, onClose, recipeId, onSave }) => {
         }
       };
       
-      console.log('Updating recipe basic data:', basicUpdateData);
+      console.log('❗ Updating recipe with data:', JSON.stringify(basicUpdateData, null, 2));
       console.log('API endpoint:', `${API_BASE_URL}/recipe-admin/update-recipe/${recipeId}`);
       
       // Send update request for basic data
