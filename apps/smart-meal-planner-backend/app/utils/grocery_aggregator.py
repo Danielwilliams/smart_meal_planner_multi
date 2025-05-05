@@ -205,12 +205,18 @@ def sanitize_name(raw_name: str) -> str:
         clean_is_cooked = True
         clean = clean.replace("cooked", "").strip()
     
-    # Remove leading digits/fractions
-    clean = re.sub(r"^[\d/\.\s]+", "", clean).strip()
+    # Remove leading digits/fractions and qualifiers like "large", "medium"
+    clean = re.sub(r"^[\d/\.\s]+(large|medium|small)?\s+", "", clean).strip()
+    
+    # Clean up common qualifiers in the middle
+    clean = re.sub(r"\s+(large|medium|small|cloves|leaves|cups|can)\s+", " ", clean)
     
     # Remove filler phrases
     for fpat in FILLERS:
         clean = re.sub(fpat, "", clean)
+    
+    # Handle "cans" qualifier specially before removing descriptors
+    has_cans = "can" in clean or "cans" in clean
     
     # Remove descriptors
     for dpat in DESCRIPTORS:
@@ -230,13 +236,27 @@ def sanitize_name(raw_name: str) -> str:
     if clean == "salt" and "to taste" in raw_name.lower():
         return "salt to taste"
     
-    # For cheddar cheese when spelled as "cheddase" or similar misspellings
-    if clean in ["cheddase", "cheddar"]:
-        clean = "cheddar cheese"
+    # Fix common spelling variations
+    if clean in ["cheddase", "cheddas", "cheddar"]:
+        clean = "cheddar cheese" # Fix the typo and standardize
     
-    # Reapply "cooked" for display purposes if needed
+    # Fix berry variations
+    if clean in ["berrie", "berry", "mixed berrie", "mixed berry", "blueberrie", "blueberry"]:
+        clean = "berries"
+    
+    # Handle "gluten-free" prefix consistently 
+    if "gluten-free" in clean or "gluten free" in clean:
+        base = clean.replace("gluten-free", "").replace("gluten free", "").strip()
+        clean = f"gluten-free {base}"
+    
+    # Reapply "cooked" for rice/quinoa
     if clean_is_cooked and ("rice" in clean or "quinoa" in clean):
         clean = f"{clean} cooked"
+    
+    # Reapply "cans" for beans if needed
+    if has_cans and any(bean in clean for bean in ["bean", "chickpea", "lentil"]):
+        # Don't add "cans" to the name, as it will be handled in unit field
+        pass
     
     return clean
 
@@ -347,17 +367,44 @@ def standardize_ingredient(ing: Any):
         # Log the quantity we found
         logger.debug(f"Found ingredient quantity: {quantity}")
         
-        # Special handling for common ingredients to ensure consistent format
-        if clean_name.lower() == 'egg' or clean_name.lower() == 'eggs':
-            logger.info(f"Special handling for eggs: {quantity}")
-            if isinstance(quantity, str) and not quantity.isdigit():
-                # For cases like "12 large" - extract the number
-                match = re.search(r'(\d+)', quantity)
-                if match:
-                    quantity = match.group(1)
-                    logger.info(f"Extracted egg quantity: {quantity}")
-            # Standardize name to singular form for consistency
+        # Special handling for ingredients with potential qualifiers in quantity
+        if isinstance(quantity, str):
+            # Handle cases like "12 large eggs", "4 medium onions", etc.
+            if re.search(r'\d+\s+(large|medium|small|cloves|leaves|cans|slices)', quantity):
+                # Extract both number and qualifier
+                number_match = re.search(r'(\d+)', quantity)
+                qualifier_match = re.search(r'(large|medium|small|cloves|leaves|cans|slices)', quantity)
+                
+                if number_match:
+                    # Store the qualifier in the unit field if appropriate
+                    if qualifier_match and not unit:
+                        qualifier = qualifier_match.group(1)
+                        if qualifier in ['large', 'medium', 'small']:
+                            # For eggs and similar items, keep the qualifier
+                            if clean_name.lower() in ['egg', 'eggs', 'onion', 'potato', 'sweet potato', 'bell pepper']:
+                                unit = qualifier
+                        elif qualifier in ['cloves', 'leaves', 'cans', 'slices']:
+                            unit = qualifier
+                            
+                    # Update the quantity to just the number
+                    quantity = number_match.group(1)
+                    logger.info(f"Extracted quantity: {quantity}, qualifier: {unit if unit else 'none'}")
+            
+            # Handle 'cooked' qualifier in quantities
+            if 'cooked' in quantity.lower() and ('rice' in clean_name.lower() or 'quinoa' in clean_name.lower()):
+                # Extract just the number for the quantity
+                number_match = re.search(r'(\d+)', quantity)
+                if number_match:
+                    quantity = number_match.group(1)
+                # Mark this as cooked in the unit field
+                unit = 'cups cooked'
+        
+        # Standardize egg names
+        if clean_name.lower() in ['egg', 'eggs']:
             clean_name = 'egg'
+            # If unit is not specified but we know it's eggs, set qualifier to 'large'
+            if not unit:
+                unit = 'large'
         
         # Convert quantity to float
         amount = safe_convert_to_float(quantity)
