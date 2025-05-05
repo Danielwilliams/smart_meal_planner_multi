@@ -331,6 +331,67 @@ const convertGramsToReadable = (grams, itemName) => {
   return `${grams}g`;
 };
 
+// Category-based unit handling system
+const UNIT_CATEGORIES = {
+  // Items that need cups as units
+  VOLUME_CUPS: [
+    'broth', 'stock', 'milk', 'cream', 'water', 'juice',
+    'mixed greens', 'spinach', 'arugula', 'kale', 
+    'basil', 'salsa', 'dressing', 'quinoa',
+    'flour', 'sugar', 'beans', 'berries', 'corn'
+  ],
+  
+  // Items that need tablespoons
+  VOLUME_TBSP: [
+    'oil', 'vinegar', 'sauce', 'extract', 'honey', 'syrup',
+    'peanut butter', 'almond butter', 'butter'
+  ],
+  
+  // Items that need teaspoons
+  VOLUME_TSP: [
+    'spice', 'seasoning', 'extract', 'powder', 'salt', 'pepper',
+    'saffron', 'cinnamon', 'nutmeg', 'cumin', 'paprika'
+  ],
+  
+  // Items that need grams
+  WEIGHT_GRAMS: [
+    'cheese', 'rice'
+  ],
+  
+  // Items that need pounds
+  WEIGHT_LB: [
+    'meat', 'chicken', 'beef', 'pork', 'turkey',
+    'steak', 'roast'
+  ],
+  
+  // Items that are countable
+  COUNT: [
+    'egg', 'avocado', 'apple', 'orange', 'banana', 'pear',
+    'bagel', 'muffin', 'tortilla', 'wrap'
+  ],
+  
+  // Items that need specific descriptors
+  DESCRIPTORS: {
+    'bell pepper': 'medium',
+    'potato': 'medium',
+    'sweet potato': 'medium',
+    'onion': 'medium',
+    'egg': 'large'
+  },
+  
+  // Items with special units
+  SPECIAL_UNITS: {
+    'garlic': 'cloves',
+    'lettuce': 'leaves',
+    'black bean': 'cans'
+  },
+  
+  // Items that get "cooked" qualifier
+  COOKED_ITEMS: [
+    'rice', 'quinoa'
+  ]
+};
+
 // Common food items with default units when no unit is specified
 const DEFAULT_UNITS = {
   // Liquids and Broths
@@ -339,21 +400,25 @@ const DEFAULT_UNITS = {
   'vegetable broth': { unit: 'cups' },
   'water': { unit: 'cups' },
   'milk': { unit: 'cups' },
+  'almond milk': { unit: 'cups' },
   
   // Oils
   'olive oil': { unit: 'tbsp' },
   'cooking oil': { unit: 'tbsp' },
   'vegetable oil': { unit: 'tbsp' },
+  'sesame oil': { unit: 'tbsp' },
   
   // Vinegars and Sauces
   'balsamic glaze': { unit: 'tbsp' },
   'balsamic vinegar': { unit: 'tbsp' },
   'red wine vinegar': { unit: 'tbsp' },
+  'rice vinegar': { unit: 'tbsp' },
   'apple cider vinegar': { unit: 'tbsp' },
   'soy sauce': { unit: 'tbsp' },
+  'gluten-free soy sauce': { unit: 'tbsp' },
   'fish sauce': { unit: 'tbsp' },
   
-  // Spices and Seasonings (full names to avoid partial matches with produce)
+  // Spices and Seasonings
   'ground pepper': { unit: 'tsp' },
   'black pepper': { unit: 'tsp' },
   'vanilla extract': { unit: 'tsp' },
@@ -363,17 +428,20 @@ const DEFAULT_UNITS = {
   'ginger': { unit: 'tbsp' },
   'ground ginger': { unit: 'tsp' },
   'ginger powder': { unit: 'tsp' },
+  'garlic powder': { unit: 'tsp' },
+  'paprika': { unit: 'tsp' },
+  'italian seasoning': { unit: 'tsp' },
+  'fajita seasoning': { unit: 'tbsp' },
   
-  // Ingredients that need special handling
+  // Cheeses and Dairy
   'feta cheese': { unit: 'cup' },
   'parmesan cheese': { unit: 'cup' },
   'cheddar cheese': { unit: 'g' },
   'fresh mozzarella': { unit: 'oz' },
+  'greek yogurt': { unit: 'cups' },
   
-  // Fresh produce often measured by weight
+  // Fresh produce
   'fresh ginger': { unit: 'g' },
-  
-  // Produce with volume measurements
   'mixed greens': { unit: 'cups' },
   'spinach': { unit: 'cups' },
   'lettuce': { unit: 'leaves' },
@@ -387,7 +455,13 @@ const DEFAULT_UNITS = {
   'basil leaves': { unit: 'cups' },
   'carrot': { unit: 'cups' },
   'carrots': { unit: 'cups' },
+  'broccoli': { unit: 'cups' },
   'garlic': { unit: 'cloves' },
+  'green onion': { unit: 'cup' },
+  'green onions': { unit: 'cup' },
+  'mushroom': { unit: 'cup' },
+  'mushrooms': { unit: 'cup' },
+  'red cabbage': { unit: 'cup' },
   
   // Olives
   'kalamata olive': { unit: 'cup' },
@@ -409,13 +483,37 @@ const DEFAULT_UNITS = {
   
   // Grains and beans
   'flour': { unit: 'cup' },
+  'almond flour': { unit: 'cup' },
   'rice': { unit: 'g' },
-  'quinoa': { unit: 'cup' },
-  'black bean': { unit: 'cups' },
-  'black beans': { unit: 'cups' },
+  'brown rice': { unit: 'cups cooked' },
+  'quinoa': { unit: 'cups cooked' },
+  'gluten-free oats': { unit: 'cup' },
+  'black bean': { unit: 'cans' },
+  'black beans': { unit: 'cans' },
+  
+  // Nuts and Seeds
+  'almond': { unit: 'cup' },
+  'almonds': { unit: 'cup' },
+  'peanut': { unit: 'cup' },
+  'peanuts': { unit: 'cup' },
+  'walnut': { unit: 'cup' },
+  'walnuts': { unit: 'cup' },
+  'sesame seed': { unit: 'tbsp' },
+  'sesame seeds': { unit: 'tbsp' },
+  'granola': { unit: 'cup' },
+  
+  // Nut butters
+  'peanut butter': { unit: 'tbsp' },
+  'almond butter': { unit: 'tbsp' },
+  
+  // Juices
+  'lemon juice': { unit: 'tbsp' },
+  'lime juice': { unit: 'tbsp' },
   
   // Misc
-  'salsa': { unit: 'cups' }
+  'salsa': { unit: 'cups' },
+  'corn': { unit: 'cups' },
+  'berries': { unit: 'cups' }
 };
 
 // Format the final display name for an item
@@ -423,6 +521,34 @@ const formatDisplayName = (name, quantity, unit) => {
   // Get proper display name with capitalization
   const displayName = ITEM_DISPLAY_NAMES[name] || 
     name.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+  
+  // Check for category-based unit handling first
+  
+  // Special case: salt to taste
+  if (name === 'salt' && (item || '').toLowerCase().includes('to taste')) {
+    return `Salt    To taste`;
+  }
+  
+  // For rice & quinoa with "cooked" qualifier
+  for (const item of UNIT_CATEGORIES.COOKED_ITEMS) {
+    if (name.includes(item) && (item || '').toLowerCase().includes('cooked')) {
+      return `${displayName}: ${quantity || 4} cups cooked`;
+    }
+  }
+  
+  // Check for special units
+  for (const [itemName, specialUnit] of Object.entries(UNIT_CATEGORIES.SPECIAL_UNITS)) {
+    if (name === itemName || name.includes(itemName)) {
+      return `${displayName}: ${quantity || 1} ${specialUnit}`;
+    }
+  }
+  
+  // Check for items needing descriptors
+  for (const [itemName, descriptor] of Object.entries(UNIT_CATEGORIES.DESCRIPTORS)) {
+    if (name === itemName || name.includes(itemName)) {
+      return `${displayName}: ${quantity || 1} ${descriptor}`;
+    }
+  }
   
   // Apply unit preferences for specific foods
   for (const [food, preferredUnit] of Object.entries(UNIT_PREFERENCES)) {
@@ -440,13 +566,13 @@ const formatDisplayName = (name, quantity, unit) => {
       // For cheese, ensure we have proper units
       if (food === 'cheese') {
         if (name.includes('cheddar')) {
-          return `${displayName}: ${quantity}g`;
+          return `${displayName}: ${quantity || 1}g`;
         }
       }
       
       // Use the preferred unit unless already specified
       if (!unit) {
-        return `${displayName}: ${quantity} ${preferredUnit}`;
+        return `${displayName}: ${quantity || 1} ${preferredUnit}`;
       }
     }
   }

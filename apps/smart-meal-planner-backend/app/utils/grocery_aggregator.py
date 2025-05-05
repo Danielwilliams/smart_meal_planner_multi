@@ -83,32 +83,114 @@ def sanitize_unit(unit_str: str, ingredient_name: str = "") -> str:
     # Special handling for specific ingredient types
     clean_name = ingredient_name.lower().strip()
     
-    # For eggs - always count them without a unit
-    if clean_name == 'egg' or clean_name == 'eggs':
-        return ""
+    # Category-based unit handling for common ingredient types
     
-    # For bell peppers - use medium as a descriptor, not as a unit
-    if "bell pepper" in clean_name:
-        return ""
+    # COUNTABLE ITEMS - no units needed
+    countable_items = [
+        'egg', 'eggs',
+        'avocado', 'avocados',
+        'cucumber', 'cucumbers',
+        'apple', 'apples',
+        'banana', 'bananas',
+        'orange', 'oranges',
+        'lemon', 'lemons',
+        'lime', 'limes',
+        'tortilla', 'tortillas',
+        'bagel', 'bagels',
+        'muffin', 'muffins',
+        'pita', 'pitas'
+    ]
     
-    # For sweet potatoes and potatoes - use medium as a descriptor, not as a unit
-    if clean_name == "sweet potato" or clean_name == "potato":
-        return ""
+    for item in countable_items:
+        if item == clean_name or (len(item) > 3 and item in clean_name):
+            return ""
     
-    # For gluten-free tortilla - use piece instead of a unit
-    if "tortilla" in clean_name:
-        return ""
+    # SIZE-DESCRIPTOR ITEMS - medium/large/small should be descriptors, not units
+    descriptor_items = [
+        'bell pepper', 'pepper', 
+        'potato', 'sweet potato', 
+        'onion', 'shallot',
+        'zucchini', 'squash',
+        'eggplant',
+        'tomato'
+    ]
     
+    for item in descriptor_items:
+        if item == clean_name or (len(item) > 3 and item in clean_name):
+            return ""
+    
+    # "CAN" ITEMS - typically sold in cans
+    can_items = [
+        'black bean', 'kidney bean', 'pinto bean', 'garbanzo bean', 'chickpea',
+        'tomato sauce', 'tomato paste', 'coconut milk', 'tuna'
+    ]
+    
+    for item in can_items:
+        if item == clean_name or (len(item) > 3 and item in clean_name):
+            if unit_str and unit_str.lower() in ['can', 'cans']:
+                return 'cans'
+            # Don't override other specific units if provided
+            # Default cans only when no unit is specified
+    
+    # WEIGHT ITEMS - typically measured in weight (g, oz, lb)
+    weight_items = [
+        'meat', 'chicken', 'beef', 'pork', 'lamb', 'turkey', 'fish', 'salmon', 'tuna',
+        'cheese', 'butter', 'flour', 'sugar'
+    ]
+    
+    # LIQUID ITEMS - typically measured in volume (cups, ml, L)
+    liquid_items = [
+        'oil', 'vinegar', 'sauce', 'broth', 'stock', 'milk', 'cream', 'yogurt', 
+        'juice', 'water', 'wine', 'dressing'
+    ]
+    
+    # SMALL AMOUNT ITEMS - typically measured in tsp/tbsp
+    small_amt_items = [
+        'spice', 'herb', 'extract', 'seasoning', 'salt', 'pepper', 'cinnamon',
+        'nutmeg', 'cumin', 'paprika', 'ginger', 'garlic powder', 'vanilla'
+    ]
+    
+    # Apply specific unit mappings
+    if 'garlic' in clean_name and 'powder' not in clean_name:
+        return 'cloves'
+    
+    if 'lettuce' in clean_name or 'leaf' in clean_name:
+        return 'leaves'
+    
+    if ('quinoa' in clean_name or 'rice' in clean_name) and 'cooked' in clean_name:
+        return 'cups cooked'
+    
+    # If no unit is provided, check if we should apply a default unit based on the ingredient
     if not unit_str:
-        # If no unit is provided, check if we should apply a default unit based on the ingredient
         for key, default_unit in DEFAULT_UNITS.items():
             if key in clean_name:
                 return default_unit
+                
+        # Apply fallback units based on categories
+        for item in small_amt_items:
+            if item in clean_name:
+                return 'tsp'
+                
+        for item in liquid_items:
+            if item in clean_name:
+                return 'cups'
+                
+        for item in weight_items:
+            if item in clean_name:
+                if 'cheese' in clean_name:
+                    return 'g'  # Use grams for cheese
+                return 'lb'     # Use pounds for most meats and weight items
+        
         return ""
     
+    # Normalize provided units
     clean = unit_str.lower().strip()
-    if clean in ['piece', 'pieces', 'medium', 'large', 'small']:
+    
+    # These are descriptors, not units
+    if clean in ['piece', 'pieces', 'medium', 'large', 'small', 'whole']:
         return ""
+        
+    # Map standard unit abbreviations
     return UNIT_MAP.get(clean, clean)
 
 def sanitize_name(raw_name: str) -> str:
@@ -298,28 +380,65 @@ def standardize_ingredient(ing: Any):
 def combine_amount_and_unit(amount_float: float, unit: str, name: str) -> str:
     """
     Combine amount, unit and name into display string with proper unit handling
+    Uses a more flexible, category-based approach
     """
+    # Ensure name is properly capitalized
+    def capitalize_name(name_str):
+        # Split and capitalize each word, preserving certain patterns
+        words = name_str.split()
+        capitalized = []
+        for word in words:
+            # Skip capitalization for articles, prepositions in the middle of the string
+            if (word.lower() in ['and', 'or', 'with', 'in', 'on', 'of', 'to', 'the', 'a', 'an']) and capitalized:
+                capitalized.append(word.lower())
+            # Preserve hyphenated words like "gluten-free"
+            elif '-' in word:
+                parts = word.split('-')
+                capitalized.append('-'.join([p.capitalize() for p in parts]))
+            else:
+                capitalized.append(word.capitalize())
+        return ' '.join(capitalized)
+    
+    # Standardize ingredient name
+    clean_name = name.lower().strip()
+    display_name = capitalize_name(name)
+    
+    # Handle case with no amount
     if amount_float is None:
-        # For ingredients where we want to apply a default unit but don't have a quantity
-        clean_name = name.lower().strip()
+        # Special handling for common ingredients without quantities
+        default_qty_map = {
+            'lettuce': '1 leaves',
+            'garlic': '2 cloves',
+            'salsa': '1.5 cups',
+            'kalamata olive': '1/4 cup',
+            'soy ginger dressing': '1/4 cup',
+            'feta cheese': '1/2 cup',
+            'saffron': '1/2 tsp',
+            'salt': 'To taste'
+        }
         
-        # Special default handling
-        if 'lettuce' in clean_name:
-            return f"1 leaves {name}"
-        if 'garlic' in clean_name:
-            return f"1 cloves {name}"
-        if 'salsa' in clean_name:
-            return f"1.5 cups {name}"
-        if 'kalamata olive' in clean_name:
-            return f"1/4 cup {name}"
-        if 'soy ginger dressing' in clean_name:
-            return f"1/4 cup {name}"
-        if 'feta cheese' in clean_name:
-            return f"1/2 cup {name}"
-        if 'saffron' in clean_name:
-            return f"1/2 tsp {name}"
-            
-        return name
+        # Check for direct matches or partial matches
+        for key, default_value in default_qty_map.items():
+            if key == clean_name or (len(key) > 3 and key in clean_name):
+                # Handle "to taste" specially
+                if default_value == 'To taste':
+                    return f"{display_name}    {default_value}"
+                return f"{display_name}: {default_value}"
+        
+        # For ingredients where we can make reasonable guesses about quantity
+        if 'oil' in clean_name:
+            return f"{display_name}: 2 tbsp"
+        if 'spice' in clean_name or 'powder' in clean_name or 'seasoning' in clean_name:
+            return f"{display_name}: 1 tsp"
+        if 'sauce' in clean_name:
+            return f"{display_name}: 2 tbsp"
+        if 'vinegar' in clean_name:
+            return f"{display_name}: 1 tbsp"
+        if 'extract' in clean_name:
+            return f"{display_name}: 1 tsp"
+        
+        # Generic fallback - just display the name
+        return display_name
     
     try:
         # Format the amount
@@ -329,53 +448,59 @@ def combine_amount_and_unit(amount_float: float, unit: str, name: str) -> str:
         # Check for simple whole numbers to make them cleaner
         if fraction.denominator == 1:
             quantity_str = str(fraction.numerator)
-            
-        # Apply special handling for specific ingredients
-        clean_name = name.lower().strip()
         
-        # For lettuce, always use leaves
-        if 'lettuce' in clean_name and unit != 'leaves':
-            unit = 'leaves'
-            
-        # For garlic, always use cloves
-        if 'garlic' in clean_name and unit != 'cloves':
-            unit = 'cloves'
-            
-        # For salsa, always use cups
-        if 'salsa' in clean_name and unit != 'cups':
-            unit = 'cups'
-            
-        # For soy ginger dressing, always use cup
-        if 'soy ginger dressing' in clean_name and unit != 'cup':
-            unit = 'cup'
-            
-        # For feta cheese, always use cup
-        if ('feta' in clean_name and 'cheese' in clean_name) and unit != 'cup':
-            unit = 'cup'
-            
-        # For kalamata olives, always use cup
-        if ('kalamata' in clean_name and 'olive' in clean_name) and unit != 'cup':
-            unit = 'cup'
-            
-        # For saffron, always use tsp
-        if 'saffron' in clean_name and unit != 'tsp':
-            unit = 'tsp'
-            
-        # Special handling for "cooked" qualifier
-        if "cooked" in name:
-            base_name = name.replace("cooked", "").strip()
-            return f"{quantity_str} cups {base_name} cooked"
-            
         # Special handling for salt to taste
-        if name == "salt to taste":
+        if clean_name == "salt to taste" or clean_name == "salt" and quantity_str.lower() in ["to", "to taste"]:
             return "Salt    To taste"
             
+        # Special handling for "cooked" qualifier with precise formatting
+        if "cooked" in clean_name and ("rice" in clean_name or "quinoa" in clean_name):
+            base_name = clean_name.replace("cooked", "").strip()
+            display_name = capitalize_name(base_name)
+            return f"{display_name}: {quantity_str} cups cooked"
+            
+        # Special handling for "cans" to show proper format
+        if unit == "cans" or clean_name.endswith("can") or clean_name.endswith("cans"):
+            if "bean" in clean_name:
+                return f"{display_name}: {quantity_str} cans"
+                
+        # Handle common meats with proper unit display
+        if any(meat in clean_name for meat in ["chicken", "beef", "pork", "turkey", "fish"]):
+            # Convert to pounds for large quantities
+            if (unit == "g" or unit == "grams") and float(amount_float) > 500:
+                pounds = float(amount_float) * 0.00220462
+                return f"{display_name}: {pounds:.1f} lb"
+                
+        # Special handling for egg quantities
+        if clean_name == "egg" or clean_name == "eggs":
+            # If quantity is large enough, we can add "large" qualifier
+            if float(quantity_str) >= 1:
+                return f"{capitalize_name('eggs')}: {quantity_str} large"
+                
+        # Consistent formatting for bell peppers
+        if "bell pepper" in clean_name:
+            return f"{capitalize_name('bell peppers')}: {quantity_str} medium"
+        if "sweet potato" in clean_name or clean_name == "potato":
+            return f"{display_name}: {quantity_str} medium"
+                
+        # For garlic, always use cloves
+        if 'garlic' in clean_name and 'powder' not in clean_name:
+            unit = 'cloves'
+            
         # Build the string with the appropriate unit
-        if unit and unit.lower() not in ['piece', 'pieces']:
-            return f"{quantity_str} {unit} {name}"
-        return f"{quantity_str} {name}"
+        if unit:
+            # Handle "cups cooked" special case
+            if unit == "cups cooked":
+                return f"{display_name}: {quantity_str} {unit}"
+                
+            # Skip units that are descriptors
+            if unit.lower() not in ['piece', 'pieces', 'medium', 'large', 'small', 'whole']:
+                return f"{display_name}: {quantity_str} {unit}"
+                
+        # No unit
+        return f"{display_name}: {quantity_str}"
     except (ValueError, TypeError):
-        return name
+        return display_name
 
 
 def aggregate_grocery_list(menu_dict: Dict[str, Any]):
