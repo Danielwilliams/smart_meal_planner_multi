@@ -1,6 +1,4 @@
 {
- 
-
   "fillers": [
     "\\sof\\s",
     "for dipping",
@@ -26,8 +24,26 @@
     "slices": "slice",
     "heads": "head",
     "cloves": "clove",
-    "lbs": "lb"
-    
+    "lbs": "lb",
+    "tsps": "tsp",
+    "teaspoons": "tsp"
+  },
+
+  "default_units": {
+    "lettuce": "leaves",
+    "garlic": "cloves",
+    "salsa": "cups",
+    "saffron": "tsp",
+    "olive": "cup",
+    "dressing": "cup",
+    "cheese": "g",
+    "feta": "cup",
+    "chicken broth": "cups",
+    "basil": "cups",
+    "ginger": "tbsp",
+    "oil": "tbsp",
+    "bean": "cups",
+    "carrot": "cups"
   },
 
   "regex_replacements": {

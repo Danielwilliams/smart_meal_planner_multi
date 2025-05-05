@@ -1,8 +1,13 @@
 import os
 import json
 import re
+import logging
 from fractions import Fraction
 from typing import Any, Dict
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Load the ingredient_config.json
 CURRENT_DIR = os.path.dirname(__file__)
@@ -14,6 +19,7 @@ with open(DATA_PATH, "r", encoding="utf-8") as f:
 FILLERS = CONFIG["fillers"]
 DESCRIPTORS = CONFIG["descriptors"]
 UNIT_MAP = CONFIG["units"]
+DEFAULT_UNITS = CONFIG.get("default_units", {})
 REGEX_REPLACEMENTS = CONFIG["regex_replacements"]
 
 def safe_convert_to_float(value):
@@ -70,12 +76,18 @@ def convert_to_base_unit(amount: float, unit: str) -> float:
     
     return amount  # Default: no conversion
 
-def sanitize_unit(unit_str: str) -> str:
+def sanitize_unit(unit_str: str, ingredient_name: str = "") -> str:
     """
-    Normalize unit strings using UNIT_MAP
+    Normalize unit strings using UNIT_MAP and apply default units for specific ingredients
     """
     if not unit_str:
+        # If no unit is provided, check if we should apply a default unit based on the ingredient
+        clean_name = ingredient_name.lower().strip()
+        for key, default_unit in DEFAULT_UNITS.items():
+            if key in clean_name:
+                return default_unit
         return ""
+    
     clean = unit_str.lower().strip()
     if clean in ['piece', 'pieces']:
         return ""
@@ -154,16 +166,13 @@ def standardize_ingredient(ing: Any):
     """
     Enhanced ingredient standardization with more robust parsing
     """
-    import logging
-    logger = logging.getLogger(__name__)
-    
     def parse_complex_ingredient(ing_str: str):
         """
         Parse ingredients with multiple quantity components
         e.g., "1 cup 2 tablespoons olive oil"
         """
         # Regex to match multiple quantity-unit pairs
-        pattern = r'(\d+(?:/\d+)?)\s*(cup|tbsp|tsp|oz|lb|clove)s?\b'
+        pattern = r'(\d+(?:/\d+)?)\s*(cup|tbsp|tsp|oz|lb|clove|g|ml)s?\b'
         matches = re.findall(pattern, ing_str, re.IGNORECASE)
         
         total_amount = 0
@@ -186,9 +195,16 @@ def standardize_ingredient(ing: Any):
         if amount == 0:
             amount, raw_unit, name = parse_quantity_unit(ing)
         
-        # Sanitize and return
-        unit = sanitize_unit(raw_unit) if 'raw_unit' in locals() else ''
-        return (sanitize_name(name), amount, unit)
+        # Clean up the name first
+        clean_name = sanitize_name(name)
+        
+        # Sanitize the unit with the ingredient name for default units
+        if 'raw_unit' in locals():
+            unit = sanitize_unit(raw_unit, clean_name)
+        else:
+            unit = sanitize_unit('', clean_name)
+            
+        return (clean_name, amount, unit)
     
     # Dictionary handling with better name detection
     elif isinstance(ing, dict):
@@ -201,6 +217,9 @@ def standardize_ingredient(ing: Any):
         
         # Log the name we found
         logger.debug(f"Found ingredient name: {name}")
+        
+        # Clean up the name first
+        clean_name = sanitize_name(name)
         
         # Look for quantity in various fields
         quantity = ing.get('quantity', None)
@@ -216,13 +235,13 @@ def standardize_ingredient(ing: Any):
         # Look for unit in various fields
         unit = ing.get('unit', '')
         
-        # Remove piece units
+        # Remove piece units and apply defaults if needed
         if unit and unit.lower() in ['piece', 'pieces']:
-            unit = ''
+            unit = sanitize_unit('', clean_name)
         else:
-            unit = sanitize_unit(unit)
+            unit = sanitize_unit(unit, clean_name)
             
-        return (sanitize_name(name), amount, unit)
+        return (clean_name, amount, unit)
     
     logger.warning(f"Unexpected ingredient type: {type(ing)}")
     return (str(ing).lower(), None, "")
@@ -230,7 +249,7 @@ def standardize_ingredient(ing: Any):
 
 def combine_amount_and_unit(amount_float: float, unit: str, name: str) -> str:
     """
-    Combine amount, unit and name into display string without pieces
+    Combine amount, unit and name into display string with proper unit handling
     """
     if amount_float is None:
         return name
@@ -243,8 +262,19 @@ def combine_amount_and_unit(amount_float: float, unit: str, name: str) -> str:
         # Check for simple whole numbers to make them cleaner
         if fraction.denominator == 1:
             quantity_str = str(fraction.numerator)
+            
+        # Apply special handling for specific ingredients
+        clean_name = name.lower().strip()
         
-        # Build the string
+        # For lettuce, always use leaves
+        if 'lettuce' in clean_name and unit != 'leaves':
+            unit = 'leaves'
+            
+        # For garlic, always use cloves
+        if 'garlic' in clean_name and unit != 'cloves':
+            unit = 'cloves'
+            
+        # Build the string with the appropriate unit
         if unit and unit.lower() not in ['piece', 'pieces']:
             return f"{quantity_str} {unit} {name}"
         return f"{quantity_str} {name}"

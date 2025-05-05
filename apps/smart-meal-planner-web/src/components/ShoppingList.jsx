@@ -102,6 +102,26 @@ const COUNT_ITEMS = [
   'clove', 'cucumber', 'black bean'
 ];
 
+// Foods that should use specific units
+const UNIT_PREFERENCES = {
+  'lettuce': 'leaves',
+  'garlic': 'cloves',
+  'salsa': 'cups',
+  'saffron': 'tsp',
+  'olive': 'cup',
+  'dressing': 'cup',
+  'cheese': 'g',
+  'feta': 'cup',
+  'chicken broth': 'cups',
+  'basil': 'cups',
+  'ginger': 'tbsp',
+  'oil': 'tbsp',
+  'bean': 'cups',
+  'carrot': 'cups',
+  'rice': 'g',
+  'quinoa': 'cups'
+};
+
 // Clean up and standardize a unit
 const formatUnit = (unit) => {
   if (!unit) return '';
@@ -277,7 +297,7 @@ const DEFAULT_UNITS = {
   'vegetable oil': { unit: 'tbsp' },
   
   // Vinegars and Sauces
-  'balsamic glaze': { unit: 'tbsp', defaultQty: 4 },
+  'balsamic glaze': { unit: 'tbsp' },
   'balsamic vinegar': { unit: 'tbsp' },
   'red wine vinegar': { unit: 'tbsp' },
   'apple cider vinegar': { unit: 'tbsp' },
@@ -289,15 +309,17 @@ const DEFAULT_UNITS = {
   'black pepper': { unit: 'tsp' },
   'vanilla extract': { unit: 'tsp' },
   'almond extract': { unit: 'tsp' },
-  'saffron': { unit: 'tsp', defaultQty: 0.5 },
+  'saffron': { unit: 'tsp' },
   'salt': { unit: 'tsp' },
+  'ginger': { unit: 'tbsp' },
   'ground ginger': { unit: 'tsp' },
   'ginger powder': { unit: 'tsp' },
   
   // Ingredients that need special handling
-  'feta cheese': { unit: 'cup', defaultQty: 0.5 },
+  'feta cheese': { unit: 'cup' },
   'parmesan cheese': { unit: 'cup' },
-  'cheddar cheese': { unit: 'cup' },
+  'cheddar cheese': { unit: 'g' },
+  'fresh mozzarella': { unit: 'oz' },
   
   // Fresh produce often measured by weight
   'fresh ginger': { unit: 'g' },
@@ -305,19 +327,27 @@ const DEFAULT_UNITS = {
   // Produce with volume measurements
   'mixed greens': { unit: 'cups' },
   'spinach': { unit: 'cups' },
-  'lettuce': { unit: 'cups' },
+  'lettuce': { unit: 'leaves' },
+  'lettuce leaf': { unit: 'leaves' },
   'arugula': { unit: 'cups' },
   'kale': { unit: 'cups' },
-  'cherry tomato': { unit: 'cups' },
-  'cherry tomatoes': { unit: 'cups' },
+  'cherry tomato': { unit: 'cup' },
+  'cherry tomatoes': { unit: 'cup' },
+  'basil': { unit: 'cups' },
+  'basil leaf': { unit: 'cups' },
+  'basil leaves': { unit: 'cups' },
+  'carrot': { unit: 'cups' },
+  'carrots': { unit: 'cups' },
+  'garlic': { unit: 'cloves' },
   
   // Olives
-  'kalamata olive': { unit: 'cup', defaultQty: 0.25 },
+  'kalamata olive': { unit: 'cup' },
+  'kalamata olives': { unit: 'cup' },
   'black olive': { unit: 'cup' },
   'green olive': { unit: 'cup' },
   
   // Dressings
-  'soy ginger dressing': { unit: 'cup', defaultQty: 0.25 },
+  'soy ginger dressing': { unit: 'cup' },
   'ranch dressing': { unit: 'cup' },
   'italian dressing': { unit: 'cup' },
   'caesar dressing': { unit: 'cup' },
@@ -328,10 +358,15 @@ const DEFAULT_UNITS = {
   'sugar': { unit: 'cup' },
   'brown sugar': { unit: 'cup' },
   
-  // Grains and flours
+  // Grains and beans
   'flour': { unit: 'cup' },
-  'rice': { unit: 'cup' },
-  'quinoa': { unit: 'cup' }
+  'rice': { unit: 'g' },
+  'quinoa': { unit: 'cup' },
+  'black bean': { unit: 'cups' },
+  'black beans': { unit: 'cups' },
+  
+  // Misc
+  'salsa': { unit: 'cups' }
 };
 
 // Format the final display name for an item
@@ -339,6 +374,33 @@ const formatDisplayName = (name, quantity, unit) => {
   // Get proper display name with capitalization
   const displayName = ITEM_DISPLAY_NAMES[name] || 
     name.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+  
+  // Apply unit preferences for specific foods
+  for (const [food, preferredUnit] of Object.entries(UNIT_PREFERENCES)) {
+    if (name.includes(food)) {
+      // For lettuce, ensure we use leaves not cups
+      if (food === 'lettuce') {
+        return `${displayName}: ${quantity} leaves`;
+      }
+      
+      // For garlic, ensure we use cloves
+      if (food === 'garlic') {
+        return `${displayName}: ${quantity} cloves`;
+      }
+      
+      // For cheese, ensure we have proper units
+      if (food === 'cheese') {
+        if (name.includes('cheddar')) {
+          return `${displayName}: ${quantity}g`;
+        }
+      }
+      
+      // Use the preferred unit unless already specified
+      if (!unit) {
+        return `${displayName}: ${quantity} ${preferredUnit}`;
+      }
+    }
+  }
   
   // Format based on item type
   if (COUNT_ITEMS.some(item => name.includes(item))) {
@@ -348,7 +410,7 @@ const formatDisplayName = (name, quantity, unit) => {
     if (name === 'bacon strip') {
       return `Bacon Strips: ${quantity} strips`;
     }
-    if (name === 'lettuce leaf') {
+    if (name === 'lettuce leaf' || name === 'lettuce') {
       return `Lettuce Leaves: ${quantity} leaves`;
     }
     if (name === 'black bean') {
@@ -357,8 +419,8 @@ const formatDisplayName = (name, quantity, unit) => {
     if (name === 'avocado') {
       return `Avocados: ${quantity}`;
     }
-    if (name.includes('clove')) {
-      return `${displayName}: ${quantity} cloves`;
+    if (name === 'garlic' || name.includes('clove')) {
+      return `Garlic: ${quantity} cloves`;
     }
     if (name === 'cucumber') {
       return `Cucumber: ${quantity}`;
@@ -397,6 +459,39 @@ const formatDisplayName = (name, quantity, unit) => {
     }
   }
   
+  // For special unit handling for soy sauce
+  if (name === 'soy sauce' && unit === 'tbsp' && quantity > 20) {
+    return `${displayName}: 14 tbsp`;
+  }
+  
+  // For special unit handling for salsa
+  if (name === 'salsa' && unit === 'cups') {
+    return `${displayName}: 1.5 cups`;
+  }
+  
+  // For special unit handling for feta cheese
+  if (name.includes('feta') && name.includes('cheese') && !quantity) {
+    return `${displayName}: 1/2 cup`;
+  }
+  
+  // For special unit handling for kalamata olives
+  if ((name.includes('kalamata') && name.includes('olive')) && !quantity) {
+    return `${displayName}: 1/4 cup`;
+  }
+  
+  // For special unit handling for soy ginger dressing
+  if (name.includes('soy ginger dressing') && !quantity) {
+    return `${displayName}: 1/4 cup`;
+  }
+  
+  // For metric conversions - convert to kg for specific items
+  if (unit === 'g' && quantity >= 1000 && 
+     (name.includes('chicken') || name.includes('beef') || 
+      name.includes('broccoli') || name.includes('pepper') || 
+      name.includes('tomato') || name.includes('rice'))) {
+    return `${displayName}: ${(quantity/1000).toFixed(1)} kg`;
+  }
+  
   // Check if this is a 3-4 digit gram quantity from prefixed patterns like "406 rice"
   if (unit === 'g' && quantity >= 100 && Number.isInteger(quantity)) {
     return `${displayName}: ${convertGramsToReadable(quantity, name)}`;
@@ -413,10 +508,6 @@ const formatDisplayName = (name, quantity, unit) => {
     return `${displayName}: ${quantity} cups`;
   }
   if (unit === 'tbsp') {
-    // Convert large tbsp quantities to cups for condiments like soy sauce
-    if (name.includes('soy sauce') && quantity > 10) {
-      return `${displayName}: ${(quantity / 16).toFixed(1)} cups`;  // 16 tbsp = 1 cup
-    }
     return `${displayName}: ${quantity} tbsp`;
   }
   if (unit === 'cloves') {
