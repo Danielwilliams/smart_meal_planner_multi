@@ -125,7 +125,7 @@ def contains_gluten(meal: Dict[str, Any]) -> bool:
     
     return False
 
-def validate_meal_plan(day_json: Dict[str, Any], dietary_restrictions: List[str], disliked_ingredients: List[str], used_meal_titles: Set[str]) -> List[str]:
+def validate_meal_plan(day_json: Dict[str, Any], dietary_restrictions: List[str], disliked_ingredients: List[str], used_meal_titles: Set[str], required_meal_times: List[str] = None) -> List[str]:
     """Validate that the meal plan meets all requirements"""
     issues = []
     
@@ -162,6 +162,13 @@ def validate_meal_plan(day_json: Dict[str, Any], dietary_restrictions: List[str]
             for meal in day_json.get("meals", []):
                 if contains_gluten(meal):
                     issues.append(f"Meal '{meal.get('title')}' contains gluten but diet is gluten-free")
+    
+    # Verify all required meal times are included
+    if required_meal_times:
+        meal_times_in_plan = set(meal.get("meal_time", "").lower() for meal in day_json.get("meals", []))
+        for meal_time in required_meal_times:
+            if meal_time.lower() not in meal_times_in_plan:
+                issues.append(f"Required meal time '{meal_time}' is missing from the meal plan")
     
     return issues
 
@@ -375,7 +382,7 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
             # Define OpenAI function schema for structured meal plan output
             menu_schema = {
                 "name": "generate_daily_meal_plan",
-                "description": "Generate a daily meal plan based on user preferences",
+                "description": f"Generate a daily meal plan with all required meal times: {', '.join(selected_meal_times)}{' plus ' + str(req.snacks_per_day) + ' snack(s)' if req.snacks_per_day > 0 else ''}",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -554,7 +561,9 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
                 
                 # Create a more structured system prompt
                 system_prompt = f"""You are an advanced meal planning assistant that creates detailed, nutritionally balanced meal plans.
-                Your task is to generate meal plans with precise cooking instructions while strictly adhering to user preferences."""
+                Your task is to generate meal plans with precise cooking instructions while strictly adhering to user preferences.
+                
+                CRITICAL: You MUST generate meals for ALL meal times specified by the user, including breakfast, lunch, dinner, and snacks if requested."""
                 
                 # Create a more concise and structured user prompt
                 user_prompt = f"""
@@ -589,6 +598,10 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
                 - Provide detailed, step-by-step cooking instructions
                 - Include macronutrient breakdowns per serving AND per meal
                 - Show calories, protein, carbs, and fat for each ingredient
+                
+                ### REQUIRED MEAL TIMES (YOU MUST GENERATE ALL OF THESE)
+                {', '.join([f"- {meal_time.capitalize()}" for meal_time in selected_meal_times])}
+                {f'- Snacks ({req.snacks_per_day})' if req.snacks_per_day > 0 else ''}
 
                 ### Meal Calorie Distribution
                 - Breakfast: {round(calorie_goal * 0.25)} kcal per serving
@@ -636,9 +649,10 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
                                 if 'meals' not in day_json or 'dayNumber' not in day_json:
                                     raise ValueError("JSON missing required keys")
                                 
-                                # Check for issues with the meal plan
+                                # Check for issues with the meal plan, including required meal times
                                 issues = validate_meal_plan(day_json, dietary_restrictions, 
-                                                          disliked_ingredients, used_meal_titles)
+                                                          disliked_ingredients, used_meal_titles,
+                                                          selected_meal_times)
                                 
                                 if issues:
                                     logger.warning(f"Validation issues in day {day_number}: {issues}")
