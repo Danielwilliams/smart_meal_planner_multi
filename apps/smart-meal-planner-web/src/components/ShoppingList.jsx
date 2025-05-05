@@ -517,7 +517,7 @@ const DEFAULT_UNITS = {
 };
 
 // Format the final display name for an item
-const formatDisplayName = (name, quantity, unit) => {
+const formatDisplayName = (name, quantity, unit, originalItem) => {
   // Get proper display name with capitalization
   const displayName = ITEM_DISPLAY_NAMES[name] || 
     name.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
@@ -525,13 +525,13 @@ const formatDisplayName = (name, quantity, unit) => {
   // Check for category-based unit handling first
   
   // Special case: salt to taste
-  if (name === 'salt' && (item || '').toLowerCase().includes('to taste')) {
+  if (name === 'salt' && (originalItem || '').toLowerCase().includes('to taste')) {
     return `Salt    To taste`;
   }
   
   // For rice & quinoa with "cooked" qualifier
-  for (const item of UNIT_CATEGORIES.COOKED_ITEMS) {
-    if (name.includes(item) && (item || '').toLowerCase().includes('cooked')) {
+  for (const foodItem of UNIT_CATEGORIES.COOKED_ITEMS) {
+    if (name.includes(foodItem) && (originalItem || '').toLowerCase().includes('cooked')) {
       return `${displayName}: ${quantity || 4} cups cooked`;
     }
   }
@@ -578,7 +578,7 @@ const formatDisplayName = (name, quantity, unit) => {
   }
   
   // Format based on item type
-  if (COUNT_ITEMS.some(item => name.includes(item))) {
+  if (COUNT_ITEMS.some(countItem => name.includes(countItem))) {
     if (name === 'egg' || name === 'eggs') {
       // Fix egg display with qualifiers like "large"
       if (String(quantity).match(/\d+\s*large/i)) {
@@ -594,7 +594,7 @@ const formatDisplayName = (name, quantity, unit) => {
     }
     if (name === 'black bean') {
       // Special handling for black beans in cans
-      if (item && item.toLowerCase().includes('can')) {
+      if (originalItem && originalItem.toLowerCase().includes('can')) {
         return `Black Beans: ${quantity || 4} cans`;
       }
       return `Black Beans: ${quantity || 1} cups`;
@@ -653,12 +653,12 @@ const formatDisplayName = (name, quantity, unit) => {
   }
   
   // Special handling for salt to taste
-  if (name === 'salt to taste' || (name === 'salt' && (item || '').toLowerCase().includes('to taste'))) {
+  if (name === 'salt to taste' || (name === 'salt' && (originalItem || '').toLowerCase().includes('to taste'))) {
     return `Salt: To taste`;
   }
   
   // Special handling for cooked rice/quinoa
-  if ((name.includes('rice') || name.includes('quinoa')) && item && item.toLowerCase().includes('cooked')) {
+  if ((name.includes('rice') || name.includes('quinoa')) && originalItem && originalItem.toLowerCase().includes('cooked')) {
     const baseName = name.replace('cooked', '').trim();
     return `${ITEM_DISPLAY_NAMES[baseName] || baseName}: ${quantity || 4} cups cooked`;
   }
@@ -743,9 +743,13 @@ const combineItems = (items) => {
         quantities: [],
         totalGrams: 0,
         totalQuantity: 0,
-        hasUnit: false
+        hasUnit: false,
+        originalItems: [] // Track original items for special handling
       };
     }
+    
+    // Store the original item string for reference
+    groupedItems[normalizedName].originalItems.push(item);
     
     // Add this item's quantity to the group
     if (quantity > 0) {
@@ -826,7 +830,8 @@ const combineItems = (items) => {
         totalAmount = data.totalQuantity;
       }
       
-      return formatDisplayName(name, totalAmount, primaryUnit);
+      // Pass the original item strings for context-aware formatting
+      return formatDisplayName(name, totalAmount, primaryUnit, data.originalItems.join(' '));
     })
     .filter(item => item);
 };
