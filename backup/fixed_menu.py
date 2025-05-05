@@ -357,7 +357,7 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
             diet_type = merge_preference(
                 user_row.get("diet_type") if user_row else None,
                 req.diet_type,
-                "Mixed"
+                "Gluten-Free, Anabolic"
             )
             recipe_type = merge_preference(
                 user_row.get("recipe_type") if user_row else None,
@@ -371,192 +371,196 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
             used_meal_titles = set()  # All used titles
             used_by_meal_time = {meal_time: set() for meal_time in selected_meal_times}
             used_primary_ingredients = []  # List of (day, ingredients) tuples to track ingredients by day
-            
-            # Define OpenAI function schema for structured meal plan output
-            menu_schema = {
-                "name": "generate_daily_meal_plan",
-                "description": "Generate a daily meal plan based on user preferences",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "dayNumber": {
-                            "type": "integer",
-                            "description": "Day number in the meal plan"
-                        },
-                        "meals": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "meal_time": {
-                                        "type": "string",
-                                        "description": "Meal time (breakfast, lunch, dinner, etc.)"
-                                    },
-                                    "title": {
-                                        "type": "string",
-                                        "description": "Title of the meal"
-                                    },
-                                    "ingredients": {
-                                        "type": "array",
-                                        "items": {
-                                            "type": "object",
-                                            "properties": {
-                                                "name": {
-                                                    "type": "string",
-                                                    "description": "Name of the ingredient"
-                                                },
-                                                "quantity": {
-                                                    "type": "string",
-                                                    "description": "Quantity of the ingredient"
-                                                },
-                                                "calories": {
-                                                    "type": "string",
-                                                    "description": "Calories in the ingredient"
-                                                },
-                                                "protein": {
-                                                    "type": "string",
-                                                    "description": "Protein content in the ingredient"
-                                                },
-                                                "carbs": {
-                                                    "type": "string",
-                                                    "description": "Carbs content in the ingredient"
-                                                },
-                                                "fat": {
-                                                    "type": "string",
-                                                    "description": "Fat content in the ingredient"
-                                                }
-                                            },
-                                            "required": ["name", "quantity"]
-                                        }
-                                    },
-                                    "instructions": {
-                                        "type": "array",
-                                        "items": {
-                                            "type": "string"
+
+            for day_number in range(1, req.duration_days + 1):
+                logger.info(f"Generating day {day_number} of {req.duration_days}")
+                # Define OpenAI function schema for structured meal plan output
+                menu_schema = {
+                    "name": "generate_daily_meal_plan",
+                    "description": "Generate a daily meal plan based on user preferences",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "dayNumber": {
+                                "type": "integer",
+                                "description": "Day number in the meal plan"
+                            },
+                            "meals": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "meal_time": {
+                                            "type": "string",
+                                            "description": "Meal time (breakfast, lunch, dinner, etc.)"
                                         },
-                                        "description": "Step-by-step cooking instructions"
-                                    },
-                                    "servings": {
-                                        "type": "integer",
-                                        "description": "Number of servings"
-                                    },
-                                    "macros": {
-                                        "type": "object",
-                                        "properties": {
-                                            "perServing": {
+                                        "title": {
+                                            "type": "string",
+                                            "description": "Title of the meal"
+                                        },
+                                        "ingredients": {
+                                            "type": "array",
+                                            "items": {
                                                 "type": "object",
                                                 "properties": {
-                                                    "calories": { "type": "integer" },
-                                                    "protein": { "type": "string" },
-                                                    "carbs": { "type": "string" },
-                                                    "fat": { "type": "string" }
-                                                }
-                                            },
-                                            "perMeal": {
-                                                "type": "object",
-                                                "properties": {
-                                                    "calories": { "type": "integer" },
-                                                    "protein": { "type": "string" },
-                                                    "carbs": { "type": "string" },
-                                                    "fat": { "type": "string" }
-                                                }
+                                                    "name": {
+                                                        "type": "string",
+                                                        "description": "Name of the ingredient"
+                                                    },
+                                                    "quantity": {
+                                                        "type": "string",
+                                                        "description": "Quantity of the ingredient"
+                                                    },
+                                                    "calories": {
+                                                        "type": "string",
+                                                        "description": "Calories in the ingredient"
+                                                    },
+                                                    "protein": {
+                                                        "type": "string",
+                                                        "description": "Protein content in the ingredient"
+                                                    },
+                                                    "carbs": {
+                                                        "type": "string",
+                                                        "description": "Carbs content in the ingredient"
+                                                    },
+                                                    "fat": {
+                                                        "type": "string",
+                                                        "description": "Fat content in the ingredient"
+                                                    }
+                                                },
+                                                "required": ["name", "quantity"]
                                             }
-                                        }
-                                    },
-                                    "appliance_used": {
-                                        "type": "string",
-                                        "description": "Main appliance used in preparation"
-                                    },
-                                    "complexity_level": {
-                                        "type": "string",
-                                        "description": "Preparation complexity (minimal, easy, standard, complex)"
-                                    }
-                                },
-                                "required": ["meal_time", "title", "ingredients", "instructions", "servings", "macros"]
-                            }
-                        },
-                        "snacks": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "title": { "type": "string" },
-                                    "ingredients": {
-                                        "type": "array",
-                                        "items": {
+                                        },
+                                        "instructions": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "string"
+                                            },
+                                            "description": "Step-by-step cooking instructions"
+                                        },
+                                        "servings": {
+                                            "type": "integer",
+                                            "description": "Number of servings"
+                                        },
+                                        "macros": {
                                             "type": "object",
                                             "properties": {
-                                                "name": { "type": "string" },
-                                                "quantity": { "type": "string" },
-                                                "calories": { "type": "string" },
-                                                "protein": { "type": "string" },
-                                                "carbs": { "type": "string" },
-                                                "fat": { "type": "string" }
+                                                "perServing": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "calories": { "type": "integer" },
+                                                        "protein": { "type": "string" },
+                                                        "carbs": { "type": "string" },
+                                                        "fat": { "type": "string" }
+                                                    }
+                                                },
+                                                "perMeal": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "calories": { "type": "integer" },
+                                                        "protein": { "type": "string" },
+                                                        "carbs": { "type": "string" },
+                                                        "fat": { "type": "string" }
+                                                    }
+                                                }
                                             }
+                                        },
+                                        "appliance_used": {
+                                            "type": "string",
+                                            "description": "Main appliance used in preparation"
+                                        },
+                                        "complexity_level": {
+                                            "type": "string",
+                                            "description": "Preparation complexity (minimal, easy, standard, complex)"
                                         }
                                     },
-                                    "servings": { "type": "integer" },
-                                    "macros": {
-                                        "type": "object",
-                                        "properties": {
-                                            "perServing": {
+                                    "required": ["meal_time", "title", "ingredients", "instructions", "servings", "macros"]
+                                }
+                            },
+                            "snacks": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "title": { "type": "string" },
+                                        "ingredients": {
+                                            "type": "array",
+                                            "items": {
                                                 "type": "object",
                                                 "properties": {
-                                                    "calories": { "type": "integer" },
+                                                    "name": { "type": "string" },
+                                                    "quantity": { "type": "string" },
+                                                    "calories": { "type": "string" },
                                                     "protein": { "type": "string" },
                                                     "carbs": { "type": "string" },
                                                     "fat": { "type": "string" }
                                                 }
-                                            },
-                                            "perMeal": {
-                                                "type": "object",
-                                                "properties": {
-                                                    "calories": { "type": "integer" },
-                                                    "protein": { "type": "string" },
-                                                    "carbs": { "type": "string" },
-                                                    "fat": { "type": "string" }
+                                            }
+                                        },
+                                        "servings": { "type": "integer" },
+                                        "macros": {
+                                            "type": "object",
+                                            "properties": {
+                                                "perServing": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "calories": { "type": "integer" },
+                                                        "protein": { "type": "string" },
+                                                        "carbs": { "type": "string" },
+                                                        "fat": { "type": "string" }
+                                                    }
+                                                },
+                                                "perMeal": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "calories": { "type": "integer" },
+                                                        "protein": { "type": "string" },
+                                                        "carbs": { "type": "string" },
+                                                        "fat": { "type": "string" }
+                                                    }
                                                 }
                                             }
                                         }
                                     }
                                 }
+                            },
+                            "summary": {
+                                "type": "object",
+                                "properties": {
+                                    "calorie_goal": { "type": "string" },
+                                    "protein_goal": { "type": "string" },
+                                    "carbs_goal": { "type": "string" },
+                                    "fat_goal": { "type": "string" },
+                                    "protein_grams": { "type": "string" },
+                                    "carbs_grams": { "type": "string" },
+                                    "fat_grams": { "type": "string" },
+                                    "variance_from_goal": { "type": "string" }
+                                }
                             }
                         },
-                        "summary": {
-                            "type": "object",
-                            "properties": {
-                                "calorie_goal": { "type": "string" },
-                                "protein_goal": { "type": "string" },
-                                "carbs_goal": { "type": "string" },
-                                "fat_goal": { "type": "string" },
-                                "protein_grams": { "type": "string" },
-                                "carbs_grams": { "type": "string" },
-                                "fat_grams": { "type": "string" },
-                                "variance_from_goal": { "type": "string" }
-                            }
-                        }
-                    },
-                    "required": ["dayNumber", "meals", "summary"]
+                        "required": ["dayNumber", "meals", "summary"]
+                    }
                 }
-            }
-
-            # Generate each day's meal plan
-            for day_number in range(1, req.duration_days + 1):
-                logger.info(f"Generating day {day_number} of {req.duration_days}")
                 
-                # Get used ingredients that are within the last 3 days
-                recent_ingredients = []
-                for past_day, ingredients in used_primary_ingredients:
-                    if day_number - past_day <= 3:  # Only consider ingredients from last 3 days
-                        recent_ingredients.extend(ingredients)
+                # Generate menu using OpenAI
+                MAX_RETRIES = 3
+                day_json = None
                 
-                recent_ingredients_str = ", ".join(recent_ingredients) if recent_ingredients else "None"
+                # Use the model determination function instead of repeating code
+                openai_model = determine_model(req.ai_model if req.ai_model else "default")
+                logger.info(f"Using {openai_model} model for meal generation")
                 
                 # Create a more structured system prompt
                 system_prompt = f"""You are an advanced meal planning assistant that creates detailed, nutritionally balanced meal plans.
                 Your task is to generate meal plans with precise cooking instructions while strictly adhering to user preferences."""
                 
-                # Create a more concise and structured user prompt
+                # Track recent ingredients to avoid repetition
+                recent_ingredients = []
+                for past_day, ingredients in used_primary_ingredients[-3:] if used_primary_ingredients else []:
+                    recent_ingredients.extend(ingredients)
+                recent_ingredients_str = ", ".join(recent_ingredients) if recent_ingredients else "None"
+                
+                # Create a more focused user prompt
                 user_prompt = f"""
                 ## Meal Plan Requirements - Day {day_number} of {req.duration_days}
 
@@ -596,14 +600,396 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
                 - Dinner: {round(calorie_goal * 0.35)} kcal per serving
                 - Snacks (if applicable): {round(calorie_goal * 0.10)} kcal per serving
                 """
+                
+                for attempt in range(MAX_RETRIES):
+                    try:
+                        response = openai.ChatCompletion.create(
+                            model=openai_model,
+                            messages=[
+                                {"role": "system", "content": system_prompt},
+                                {"role": "user", "content": user_prompt}
+                            ],
+                            functions=[menu_schema],
+                            function_call={"name": "generate_daily_meal_plan"},
+                            max_tokens=3000,
+                            temperature=0.2,  # Slight creativity for variety
+                            top_p=1,
+                            request_timeout=600  # 10 minutes timeout
+                        )
+                        
+                        logger.info(f"Received OpenAI response for day {day_number}")
+                        
+                        # Extract function call result
+                        function_call = response.choices[0].message.get("function_call")
+                        if function_call and function_call.get("name") == "generate_daily_meal_plan":
+                            try:
+                                day_json = json.loads(function_call.get("arguments", "{}"))
+                - **Use quick, simple, or pre-made snack options.**
+                - **Examples of pre-made snacks:**
+                  - **High-protein bars (Quest, RXBar, Clif Builder's)**
+                  - **Pre-packaged hummus & veggie cups**
+                  - **Pre-portioned Greek yogurt with honey & granola**
+                  - **String cheese & almonds**
+                  - **Peanut butter & banana roll-ups**
+                  - **Pre-made protein shakes (e.g., Fairlife, Orgain, Huel)**  
+                - **No extensive preparation required.**
 
-                # Generate menu using OpenAI with function calling
+
+               ## **Critical Guidelines:**
+               - **DO NOT include any of the following disliked foods:** {', '.join(disliked_ingredients)}.
+               - **DO NOT repeat meal titles** from the following list:
+                 {no_repeat_list}
+               - **Each day must feature at least 3 distinct cuisines.**
+               - **Primary ingredients CANNOT repeat within a 3-day window.**
+               - **Limit the same protein source to once per day.**
+               - **Ensure a balance of plant-based and animal-based proteins.**
+               - **Use standardized units for ingredient measurements (e.g., grams, ounces, tablespoons).**               
+
+               ---
+               ## **🔴 Critical Instruction: Match the Exact Daily Caloric Target**
+               - **TOTAL DAILY CALORIES MUST BE EXACTLY** `{calorie_goal} kcal` (±2% allowed).
+               - **Each meal must meet its calorie range**:
+                 - **Breakfast:** `{round(calorie_goal * 0.25)}` kcal
+                 - **Lunch:** `{round(calorie_goal * 0.35)}` kcal
+                 - **Dinner:** `{round(calorie_goal * 0.35)}` kcal
+                 - **Snacks:** `{round(calorie_goal * 0.10)}` kcal  
+               - **DO NOT generate a daily total below `{round(calorie_goal * 0.98)}` or above `{round(calorie_goal * 1.02)}` kcal.**
+               - **If needed, scale portion sizes up or down to meet these numbers.**
+               - **DO NOT add new ingredients—adjust quantities instead.**
+               - **Use calorie-dense foods (nuts, oils, starches) as needed to hit the goal.**
+               - **Ensure the meal plan feels balanced and satisfying.**              
+
+               ---
+               ## **Macronutrient Breakdown (STRICTLY ENFORCE)**
+               - **Protein:** `{protein_goal}% of {calorie_goal} kcal` → Target `{round((calorie_goal * protein_goal / 100) / 4)}`g protein.
+               - **Carbs:** `{carbs_goal}% of {calorie_goal} kcal` → Target `{round((calorie_goal * carbs_goal / 100) / 4)}`g carbs.
+               - **Fat:** `{fat_goal}% of {calorie_goal} kcal` → Target `{round((calorie_goal * fat_goal / 100) / 9)}`g fat.
+               - **Ensure total macros add up to `{calorie_goal} kcal` ±2%.**             
+
+               ---
+               ## **📌 Meal & Snack Structure (MANDATORY)**
+               - **Each meal/snack must explicitly show its calories, protein, carbs, and fat.**
+               - **Use realistic portion sizes but ensure calorie accuracy.**
+               - **Each recipe must be filling, satisfying, and properly portioned.**
+               - **NO MEALS BELOW 500 KCAL unless they are snacks.**
+               - **Snacks must contribute at least `{round(calorie_goal * 0.10)}` kcal.**             
+
+               ---
+               ## **🔥 Appliance Usage & Meal Variety**
+               - **Prioritize these appliances when applicable**: {appliances_str}.
+               - **Ensure at least 2 recipes per meal plan use the available appliances.**
+               - **Balance appliance usage evenly across the meal plan.**
+               - **Each day must feature a variety of cooking techniques and cuisines.**
+               - **Use a diverse mix of proteins (plant-based & animal-based).**              
+
+               ---
+               ## **✅ Strict Validation Step**
+               - **Before finalizing, VERIFY that total daily calories = `{calorie_goal}` ±2%.**
+               - **If calories are too low, increase portion sizes instead of adding new ingredients.**
+               - **Ensure that calorie calculations match expected values for all meals and snacks.**
+               - **Reject any plan that does not meet calorie/macronutrient goals.**
+               - **List the final calculated calories and macronutrients in the JSON output.**
+
+               ## **Meal Calorie Distribution Guidelines:**
+                - Breakfast: 20-25% of total daily calories ({round(calorie_goal * servings_per_meal * 0.20)} - {round(calorie_goal * servings_per_meal * 0.25)} calories)
+                - Lunch: 30-35% of total daily calories ({round(calorie_goal * servings_per_meal * 0.30)} - {round(calorie_goal * servings_per_meal * 0.35)} calories)
+                - Dinner: 30-35% of total daily calories ({round(calorie_goal * servings_per_meal * 0.30)} - {round(calorie_goal * servings_per_meal * 0.35)} calories)
+                - Snacks: 10-15% of total daily calories ({round(calorie_goal * servings_per_meal * 0.10)} - {round(calorie_goal * servings_per_meal * 0.15)} calories)   
+
+                ## **JSON Output Requirements:**
+                - **MANDATORY: Each meal and snack MUST have {servings_per_meal} servings**
+                - **All ingredient quantities MUST be scaled to {servings_per_meal} servings**
+                - **Macronutrient calculations MUST reflect {servings_per_meal} total servings**
+
+                ## **STRICT REQUIREMENT: Servings Must Match `{servings_per_meal}`**
+                - **Each recipe MUST be scaled to `{servings_per_meal}` servings.**
+                - **All ingredient quantities MUST reflect `{servings_per_meal}` servings.**
+                - **If a standard recipe serves 1, then multiply ingredient amounts by `{servings_per_meal}`.**
+                - **For example, if a recipe uses 1 egg for 1 serving, then use `{servings_per_meal}` eggs.**
+                - **If a meal traditionally serves 2, then adjust quantities to make exactly `{servings_per_meal}` servings.**
+                - **Explicitly list the final ingredient quantities adjusted for `{servings_per_meal}` servings.**              
+
+                ---
+                ## **Mandatory Ingredient Scaling Instructions**
+                - **Every ingredient’s calories, protein, carbs, and fat must be listed per serving.**
+                - **Scale all ingredient amounts by `{servings_per_meal}` servings.**
+                - **For example, if a recipe calls for 1 egg (140 kcal, 12g protein, 2g carbs, 9g fat) per serving, then for `{servings_per_meal}` servings, use `{round(1 * servings_per_meal)}` eggs and `{round(140 * servings_per_meal)}` kcal.**
+                - **Ensure that macronutrient totals match the correct meal calorie allocation.**
+                - **Do not modify macronutrient values—only scale them.**
+
+
+
+                ## **JSON Output Format:**
+                Respond ONLY in valid JSON format. Here's the exact structure to follow (replacing example values with appropriate ones):
+
+                {{
+                    "dayNumber": {day_number},
+                    "meals": [
+                        {{
+                            "meal_time": "breakfast",
+                            "title": "Example Meal Title",
+                            "ingredients": [
+                                {{
+                                    "name": "Eggs",
+                                    "quantity": "{round(2 * servings_per_meal)}",
+                                    "calories": "{round(140 * servings_per_meal)}",
+                                    "protein": "{round(12 * servings_per_meal)}g",
+                                    "carbs": "{round(2 * servings_per_meal)}g",
+                                    "fat": "{round(9 * servings_per_meal)}g"
+                            ],
+                            "instructions": [
+                                "Step 1...",
+                                "Step 2..."
+                            ],
+                            "servings": {servings_per_meal},
+                            "macros": {{
+                                "perServing": {{
+                                    "calories": {round(calorie_goal * servings_per_meal / (len(selected_meal_times) + req.snacks_per_day))},
+                                    "protein": f"{round(((calorie_goal * servings_per_meal * protein_goal / 100) / 4) / (len(selected_meal_times) + req.snacks_per_day))}g",
+                                    "carbs": f"{round(((calorie_goal * servings_per_meal * carbs_goal / 100) / 4) / (len(selected_meal_times) + req.snacks_per_day))}g",
+                                    "fat": f"{round(((calorie_goal * servings_per_meal * fat_goal / 100) / 9) / (len(selected_meal_times) + req.snacks_per_day))}g"
+                                }},
+                                "perMeal": {{
+                                    "calories": {round((calorie_goal * servings_per_meal / (len(selected_meal_times) + req.snacks_per_day)) * servings_per_meal)},
+                                    "protein": f"{round((((calorie_goal * servings_per_meal * protein_goal / 100) / 4) / (len(selected_meal_times) + req.snacks_per_day)) * servings_per_meal)}g",
+                                    "carbs": f"{round((((calorie_goal * servings_per_meal * carbs_goal / 100) / 4) / (len(selected_meal_times) + req.snacks_per_day)) * servings_per_meal)}g",
+                                    "fat": f"{round((((calorie_goal * servings_per_meal * fat_goal / 100) / 9) / (len(selected_meal_times) + req.snacks_per_day)) * servings_per_meal)}g"
+                                }}
+                            }},
+                            "appliance_used": "Stovetop",
+                            "complexity_level": "{prep_level}"
+                        }}
+                    ],
+                    "snacks": [],
+                    "summary": {{
+                        "calorie_goal": {calorie_goal} * {servings_per_meal}  calories,
+                        "protein_goal": "{protein_goal}%",
+                        "carbs_goal": "{carbs_goal}%",
+                        "fat_goal": "{fat_goal}%",
+                        "protein_grams": "{round((calorie_goal * protein_goal / 100) / 4)}g",
+                        "carbs_grams": "{round((calorie_goal * carbs_goal / 100) / 4)}g",
+                        "fat_grams": "{round((calorie_goal * fat_goal / 100) / 9)}g",
+                        "variance_from_goal": "0%"
+                    }}
+                }}
+                '''
+
+                # Define OpenAI function schema for structured meal plan output
+                menu_schema = {
+                    "name": "generate_daily_meal_plan",
+                    "description": "Generate a daily meal plan based on user preferences",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "dayNumber": {
+                                "type": "integer",
+                                "description": "Day number in the meal plan"
+                            },
+                            "meals": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "meal_time": {
+                                            "type": "string",
+                                            "description": "Meal time (breakfast, lunch, dinner, etc.)"
+                                        },
+                                        "title": {
+                                            "type": "string",
+                                            "description": "Title of the meal"
+                                        },
+                                        "ingredients": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "name": {
+                                                        "type": "string"
+                                                    },
+                                                    "quantity": {
+                                                        "type": "string"
+                                                    },
+                                                    "calories": {
+                                                        "type": "string"
+                                                    },
+                                                    "protein": {
+                                                        "type": "string"
+                                                    },
+                                                    "carbs": {
+                                                        "type": "string"
+                                                    },
+                                                    "fat": {
+                                                        "type": "string"
+                                                    }
+                                                },
+                                                "required": ["name", "quantity"]
+                                            }
+                                        },
+                                        "instructions": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "string"
+                                            }
+                                        },
+                                        "servings": {
+                                            "type": "integer"
+                                        },
+                                        "macros": {
+                                            "type": "object",
+                                            "properties": {
+                                                "perServing": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "calories": { "type": "integer" },
+                                                        "protein": { "type": "string" },
+                                                        "carbs": { "type": "string" },
+                                                        "fat": { "type": "string" }
+                                                    }
+                                                },
+                                                "perMeal": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "calories": { "type": "integer" },
+                                                        "protein": { "type": "string" },
+                                                        "carbs": { "type": "string" },
+                                                        "fat": { "type": "string" }
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "appliance_used": {
+                                            "type": "string"
+                                        },
+                                        "complexity_level": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": ["meal_time", "title", "ingredients", "instructions", "servings", "macros"]
+                                }
+                            },
+                            "snacks": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "title": { "type": "string" },
+                                        "ingredients": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "name": { "type": "string" },
+                                                    "quantity": { "type": "string" },
+                                                    "calories": { "type": "string" },
+                                                    "protein": { "type": "string" },
+                                                    "carbs": { "type": "string" },
+                                                    "fat": { "type": "string" }
+                                                }
+                                            }
+                                        },
+                                        "servings": { "type": "integer" },
+                                        "macros": {
+                                            "type": "object",
+                                            "properties": {
+                                                "perServing": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "calories": { "type": "integer" },
+                                                        "protein": { "type": "string" },
+                                                        "carbs": { "type": "string" },
+                                                        "fat": { "type": "string" }
+                                                    }
+                                                },
+                                                "perMeal": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "calories": { "type": "integer" },
+                                                        "protein": { "type": "string" },
+                                                        "carbs": { "type": "string" },
+                                                        "fat": { "type": "string" }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            "summary": {
+                                "type": "object",
+                                "properties": {
+                                    "calorie_goal": { "type": "string" },
+                                    "protein_goal": { "type": "string" },
+                                    "carbs_goal": { "type": "string" },
+                                    "fat_goal": { "type": "string" },
+                                    "protein_grams": { "type": "string" },
+                                    "carbs_grams": { "type": "string" },
+                                    "fat_grams": { "type": "string" },
+                                    "variance_from_goal": { "type": "string" }
+                                }
+                            }
+                        },
+                        "required": ["dayNumber", "meals", "summary"]
+                    }
+                }
+
+                # Generate menu using OpenAI
                 MAX_RETRIES = 3
                 day_json = None
                 
-                # Select model based on request parameter
+                # Use the model determination function instead of repeating code
                 openai_model = determine_model(req.ai_model if req.ai_model else "default")
                 logger.info(f"Using {openai_model} model for meal generation")
+                
+                # Create a more structured system prompt
+                system_prompt = f"""You are an advanced meal planning assistant that creates detailed, nutritionally balanced meal plans.
+                Your task is to generate meal plans with precise cooking instructions while strictly adhering to user preferences."""
+                
+                # Track recent ingredients to avoid repetition
+                recent_ingredients = []
+                for past_day, ingredients in used_primary_ingredients[-3:] if used_primary_ingredients else []:
+                    recent_ingredients.extend(ingredients)
+                recent_ingredients_str = ", ".join(recent_ingredients) if recent_ingredients else "None"
+                
+                # Create a more focused user prompt
+                user_prompt = f"""
+                ## Meal Plan Requirements - Day {day_number} of {req.duration_days}
+
+                ### User Profile
+                - Servings per meal: {servings_per_meal}
+                - Dietary preferences: {', '.join(dietary_restrictions)}
+                - Disliked foods: {', '.join(disliked_ingredients)}
+                - Meal times: {', '.join(selected_meal_times)} plus {req.snacks_per_day} snack(s)
+                - Preferred cuisines: {recipe_type}
+                - Diet type: {diet_type}
+                - Available appliances: {appliances_str}
+                - Cooking complexity level: {prep_level}
+
+                ### Nutrition Goals
+                - Daily calories: {calorie_goal} kcal × {servings_per_meal} servings = {calorie_goal * servings_per_meal} total calories
+                - Protein: {protein_goal}% ({round((calorie_goal * protein_goal / 100) / 4)}g)
+                - Carbs: {carbs_goal}% ({round((calorie_goal * carbs_goal / 100) / 4)}g)
+                - Fat: {fat_goal}% ({round((calorie_goal * fat_goal / 100) / 9)}g)
+
+                ### Critical Constraints
+                1. DO NOT use disliked ingredients
+                2. DO NOT repeat meal titles from this list: {', '.join(used_meal_titles) if used_meal_titles else 'None'}
+                3. DO NOT use primary ingredients that appeared in the last 3 days: {recent_ingredients_str}
+                4. DO NOT use the same protein source more than once per day
+                5. Include at least 3 distinct cuisines each day
+                6. Use standardized units (grams, ounces, tablespoons)
+
+                ### Structure Requirements
+                - Scale all recipes to exactly {servings_per_meal} servings
+                - Provide detailed, step-by-step cooking instructions
+                - Include macronutrient breakdowns per serving AND per meal
+                - Show calories, protein, carbs, and fat for each ingredient
+
+                ### Meal Calorie Distribution
+                - Breakfast: {round(calorie_goal * 0.25)} kcal per serving
+                - Lunch: {round(calorie_goal * 0.35)} kcal per serving
+                - Dinner: {round(calorie_goal * 0.35)} kcal per serving
+                - Snacks (if applicable): {round(calorie_goal * 0.10)} kcal per serving
+                """
                 
                 for attempt in range(MAX_RETRIES):
                     try:
@@ -671,10 +1057,11 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
                             raise HTTPException(500, f"OpenAI API error: {str(e)}")
                         time.sleep(1)
 
-                # Ensure day number is set correctly
-                day_json["dayNumber"] = day_number
-                
-                # Add the day to the meal plan
+                if "dayNumber" in day_json:
+                    day_json["dayNumber"] = day_number
+                else:
+                    day_json["dayNumber"] = day_number
+
                 final_plan["days"].append(day_json)
 
                 # Track used meal titles and primary ingredients for future days
