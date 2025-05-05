@@ -308,6 +308,8 @@ const DEFAULT_UNITS = {
   'lettuce': { unit: 'cups' },
   'arugula': { unit: 'cups' },
   'kale': { unit: 'cups' },
+  'cherry tomato': { unit: 'cups' },
+  'cherry tomatoes': { unit: 'cups' },
   
   // Olives
   'kalamata olive': { unit: 'cup', defaultQty: 0.25 },
@@ -411,6 +413,10 @@ const formatDisplayName = (name, quantity, unit) => {
     return `${displayName}: ${quantity} cups`;
   }
   if (unit === 'tbsp') {
+    // Convert large tbsp quantities to cups for condiments like soy sauce
+    if (name.includes('soy sauce') && quantity > 10) {
+      return `${displayName}: ${(quantity / 16).toFixed(1)} cups`;  // 16 tbsp = 1 cup
+    }
     return `${displayName}: ${quantity} tbsp`;
   }
   if (unit === 'cloves') {
