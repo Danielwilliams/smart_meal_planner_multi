@@ -80,16 +80,34 @@ def sanitize_unit(unit_str: str, ingredient_name: str = "") -> str:
     """
     Normalize unit strings using UNIT_MAP and apply default units for specific ingredients
     """
+    # Special handling for specific ingredient types
+    clean_name = ingredient_name.lower().strip()
+    
+    # For eggs - always count them without a unit
+    if clean_name == 'egg' or clean_name == 'eggs':
+        return ""
+    
+    # For bell peppers - use medium as a descriptor, not as a unit
+    if "bell pepper" in clean_name:
+        return ""
+    
+    # For sweet potatoes and potatoes - use medium as a descriptor, not as a unit
+    if clean_name == "sweet potato" or clean_name == "potato":
+        return ""
+    
+    # For gluten-free tortilla - use piece instead of a unit
+    if "tortilla" in clean_name:
+        return ""
+    
     if not unit_str:
         # If no unit is provided, check if we should apply a default unit based on the ingredient
-        clean_name = ingredient_name.lower().strip()
         for key, default_unit in DEFAULT_UNITS.items():
             if key in clean_name:
                 return default_unit
         return ""
     
     clean = unit_str.lower().strip()
-    if clean in ['piece', 'pieces']:
+    if clean in ['piece', 'pieces', 'medium', 'large', 'small']:
         return ""
     return UNIT_MAP.get(clean, clean)
 
@@ -98,6 +116,12 @@ def sanitize_name(raw_name: str) -> str:
     Clean up ingredient names
     """
     clean = raw_name.lower().strip()
+    
+    # Handle "cooked" qualifier for rice and quinoa
+    clean_is_cooked = False
+    if "cooked" in clean:
+        clean_is_cooked = True
+        clean = clean.replace("cooked", "").strip()
     
     # Remove leading digits/fractions
     clean = re.sub(r"^[\d/\.\s]+", "", clean).strip()
@@ -119,6 +143,18 @@ def sanitize_name(raw_name: str) -> str:
     
     # Remove extra spaces
     clean = re.sub(r"\s{2,}", " ", clean).strip()
+    
+    # Special case handling to ensure "salt to taste" is preserved
+    if clean == "salt" and "to taste" in raw_name.lower():
+        return "salt to taste"
+    
+    # For cheddar cheese when spelled as "cheddase" or similar misspellings
+    if clean in ["cheddase", "cheddar"]:
+        clean = "cheddar cheese"
+    
+    # Reapply "cooked" for display purposes if needed
+    if clean_is_cooked and ("rice" in clean or "quinoa" in clean):
+        clean = f"{clean} cooked"
     
     return clean
 
@@ -229,6 +265,18 @@ def standardize_ingredient(ing: Any):
         # Log the quantity we found
         logger.debug(f"Found ingredient quantity: {quantity}")
         
+        # Special handling for common ingredients to ensure consistent format
+        if clean_name.lower() == 'egg' or clean_name.lower() == 'eggs':
+            logger.info(f"Special handling for eggs: {quantity}")
+            if isinstance(quantity, str) and not quantity.isdigit():
+                # For cases like "12 large" - extract the number
+                match = re.search(r'(\d+)', quantity)
+                if match:
+                    quantity = match.group(1)
+                    logger.info(f"Extracted egg quantity: {quantity}")
+            # Standardize name to singular form for consistency
+            clean_name = 'egg'
+        
         # Convert quantity to float
         amount = safe_convert_to_float(quantity)
         
@@ -312,6 +360,15 @@ def combine_amount_and_unit(amount_float: float, unit: str, name: str) -> str:
         # For saffron, always use tsp
         if 'saffron' in clean_name and unit != 'tsp':
             unit = 'tsp'
+            
+        # Special handling for "cooked" qualifier
+        if "cooked" in name:
+            base_name = name.replace("cooked", "").strip()
+            return f"{quantity_str} cups {base_name} cooked"
+            
+        # Special handling for salt to taste
+        if name == "salt to taste":
+            return "Salt    To taste"
             
         # Build the string with the appropriate unit
         if unit and unit.lower() not in ['piece', 'pieces']:

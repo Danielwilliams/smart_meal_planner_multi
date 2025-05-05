@@ -40,6 +40,9 @@ const ITEM_DISPLAY_NAMES = {
   'beef strip': 'Beef Strips',
   'mixed green': 'Mixed Greens',
   'bell pepper': 'Bell Peppers',
+  'bell peppers': 'Bell Peppers',
+  'red bell pepper': 'Red Bell Peppers',
+  'red bell peppers': 'Red Bell Peppers',
   'tomato': 'Tomatoes',
   'cherry tomato': 'Cherry Tomatoes',
   'lettuce leaf': 'Lettuce Leaves',
@@ -47,28 +50,61 @@ const ITEM_DISPLAY_NAMES = {
   'carrot': 'Carrots',
   'cucumber': 'Cucumber',
   'potato': 'Potatoes',
+  'sweet potato': 'Sweet Potatoes',
   'rice': 'Rice',
+  'brown rice': 'Brown Rice',
   'quinoa': 'Quinoa',
   'egg': 'Eggs',
+  'eggs': 'Eggs',
   'garlic': 'Garlic',
   'bacon strip': 'Bacon Strips',
   'avocado': 'Avocados',
   'onion': 'Onions',
+  'green onion': 'Green Onions',
   'mozzarella': 'Fresh Mozzarella',
   'cheddar cheese': 'Cheddar Cheese',
+  'cheddar': 'Cheddar Cheese',
+  'cheddase': 'Cheddar Cheese',
   'feta cheese': 'Feta Cheese',
   'soy sauce': 'Soy Sauce',
+  'gluten-free soy sauce': 'Gluten-Free Soy Sauce',
   'balsamic glaze': 'Balsamic Glaze',
   'soy ginger dressing': 'Soy Ginger Dressing',
   'salsa': 'Salsa',
   'cooking oil': 'Cooking Oil',
+  'olive oil': 'Olive Oil',
+  'sesame oil': 'Sesame Oil',
   'chicken broth': 'Chicken Broth',
   'basil': 'Basil Leaves',
   'basil leaf': 'Basil Leaves',
   'ginger': 'Ginger',
   'saffron': 'Saffron',
   'kalamata olive': 'Kalamata Olives',
-  'broccoli': 'Broccoli'
+  'broccoli': 'Broccoli',
+  'almond milk': 'Almond Milk',
+  'greek yogurt': 'Greek Yogurt',
+  'almond flour': 'Almond Flour',
+  'gluten-free oats': 'Gluten-Free Oats',
+  'almond butter': 'Almond Butter',
+  'peanut butter': 'Peanut Butter',
+  'berries': 'Berries',
+  'granola': 'Granola',
+  'gluten-free tortilla': 'Gluten-Free Tortillas',
+  'tortilla': 'Tortillas',
+  'fajita seasoning': 'Fajita Seasoning',
+  'italian seasoning': 'Italian Seasoning',
+  'garlic powder': 'Garlic Powder',
+  'paprika': 'Paprika',
+  'zucchini': 'Zucchini',
+  'mushroom': 'Mushrooms',
+  'corn': 'Corn',
+  'red cabbage': 'Red Cabbage',
+  'sesame seed': 'Sesame Seeds',
+  'honey': 'Honey',
+  'apple': 'Apples',
+  'lemon juice': 'Lemon Juice',
+  'lime juice': 'Lime Juice',
+  'rice vinegar': 'Rice Vinegar'
 };
 
 // Words that naturally end in 's' but aren't plural
@@ -155,6 +191,13 @@ const formatUnit = (unit) => {
 
 // Get the base quantity from an item string
 const getBaseQuantity = (item) => {
+  // Check for egg items with a pattern like "Eggs: 12 large"
+  const eggPattern = /^eggs?\s*:\s*(\d+)\s*(?:large|medium|small)?$/i;
+  const eggMatch = item.match(eggPattern);
+  if (eggMatch) {
+    return parseFloat(eggMatch[1]);
+  }
+  
   // For "Item: 1905" format
   const colonFormat = item.match(/^(.+):\s*(\d{3,4})$/);
   if (colonFormat) {
@@ -410,8 +453,12 @@ const formatDisplayName = (name, quantity, unit) => {
   
   // Format based on item type
   if (COUNT_ITEMS.some(item => name.includes(item))) {
-    if (name === 'egg') {
-      return `Eggs: ${quantity || 1}`;
+    if (name === 'egg' || name === 'eggs') {
+      // Fix egg display with qualifiers like "large"
+      if (String(quantity).match(/\d+\s*large/i)) {
+        return `Eggs: ${quantity}`;
+      }
+      return `Eggs: ${quantity || 1} large`;
     }
     if (name === 'bacon strip') {
       return `Bacon Strips: ${quantity || 1} strips`;
@@ -420,7 +467,14 @@ const formatDisplayName = (name, quantity, unit) => {
       return `Lettuce Leaves: ${quantity || 1} leaves`;
     }
     if (name === 'black bean') {
+      // Special handling for black beans in cans
+      if (item && item.toLowerCase().includes('can')) {
+        return `Black Beans: ${quantity || 4} cans`;
+      }
       return `Black Beans: ${quantity || 1} cups`;
+    }
+    if (name === 'bell pepper' || name === 'bell peppers' || name === 'red bell pepper') {
+      return `Bell Peppers: ${quantity || 1} medium`;
     }
     if (name === 'avocado') {
       return `Avocados: ${quantity || 1}`;
@@ -430,6 +484,9 @@ const formatDisplayName = (name, quantity, unit) => {
     }
     if (name === 'cucumber') {
       return `Cucumber: ${quantity || 1}`;
+    }
+    if (name === 'potato' || name === 'sweet potato') {
+      return `${displayName}: ${quantity || 1} medium`;
     }
   }
   
@@ -467,6 +524,17 @@ const formatDisplayName = (name, quantity, unit) => {
   // For special unit handling for soy sauce
   if (name === 'soy sauce' && unit === 'tbsp' && quantity > 20) {
     return `${displayName}: 14 tbsp`;
+  }
+  
+  // Special handling for salt to taste
+  if (name === 'salt to taste' || (name === 'salt' && (item || '').toLowerCase().includes('to taste'))) {
+    return `Salt: To taste`;
+  }
+  
+  // Special handling for cooked rice/quinoa
+  if ((name.includes('rice') || name.includes('quinoa')) && item && item.toLowerCase().includes('cooked')) {
+    const baseName = name.replace('cooked', '').trim();
+    return `${ITEM_DISPLAY_NAMES[baseName] || baseName}: ${quantity || 4} cups cooked`;
   }
   
   // For special unit handling for salsa
