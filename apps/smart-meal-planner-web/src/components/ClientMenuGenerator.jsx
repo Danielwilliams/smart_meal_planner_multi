@@ -218,11 +218,11 @@ function ClientMenuGenerator({ client, onMenuGenerated }) {
           label="Number of Days"
           type="number"
           value={durationDays}
-          onChange={(e) => setDurationDays(Math.max(1, Math.min(30, parseInt(e.target.value) || 7)))}
-          InputProps={{ inputProps: { min: 1, max: 30 } }}
+          onChange={(e) => setDurationDays(Math.max(1, Math.min(7, parseInt(e.target.value) || 7)))}
+          InputProps={{ inputProps: { min: 1, max: 7 } }}
           fullWidth
           margin="normal"
-          helperText="Choose how many days of meals to generate (1-30)"
+          helperText="Choose how many days of meals to generate (1-7)"
         />
       </Box>
       

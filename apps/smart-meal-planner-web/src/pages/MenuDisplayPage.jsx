@@ -326,8 +326,8 @@ function MenuDisplayPage() {
   // Generate new menu - split into two parts
   const handleGenerateMenu = async () => {
     try {
-      if (durationDays < 1 || durationDays > 30) {
-        setError('Please enter a number of days between 1 and 30');
+      if (durationDays < 1 || durationDays > 7) {
+        setError('Please enter a number of days between 1 and 7');
         return;
       }
 
@@ -1041,11 +1041,11 @@ function MenuDisplayPage() {
             value={durationDays}
             onChange={(e) => {
               const value = parseInt(e.target.value, 10);
-              setDurationDays(isNaN(value) ? 7 : value);
+              setDurationDays(isNaN(value) ? 7 : Math.min(7, Math.max(1, value)));
             }}
             inputProps={{
               min: 1,
-              max: 30
+              max: 7
             }}
             sx={{ flexGrow: 1 }}
           />

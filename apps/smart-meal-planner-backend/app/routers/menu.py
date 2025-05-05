@@ -111,8 +111,8 @@ def get_prep_complexity_level(complexity_value):
 def generate_meal_plan_variety(req: GenerateMealPlanRequest):
     """Generate a meal plan based on user preferences and requirements"""
     try:
-        if req.duration_days < 1 or req.duration_days > 30:
-            raise HTTPException(400, "duration_days must be between 1 and 30")
+        if req.duration_days < 1 or req.duration_days > 7:
+            raise HTTPException(400, "duration_days must be between 1 and 7")
 
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
