@@ -35,15 +35,23 @@
     "salsa": "cups",
     "saffron": "tsp",
     "olive": "cup",
+    "kalamata olive": "cup",
     "dressing": "cup",
+    "soy ginger dressing": "cup",
     "cheese": "g",
-    "feta": "cup",
+    "cheddar cheese": "g",
+    "feta cheese": "cup",
     "chicken broth": "cups",
     "basil": "cups",
+    "basil leaf": "cups",
     "ginger": "tbsp",
     "oil": "tbsp",
+    "cooking oil": "tbsp",
     "bean": "cups",
-    "carrot": "cups"
+    "black bean": "cups",
+    "carrot": "cups",
+    "rice": "g",
+    "quinoa": "cups"
   },
 
   "regex_replacements": {

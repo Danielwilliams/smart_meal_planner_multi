@@ -252,6 +252,25 @@ def combine_amount_and_unit(amount_float: float, unit: str, name: str) -> str:
     Combine amount, unit and name into display string with proper unit handling
     """
     if amount_float is None:
+        # For ingredients where we want to apply a default unit but don't have a quantity
+        clean_name = name.lower().strip()
+        
+        # Special default handling
+        if 'lettuce' in clean_name:
+            return f"1 leaves {name}"
+        if 'garlic' in clean_name:
+            return f"1 cloves {name}"
+        if 'salsa' in clean_name:
+            return f"1.5 cups {name}"
+        if 'kalamata olive' in clean_name:
+            return f"1/4 cup {name}"
+        if 'soy ginger dressing' in clean_name:
+            return f"1/4 cup {name}"
+        if 'feta cheese' in clean_name:
+            return f"1/2 cup {name}"
+        if 'saffron' in clean_name:
+            return f"1/2 tsp {name}"
+            
         return name
     
     try:
@@ -273,6 +292,26 @@ def combine_amount_and_unit(amount_float: float, unit: str, name: str) -> str:
         # For garlic, always use cloves
         if 'garlic' in clean_name and unit != 'cloves':
             unit = 'cloves'
+            
+        # For salsa, always use cups
+        if 'salsa' in clean_name and unit != 'cups':
+            unit = 'cups'
+            
+        # For soy ginger dressing, always use cup
+        if 'soy ginger dressing' in clean_name and unit != 'cup':
+            unit = 'cup'
+            
+        # For feta cheese, always use cup
+        if ('feta' in clean_name and 'cheese' in clean_name) and unit != 'cup':
+            unit = 'cup'
+            
+        # For kalamata olives, always use cup
+        if ('kalamata' in clean_name and 'olive' in clean_name) and unit != 'cup':
+            unit = 'cup'
+            
+        # For saffron, always use tsp
+        if 'saffron' in clean_name and unit != 'tsp':
+            unit = 'tsp'
             
         # Build the string with the appropriate unit
         if unit and unit.lower() not in ['piece', 'pieces']:

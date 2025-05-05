@@ -109,14 +109,20 @@ const UNIT_PREFERENCES = {
   'salsa': 'cups',
   'saffron': 'tsp',
   'olive': 'cup',
+  'kalamata olive': 'cup',
   'dressing': 'cup',
+  'soy ginger dressing': 'cup',
   'cheese': 'g',
-  'feta': 'cup',
+  'cheddar cheese': 'g',
+  'feta cheese': 'cup',
   'chicken broth': 'cups',
-  'basil': 'cups',
+  'basil': 'cups', 
+  'basil leaf': 'cups',
   'ginger': 'tbsp',
   'oil': 'tbsp',
+  'cooking oil': 'tbsp',
   'bean': 'cups',
+  'black bean': 'cups',
   'carrot': 'cups',
   'rice': 'g',
   'quinoa': 'cups'
@@ -380,12 +386,12 @@ const formatDisplayName = (name, quantity, unit) => {
     if (name.includes(food)) {
       // For lettuce, ensure we use leaves not cups
       if (food === 'lettuce') {
-        return `${displayName}: ${quantity} leaves`;
+        return `${displayName}: ${quantity || 1} leaves`;
       }
       
       // For garlic, ensure we use cloves
       if (food === 'garlic') {
-        return `${displayName}: ${quantity} cloves`;
+        return `${displayName}: ${quantity || 1} cloves`;
       }
       
       // For cheese, ensure we have proper units
@@ -405,25 +411,25 @@ const formatDisplayName = (name, quantity, unit) => {
   // Format based on item type
   if (COUNT_ITEMS.some(item => name.includes(item))) {
     if (name === 'egg') {
-      return `Eggs: ${quantity}`;
+      return `Eggs: ${quantity || 1}`;
     }
     if (name === 'bacon strip') {
-      return `Bacon Strips: ${quantity} strips`;
+      return `Bacon Strips: ${quantity || 1} strips`;
     }
     if (name === 'lettuce leaf' || name === 'lettuce') {
-      return `Lettuce Leaves: ${quantity} leaves`;
+      return `Lettuce Leaves: ${quantity || 1} leaves`;
     }
     if (name === 'black bean') {
-      return `Black Beans: ${quantity} cups`;
+      return `Black Beans: ${quantity || 1} cups`;
     }
     if (name === 'avocado') {
-      return `Avocados: ${quantity}`;
+      return `Avocados: ${quantity || 1}`;
     }
     if (name === 'garlic' || name.includes('clove')) {
-      return `Garlic: ${quantity} cloves`;
+      return `Garlic: ${quantity || 1} cloves`;
     }
     if (name === 'cucumber') {
-      return `Cucumber: ${quantity}`;
+      return `Cucumber: ${quantity || 1}`;
     }
   }
   
@@ -445,9 +451,8 @@ const formatDisplayName = (name, quantity, unit) => {
         // For special cases where we might want partial matches for compound words
         (itemName.includes(' ') && name.includes(itemName))) {
       
-      // Use default quantity if provided and no quantity was found
-      const displayQty = (!quantity || quantity === 0) && defaults.defaultQty ? 
-                         defaults.defaultQty : quantity;
+      // Use the provided quantity (don't default)
+      const displayQty = quantity;
       
       // For rice and similar items with large integer quantities, assume they're in grams
       if (['rice', 'quinoa'].includes(itemName) && 
@@ -465,23 +470,28 @@ const formatDisplayName = (name, quantity, unit) => {
   }
   
   // For special unit handling for salsa
-  if (name === 'salsa' && unit === 'cups') {
-    return `${displayName}: 1.5 cups`;
+  if (name === 'salsa' || name.includes('salsa')) {
+    return `${displayName}: ${quantity || 1.5} cups`;
   }
   
   // For special unit handling for feta cheese
-  if (name.includes('feta') && name.includes('cheese') && !quantity) {
-    return `${displayName}: 1/2 cup`;
+  if (name.includes('feta') && name.includes('cheese')) {
+    return `${displayName}: ${quantity || '1/2'} cup`;
   }
   
   // For special unit handling for kalamata olives
-  if ((name.includes('kalamata') && name.includes('olive')) && !quantity) {
-    return `${displayName}: 1/4 cup`;
+  if ((name.includes('kalamata') && name.includes('olive'))) {
+    return `${displayName}: ${quantity || '1/4'} cup`;
   }
   
   // For special unit handling for soy ginger dressing
-  if (name.includes('soy ginger dressing') && !quantity) {
-    return `${displayName}: 1/4 cup`;
+  if (name.includes('soy ginger dressing')) {
+    return `${displayName}: ${quantity || '1/4'} cup`;
+  }
+  
+  // For special handling of saffron
+  if (name.includes('saffron')) {
+    return `${displayName}: ${quantity || '1/2'} tsp`;
   }
   
   // For metric conversions - convert to kg for specific items
@@ -499,23 +509,23 @@ const formatDisplayName = (name, quantity, unit) => {
   
   // Regular unit formatting
   if (unit === 'g') {
-    return `${displayName}: ${convertGramsToReadable(quantity, name)}`;
+    return `${displayName}: ${convertGramsToReadable(quantity || 100, name)}`;
   }
   if (unit === 'oz') {
-    return `${displayName}: ${quantity} oz`;
+    return `${displayName}: ${quantity || 1} oz`;
   }
   if (unit === 'cups') {
-    return `${displayName}: ${quantity} cups`;
+    return `${displayName}: ${quantity || 1} cups`;
   }
   if (unit === 'tbsp') {
-    return `${displayName}: ${quantity} tbsp`;
+    return `${displayName}: ${quantity || 1} tbsp`;
   }
   if (unit === 'cloves') {
-    return `${displayName}: ${quantity} cloves`;
+    return `${displayName}: ${quantity || 1} cloves`;
   }
   
   // Default case
-  return `${displayName}: ${quantity}${unit ? ' ' + unit : ''}`;
+  return `${displayName}: ${quantity || 1}${unit ? ' ' + unit : ''}`;
 };
 
 // Main function to combine and process items
