@@ -148,6 +148,7 @@ async def clear_internal_cart(
             internal_carts[user_id] = {
                 'walmart': [],
                 'kroger': [],
+                'instacart': [],
                 'unassigned': []
             }
         return {"status": "success"}
@@ -202,6 +203,7 @@ async def get_store_items(
             internal_carts[user_id] = {
                 'walmart': [],
                 'kroger': [],
+                'instacart': [],
                 'unassigned': []
             }
             
