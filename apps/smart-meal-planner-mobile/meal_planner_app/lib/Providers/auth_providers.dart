@@ -15,10 +15,18 @@ class AuthProvider extends ChangeNotifier {
   String? get userName => _userName;
   String? get userEmail => _userEmail;
 
+  // Store credentials (encrypted in a real app)
+  String? _lastEmail;
+  String? _lastPassword;
+
   // Initialize by checking if token exists in storage
   AuthProvider() {
     _loadFromPrefs();
   }
+  
+  // Getters for last credentials (would be properly secured in production)
+  String? get lastEmail => _lastEmail;
+  String? get lastPassword => _lastPassword;
 
   // Load auth data from SharedPreferences
   Future<void> _loadFromPrefs() async {
@@ -30,6 +38,8 @@ class AuthProvider extends ChangeNotifier {
       _userId = ApiService.getUserIdFromToken(token);
       _userName = prefs.getString('user_name');
       _userEmail = prefs.getString('user_email');
+      _lastEmail = prefs.getString('last_email');
+      _lastPassword = prefs.getString('last_password');
       
       // Check if token is expired
       if (_userId != null) {
@@ -57,6 +67,15 @@ class AuthProvider extends ChangeNotifier {
     if (_userEmail != null) {
       prefs.setString('user_email', _userEmail!);
     }
+    
+    // Store credentials for auto-refresh (would be securely encrypted in production)
+    if (_lastEmail != null) {
+      prefs.setString('last_email', _lastEmail!);
+    }
+    
+    if (_lastPassword != null) {
+      prefs.setString('last_password', _lastPassword!);
+    }
   }
 
   // Clear auth data from SharedPreferences
@@ -65,12 +84,18 @@ class AuthProvider extends ChangeNotifier {
     prefs.remove('auth_token');
     prefs.remove('user_name');
     prefs.remove('user_email');
+    // Don't clear credentials to enable auto-login later
+    // prefs.remove('last_email');  
+    // prefs.remove('last_password');
     
     _isLoggedIn = false;
     _authToken = null;
     _userId = null;
     _userName = null;
     _userEmail = null;
+    // Keep last credentials for potential re-login
+    // _lastEmail = null;
+    // _lastPassword = null;
   }
 
   Future<bool> login(String email, String password) async {
@@ -93,6 +118,10 @@ class AuthProvider extends ChangeNotifier {
         } else {
           _userEmail = email;
         }
+        
+        // Store credentials for auto-refresh (would be securely stored in production)
+        _lastEmail = email;
+        _lastPassword = password;
         
         _isLoggedIn = true;
         await _saveToPrefs();
@@ -133,7 +162,13 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> logout() async {
-    await _clearAuthData();
-    notifyListeners();
+    print("AuthProvider logout method called");
+    try {
+      await _clearAuthData();
+      print("Auth data cleared successfully");
+      notifyListeners();
+    } catch (e) {
+      print("Error during logout: $e");
+    }
   }
 }

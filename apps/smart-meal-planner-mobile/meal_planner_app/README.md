@@ -132,8 +132,37 @@ A Flutter-based mobile application for meal planning, grocery shopping, and reci
 - **JWT token extraction fails**: Check the token format in your backend response
 - **Building fails**: Run `flutter clean` and try again
 
+## Recent Improvements
+
+### JSON Parsing & Menu Data Handling
+- Enhanced Menu.fromJson to handle multiple API response formats
+- Improved MenuDay and MenuItem data extraction from various JSON structures
+- Added robust error handling and fallbacks for unexpected data formats
+- Fixed type conversion issues to prevent JSON parsing errors
+- Added detailed logging to diagnose parsing issues
+
+### User Authentication
+- Improved token expiration detection and handling
+- Added visual feedback when authentication fails or tokens expire
+- Enhanced error handling for authentication-related API calls
+- Fixed login flow and session management
+- Added proper state resets to prevent authentication loops
+
+### UI Enhancements
+- Implemented an improved model selection dialog with better visuals
+- Added support for multiple AI model options (standard, enhanced, hybrid, local)
+- Enhanced error messages and user notifications
+- Improved loading states and feedback during API calls
+
+### API Integration
+- Aligned mobile app API calls with web app implementation
+- Updated getSavedMenus to use the correct endpoints (/menu/latest/{userId} and /menu/history/{userId})
+- Improved error handling for API calls with better fallbacks
+- Implemented more robust response parsing
+
 ## Next Steps
 
+- Further improve offline support and caching
 - Implement location permissions handling
 - Complete cart and checkout process
 - Add biometric authentication

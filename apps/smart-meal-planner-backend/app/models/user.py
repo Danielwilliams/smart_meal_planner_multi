@@ -56,7 +56,13 @@ class PreferencesUpdate(BaseModel):
     appliances: Optional[Dict[str, bool]] = None
     prep_complexity: Optional[int] = None
     servings_per_meal: Optional[int] = Field(default=1, ge=1, le=10)
-    snacks_per_day:  Optional[int] = Field(default=0, ge=0, le=3)
+    snacks_per_day: Optional[int] = Field(default=0, ge=0, le=3)
+    flavor_preferences: Optional[Dict[str, bool]] = None
+    spice_level: Optional[str] = None
+    recipe_type_preferences: Optional[Dict[str, bool]] = None
+    meal_time_preferences: Optional[Dict[str, bool]] = None
+    time_constraints: Optional[Dict[str, int]] = None
+    prep_preferences: Optional[Dict[str, bool]] = None
 
 
 class GenerateMenuRequest(BaseModel):

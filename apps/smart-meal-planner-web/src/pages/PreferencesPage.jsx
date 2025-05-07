@@ -20,7 +20,9 @@ import {
   Divider,
   Slider,
   FormGroup,
-  FormHelperText
+  FormHelperText,
+  Radio,
+  RadioGroup
 } from '@mui/material';
 import apiService from '../services/apiService';
 import { useAuth } from '../context/AuthContext';
@@ -92,6 +94,66 @@ function PreferencesPage() {
     },
     krogerUsername: '',
     krogerPassword: ''
+  });
+  
+  // New preference states
+  const [flavorPreferences, setFlavorPreferences] = useState({
+    creamy: false,
+    cheesy: false,
+    herbs: false,
+    umami: false,
+    sweet: false,
+    spiced: false,
+    smoky: false,
+    garlicky: false,
+    tangy: false,
+    peppery: false,
+    hearty: false,
+    spicy: false
+  });
+
+  const [spiceLevel, setSpiceLevel] = useState('medium');
+
+  const [recipeTypePreferences, setRecipeTypePreferences] = useState({
+    'stir-fry': false,
+    'grain-bowl': false,
+    'salad': false,
+    'pasta': false,
+    'main-sides': false,
+    'pizza': false,
+    'burger': false,
+    'sandwich': false,
+    'tacos': false,
+    'wrap': false,
+    'soup-stew': false,
+    'bake': false,
+    'family-meals': false
+  });
+
+  const [mealTimePreferences, setMealTimePreferences] = useState({
+    'breakfast': false,
+    'morning-snack': false,
+    'lunch': false,
+    'afternoon-snack': false,
+    'dinner': false,
+    'evening-snack': false
+  });
+
+  const [timeConstraints, setTimeConstraints] = useState({
+    'weekday-breakfast': 10, // minutes
+    'weekday-lunch': 15,
+    'weekday-dinner': 30,
+    'weekend-breakfast': 20,
+    'weekend-lunch': 30,
+    'weekend-dinner': 45
+  });
+
+  const [prepPreferences, setPrepPreferences] = useState({
+    'batch-cooking': false,
+    'meal-prep': false,
+    'quick-assembly': false,
+    'one-pot': false,
+    'minimal-dishes': false
   });
 
   const [loading, setLoading] = useState(true);
@@ -190,6 +252,31 @@ function PreferencesPage() {
         krogerPassword: existingPreferences.kroger_password || ''
       }));
 
+      // Load new preference types if they exist in the database
+      if (existingPreferences.flavor_preferences) {
+        setFlavorPreferences(existingPreferences.flavor_preferences);
+      }
+      
+      if (existingPreferences.spice_level) {
+        setSpiceLevel(existingPreferences.spice_level);
+      }
+      
+      if (existingPreferences.recipe_type_preferences) {
+        setRecipeTypePreferences(existingPreferences.recipe_type_preferences);
+      }
+      
+      if (existingPreferences.meal_time_preferences) {
+        setMealTimePreferences(existingPreferences.meal_time_preferences);
+      }
+      
+      if (existingPreferences.time_constraints) {
+        setTimeConstraints(existingPreferences.time_constraints);
+      }
+      
+      if (existingPreferences.prep_preferences) {
+        setPrepPreferences(existingPreferences.prep_preferences);
+      }
+      
       // Log the loaded preferences for debugging
       console.log('Updated preferences state:', preferences);
 
@@ -207,6 +294,39 @@ function PreferencesPage() {
 
   fetchUserPreferences();
 }, [user, navigate]);
+
+const updateSnackConsistency = () => {
+  const selectedSnackTimes = 
+    [mealTimePreferences['morning-snack'], 
+     mealTimePreferences['afternoon-snack'], 
+     mealTimePreferences['evening-snack']]
+    .filter(Boolean).length;
+  
+  // Update the snacks per day value based on selected snack times
+  if (selectedSnackTimes > 0 && preferences.snacksPerDay === 0) {
+    setPreferences(prev => ({
+      ...prev,
+      snacksPerDay: selectedSnackTimes,
+      mealTimes: {
+        ...prev.mealTimes,
+        snacks: true
+      }
+    }));
+  } else if (selectedSnackTimes === 0 && preferences.snacksPerDay > 0) {
+    setPreferences(prev => ({
+      ...prev,
+      snacksPerDay: 0,
+      mealTimes: {
+        ...prev.mealTimes,
+        snacks: false
+      }
+    }));
+  }
+};
+
+useEffect(() => {
+  updateSnackConsistency();
+}, [mealTimePreferences]);
 
 
   const handleChange = (e) => {
@@ -289,6 +409,12 @@ function PreferencesPage() {
         selectedRecipeTypes.push(preferences.otherRecipeType);
       }
 
+      const selectedSnackTimes = 
+      [mealTimePreferences['morning-snack'], 
+       mealTimePreferences['afternoon-snack'], 
+       mealTimePreferences['evening-snack']]
+      .filter(Boolean).length;
+
       const prefsToSave = {
         user_id: user.userId,
         diet_type: selectedDietTypes.join(', '),
@@ -296,7 +422,7 @@ function PreferencesPage() {
         disliked_ingredients: preferences.dislikedIngredients,
         recipe_type: selectedRecipeTypes.join(', '),
         meal_times: preferences.mealTimes,
-        snacks_per_day: preferences.mealTimes.snacks ? preferences.snacksPerDay : 0,
+        snacks_per_day: selectedSnackTimes > 0 ? preferences.snacksPerDay : 0,
         macro_protein: preferences.macroGoals.protein ? parseInt(preferences.macroGoals.protein) : null,
         macro_carbs: preferences.macroGoals.carbs ? parseInt(preferences.macroGoals.carbs) : null,
         macro_fat: preferences.macroGoals.fat ? parseInt(preferences.macroGoals.fat) : null,
@@ -305,7 +431,14 @@ function PreferencesPage() {
         prep_complexity: preferences.prepComplexity,
         kroger_username: preferences.krogerUsername,
         servings_per_meal: preferences.servingsPerMeal,
-        kroger_password: preferences.krogerPassword
+        kroger_password: preferences.krogerPassword,
+        // New preference fields
+        flavor_preferences: flavorPreferences,
+        spice_level: spiceLevel,
+        recipe_type_preferences: recipeTypePreferences,
+        meal_time_preferences: mealTimePreferences,
+        time_constraints: timeConstraints,
+        prep_preferences: prepPreferences
       };
 
       await apiService.savePreferences(prefsToSave);
@@ -669,6 +802,225 @@ function PreferencesPage() {
 
         <Divider sx={{ my: 3 }} />
 
+        {/* Flavor Preferences (NEW) */}
+        <Box sx={{ mt: 3, mb: 2 }}>
+          <Typography variant="subtitle1" gutterBottom>
+            Flavor Preferences
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Select the flavors you enjoy most in your meals
+          </Typography>
+          <Grid container spacing={2}>
+            {Object.entries(flavorPreferences).map(([flavor, checked]) => (
+              <Grid item xs={6} sm={4} key={flavor}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={checked}
+                      onChange={(e) => {
+                        setFlavorPreferences(prev => ({
+                          ...prev,
+                          [flavor]: e.target.checked
+                        }));
+                      }}
+                    />
+                  }
+                  label={flavor.charAt(0).toUpperCase() + flavor.slice(1)}
+                />
+              </Grid>
+            ))}
+          </Grid>
+        </Box>
+
+        {/* Spice Level (NEW) */}
+        <Box sx={{ mt: 3, mb: 2 }}>
+          <Typography variant="subtitle1" gutterBottom>
+            Spice Level Preference
+          </Typography>
+          <FormControl component="fieldset">
+            <RadioGroup
+              row
+              name="spice-level"
+              value={spiceLevel}
+              onChange={(e) => setSpiceLevel(e.target.value)}
+            >
+              <FormControlLabel value="mild" control={<Radio />} label="Mild" />
+              <FormControlLabel value="medium" control={<Radio />} label="Medium" />
+              <FormControlLabel value="hot" control={<Radio />} label="Hot" />
+            </RadioGroup>
+          </FormControl>
+        </Box>
+
+        {/* Recipe Type Preferences (NEW) */}
+        <Box sx={{ mt: 3, mb: 2 }}>
+          <Typography variant="subtitle1" gutterBottom>
+            Recipe Format Preferences
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Select the types of meal formats you prefer
+          </Typography>
+          <Grid container spacing={2}>
+            {Object.entries(recipeTypePreferences).map(([type, checked]) => (
+              <Grid item xs={6} sm={4} key={type}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={checked}
+                      onChange={(e) => {
+                        setRecipeTypePreferences(prev => ({
+                          ...prev,
+                          [type]: e.target.checked
+                        }));
+                      }}
+                    />
+                  }
+                  label={type.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                />
+              </Grid>
+            ))}
+          </Grid>
+        </Box>
+
+        {/* Meal Preparation Preferences (NEW) */}
+        <Box sx={{ mt: 3, mb: 2 }}>
+          <Typography variant="subtitle1" gutterBottom>
+            Meal Preparation Preferences
+          </Typography>
+          <Grid container spacing={2}>
+            {Object.entries(prepPreferences).map(([prep, checked]) => (
+              <Grid item xs={6} sm={4} key={prep}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={checked}
+                      onChange={(e) => {
+                        setPrepPreferences(prev => ({
+                          ...prev,
+                          [prep]: e.target.checked
+                        }));
+                      }}
+                    />
+                  }
+                  label={prep.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                />
+              </Grid>
+            ))}
+          </Grid>
+        </Box>
+
+        <Divider sx={{ my: 3 }} />
+
+        {/* Time Constraints (NEW) */}
+        <Box sx={{ mt: 3, mb: 2 }}>
+          <Typography variant="subtitle1" gutterBottom>
+            Time Constraints
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Maximum prep time (minutes) for each meal
+          </Typography>
+          {Object.entries(timeConstraints).map(([mealType, minutes]) => (
+            <Box key={mealType} sx={{ mb: 2 }}>
+              <Typography variant="body2">
+                {mealType.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+              </Typography>
+              <Slider
+                value={minutes}
+                min={5}
+                max={60}
+                step={5}
+                marks
+                valueLabelDisplay="auto"
+                onChange={(e, value) => {
+                  setTimeConstraints(prev => ({
+                    ...prev,
+                    [mealType]: value
+                  }));
+                }}
+              />
+            </Box>
+          ))}
+        </Box>
+
+        {/* Meal Schedule (Enhanced) */}
+        <Box sx={{ mt: 3, mb: 2 }}>
+          <Typography variant="subtitle1" gutterBottom>
+            Meal Schedule
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Select all meal times you want included in your plan
+          </Typography>
+          <Grid container spacing={2}>
+            {Object.entries(mealTimePreferences).map(([mealTime, checked]) => (
+              <Grid item xs={6} sm={4} key={mealTime}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={checked}
+                      onChange={(e) => {
+                        // Update the enhanced preference
+                        setMealTimePreferences(prev => ({
+                          ...prev,
+                          [mealTime]: e.target.checked
+                        }));
+                        
+                        // Also update the original mealTimes for backward compatibility
+                        // Map enhanced preferences to original format
+                        if (mealTime === 'breakfast' || mealTime === 'lunch' || 
+                            mealTime === 'dinner') {
+                          setPreferences(prev => ({
+                            ...prev,
+                            mealTimes: {
+                              ...prev.mealTimes,
+                              [mealTime]: e.target.checked
+                            }
+                          }));
+                        } else if (mealTime === 'morning-snack' || mealTime === 'afternoon-snack' ||
+                                   mealTime === 'evening-snack') {
+                          // If any snack is enabled, enable snacks in original format
+                          setPreferences(prev => ({
+                            ...prev,
+                            mealTimes: {
+                              ...prev.mealTimes,
+                              snacks: e.target.checked || 
+                                      mealTimePreferences['morning-snack'] ||
+                                      mealTimePreferences['afternoon-snack'] || 
+                                      mealTimePreferences['evening-snack']
+                            }
+                          }));
+                        }
+                      }}
+                    />
+                  }
+                  label={mealTime.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                />
+              </Grid>
+            ))}
+          </Grid>
+          
+          {/* Keep the snacks per day selector if any snack is selected */}
+          {(mealTimePreferences['morning-snack'] || 
+            mealTimePreferences['afternoon-snack'] || 
+            mealTimePreferences['evening-snack']) && (
+            <FormControl fullWidth margin="normal">
+              <InputLabel>Snacks Per Day</InputLabel>
+              <Select
+                value={preferences.snacksPerDay}
+                label="Snacks Per Day"
+                onChange={(e) => setPreferences(prev => ({
+                  ...prev,
+                  snacksPerDay: e.target.value
+                }))}
+              >
+                {[1, 2, 3].map((num) => (
+                  <MenuItem key={num} value={num}>
+                    {num}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          )}
+        </Box>
+        
         {/* Kroger Account Settings */}
         <Box sx={{ mb: 3 }}>
           <Typography variant="subtitle1" gutterBottom>

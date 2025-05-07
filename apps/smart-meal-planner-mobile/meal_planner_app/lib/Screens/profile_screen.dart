@@ -4,6 +4,11 @@ import '../Providers/auth_providers.dart';
 import 'store_selection_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
+  final int userId;
+  final String authToken;
+
+  ProfileScreen({required this.userId, required this.authToken});
+  
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);

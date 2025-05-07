@@ -1,0 +1,2 @@
+C:/Users/Daniel/OneDrive - City of Loveland/Documents/Smart Meal Planner/smart_meal_planner_multi/apps/smart-meal-planner-mobile/meal_planner_app/android/app/.cxx/Debug/x6x1y5s1/x86_64/CMakeFiles/edit_cache.dir
+C:/Users/Daniel/OneDrive - City of Loveland/Documents/Smart Meal Planner/smart_meal_planner_multi/apps/smart-meal-planner-mobile/meal_planner_app/android/app/.cxx/Debug/x6x1y5s1/x86_64/CMakeFiles/rebuild_cache.dir

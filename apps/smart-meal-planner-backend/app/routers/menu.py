@@ -125,7 +125,16 @@ def contains_gluten(meal: Dict[str, Any]) -> bool:
     
     return False
 
-def validate_meal_plan(day_json: Dict[str, Any], dietary_restrictions: List[str], disliked_ingredients: List[str], used_meal_titles: Set[str], required_meal_times: List[str] = None) -> List[str]:
+def validate_meal_plan(
+    day_json: Dict[str, Any], 
+    dietary_restrictions: List[str], 
+    disliked_ingredients: List[str], 
+    used_meal_titles: Set[str], 
+    required_meal_times: List[str] = None,
+    time_constraints: Dict[str, int] = None,
+    meal_time_preferences: Dict[str, bool] = None,
+    spice_level: str = None
+) -> List[str]:
     """Validate that the meal plan meets all requirements"""
     issues = []
     
@@ -169,6 +178,40 @@ def validate_meal_plan(day_json: Dict[str, Any], dietary_restrictions: List[str]
         for meal_time in required_meal_times:
             if meal_time.lower() not in meal_times_in_plan:
                 issues.append(f"Required meal time '{meal_time}' is missing from the meal plan")
+    
+    # Check detailed meal time preferences if specified
+    if meal_time_preferences:
+        preferred_times = [time for time, enabled in meal_time_preferences.items() if enabled]
+        if preferred_times:
+            for meal in day_json.get("meals", []):
+                meal_time = meal.get("meal_time", "").lower()
+                # Map standard meal times to preferred times if needed
+                if meal_time == "breakfast" and "breakfast" in preferred_times:
+                    pass  # This is fine
+                elif meal_time == "lunch" and "lunch" in preferred_times:
+                    pass  # This is fine
+                elif meal_time == "dinner" and "dinner" in preferred_times:
+                    pass  # This is fine
+                elif meal_time not in preferred_times and meal_time in ["breakfast", "lunch", "dinner"]:
+                    issues.append(f"Meal '{meal.get('title')}' is for {meal_time} but this time is not in preferred times")
+    
+    # Check time constraints if specified
+    if time_constraints:
+        for meal in day_json.get("meals", []):
+            meal_time = meal.get("meal_time", "").lower()
+            instructions = meal.get("instructions", [])
+            # Estimate preparation time based on number of instructions
+            # This is a simple heuristic - in a real system you might have more complex logic
+            estimated_time = len(instructions) * 5  # Rough estimate: 5 minutes per instruction step
+            
+            # Check if meal time has a constraint
+            weekday_constraint = f"weekday-{meal_time}"
+            weekend_constraint = f"weekend-{meal_time}"
+            
+            if weekday_constraint in time_constraints:
+                max_time = time_constraints[weekday_constraint]
+                if estimated_time > max_time:
+                    issues.append(f"Meal '{meal.get('title')}' likely exceeds weekday time constraint of {max_time} minutes for {meal_time}")
     
     return issues
 
@@ -305,7 +348,13 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
                     diet_type,
                     dietary_restrictions,
                     disliked_ingredients,
-                    snacks_per_day
+                    snacks_per_day,
+                    flavor_preferences,
+                    spice_level,
+                    recipe_type_preferences,
+                    meal_time_preferences,
+                    time_constraints,
+                    prep_preferences
                 FROM user_profiles
                 WHERE id = %s
                 LIMIT 1
@@ -370,6 +419,26 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
                 user_row.get("recipe_type") if user_row else None,
                 "American, Italian, Mexican, Asian, Chinese, Spanish"
             )
+            
+            # Extract new preference fields
+            flavor_preferences = user_row.get("flavor_preferences", {}) if user_row else {}
+            flavor_prefs_str = ", ".join([flavor for flavor, enabled in flavor_preferences.items() if enabled]) if flavor_preferences else ""
+            
+            spice_level = merge_preference(
+                user_row.get("spice_level") if user_row else None,
+                "medium"
+            )
+            
+            recipe_type_preferences = user_row.get("recipe_type_preferences", {}) if user_row else {}
+            recipe_type_prefs_str = ", ".join([type.replace('-', ' ') for type, enabled in recipe_type_preferences.items() if enabled]) if recipe_type_preferences else ""
+            
+            detailed_meal_times = user_row.get("meal_time_preferences", {}) if user_row else {}
+            detailed_meal_times_str = ", ".join([time.replace('-', ' ') for time, enabled in detailed_meal_times.items() if enabled]) if detailed_meal_times else ""
+            
+            time_constraints = user_row.get("time_constraints", {}) if user_row else {}
+            
+            prep_preferences = user_row.get("prep_preferences", {}) if user_row else {}
+            prep_prefs_str = ", ".join([prep.replace('-', ' ') for prep, enabled in prep_preferences.items() if enabled]) if prep_preferences else ""
 
             # Generate meal plan
             final_plan = {"days": []}
@@ -563,7 +632,16 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
                 system_prompt = f"""You are an advanced meal planning assistant that creates detailed, nutritionally balanced meal plans.
                 Your task is to generate meal plans with precise cooking instructions while strictly adhering to user preferences.
                 
-                CRITICAL: You MUST generate meals for ALL meal times specified by the user, including breakfast, lunch, dinner, and snacks if requested."""
+                CRITICAL: You MUST generate meals for ALL meal times specified by the user, including breakfast, lunch, dinner, and snacks if requested.
+                
+                Pay special attention to the following preference areas:
+                1. Flavor preferences - Focus on incorporating preferred flavor profiles
+                2. Spice level - Adjust recipes to match the specified spice level
+                3. Meal formats - Prioritize preferred meal structures like stir-fry, bowls, etc.
+                4. Time constraints - Ensure recipes can be prepared within the time limits
+                5. Meal preparation preferences - Use batch cooking, one-pot meals, etc. when specified
+                
+                Respect both dietary restrictions and detailed preferences to create personalized and practical meal plans."""
                 
                 # Create a more concise and structured user prompt
                 user_prompt = f"""
@@ -578,6 +656,16 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
                 - Diet type: {diet_type}
                 - Available appliances: {appliances_str}
                 - Cooking complexity level: {prep_level}
+                
+                ### Additional Preferences
+                - Preferred flavors: {flavor_prefs_str or "No specific flavor preferences"}
+                - Spice level: {spice_level}
+                - Preferred meal formats: {recipe_type_prefs_str or "No specific meal format preferences"}
+                - Preferred meal preparation: {prep_prefs_str or "No specific preparation preferences"}
+                - Detailed meal schedule: {detailed_meal_times_str or "Standard meal times only"}
+
+                ### Time Constraints
+                {chr(10).join([f"- {constraint.replace('-', ' ').title()}: {minutes} minutes max" for constraint, minutes in time_constraints.items()]) if time_constraints else "- No specific time constraints"}
 
                 ### Nutrition Goals
                 - Daily calories: {calorie_goal} kcal × {servings_per_meal} servings = {calorie_goal * servings_per_meal} total calories
@@ -650,9 +738,16 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
                                     raise ValueError("JSON missing required keys")
                                 
                                 # Check for issues with the meal plan, including required meal times
-                                issues = validate_meal_plan(day_json, dietary_restrictions, 
-                                                          disliked_ingredients, used_meal_titles,
-                                                          selected_meal_times)
+                                issues = validate_meal_plan(
+                                    day_json, 
+                                    dietary_restrictions, 
+                                    disliked_ingredients, 
+                                    used_meal_titles,
+                                    selected_meal_times,
+                                    time_constraints,
+                                    detailed_meal_times,
+                                    spice_level
+                                )
                                 
                                 if issues:
                                     logger.warning(f"Validation issues in day {day_number}: {issues}")

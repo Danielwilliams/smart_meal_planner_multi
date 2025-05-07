@@ -35,7 +35,13 @@ def get_user_preferences(id: int):
                 appliances,
                 prep_complexity,
                 servings_per_meal,
-                snacks_per_day 
+                snacks_per_day,
+                flavor_preferences,
+                spice_level,
+                recipe_type_preferences,
+                meal_time_preferences,
+                time_constraints,
+                prep_preferences
             FROM user_profiles
             WHERE id = %s
         """, (id,))
@@ -66,7 +72,60 @@ def get_user_preferences(id: int):
                 "prep_complexity": 50,
                 "servings_per_meal": 1,
                 "kroger_username": "",
-                "snacks_per_day": 0
+                "snacks_per_day": 0,
+                "flavor_preferences": {
+                    "creamy": False,
+                    "cheesy": False,
+                    "herbs": False,
+                    "umami": False,
+                    "sweet": False,
+                    "spiced": False,
+                    "smoky": False,
+                    "garlicky": False,
+                    "tangy": False,
+                    "peppery": False,
+                    "hearty": False,
+                    "spicy": False
+                },
+                "spice_level": "medium",
+                "recipe_type_preferences": {
+                    "stir-fry": False,
+                    "grain-bowl": False,
+                    "salad": False,
+                    "pasta": False,
+                    "main-sides": False,
+                    "pizza": False,
+                    "burger": False,
+                    "sandwich": False,
+                    "tacos": False,
+                    "wrap": False,
+                    "soup-stew": False,
+                    "bake": False,
+                    "family-meals": False
+                },
+                "meal_time_preferences": {
+                    "breakfast": False,
+                    "morning-snack": False,
+                    "lunch": False,
+                    "afternoon-snack": False,
+                    "dinner": False,
+                    "evening-snack": False
+                },
+                "time_constraints": {
+                    "weekday-breakfast": 10,
+                    "weekday-lunch": 15,
+                    "weekday-dinner": 30,
+                    "weekend-breakfast": 20,
+                    "weekend-lunch": 30,
+                    "weekend-dinner": 45
+                },
+                "prep_preferences": {
+                    "batch-cooking": False,
+                    "meal-prep": False,
+                    "quick-assembly": False,
+                    "one-pot": False,
+                    "minimal-dishes": False
+                }
             }
 
         # Handle JSONB fields
@@ -84,10 +143,76 @@ def get_user_preferences(id: int):
                 "instapot": False,
                 "crockpot": False
             }
-
-                # Ensure snacks_per_day has a default value if null
+        
+        # Ensure snacks_per_day has a default value if null
         if preferences['snacks_per_day'] is None:
             preferences['snacks_per_day'] = 0
+            
+        # Handle new JSONB fields
+        if preferences['flavor_preferences'] is None:
+            preferences['flavor_preferences'] = {
+                "creamy": False,
+                "cheesy": False,
+                "herbs": False,
+                "umami": False,
+                "sweet": False,
+                "spiced": False,
+                "smoky": False,
+                "garlicky": False,
+                "tangy": False,
+                "peppery": False,
+                "hearty": False,
+                "spicy": False
+            }
+
+        if preferences['spice_level'] is None:
+            preferences['spice_level'] = "medium"
+
+        if preferences['recipe_type_preferences'] is None:
+            preferences['recipe_type_preferences'] = {
+                "stir-fry": False,
+                "grain-bowl": False,
+                "salad": False,
+                "pasta": False,
+                "main-sides": False,
+                "pizza": False,
+                "burger": False,
+                "sandwich": False,
+                "tacos": False,
+                "wrap": False,
+                "soup-stew": False,
+                "bake": False,
+                "family-meals": False
+            }
+
+        if preferences['meal_time_preferences'] is None:
+            preferences['meal_time_preferences'] = {
+                "breakfast": False,
+                "morning-snack": False,
+                "lunch": False,
+                "afternoon-snack": False,
+                "dinner": False,
+                "evening-snack": False
+            }
+
+        if preferences['time_constraints'] is None:
+            preferences['time_constraints'] = {
+                "weekday-breakfast": 10,
+                "weekday-lunch": 15,
+                "weekday-dinner": 30,
+                "weekend-breakfast": 20,
+                "weekend-lunch": 30,
+                "weekend-dinner": 45
+            }
+
+        if preferences['prep_preferences'] is None:
+            preferences['prep_preferences'] = {
+                "batch-cooking": False,
+                "meal-prep": False,
+                "quick-assembly": False,
+                "one-pot": False,
+                "minimal-dishes": False
+            }
 
         return preferences
 
@@ -169,10 +294,35 @@ async def update_preferences(id: int, preferences: PreferencesUpdate):
             update_fields.append("servings_per_meal = %s")
             params.append(preferences.servings_per_meal)
 
-              # Add snacks_per_day field to the update query
+        # Add snacks_per_day field to the update query
         if preferences.snacks_per_day is not None:
             update_fields.append("snacks_per_day = %s")
             params.append(preferences.snacks_per_day)
+            
+        # New preference fields
+        if preferences.flavor_preferences is not None:
+            update_fields.append("flavor_preferences = %s::jsonb")
+            params.append(json.dumps(preferences.flavor_preferences))
+            
+        if preferences.spice_level is not None:
+            update_fields.append("spice_level = %s")
+            params.append(preferences.spice_level)
+            
+        if preferences.recipe_type_preferences is not None:
+            update_fields.append("recipe_type_preferences = %s::jsonb")
+            params.append(json.dumps(preferences.recipe_type_preferences))
+            
+        if preferences.meal_time_preferences is not None:
+            update_fields.append("meal_time_preferences = %s::jsonb")
+            params.append(json.dumps(preferences.meal_time_preferences))
+            
+        if preferences.time_constraints is not None:
+            update_fields.append("time_constraints = %s::jsonb")
+            params.append(json.dumps(preferences.time_constraints))
+            
+        if preferences.prep_preferences is not None:
+            update_fields.append("prep_preferences = %s::jsonb")
+            params.append(json.dumps(preferences.prep_preferences))
         
         # Add id to params
         params.append(id)

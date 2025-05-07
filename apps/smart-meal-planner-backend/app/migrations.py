@@ -34,6 +34,7 @@ def run_migrations():
     add_prep_time_to_saved_recipes()
     add_notes_to_scraped_recipes()
     update_recipe_components_structure()
+    add_enhanced_preferences_to_user_profiles()
     
     logger.info("Database migrations completed successfully")
 
@@ -614,6 +615,57 @@ def add_notes_to_scraped_recipes():
         if conn:
             conn.rollback()
         logger.error(f"Error adding notes column to scraped_recipes: {str(e)}")
+        # Don't re-raise, just log the error
+    finally:
+        if conn:
+            conn.close()
+
+def add_enhanced_preferences_to_user_profiles():
+    """
+    Add enhanced preference columns to user_profiles table if they don't exist
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            # Define the columns to add
+            columns_to_add = [
+                ("flavor_preferences", "JSONB"),
+                ("spice_level", "VARCHAR(20)"),
+                ("recipe_type_preferences", "JSONB"),
+                ("meal_time_preferences", "JSONB"),
+                ("time_constraints", "JSONB"),
+                ("prep_preferences", "JSONB")
+            ]
+            
+            for column_name, column_type in columns_to_add:
+                # Check if the column already exists
+                cursor.execute("""
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_schema = 'public'
+                      AND table_name = 'user_profiles' 
+                      AND column_name = %s
+                """, (column_name,))
+                
+                if not cursor.fetchone():
+                    logger.info(f"Adding {column_name} column to user_profiles table")
+                    cursor.execute(f"""
+                        ALTER TABLE user_profiles 
+                        ADD COLUMN {column_name} {column_type} DEFAULT NULL
+                    """)
+                    conn.commit()
+                    logger.info(f"{column_name} column added successfully to user_profiles table")
+                else:
+                    logger.info(f"{column_name} column already exists in user_profiles table")
+                    
+        # All columns added successfully
+        logger.info("Enhanced preference columns added to user_profiles table")
+                
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        logger.error(f"Error adding enhanced preference columns to user_profiles: {str(e)}")
         # Don't re-raise, just log the error
     finally:
         if conn:

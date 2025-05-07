@@ -32,7 +32,7 @@ class _CartScreenState extends State<CartScreen> {
   Future<void> _fetchCartData() async {
     setState(() => _isLoading = true);
 
-    final result = await ApiService.createCart(
+    final result = await ApiService.addToInternalCart(
       userId: widget.userId,
       authToken: widget.authToken,
       storeName: widget.storeName,
