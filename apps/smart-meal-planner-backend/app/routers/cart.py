@@ -146,7 +146,6 @@ async def clear_internal_cart(
             internal_carts[user_id] = {
                 'walmart': [],
                 'kroger': [],
-                'instacart': [],
                 'unassigned': []
             }
         return {"status": "success"}
