@@ -62,7 +62,7 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
           // For testing only - backup URL if the API one doesn't work
           if (!url.contains("kroger.com") && !url.contains("oauth")) {
             print("URL doesn't appear to be a valid OAuth URL, using backup");
-            finalUrl = "https://api.kroger.com/v1/connect/oauth2/authorize?scope=cart.basic:write&client_id=smartmealplanner&response_type=code&redirect_uri=https://smartmealplanner.app/kroger-auth-callback";
+            finalUrl = "https://api.kroger.com/v1/connect/oauth2/authorize?scope=cart.basic:write&client_id=smartmealplannermobile-f8d6a2f8dd0b425e73f40cda1f356837&response_type=code&redirect_uri=smartmealplanner://kroger-auth-callback";
           }
           
           print("Initializing WebView with URL: ${finalUrl.substring(0, min(finalUrl.length, 50))}...");

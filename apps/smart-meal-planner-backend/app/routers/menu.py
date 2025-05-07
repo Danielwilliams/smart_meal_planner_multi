@@ -272,11 +272,31 @@ def merge_preference(db_value, req_value, default=None):
 
 def extract_meal_times(user_row, req_meal_times):
     """Helper function to extract meal times from user preferences"""
+    # First check request parameter
     if req_meal_times:
         return req_meal_times
+    
+    # Next check detailed meal time preferences
+    if user_row and 'meal_time_preferences' in user_row and user_row['meal_time_preferences']:
+        # Get standard meal times (not snacks) from the detailed preferences
+        standard_times = []
+        
+        if user_row['meal_time_preferences'].get('breakfast'):
+            standard_times.append('breakfast')
+        if user_row['meal_time_preferences'].get('lunch'):
+            standard_times.append('lunch')
+        if user_row['meal_time_preferences'].get('dinner'):
+            standard_times.append('dinner')
+            
+        if standard_times:
+            return standard_times
+    
+    # Fall back to basic meal times
     if user_row and 'meal_times' in user_row:
         return [meal for meal, enabled in user_row['meal_times'].items() 
                 if enabled and meal != 'snacks']
+    
+    # Default case
     return ["breakfast", "lunch", "dinner"]
 
 def process_dietary_restrictions(user_row, req_preferences):
@@ -397,6 +417,28 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
             selected_meal_times = extract_meal_times(user_row, req.meal_times)
             dietary_restrictions = process_dietary_restrictions(user_row, req.dietary_preferences)
             disliked_ingredients = process_disliked_ingredients(user_row, req.disliked_foods)
+            
+            # Determine snacks per day based on detailed meal time preferences
+            snack_count_from_prefs = 0
+            if user_row and user_row.get("meal_time_preferences"):
+                meal_time_prefs = user_row.get("meal_time_preferences")
+                if meal_time_prefs.get("morning-snack"):
+                    snack_count_from_prefs += 1
+                if meal_time_prefs.get("afternoon-snack"):
+                    snack_count_from_prefs += 1
+                if meal_time_prefs.get("evening-snack"):
+                    snack_count_from_prefs += 1
+            
+            # If request has snacks_per_day, use that, otherwise use the determined count or fall back to the database value
+            if req.snacks_per_day is not None:
+                # Keep existing value from request
+                pass
+            elif snack_count_from_prefs > 0:
+                # Use count based on meal time preferences
+                req.snacks_per_day = snack_count_from_prefs
+            elif user_row and user_row.get("snacks_per_day") is not None:
+                # Fall back to database value
+                req.snacks_per_day = user_row.get("snacks_per_day")
 
             # Appliances and complexity
             appliances = user_row.get("appliances", {}) if user_row else {}
@@ -651,7 +693,7 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
                 - Servings per meal: {servings_per_meal}
                 - Dietary preferences: {', '.join(dietary_restrictions)}
                 - Disliked foods: {', '.join(disliked_ingredients)}
-                - Meal times: {', '.join(selected_meal_times)} plus {req.snacks_per_day} snack(s)
+                - Basic meal structure: {', '.join(selected_meal_times)} plus {req.snacks_per_day} snack(s)
                 - Preferred cuisines: {recipe_type}
                 - Diet type: {diet_type}
                 - Available appliances: {appliances_str}
@@ -690,6 +732,8 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
                 ### REQUIRED MEAL TIMES (YOU MUST GENERATE ALL OF THESE)
                 {', '.join([f"- {meal_time.capitalize()}" for meal_time in selected_meal_times])}
                 {f'- Snacks ({req.snacks_per_day})' if req.snacks_per_day > 0 else ''}
+                
+                {chr(10).join([f"  - {time.replace('-', ' ').title()} Snack" for time, enabled in detailed_meal_times.items() if enabled and 'snack' in time]) if any('snack' in time and enabled for time, enabled in detailed_meal_times.items()) else ''}
 
                 ### Meal Calorie Distribution
                 - Breakfast: {round(calorie_goal * 0.25)} kcal per serving

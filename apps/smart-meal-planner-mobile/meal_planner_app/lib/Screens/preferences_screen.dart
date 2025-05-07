@@ -164,52 +164,113 @@ class _PreferencesScreenState extends State<PreferencesScreen> with SingleTicker
         setState(() {
           _preferences = defaultPrefs;
           
-          // Set diet type
-          _selectedDietType = result['diet_type'] ?? 'Mixed';
-          _otherDietType = result['other_diet_type'] ?? '';
-          _otherDietTypeController.text = _otherDietType;
-          
-          // Set dietary restrictions
-          if (result['dietary_restrictions'] != null) {
-            _dietaryRestrictions = List<String>.from(result['dietary_restrictions'].split(',')
-              .map((item) => item.trim())
-              .where((item) => item.isNotEmpty));
+          // Set diet type - handle potential null or non-string values
+          try {
+            _selectedDietType = result['diet_type']?.toString() ?? 'Mixed';
+            _otherDietType = result['other_diet_type']?.toString() ?? '';
+            _otherDietTypeController.text = _otherDietType;
+          } catch (e) {
+            print("Error parsing diet type: $e");
+            _selectedDietType = 'Mixed';
           }
           
-          // Set disliked ingredients
-          if (result['disliked_ingredients'] != null) {
-            _dislikedIngredients = List<String>.from(result['disliked_ingredients'].split(',')
-              .map((item) => item.trim())
-              .where((item) => item.isNotEmpty));
+          // Set dietary restrictions - with error handling
+          try {
+            if (result['dietary_restrictions'] != null) {
+              _dietaryRestrictions = List<String>.from((result['dietary_restrictions']?.toString() ?? '')
+                .split(',')
+                .map((item) => item.trim())
+                .where((item) => item.isNotEmpty));
+            }
+          } catch (e) {
+            print("Error parsing dietary restrictions: $e");
+            _dietaryRestrictions = [];
           }
           
-          // Set recipe type
-          _selectedRecipeType = result['recipe_type'] ?? 'Mixed';
-          _otherRecipeType = result['other_recipe_type'] ?? '';
-          _otherRecipeTypeController.text = _otherRecipeType;
+          // Set disliked ingredients - with error handling
+          try {
+            if (result['disliked_ingredients'] != null) {
+              _dislikedIngredients = List<String>.from((result['disliked_ingredients']?.toString() ?? '')
+                .split(',')
+                .map((item) => item.trim())
+                .where((item) => item.isNotEmpty));
+            }
+          } catch (e) {
+            print("Error parsing disliked ingredients: $e");
+            _dislikedIngredients = [];
+          }
           
-          // Set macros
-          _calorieGoal = result['calorie_goal'] ?? 2000;
-          _proteinPercentage = result['macro_protein'] ?? 30;
-          _carbsPercentage = result['macro_carbs'] ?? 40;
-          _fatPercentage = result['macro_fat'] ?? 30;
+          // Set recipe type - handle potential null or non-string values
+          try {
+            _selectedRecipeType = result['recipe_type']?.toString() ?? 'Mixed';
+            _otherRecipeType = result['other_recipe_type']?.toString() ?? '';
+            _otherRecipeTypeController.text = _otherRecipeType;
+          } catch (e) {
+            print("Error parsing recipe type: $e");
+            _selectedRecipeType = 'Mixed';
+          }
           
-          // Set meal settings
-          _servingsPerMeal = result['servings_per_meal'] ?? 2;
-          _snacksPerDay = result['snacks_per_day'] ?? 1;
+          // Set macros - safely parse integers
+          try {
+            _calorieGoal = int.tryParse(result['calorie_goal']?.toString() ?? '2000') ?? 2000;
+            _proteinPercentage = int.tryParse(result['macro_protein']?.toString() ?? '30') ?? 30;
+            _carbsPercentage = int.tryParse(result['macro_carbs']?.toString() ?? '40') ?? 40;
+            _fatPercentage = int.tryParse(result['macro_fat']?.toString() ?? '30') ?? 30;
+          } catch (e) {
+            print("Error parsing macros: $e");
+            _calorieGoal = 2000;
+            _proteinPercentage = 30;
+            _carbsPercentage = 40;
+            _fatPercentage = 30;
+          }
+          
+          // Set meal settings - safely parse integers
+          try {
+            _servingsPerMeal = int.tryParse(result['servings_per_meal']?.toString() ?? '2') ?? 2;
+            _snacksPerDay = int.tryParse(result['snacks_per_day']?.toString() ?? '1') ?? 1;
+          } catch (e) {
+            print("Error parsing meal settings: $e");
+            _servingsPerMeal = 2;
+            _snacksPerDay = 1;
+          }
           
           // Set meal times
           if (result['meal_times'] != null) {
-            _mealTimes = Map<String, bool>.from(result['meal_times']);
+            try {
+              _mealTimes = {}; // Start with empty map
+              
+              // Process each entry safely, converting to bool
+              (result['meal_times'] as Map<String, dynamic>).forEach((key, value) {
+                _mealTimes[key] = value == true || value == "true" || value == 1;
+              });
+            } catch (e) {
+              print("Error parsing meal_times: $e");
+              // Keep default values
+            }
           }
           
           // Set appliances
           if (result['appliances'] != null) {
-            _appliances = Map<String, bool>.from(result['appliances']);
+            try {
+              _appliances = {}; // Start with empty map
+              
+              // Process each entry safely, converting to bool
+              (result['appliances'] as Map<String, dynamic>).forEach((key, value) {
+                _appliances[key] = value == true || value == "true" || value == 1;
+              });
+            } catch (e) {
+              print("Error parsing appliances: $e");
+              // Keep default values
+            }
           }
           
-          // Set complexity level
-          _complexityLevel = (result['prep_complexity'] ?? 50).toDouble();
+          // Set complexity level - safely parse to double
+          try {
+            _complexityLevel = double.tryParse(result['prep_complexity']?.toString() ?? '50') ?? 50.0;
+          } catch (e) {
+            print("Error parsing complexity level: $e");
+            _complexityLevel = 50.0;
+          }
           
           // Set store settings
           // Kroger
