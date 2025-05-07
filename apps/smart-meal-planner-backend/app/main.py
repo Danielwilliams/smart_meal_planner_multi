@@ -25,7 +25,6 @@ from app.routers import (
 # Import store-specific routers directly
 from app.routers.kroger_store import router as kroger_store_router
 from app.routers.walmart_store import router as walmart_store_router
-from app.routers.instacart_store import router as instacart_store_router
 from app.routers import saved_recipes 
 from app.routers import organizations
 from app.routers import organization_clients
@@ -128,7 +127,6 @@ def create_app() -> FastAPI:
     app.include_router(order.router)
     app.include_router(kroger_store_router) 
     app.include_router(walmart_store_router)
-    app.include_router(instacart_store_router)
     app.include_router(kroger_auth.router)
     app.include_router(grocery_list.router)
     app.include_router(store.router)

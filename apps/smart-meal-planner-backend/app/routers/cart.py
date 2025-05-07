@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 class CartItem(BaseModel):
     name: str
     quantity: int = 1
-    store_preference: Optional[str] = None  # 'walmart', 'kroger', or 'instacart'
+    store_preference: Optional[str] = None  # 'walmart' or 'kroger'
     details: Optional[Dict] = None
 
 class InternalCartRequest(BaseModel):
@@ -49,7 +49,6 @@ async def get_internal_cart(
             internal_carts[user_id] = {
                 'walmart': [],
                 'kroger': [],
-                'instacart': [],
                 'unassigned': []
             }
 
@@ -77,7 +76,6 @@ async def add_to_internal_cart(
             internal_carts[user_id] = {
                 'walmart': [],
                 'kroger': [],
-                'instacart': [],
                 'unassigned': []
             }
 
@@ -203,7 +201,6 @@ async def get_store_items(
             internal_carts[user_id] = {
                 'walmart': [],
                 'kroger': [],
-                'instacart': [],
                 'unassigned': []
             }
             

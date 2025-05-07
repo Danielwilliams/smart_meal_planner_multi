@@ -993,7 +993,6 @@ const categorizeItems = (mealPlanData) => {
           >
             <MenuItem value="walmart">Walmart</MenuItem>
             <MenuItem value="kroger">Kroger</MenuItem>
-            <MenuItem value="instacart">Instacart</MenuItem>
             <MenuItem value="mixed">Mixed Stores</MenuItem>
           </Select>
         </FormControl>

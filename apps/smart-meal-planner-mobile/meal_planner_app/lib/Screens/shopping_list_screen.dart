@@ -24,7 +24,8 @@ class ShoppingListScreen extends StatefulWidget {
 class _ShoppingListScreenState extends State<ShoppingListScreen> {
   bool _isLoading = true;
   Map<String, List<Map<String, dynamic>>> _categorizedItems = {};
-  String _selectedStore = 'Walmart'; // Default store
+  // Hardcoded to Kroger - no longer a user selection
+  final String _selectedStore = 'Kroger';
   String _error = '';
   List<Menu> _availableMenus = [];
   int _selectedMenuId = 0;
@@ -401,7 +402,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
             'unit': item['unit'],
             'quantity': item['quantity'],
             'notes': item['notes'],
-            'store': _selectedStore
+            'store': 'Kroger' // Always Kroger
           };
           
           cartItems.add(cartItem);
@@ -411,10 +412,10 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
         }
       }
       
-      print("Adding ${cartItems.length} items to $_selectedStore cart");
+      print("Adding ${cartItems.length} items to Kroger cart");
       
       // Add all items to the cart state
-      cartState.addItemsToCart(_selectedStore, cartItems);
+      cartState.addItemsToCart('Kroger', cartItems);
       cartState.printCartState();
       
       // Navigate to carts screen without passing cart data 
@@ -425,13 +426,13 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
         arguments: {
           'userId': widget.userId,
           'authToken': widget.authToken,
-          'selectedStore': _selectedStore,
+          'selectedStore': 'Kroger',
         }
       );
       
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text("Added ${cartItems.length} items to $_selectedStore cart"),
+          content: Text("Added ${cartItems.length} items to Kroger cart"),
           duration: Duration(seconds: 2),
         )
       );
@@ -555,63 +556,17 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
               },
             ),
             
-          // Store selector button with dropdown
-          PopupMenuButton<String>(
-            icon: Row(
+          // Store indicator - Kroger only
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(Icons.store, color: Colors.white),
                 SizedBox(width: 4),
                 Text(_selectedStore, style: TextStyle(color: Colors.white)),
-                Icon(Icons.arrow_drop_down, color: Colors.white),
               ],
             ),
-            onSelected: (String value) {
-              setState(() {
-                _selectedStore = value;
-              });
-              
-              // Show confirmation
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Store changed to $value'),
-                  duration: Duration(seconds: 1),
-                )
-              );
-            },
-            itemBuilder: (context) => [
-              PopupMenuItem(
-                value: 'Walmart',
-                child: Row(
-                  children: [
-                    Icon(Icons.store, color: _selectedStore == 'Walmart' ? 
-                         Theme.of(context).primaryColor : Colors.grey),
-                    SizedBox(width: 8),
-                    Text('Walmart'),
-                    if (_selectedStore == 'Walmart')
-                      Padding(
-                        padding: const EdgeInsets.only(left: 8.0),
-                        child: Icon(Icons.check, color: Theme.of(context).primaryColor),
-                      ),
-                  ],
-                ),
-              ),
-              PopupMenuItem(
-                value: 'Kroger',
-                child: Row(
-                  children: [
-                    Icon(Icons.store, color: _selectedStore == 'Kroger' ? 
-                         Theme.of(context).primaryColor : Colors.grey),
-                    SizedBox(width: 8),
-                    Text('Kroger'),
-                    if (_selectedStore == 'Kroger')
-                      Padding(
-                        padding: const EdgeInsets.only(left: 8.0),
-                        child: Icon(Icons.check, color: Theme.of(context).primaryColor),
-                      ),
-                  ],
-                ),
-              ),
-            ],
           ),
         ],
       ),
@@ -699,7 +654,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
                                                 builder: (context) => AlertDialog(
                                                   title: Text("Add to Cart"),
                                                   content: Text(
-                                                    "Add \"$displayText\" to your ${_selectedStore} cart?"
+                                                    "Add \"$displayText\" to your Kroger cart?"
                                                   ),
                                                   actions: [
                                                     TextButton(
@@ -725,7 +680,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
                                                             'unit': item['unit'],
                                                             'quantity': item['quantity'],
                                                             'notes': item['notes'],
-                                                            'store': _selectedStore
+                                                            'store': 'Kroger'
                                                           };
                                                           
                                                           // Mark as checked
@@ -735,13 +690,13 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
                                                           
                                                           // Add to the cart using the global state provider
                                                           final cartState = Provider.of<CartState>(context, listen: false);
-                                                          cartState.addItemToCart(_selectedStore, cartItem);
+                                                          cartState.addItemToCart('Kroger', cartItem);
                                                           cartState.printCartState();
                                                           
                                                           // Show success message
                                                           ScaffoldMessenger.of(context).showSnackBar(
                                                             SnackBar(
-                                                              content: Text("Added ${item['name']} to $_selectedStore cart"),
+                                                              content: Text("Added ${item['name']} to Kroger cart"),
                                                               action: SnackBarAction(
                                                                 label: 'VIEW CART',
                                                                 onPressed: () {
@@ -753,7 +708,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
                                                                     arguments: {
                                                                       'userId': widget.userId,
                                                                       'authToken': widget.authToken,
-                                                                      'selectedStore': _selectedStore,
+                                                                      'selectedStore': 'Kroger',
                                                                     }
                                                                   );
                                                                 },
@@ -800,7 +755,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
                       builder: (context) => AlertDialog(
                         title: Text("Add All to Cart"),
                         content: Text(
-                          "Add all items to your $_selectedStore shopping cart?"
+                          "Add all items to your Kroger shopping cart?"
                         ),
                         actions: [
                           TextButton(
@@ -820,7 +775,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
                     );
                   },
                   icon: Icon(Icons.shopping_cart),
-                  label: Text("ADD ALL ITEMS TO CART"),
+                  label: Text("ADD ALL ITEMS TO KROGER CART"),
                   style: ElevatedButton.styleFrom(
                     padding: EdgeInsets.symmetric(vertical: 16),
                     backgroundColor: Theme.of(context).colorScheme.primary,
@@ -839,11 +794,12 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
             arguments: {
               'userId': widget.userId,
               'authToken': widget.authToken,
+              'selectedStore': 'Kroger',
             }
           );
         },
         icon: Icon(Icons.shopping_cart),
-        label: Text("View Carts"),
+        label: Text("View Kroger Cart"),
         backgroundColor: Theme.of(context).colorScheme.secondary,
       ),
     );

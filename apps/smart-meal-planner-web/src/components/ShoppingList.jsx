@@ -1226,17 +1226,9 @@ const ShoppingListItem = ({
           <Button 
             variant="outlined" 
             size="small" 
-            sx={{ mr: 1 }}
             onClick={() => handleStoreClick('kroger', item)}
           >
             Add to Kroger
-          </Button>
-          <Button 
-            variant="outlined" 
-            size="small" 
-            onClick={() => handleStoreClick('instacart', item)}
-          >
-            Add to Instacart
           </Button>
         </Box>
       ) : (
