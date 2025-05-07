@@ -491,9 +491,24 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
             used_primary_ingredients = []  # List of (day, ingredients) tuples to track ingredients by day
             
             # Define OpenAI function schema for structured meal plan output
+            # Construct a description based on detailed meal times or fall back to basic meal times
+            meal_times_desc = ""
+            if detailed_meal_times and any(enabled for time, enabled in detailed_meal_times.items()):
+                # Use detailed meal times
+                standard_meals = [time.replace('-', ' ').title() for time, enabled in detailed_meal_times.items() if enabled and not 'snack' in time]
+                snack_meals = [time.replace('-', ' ').title() + " Snack" for time, enabled in detailed_meal_times.items() if enabled and 'snack' in time]
+                meal_times_desc = ", ".join(standard_meals)
+                if snack_meals:
+                    meal_times_desc += " plus " + ", ".join(snack_meals)
+            else:
+                # Use basic meal times
+                meal_times_desc = ", ".join(selected_meal_times)
+                if req.snacks_per_day > 0:
+                    meal_times_desc += f" plus {req.snacks_per_day} snack(s)"
+            
             menu_schema = {
                 "name": "generate_daily_meal_plan",
-                "description": f"Generate a daily meal plan with all required meal times: {', '.join(selected_meal_times)}{' plus ' + str(req.snacks_per_day) + ' snack(s)' if req.snacks_per_day > 0 else ''}",
+                "description": f"Generate a daily meal plan with all required meal times: {meal_times_desc}",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -693,7 +708,6 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
                 - Servings per meal: {servings_per_meal}
                 - Dietary preferences: {', '.join(dietary_restrictions)}
                 - Disliked foods: {', '.join(disliked_ingredients)}
-                - Basic meal structure: {', '.join(selected_meal_times)} plus {req.snacks_per_day} snack(s)
                 - Preferred cuisines: {recipe_type}
                 - Diet type: {diet_type}
                 - Available appliances: {appliances_str}
@@ -704,7 +718,6 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
                 - Spice level: {spice_level}
                 - Preferred meal formats: {recipe_type_prefs_str or "No specific meal format preferences"}
                 - Preferred meal preparation: {prep_prefs_str or "No specific preparation preferences"}
-                - Detailed meal schedule: {detailed_meal_times_str or "Standard meal times only"}
 
                 ### Time Constraints
                 {chr(10).join([f"- {constraint.replace('-', ' ').title()}: {minutes} minutes max" for constraint, minutes in time_constraints.items()]) if time_constraints else "- No specific time constraints"}
@@ -730,10 +743,9 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
                 - Show calories, protein, carbs, and fat for each ingredient
                 
                 ### REQUIRED MEAL TIMES (YOU MUST GENERATE ALL OF THESE)
-                {', '.join([f"- {meal_time.capitalize()}" for meal_time in selected_meal_times])}
-                {f'- Snacks ({req.snacks_per_day})' if req.snacks_per_day > 0 else ''}
+                {chr(10).join([f"- {time.replace('-', ' ').title()}" for time, enabled in detailed_meal_times.items() if enabled and not 'snack' in time]) if detailed_meal_times and any(enabled for time, enabled in detailed_meal_times.items() if not 'snack' in time) else chr(10).join([f"- {meal_time.capitalize()}" for meal_time in selected_meal_times])}
                 
-                {chr(10).join([f"  - {time.replace('-', ' ').title()} Snack" for time, enabled in detailed_meal_times.items() if enabled and 'snack' in time]) if any('snack' in time and enabled for time, enabled in detailed_meal_times.items()) else ''}
+                {chr(10).join([f"- {time.replace('-', ' ').title()} Snack" for time, enabled in detailed_meal_times.items() if enabled and 'snack' in time]) if detailed_meal_times and any('snack' in time and enabled for time, enabled in detailed_meal_times.items()) else (f'- Snacks ({req.snacks_per_day})' if req.snacks_per_day > 0 else '')}
 
                 ### Meal Calorie Distribution
                 - Breakfast: {round(calorie_goal * 0.25)} kcal per serving
