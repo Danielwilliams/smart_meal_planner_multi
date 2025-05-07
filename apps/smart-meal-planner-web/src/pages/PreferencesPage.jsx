@@ -415,13 +415,24 @@ useEffect(() => {
        mealTimePreferences['evening-snack']]
       .filter(Boolean).length;
 
+      // Derive the basic meal_times from the detailed mealTimePreferences for backward compatibility
+      const derivedMealTimes = {
+        breakfast: mealTimePreferences.breakfast || false,
+        lunch: mealTimePreferences.lunch || false,
+        dinner: mealTimePreferences.dinner || false,
+        snacks: mealTimePreferences['morning-snack'] || 
+                mealTimePreferences['afternoon-snack'] || 
+                mealTimePreferences['evening-snack'] || false
+      };
+
       const prefsToSave = {
         user_id: user.userId,
         diet_type: selectedDietTypes.join(', '),
         dietary_restrictions: preferences.dietaryRestrictions,
         disliked_ingredients: preferences.dislikedIngredients,
         recipe_type: selectedRecipeTypes.join(', '),
-        meal_times: preferences.mealTimes,
+        // Use derived meal times from detailed preferences instead of the deprecated section
+        meal_times: derivedMealTimes,
         snacks_per_day: selectedSnackTimes > 0 ? preferences.snacksPerDay : 0,
         macro_protein: preferences.macroGoals.protein ? parseInt(preferences.macroGoals.protein) : null,
         macro_carbs: preferences.macroGoals.carbs ? parseInt(preferences.macroGoals.carbs) : null,
@@ -432,7 +443,7 @@ useEffect(() => {
         kroger_username: preferences.krogerUsername,
         servings_per_meal: preferences.servingsPerMeal,
         kroger_password: preferences.krogerPassword,
-        // New preference fields
+        // Enhanced preference fields (these take precedence in the menu generation process)
         flavor_preferences: flavorPreferences,
         spice_level: spiceLevel,
         recipe_type_preferences: recipeTypePreferences,
@@ -595,46 +606,7 @@ useEffect(() => {
           helperText="Enter ingredients you dislike, separated by commas"
         />
 
-        {/* Meal Times */}
-        <Box sx={{ mt: 3, mb: 2 }}>
-          <Typography variant="subtitle1" gutterBottom>
-            Meal Times
-          </Typography>
-          <Grid container>
-            {Object.entries(preferences.mealTimes).map(([meal, checked]) => (
-              <Grid item xs={6} key={meal}>
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      name={`mealTimes.${meal}`}
-                      checked={checked}
-                      onChange={handleChange}
-                    />
-                  }
-                  label={meal.charAt(0).toUpperCase() + meal.slice(1)}
-                />
-              </Grid>
-            ))}
-          </Grid>
-          
-          {preferences.mealTimes.snacks && (
-            <FormControl fullWidth margin="normal">
-              <InputLabel>Snacks Per Day</InputLabel>
-              <Select
-                name="snacksPerDay"
-                value={preferences.snacksPerDay}
-                label="Snacks Per Day"
-                onChange={handleChange}
-              >
-                {[1, 2, 3].map((num) => (
-                  <MenuItem key={num} value={num}>
-                    {num}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          )}
-        </Box>
+        {/* Removed basic Meal Times section in favor of detailed Meal Schedule below */}
         <Box sx={{ mt: 3, mb: 2 }}>
           <Typography variant="subtitle1" gutterBottom>
              Servings per Meal
