@@ -38,6 +38,7 @@ import apiService from '../services/apiService';
 import { useNavigate } from 'react-router-dom';
 import KrogerResults from '../components/KrogerResults';
 import WalmartResults from '../components/WalmartResults';
+import InstacartResults from '../components/InstacartResults';
 import { StoreSelector } from '../components/StoreSelector';
 import krogerAuthService from '../services/krogerAuthService';
 
@@ -51,19 +52,22 @@ function CartPage() {
   const [internalCart, setInternalCart] = useState({
     walmart: [],
     kroger: [],
+    instacart: [],
     unassigned: []
   });
   
   const [searchResults, setSearchResults] = useState({
     walmart: [],
-    kroger: []
+    kroger: [],
+    instacart: []
   });
   
   const [loading, setLoading] = useState({
     cart: false,
     search: false,
     kroger: false,
-    walmart: false
+    walmart: false,
+    instacart: false
   });
 
   const [error, setError] = useState(null);
@@ -592,9 +596,14 @@ function CartPage() {
       }
 
       // Choose the appropriate search function
-      const searchFunction = store === 'kroger' 
-        ? apiService.searchKrogerItems 
-        : apiService.searchWalmartItems;
+      let searchFunction;
+      if (store === 'kroger') {
+        searchFunction = apiService.searchKrogerItems;
+      } else if (store === 'walmart') {
+        searchFunction = apiService.searchWalmartItems;
+      } else if (store === 'instacart') {
+        searchFunction = apiService.searchInstacartItems;
+      }
 
       // Execute the search
       const response = await searchFunction(storeItems);
@@ -930,7 +939,7 @@ const handleAddToCart = async (items, store) => {
         await loadInternalCart();
         clearSearchResults(store);
         setShowKrogerCartDialog(true);
-      } else {
+      } else if (store === 'walmart') {
         // Use regular API service for Walmart
         response = await apiService.addToWalmartCart(items);
         
@@ -941,6 +950,26 @@ const handleAddToCart = async (items, store) => {
           clearSearchResults(store);
         } else {
           setError(response.message || `Failed to add items to ${store} cart`);
+        }
+      } else if (store === 'instacart') {
+        // Special handling for Instacart shopping lists
+        response = await apiService.transferCartToInstacartList("Meal Plan Shopping List");
+        
+        if (response.success) {
+          setSnackbarMessage(`Items transferred to Instacart shopping list successfully`);
+          setSnackbarOpen(true);
+          await loadInternalCart();
+          clearSearchResults(store);
+          
+          // If there's a shopping list URL, offer to open it
+          if (response.shopping_list && response.shopping_list.url) {
+            const openUrl = window.confirm("Your Instacart shopping list is ready! Would you like to open it in a new tab?");
+            if (openUrl) {
+              window.open(response.shopping_list.url, '_blank');
+            }
+          }
+        } else {
+          setError(response.message || `Failed to transfer items to Instacart shopping list`);
         }
       }
     } catch (err) {
@@ -1254,6 +1283,7 @@ const handleAddToCart = async (items, store) => {
                       >
                         <MenuItem value="walmart">Walmart</MenuItem>
                         <MenuItem value="kroger">Kroger</MenuItem>
+                        <MenuItem value="instacart">Instacart</MenuItem>
                       </Select>
                     </FormControl>
                     <IconButton
@@ -1274,6 +1304,7 @@ const handleAddToCart = async (items, store) => {
       {/* Store Sections */}
       {renderStoreSection('kroger', internalCart.kroger, () => handleStoreSearch('kroger'), KrogerResults)}
       {renderStoreSection('walmart', internalCart.walmart, () => handleStoreSearch('walmart'), WalmartResults)}
+      {renderStoreSection('instacart', internalCart.instacart, () => handleStoreSearch('instacart'), InstacartResults)}
 
       {/* Error Display */}
       {error && (

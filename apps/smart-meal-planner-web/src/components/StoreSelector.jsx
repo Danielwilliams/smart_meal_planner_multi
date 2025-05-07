@@ -352,7 +352,10 @@ const searchStores = async (lat, lon) => {
       <DialogTitle>
         <Box display="flex" justifyContent="space-between" alignItems="center">
           <Typography variant="h6">
-            Select Your {storeType === 'kroger' ? 'Kroger' : 'Walmart'} Store
+            Select Your {
+              storeType === 'kroger' ? 'Kroger' : 
+              storeType === 'instacart' ? 'Instacart' : 'Walmart'
+            } Store
           </Typography>
           <IconButton onClick={handleClose} size="small">
             <Close />
