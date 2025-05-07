@@ -607,6 +607,87 @@ useEffect(() => {
         />
 
         {/* Removed basic Meal Times section in favor of detailed Meal Schedule below */}
+        
+        {/* Meal Schedule (Enhanced) - Moved above servings per meal */}
+        <Box sx={{ mt: 3, mb: 2 }}>
+          <Typography variant="subtitle1" gutterBottom>
+            Meal Schedule
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Select all meal times you want included in your plan
+          </Typography>
+          <Grid container spacing={2}>
+            {Object.entries(mealTimePreferences).map(([mealTime, checked]) => (
+              <Grid item xs={6} sm={4} key={mealTime}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={checked}
+                      onChange={(e) => {
+                        // Update the enhanced preference
+                        setMealTimePreferences(prev => ({
+                          ...prev,
+                          [mealTime]: e.target.checked
+                        }));
+                        
+                        // Also update the original mealTimes for backward compatibility
+                        // Map enhanced preferences to original format
+                        if (mealTime === 'breakfast' || mealTime === 'lunch' || 
+                            mealTime === 'dinner') {
+                          setPreferences(prev => ({
+                            ...prev,
+                            mealTimes: {
+                              ...prev.mealTimes,
+                              [mealTime]: e.target.checked
+                            }
+                          }));
+                        } else if (mealTime === 'morning-snack' || mealTime === 'afternoon-snack' ||
+                                   mealTime === 'evening-snack') {
+                          // If any snack is enabled, enable snacks in original format
+                          setPreferences(prev => ({
+                            ...prev,
+                            mealTimes: {
+                              ...prev.mealTimes,
+                              snacks: e.target.checked || 
+                                      mealTimePreferences['morning-snack'] ||
+                                      mealTimePreferences['afternoon-snack'] || 
+                                      mealTimePreferences['evening-snack']
+                            }
+                          }));
+                        }
+                      }}
+                    />
+                  }
+                  label={mealTime.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                />
+              </Grid>
+            ))}
+          </Grid>
+          
+          {/* Keep the snacks per day selector if any snack is selected */}
+          {(mealTimePreferences['morning-snack'] || 
+            mealTimePreferences['afternoon-snack'] || 
+            mealTimePreferences['evening-snack']) && (
+            <FormControl fullWidth margin="normal">
+              <InputLabel>Snacks Per Day</InputLabel>
+              <Select
+                value={preferences.snacksPerDay}
+                label="Snacks Per Day"
+                onChange={(e) => setPreferences(prev => ({
+                  ...prev,
+                  snacksPerDay: e.target.value
+                }))}
+              >
+                {[1, 2, 3].map((num) => (
+                  <MenuItem key={num} value={num}>
+                    {num}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          )}
+        </Box>
+
         <Box sx={{ mt: 3, mb: 2 }}>
           <Typography variant="subtitle1" gutterBottom>
              Servings per Meal
@@ -913,85 +994,7 @@ useEffect(() => {
           ))}
         </Box>
 
-        {/* Meal Schedule (Enhanced) */}
-        <Box sx={{ mt: 3, mb: 2 }}>
-          <Typography variant="subtitle1" gutterBottom>
-            Meal Schedule
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Select all meal times you want included in your plan
-          </Typography>
-          <Grid container spacing={2}>
-            {Object.entries(mealTimePreferences).map(([mealTime, checked]) => (
-              <Grid item xs={6} sm={4} key={mealTime}>
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      checked={checked}
-                      onChange={(e) => {
-                        // Update the enhanced preference
-                        setMealTimePreferences(prev => ({
-                          ...prev,
-                          [mealTime]: e.target.checked
-                        }));
-                        
-                        // Also update the original mealTimes for backward compatibility
-                        // Map enhanced preferences to original format
-                        if (mealTime === 'breakfast' || mealTime === 'lunch' || 
-                            mealTime === 'dinner') {
-                          setPreferences(prev => ({
-                            ...prev,
-                            mealTimes: {
-                              ...prev.mealTimes,
-                              [mealTime]: e.target.checked
-                            }
-                          }));
-                        } else if (mealTime === 'morning-snack' || mealTime === 'afternoon-snack' ||
-                                   mealTime === 'evening-snack') {
-                          // If any snack is enabled, enable snacks in original format
-                          setPreferences(prev => ({
-                            ...prev,
-                            mealTimes: {
-                              ...prev.mealTimes,
-                              snacks: e.target.checked || 
-                                      mealTimePreferences['morning-snack'] ||
-                                      mealTimePreferences['afternoon-snack'] || 
-                                      mealTimePreferences['evening-snack']
-                            }
-                          }));
-                        }
-                      }}
-                    />
-                  }
-                  label={mealTime.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
-                />
-              </Grid>
-            ))}
-          </Grid>
-          
-          {/* Keep the snacks per day selector if any snack is selected */}
-          {(mealTimePreferences['morning-snack'] || 
-            mealTimePreferences['afternoon-snack'] || 
-            mealTimePreferences['evening-snack']) && (
-            <FormControl fullWidth margin="normal">
-              <InputLabel>Snacks Per Day</InputLabel>
-              <Select
-                value={preferences.snacksPerDay}
-                label="Snacks Per Day"
-                onChange={(e) => setPreferences(prev => ({
-                  ...prev,
-                  snacksPerDay: e.target.value
-                }))}
-              >
-                {[1, 2, 3].map((num) => (
-                  <MenuItem key={num} value={num}>
-                    {num}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          )}
-        </Box>
+        {/* Meal Schedule section has been moved above Servings per Meal */}
         
         {/* Kroger Account Settings */}
         <Box sx={{ mb: 3 }}>
