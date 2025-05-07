@@ -743,9 +743,7 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
                 - Show calories, protein, carbs, and fat for each ingredient
                 
                 ### REQUIRED MEAL TIMES (YOU MUST GENERATE ALL OF THESE)
-                {chr(10).join([f"- {time.replace('-', ' ').title()}" for time, enabled in detailed_meal_times.items() if enabled and not 'snack' in time]) if detailed_meal_times and any(enabled for time, enabled in detailed_meal_times.items() if not 'snack' in time) else chr(10).join([f"- {meal_time.capitalize()}" for meal_time in selected_meal_times])}
-                
-                {chr(10).join([f"- {time.replace('-', ' ').title()} Snack" for time, enabled in detailed_meal_times.items() if enabled and 'snack' in time]) if detailed_meal_times and any('snack' in time and enabled for time, enabled in detailed_meal_times.items()) else (f'- Snacks ({req.snacks_per_day})' if req.snacks_per_day > 0 else '')}
+                - {meal_times_desc.replace(", ", chr(10) + "- ").replace(" plus ", chr(10) + "- ")}
 
                 ### Meal Calorie Distribution
                 - Breakfast: {round(calorie_goal * 0.25)} kcal per serving

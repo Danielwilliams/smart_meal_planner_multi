@@ -63,6 +63,79 @@ class _PreferencesScreenState extends State<PreferencesScreen> with SingleTicker
   // Complexity level
   double _complexityLevel = 50;
   
+  // New preferences (matching web app)
+  // Flavor preferences
+  Map<String, bool> _flavorPreferences = {
+    'creamy': false,
+    'cheesy': false,
+    'herbs': false,
+    'umami': false,
+    'sweet': false,
+    'spiced': false,
+    'smoky': false,
+    'garlicky': false,
+    'tangy': false,
+    'peppery': false,
+    'hearty': false,
+    'spicy': false
+  };
+  
+  // Spice level
+  String _spiceLevel = 'medium';
+  
+  // Recipe format preferences
+  Map<String, bool> _recipeTypePreferences = {
+    'stir-fry': false,
+    'grain-bowl': false,
+    'salad': false,
+    'pasta': false,
+    'main-sides': false,
+    'pizza': false,
+    'burger': false,
+    'sandwich': false,
+    'tacos': false,
+    'wrap': false,
+    'soup-stew': false,
+    'bake': false,
+    'family-meals': false
+  };
+  
+  // Meal time preferences (enhanced)
+  Map<String, bool> _mealTimePreferences = {
+    'breakfast': false,
+    'morning-snack': false,
+    'lunch': false,
+    'afternoon-snack': false,
+    'dinner': false,
+    'evening-snack': false
+  };
+  
+  // Time constraints
+  Map<String, int> _timeConstraints = {
+    'weekday-breakfast': 10,
+    'weekday-lunch': 15,
+    'weekday-dinner': 30,
+    'weekend-breakfast': 20,
+    'weekend-lunch': 30,
+    'weekend-dinner': 45
+  };
+  
+  // Meal preparation preferences
+  Map<String, bool> _prepPreferences = {
+    'batch-cooking': false,
+    'meal-prep': false,
+    'quick-assembly': false,
+    'one-pot': false,
+    'minimal-dishes': false
+  };
+  
+  // Function to format label from key
+  String _formatLabel(String key) {
+    return key.split('-')
+        .map((word) => word.substring(0, 1).toUpperCase() + word.substring(1))
+        .join(' ');
+  }
+  
   // Store credentials and settings
   // Kroger
   String _krogerZipCode = '';
@@ -86,7 +159,7 @@ class _PreferencesScreenState extends State<PreferencesScreen> with SingleTicker
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, vsync: this);
+    _tabController = TabController(length: 6, vsync: this);
   }
   
   @override
@@ -272,6 +345,91 @@ class _PreferencesScreenState extends State<PreferencesScreen> with SingleTicker
             _complexityLevel = 50.0;
           }
           
+          // Set new preferences fields
+          
+          // Flavor preferences
+          try {
+            if (result['flavor_preferences'] != null) {
+              // Start with empty map
+              _flavorPreferences = {};
+              // Process each entry safely, converting to bool
+              (result['flavor_preferences'] as Map<String, dynamic>).forEach((key, value) {
+                _flavorPreferences[key] = value == true || value == "true" || value == 1;
+              });
+            }
+          } catch (e) {
+            print("Error parsing flavor_preferences: $e");
+            // Keep default values
+          }
+          
+          // Spice level
+          try {
+            _spiceLevel = result['spice_level']?.toString() ?? 'medium';
+          } catch (e) {
+            print("Error parsing spice_level: $e");
+            _spiceLevel = 'medium';
+          }
+          
+          // Recipe type preferences
+          try {
+            if (result['recipe_type_preferences'] != null) {
+              // Start with empty map
+              _recipeTypePreferences = {};
+              // Process each entry safely, converting to bool
+              (result['recipe_type_preferences'] as Map<String, dynamic>).forEach((key, value) {
+                _recipeTypePreferences[key] = value == true || value == "true" || value == 1;
+              });
+            }
+          } catch (e) {
+            print("Error parsing recipe_type_preferences: $e");
+            // Keep default values
+          }
+          
+          // Meal time preferences
+          try {
+            if (result['meal_time_preferences'] != null) {
+              // Start with empty map
+              _mealTimePreferences = {};
+              // Process each entry safely, converting to bool
+              (result['meal_time_preferences'] as Map<String, dynamic>).forEach((key, value) {
+                _mealTimePreferences[key] = value == true || value == "true" || value == 1;
+              });
+            }
+          } catch (e) {
+            print("Error parsing meal_time_preferences: $e");
+            // Keep default values
+          }
+          
+          // Time constraints
+          try {
+            if (result['time_constraints'] != null) {
+              // Start with empty map
+              _timeConstraints = {};
+              // Process each entry safely, converting to int
+              (result['time_constraints'] as Map<String, dynamic>).forEach((key, value) {
+                _timeConstraints[key] = int.tryParse(value.toString()) ?? 30;
+              });
+            }
+          } catch (e) {
+            print("Error parsing time_constraints: $e");
+            // Keep default values
+          }
+          
+          // Meal preparation preferences
+          try {
+            if (result['prep_preferences'] != null) {
+              // Start with empty map
+              _prepPreferences = {};
+              // Process each entry safely, converting to bool
+              (result['prep_preferences'] as Map<String, dynamic>).forEach((key, value) {
+                _prepPreferences[key] = value == true || value == "true" || value == 1;
+              });
+            }
+          } catch (e) {
+            print("Error parsing prep_preferences: $e");
+            // Keep default values
+          }
+          
           // Set store settings
           // Kroger
           _krogerZipCode = result['kroger_zip_code'] ?? '';
@@ -332,6 +490,7 @@ class _PreferencesScreenState extends State<PreferencesScreen> with SingleTicker
       _walmartLocationId = _walmartLocationIdController.text.trim();
       
       final preferences = {
+        // Original preferences
         'diet_type': _selectedDietType,
         'other_diet_type': _selectedDietType == 'Other' ? _otherDietTypeController.text.trim() : '',
         'dietary_restrictions': _dietaryRestrictions.join(', '),
@@ -355,6 +514,14 @@ class _PreferencesScreenState extends State<PreferencesScreen> with SingleTicker
         'kroger_password': _krogerPassword,
         'walmart_zip_code': _walmartZipCode,
         'walmart_location_id': _walmartLocationId,
+        
+        // New preferences added from web app
+        'flavor_preferences': _flavorPreferences,
+        'spice_level': _spiceLevel,
+        'recipe_type_preferences': _recipeTypePreferences,
+        'meal_time_preferences': _mealTimePreferences,
+        'time_constraints': _timeConstraints,
+        'prep_preferences': _prepPreferences,
       };
       
       final result = await ApiService.updatePreferences(
@@ -428,6 +595,7 @@ class _PreferencesScreenState extends State<PreferencesScreen> with SingleTicker
             Tab(icon: Icon(Icons.schedule), text: 'Meals'),
             Tab(icon: Icon(Icons.kitchen), text: 'Cooking'),
             Tab(icon: Icon(Icons.shopping_cart), text: 'Stores'),
+            Tab(icon: Icon(Icons.tune), text: 'Advanced'),
           ],
           indicatorColor: Colors.white,
           labelColor: Colors.white,
@@ -444,6 +612,7 @@ class _PreferencesScreenState extends State<PreferencesScreen> with SingleTicker
                 _buildMealsTab(),
                 _buildCookingTab(),
                 _buildStoresTab(),
+                _buildAdvancedTab(),
               ],
             ),
       bottomNavigationBar: BottomAppBar(
@@ -1093,6 +1262,31 @@ class _PreferencesScreenState extends State<PreferencesScreen> with SingleTicker
           SizedBox(height: 24),
           
           Text(
+            'Meal Preparation Preferences',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          SizedBox(height: 8),
+          Card(
+            child: Column(
+              children: [
+                ..._prepPreferences.entries.map((entry) {
+                  return SwitchListTile(
+                    title: Text(_formatLabel(entry.key)),
+                    subtitle: Text('Enable ${_formatLabel(entry.key.toLowerCase())} recipes'),
+                    value: entry.value,
+                    onChanged: (value) {
+                      setState(() {
+                        _prepPreferences[entry.key] = value;
+                      });
+                    },
+                  );
+                }).toList(),
+              ],
+            ),
+          ),
+          SizedBox(height: 24),
+          
+          Text(
             'Recipe Complexity',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
@@ -1726,6 +1920,309 @@ class _PreferencesScreenState extends State<PreferencesScreen> with SingleTicker
                 'Store ID set. You can now search for Walmart products.',
                 style: TextStyle(color: Colors.green, fontSize: 12),
               ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  // Build the advanced tab with new preferences from web app
+  Widget _buildAdvancedTab() {
+    return SingleChildScrollView(
+      padding: EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Flavor preferences section
+          Text(
+            'Flavor Preferences',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          SizedBox(height: 8),
+          _buildFlavorPreferencesSection(),
+          SizedBox(height: 24),
+          
+          // Spice level section
+          Text(
+            'Spice Level',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          SizedBox(height: 8),
+          _buildSpiceLevelSection(),
+          SizedBox(height: 24),
+          
+          // Recipe format preferences section
+          Text(
+            'Recipe Formats',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          SizedBox(height: 8),
+          _buildRecipeFormatSection(),
+          SizedBox(height: 24),
+          
+          // Time constraints section
+          Text(
+            'Time Constraints',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          SizedBox(height: 8),
+          _buildTimeConstraintsSection(),
+          SizedBox(height: 24),
+          
+          // Enhanced meal schedule section
+          Text(
+            'Detailed Meal Schedule',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          SizedBox(height: 8),
+          _buildEnhancedMealScheduleSection(),
+        ],
+      ),
+    );
+  }
+  
+  // Flavor preferences section
+  Widget _buildFlavorPreferencesSection() {
+    return Card(
+      child: Padding(
+        padding: EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Select your preferred flavor profiles',
+              style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+            ),
+            SizedBox(height: 16),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _flavorPreferences.keys.map((flavor) {
+                return FilterChip(
+                  label: Text(_formatLabel(flavor)),
+                  selected: _flavorPreferences[flavor] ?? false,
+                  selectedColor: Colors.orange.shade200,
+                  checkmarkColor: Colors.deepOrange,
+                  labelStyle: TextStyle(
+                    color: (_flavorPreferences[flavor] ?? false) ? Colors.black : Colors.black,
+                    fontWeight: (_flavorPreferences[flavor] ?? false) ? FontWeight.bold : FontWeight.normal,
+                  ),
+                  onSelected: (selected) {
+                    setState(() {
+                      _flavorPreferences[flavor] = selected;
+                    });
+                  },
+                );
+              }).toList(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  // Spice level section
+  Widget _buildSpiceLevelSection() {
+    final spiceLevels = ['mild', 'medium', 'hot', 'extra-hot'];
+    
+    return Card(
+      child: Padding(
+        padding: EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'How spicy do you like your food?',
+              style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+            ),
+            SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: spiceLevels.map((level) {
+                final isSelected = _spiceLevel == level;
+                final color = level == 'mild' 
+                    ? Colors.green 
+                    : level == 'medium' 
+                        ? Colors.orange 
+                        : level == 'hot' 
+                            ? Colors.deepOrange 
+                            : Colors.red;
+                
+                return GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _spiceLevel = level;
+                    });
+                  },
+                  child: Column(
+                    children: [
+                      Container(
+                        width: 60,
+                        height: 60,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: isSelected ? color : Colors.grey.shade200,
+                          border: Border.all(
+                            color: isSelected ? color : Colors.grey,
+                            width: 2,
+                          ),
+                        ),
+                        child: Icon(
+                          level == 'mild' 
+                              ? Icons.local_fire_department 
+                              : level == 'medium' 
+                                  ? Icons.local_fire_department 
+                                  : level == 'hot' 
+                                      ? Icons.local_fire_department 
+                                      : Icons.whatshot,
+                          color: isSelected ? Colors.white : Colors.grey,
+                          size: level == 'extra-hot' ? 36 : 30,
+                        ),
+                      ),
+                      SizedBox(height: 8),
+                      Text(
+                        _formatLabel(level),
+                        style: TextStyle(
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                          color: isSelected ? color : Colors.black,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  // Recipe format preferences section
+  Widget _buildRecipeFormatSection() {
+    return Card(
+      child: Padding(
+        padding: EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Select your preferred meal formats',
+              style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+            ),
+            SizedBox(height: 16),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _recipeTypePreferences.keys.map((type) {
+                return FilterChip(
+                  label: Text(_formatLabel(type)),
+                  selected: _recipeTypePreferences[type] ?? false,
+                  selectedColor: Colors.blue.shade200,
+                  checkmarkColor: Colors.blue,
+                  labelStyle: TextStyle(
+                    color: (_recipeTypePreferences[type] ?? false) ? Colors.black : Colors.black,
+                    fontWeight: (_recipeTypePreferences[type] ?? false) ? FontWeight.bold : FontWeight.normal,
+                  ),
+                  onSelected: (selected) {
+                    setState(() {
+                      _recipeTypePreferences[type] = selected;
+                    });
+                  },
+                );
+              }).toList(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  // Time constraints section
+  Widget _buildTimeConstraintsSection() {
+    return Card(
+      child: Padding(
+        padding: EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Maximum cooking time (in minutes)',
+              style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+            ),
+            SizedBox(height: 16),
+            Column(
+              children: [
+                _buildTimeConstraintSlider('Weekday Breakfast', 'weekday-breakfast', 5, 60),
+                _buildTimeConstraintSlider('Weekday Lunch', 'weekday-lunch', 5, 60),
+                _buildTimeConstraintSlider('Weekday Dinner', 'weekday-dinner', 10, 120),
+                Divider(height: 32),
+                _buildTimeConstraintSlider('Weekend Breakfast', 'weekend-breakfast', 5, 90),
+                _buildTimeConstraintSlider('Weekend Lunch', 'weekend-lunch', 10, 90),
+                _buildTimeConstraintSlider('Weekend Dinner', 'weekend-dinner', 15, 120),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  // Helper for building time constraint sliders
+  Widget _buildTimeConstraintSlider(String label, String key, int min, int max) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(label),
+            Text('${_timeConstraints[key] ?? 30} minutes'),
+          ],
+        ),
+        Slider(
+          value: (_timeConstraints[key] ?? 30).toDouble(),
+          min: min.toDouble(),
+          max: max.toDouble(),
+          divisions: ((max - min) ~/ 5),
+          label: '${_timeConstraints[key] ?? 30} min',
+          onChanged: (value) {
+            setState(() {
+              _timeConstraints[key] = value.round();
+            });
+          },
+        ),
+        SizedBox(height: 8),
+      ],
+    );
+  }
+  
+  // Enhanced meal schedule section
+  Widget _buildEnhancedMealScheduleSection() {
+    return Card(
+      child: Padding(
+        padding: EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Select all meal times you want to include',
+              style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+            ),
+            SizedBox(height: 16),
+            Column(
+              children: _mealTimePreferences.entries.map((entry) {
+                return SwitchListTile(
+                  title: Text(_formatLabel(entry.key)),
+                  value: entry.value,
+                  onChanged: (value) {
+                    setState(() {
+                      _mealTimePreferences[entry.key] = value;
+                    });
+                  },
+                );
+              }).toList(),
+            ),
           ],
         ),
       ),
