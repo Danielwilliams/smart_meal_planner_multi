@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import '../common/custom_theme.dart';
 import '../models/cart_model.dart';
 import '../main.dart'; // Import to access CartState provider
 import 'kroger_auth_screen.dart';
+import 'dart:math';
 
 class CartsScreen extends StatefulWidget {
   final int userId;
@@ -30,42 +32,27 @@ class CartsScreen extends StatefulWidget {
   _CartsScreenState createState() => _CartsScreenState();
 }
 
-class _CartsScreenState extends State<CartsScreen> with SingleTickerProviderStateMixin {
+class _CartsScreenState extends State<CartsScreen> {
   bool _isLoading = true;
   bool _isSearching = false;
   String _statusMessage = '';
   
-  // Store search results
+  // Store search results - Kroger only
   Map<String, List<dynamic>> _searchResults = {
-    'Walmart': [],
     'Kroger': [],
   };
   
-  // Selected search results (to be added to cart)
+  // Selected search results (to be added to cart) - Kroger only
   Map<String, Set<int>> _selectedResults = {
-    'Walmart': {},
     'Kroger': {},
   };
-  
-  late TabController _tabController;
   
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
-    
-    // Select initial tab based on selected store
-    if (widget.selectedStore != null) {
-      if (widget.selectedStore == 'Kroger') {
-        _tabController.animateTo(1);
-      } else {
-        _tabController.animateTo(0);
-      }
-    }
     
     // Ensure we're using real data only
     _searchResults = {
-      'Walmart': [],
       'Kroger': [],
     };
     
@@ -77,7 +64,7 @@ class _CartsScreenState extends State<CartsScreen> with SingleTickerProviderStat
   void _processLocalItemsIfNeeded() {
     setState(() {
       _isLoading = true;
-      _statusMessage = 'Loading carts...';
+      _statusMessage = 'Loading cart...';
     });
     
     try {
@@ -91,24 +78,30 @@ class _CartsScreenState extends State<CartsScreen> with SingleTickerProviderStat
       
       // Process single item if available
       if (widget.localCartItem != null) {
-        final store = widget.localCartItem!['store'] ?? widget.selectedStore ?? 'Walmart';
-        print("Adding single item to $store cart: ${widget.localCartItem!['name']}");
-        cartState.addItemToCart(store, widget.localCartItem!);
+        final storeName = 'Kroger'; // Always use Kroger
+        print("Adding single item to Kroger cart: ${widget.localCartItem!['name']}");
+        
+        // Create a copy of the item with the store set to Kroger
+        final item = Map<String, dynamic>.from(widget.localCartItem!);
+        item['store'] = storeName;
+        
+        cartState.addItemToCart(storeName, item);
       }
       
       // Process multiple items if available
       if (widget.localCartItems != null && widget.localCartItems!.isNotEmpty) {
-        final store = widget.selectedStore ?? widget.localCartItems![0]['store'] ?? 'Walmart';
-        print("Adding ${widget.localCartItems!.length} items to $store cart");
+        final storeName = 'Kroger'; // Always use Kroger
+        print("Adding ${widget.localCartItems!.length} items to Kroger cart");
         
         List<Map<String, dynamic>> items = [];
         for (var item in widget.localCartItems!) {
-          // Ensure store is set correctly
-          item['store'] = store;
-          items.add(Map<String, dynamic>.from(item));
+          // Create a copy of the item with the store set to Kroger
+          final newItem = Map<String, dynamic>.from(item);
+          newItem['store'] = storeName;
+          items.add(newItem);
         }
         
-        cartState.addItemsToCart(store, items);
+        cartState.addItemsToCart(storeName, items);
       }
       
       // Print cart state for debugging
@@ -125,33 +118,6 @@ class _CartsScreenState extends State<CartsScreen> with SingleTickerProviderStat
   }
   
   // We no longer generate mock search results - using real ingredient data directly
-  
-  // Fetch Walmart cart
-  Future<void> _loadWalmartCart() async {
-    try {
-      final cartState = Provider.of<CartState>(context, listen: false);
-      final result = await ApiService.getStoreCart(
-        userId: widget.userId,
-        authToken: widget.authToken,
-        storeName: 'Walmart',
-      );
-      
-      if (result != null && result.containsKey('items')) {
-        final items = result['items'] as List<dynamic>;
-        
-        // Add items to cart state
-        for (var item in items) {
-          cartState.addItemToCart('Walmart', Map<String, dynamic>.from(item));
-        }
-        
-        print("Loaded ${items.length} items for Walmart cart");
-      } else {
-        print("No cart data found for Walmart or invalid format");
-      }
-    } catch (e) {
-      print("Error fetching Walmart cart: $e");
-    }
-  }
   
   // Fetch Kroger cart
   Future<void> _loadKrogerCart() async {
@@ -237,7 +203,7 @@ class _CartsScreenState extends State<CartsScreen> with SingleTickerProviderStat
     
     setState(() {
       _isLoading = true;
-      _statusMessage = 'Adding selected items to cart...';
+      _statusMessage = 'Adding selected items to Kroger cart...';
     });
     
     try {
@@ -261,40 +227,89 @@ class _CartsScreenState extends State<CartsScreen> with SingleTickerProviderStat
         return;
       }
       
-      print("Adding ${itemsToAdd.length} items to $storeName cart");
+      print("Adding ${itemsToAdd.length} items to Kroger cart");
       
-      // Call API to add to store cart
-      final result = await ApiService.addToStoreCart(
+      // Use the new specialized Kroger cart method
+      final result = await ApiService.addToKrogerCart(
         userId: widget.userId,
         authToken: widget.authToken,
-        storeName: storeName,
         items: itemsToAdd,
       );
       
-      if (result != null) {
+      if (result != null && result['success'] == true) {
         // Clear selections
         setState(() {
           _selectedResults[storeName]!.clear();
         });
         
         // Refresh cart
-        if (storeName == 'Walmart') {
-          await _loadWalmartCart();
-        } else {
-          await _loadKrogerCart();
-        }
+        await _loadKrogerCart();
         
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Added items to cart"))
+          SnackBar(
+            content: Text("Added ${result['items_added'] ?? itemsToAdd.length} items to Kroger cart"),
+            backgroundColor: Colors.green,
+          )
         );
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Failed to add items to cart"))
-        );
+        // Check if we need authentication
+        if (result != null && result['needs_auth'] == true) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("Kroger authentication required"),
+              duration: Duration(seconds: 3),
+              action: SnackBarAction(
+                label: 'Login',
+                onPressed: () {
+                  // Navigate to Kroger authentication screen
+                  Navigator.pushNamed(context, '/kroger-auth', arguments: {
+                    'userId': widget.userId,
+                    'authToken': widget.authToken,
+                  });
+                },
+              ),
+            )
+          );
+        } 
+        // Check if we need to set up store
+        else if (result != null && result['needs_setup'] == true) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("Kroger store selection required"),
+              duration: Duration(seconds: 3),
+              action: SnackBarAction(
+                label: 'Select',
+                onPressed: () {
+                  // Navigate to preferences to select store
+                  Navigator.pushNamed(context, '/preferences', arguments: {
+                    'userId': widget.userId,
+                    'authToken': widget.authToken,
+                    'showKrogerSetup': true,
+                  });
+                },
+              ),
+            )
+          );
+        }
+        else {
+          // General error
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(result != null && result['error'] != null 
+                ? "Error: ${result['error']}" 
+                : "Failed to add items to cart"),
+              backgroundColor: Colors.red,
+            )
+          );
+        }
       }
     } catch (e) {
+      print("Error adding to cart: $e");
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error: $e"))
+        SnackBar(
+          content: Text("Error: $e"),
+          backgroundColor: Colors.red,
+        )
       );
     } finally {
       setState(() {
@@ -313,7 +328,6 @@ class _CartsScreenState extends State<CartsScreen> with SingleTickerProviderStat
   
   @override
   void dispose() {
-    _tabController.dispose();
     super.dispose();
   }
   
@@ -486,23 +500,73 @@ class _CartsScreenState extends State<CartsScreen> with SingleTickerProviderStat
       }
     }
     
-    // Don't show any images or prices in the internal cart
+    // Extract price for display
+    String priceStr = '';
+    if (item.containsKey('price') && item['price'] != null) {
+      double price = 0.0;
+      if (item['price'] is num) {
+        price = (item['price'] as num).toDouble();
+      } else if (item['price'] is String) {
+        price = double.tryParse(item['price'].toString()) ?? 0.0;
+      }
+      
+      if (price > 0) {
+        priceStr = '\$${price.toStringAsFixed(2)}';
+      }
+    }
+    
+    // Extract image URL if available
+    String? imageUrl = item['image_url'] ?? item['image'] ?? item['thumbnail'];
+    
     return Card(
       margin: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       child: ListTile(
-        leading: Container(
-          width: 60,
-          height: 60,
-          color: Colors.grey[200],
-          child: Icon(Icons.fastfood, color: Colors.grey),
-        ),
-        title: Text(ingredient),
-        subtitle: quantityStr.isNotEmpty
-          ? Text(
-              quantityStr,
-              style: TextStyle(fontSize: 12),
+        leading: imageUrl != null && imageUrl.isNotEmpty
+          ? SizedBox(
+              width: 60,
+              height: 60,
+              child: Image.network(
+                ApiService.cleanImageUrl(imageUrl),
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  print("Error loading image: $error");
+                  print("Original URL: $imageUrl");
+                  print("Cleaned URL: ${ApiService.cleanImageUrl(imageUrl)}");
+                  return Container(
+                    width: 60,
+                    height: 60,
+                    color: Colors.grey[200],
+                    child: Icon(Icons.fastfood, color: Colors.grey),
+                  );
+                },
+              ),
             )
-          : null,
+          : Container(
+              width: 60,
+              height: 60,
+              color: Colors.grey[200],
+              child: Icon(Icons.fastfood, color: Colors.grey),
+            ),
+        title: Text(ingredient),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (quantityStr.isNotEmpty)
+              Text(
+                quantityStr,
+                style: TextStyle(fontSize: 12),
+              ),
+            if (priceStr.isNotEmpty)
+              Text(
+                priceStr,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).primaryColor,
+                ),
+              ),
+          ],
+        ),
         trailing: IconButton(
           icon: Icon(Icons.delete, color: Colors.red),
           onPressed: () => _removeItem(storeName, item),
@@ -1103,36 +1167,22 @@ class _CartsScreenState extends State<CartsScreen> with SingleTickerProviderStat
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text("My Shopping Carts"),
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: [
-            Consumer<CartState>(
-              builder: (context, cartState, child) {
-                return Tab(
-                  icon: Icon(Icons.shopping_cart),
-                  text: _searchResults['Walmart']?.isNotEmpty == true
-                      ? "Walmart (${_searchResults['Walmart']!.length})"
-                      : "Walmart (${cartState.storeCarts['Walmart']?.length ?? 0})",
-                );
-              }
-            ),
-            Consumer<CartState>(
-              builder: (context, cartState, child) {
-                return Tab(
-                  icon: Icon(Icons.shopping_cart),
-                  text: _searchResults['Kroger']?.isNotEmpty == true
-                      ? "Kroger (${_searchResults['Kroger']!.length})"
-                      : "Kroger (${cartState.storeCarts['Kroger']?.length ?? 0})",
-                );
-              }
-            ),
-          ],
+        title: Consumer<CartState>(
+          builder: (context, cartState, child) {
+            final cartCount = cartState.storeCarts['Kroger']?.length ?? 0;
+            final resultsCount = _searchResults['Kroger']?.length ?? 0;
+            
+            if (resultsCount > 0) {
+              return Text("Kroger Search Results ($resultsCount)");
+            } else {
+              return Text("Kroger Cart ($cartCount items)");
+            }
+          }
         ),
         actions: [
           IconButton(
             icon: Icon(Icons.refresh),
-            tooltip: "Refresh Carts",
+            tooltip: "Refresh Cart",
             onPressed: () {
               // Refresh the cart screen
               setState(() {
@@ -1156,13 +1206,7 @@ class _CartsScreenState extends State<CartsScreen> with SingleTickerProviderStat
               ? Center(child: CircularProgressIndicator())
               : Consumer<CartState>(
                   builder: (context, cartState, child) {
-                    return TabBarView(
-                      controller: _tabController,
-                      children: [
-                        _buildStoreCart('Walmart'),
-                        _buildStoreCart('Kroger'),
-                      ],
-                    );
+                    return _buildStoreCart('Kroger');
                   }
                 ),
           

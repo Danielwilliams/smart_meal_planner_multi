@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import '../Providers/auth_providers.dart';
 import 'kroger_auth_screen.dart';
@@ -144,17 +145,11 @@ class _PreferencesScreenState extends State<PreferencesScreen> with SingleTicker
   String _krogerUsername = '';
   String _krogerPassword = '';
   
-  // Walmart
-  String _walmartZipCode = '';
-  String _walmartLocationId = '';
-  
   // Text editing controllers for store settings
   final TextEditingController _krogerZipCodeController = TextEditingController();
   final TextEditingController _krogerLocationIdController = TextEditingController();
   final TextEditingController _krogerUsernameController = TextEditingController();
   final TextEditingController _krogerPasswordController = TextEditingController();
-  final TextEditingController _walmartZipCodeController = TextEditingController();
-  final TextEditingController _walmartLocationIdController = TextEditingController();
 
   @override
   void initState() {
@@ -186,8 +181,6 @@ class _PreferencesScreenState extends State<PreferencesScreen> with SingleTicker
     _krogerLocationIdController.dispose();
     _krogerUsernameController.dispose();
     _krogerPasswordController.dispose();
-    _walmartZipCodeController.dispose();
-    _walmartLocationIdController.dispose();
     super.dispose();
   }
 
@@ -224,8 +217,6 @@ class _PreferencesScreenState extends State<PreferencesScreen> with SingleTicker
         'kroger_zip_code': '',
         'kroger_location_id': '',
         'kroger_authenticated': false,
-        'walmart_zip_code': '',
-        'walmart_location_id': '',
       };
       
       final result = await ApiService.getPreferences(widget.userId, widget.authToken);
@@ -430,31 +421,121 @@ class _PreferencesScreenState extends State<PreferencesScreen> with SingleTicker
             // Keep default values
           }
           
-          // Set store settings
-          // Kroger
-          _krogerZipCode = result['kroger_zip_code'] ?? '';
-          _krogerLocationId = result['kroger_location_id'] ?? '';
-          _hasKrogerAuth = result['kroger_authenticated'] == true;
-          _krogerUsername = result['kroger_username'] ?? '';
-          _krogerPassword = result['kroger_password'] ?? '';
+          // Get Kroger credentials from database
+          String krogerZipCode = result['kroger_zip_code'] ?? '';
+          String krogerLocationId = result['kroger_location_id'] ?? 
+                                    result['kroger_store_location'] ?? 
+                                    result['kroger_store_location_id'] ?? '';
+          bool hasKrogerAuth = result['kroger_authenticated'] == true;
+          String krogerUsername = result['kroger_username'] ?? '';
+          String krogerPassword = result['kroger_password'] ?? '';
+          
+          // Check SharedPreferences for more up-to-date values
+          SharedPreferences.getInstance().then((prefs) {
+            // If we have a stored auth status, use that
+            final localAuthStatus = prefs.getBool('kroger_authenticated');
+            if (localAuthStatus != null) {
+              setState(() {
+                hasKrogerAuth = localAuthStatus;
+                _hasKrogerAuth = localAuthStatus;
+              });
+            }
+            
+            // If we have a store location ID, use that
+            final localLocationId = prefs.getString('kroger_location_id') ?? 
+                                   prefs.getString('kroger_store_location');
+            if (localLocationId != null && localLocationId.isNotEmpty) {
+              setState(() {
+                krogerLocationId = localLocationId;
+                _krogerLocationId = localLocationId;
+                _krogerLocationIdController.text = localLocationId;
+              });
+            }
+            
+            // If we have credentials saved locally, use those
+            final localUsername = prefs.getString('kroger_username');
+            if (localUsername != null && localUsername.isNotEmpty) {
+              setState(() {
+                krogerUsername = localUsername;
+                _krogerUsername = localUsername;
+                _krogerUsernameController.text = localUsername;
+              });
+            }
+            
+            final localPassword = prefs.getString('kroger_password');
+            if (localPassword != null && localPassword.isNotEmpty) {
+              setState(() {
+                krogerPassword = localPassword;
+                _krogerPassword = localPassword;
+                _krogerPasswordController.text = localPassword;
+              });
+            }
+            
+            // Sync any changes back to the database if needed
+            bool needsUpdate = false;
+            Map<String, dynamic> updatedPrefs = {};
+            
+            if (localAuthStatus != null && localAuthStatus != (result['kroger_authenticated'] == true)) {
+              updatedPrefs['kroger_authenticated'] = localAuthStatus;
+              needsUpdate = true;
+            }
+            
+            if (localLocationId != null && localLocationId.isNotEmpty && 
+                localLocationId != (result['kroger_location_id'] ?? '')) {
+              updatedPrefs['kroger_location_id'] = localLocationId;
+              updatedPrefs['kroger_store_location'] = localLocationId;
+              updatedPrefs['kroger_store_location_id'] = localLocationId;
+              updatedPrefs['kroger_store_selected'] = true;
+              needsUpdate = true;
+            }
+            
+            if (localUsername != null && localUsername.isNotEmpty && 
+                localUsername != (result['kroger_username'] ?? '')) {
+              updatedPrefs['kroger_username'] = localUsername;
+              needsUpdate = true;
+            }
+            
+            if (localPassword != null && localPassword.isNotEmpty && 
+                localPassword != (result['kroger_password'] ?? '')) {
+              updatedPrefs['kroger_password'] = localPassword;
+              needsUpdate = true;
+            }
+            
+            // If we need to update the database, do it silently
+            if (needsUpdate) {
+              print("Syncing local changes back to database: ${updatedPrefs.keys}");
+              
+              // Schedule the update without awaiting it
+              ApiService.updatePreferences(
+                userId: widget.userId,
+                authToken: widget.authToken,
+                preferences: updatedPrefs,
+              ).then((result) {
+                print("Database sync completed: ${result != null ? 'Success' : 'Failed'}");
+              }).catchError((error) {
+                print("Error syncing to database: $error");
+              });
+            }
+          }).catchError((e) {
+            print("Error checking local preferences: $e");
+          });
+          
+          // Set the initial values from the database
+          _krogerZipCode = krogerZipCode;
+          _krogerLocationId = krogerLocationId;
+          _hasKrogerAuth = hasKrogerAuth;
+          _krogerUsername = krogerUsername;
+          _krogerPassword = krogerPassword;
           
           // Set up text controllers for store settings
-          _krogerZipCodeController.text = _krogerZipCode;
-          _krogerLocationIdController.text = _krogerLocationId;
-          _krogerUsernameController.text = _krogerUsername;
-          _krogerPasswordController.text = _krogerPassword;
+          _krogerZipCodeController.text = krogerZipCode;
+          _krogerLocationIdController.text = krogerLocationId;
+          _krogerUsernameController.text = krogerUsername;
+          _krogerPasswordController.text = krogerPassword;
           
           print("Kroger auth status: ${_hasKrogerAuth ? 'Authenticated' : 'Not authenticated'}");
           print("Kroger credentials: Username=${_krogerUsername.isNotEmpty ? 'Set' : 'Not set'}, Password=${_krogerPassword.isNotEmpty ? 'Set' : 'Not set'}");
           print("Kroger location: ZIP=${_krogerZipCode}, LocationID=${_krogerLocationId}");
-          
-          // Walmart
-          _walmartZipCode = result['walmart_zip_code'] ?? '';
-          _walmartLocationId = result['walmart_location_id'] ?? '';
-          
-          // Set up text controllers for store settings
-          _walmartZipCodeController.text = _walmartZipCode;
-          _walmartLocationIdController.text = _walmartLocationId;
           
           // If asked to show Kroger setup, switch to the Stores tab
           if (_showKrogerSetup && _tabController.length > 4) {
@@ -477,6 +558,170 @@ class _PreferencesScreenState extends State<PreferencesScreen> with SingleTicker
     }
   }
 
+
+  // Save Kroger store location to API database
+  Future<void> _saveKrogerStoreLocation(String locationId) async {
+    try {
+      if (locationId.isEmpty) return;
+      
+      print("Immediately saving Kroger store location to database: $locationId");
+      
+      // Create a comprehensive set of preferences with all possible field names
+      // This ensures compatibility with the web app which might use different field names
+      final preferences = {
+        // Standard field names
+        'kroger_location_id': locationId,
+        'kroger_store_location': locationId,
+        'kroger_store_location_id': locationId,
+        
+        // Additional field variations used by web app
+        'kroger.location_id': locationId,
+        'kroger.store_location': locationId,
+        'krogerLocationId': locationId,
+        'krogerStoreLocation': locationId,
+        
+        // Status flags
+        'kroger_store_selected': true,
+        'kroger_store_configured': true,
+        'kroger_store_selection_done': true,
+        'kroger_needs_store_selection': false,
+        'kroger_store_selection_required': false
+      };
+      
+      // Update immediately in database
+      ApiService.updatePreferences(
+        userId: widget.userId,
+        authToken: widget.authToken,
+        preferences: preferences,
+      ).then((result) {
+        print("Database update result: ${result != null ? 'Success' : 'Failed'}");
+        
+        // Also save to local storage
+        SharedPreferences.getInstance().then((prefs) {
+          // Save location ID with all variations
+          prefs.setString('kroger_store_location', locationId);
+          prefs.setString('kroger_store_location_id', locationId);
+          prefs.setString('kroger_location_id', locationId);
+          prefs.setString('krogerStoreLocation', locationId);
+          prefs.setString('krogerLocationId', locationId);
+          
+          // Save status flags
+          prefs.setBool('kroger_store_selected', true);
+          prefs.setBool('kroger_store_configured', true);
+          prefs.setBool('kroger_store_selection_done', true);
+          prefs.setBool('kroger_needs_store_selection', false);
+          prefs.setBool('kroger_store_selection_required', false);
+          
+          // Save timestamp for debugging
+          prefs.setString('kroger_store_selection_timestamp', DateTime.now().toIso8601String());
+          
+          print("Successfully saved Kroger store location to local storage");
+        }).catchError((e) {
+          print("Error saving to local storage: $e");
+        });
+      }).catchError((error) {
+        print("Error saving to database: $error");
+        
+        // Try to save to local storage as fallback
+        SharedPreferences.getInstance().then((prefs) {
+          prefs.setString('kroger_store_location', locationId);
+          prefs.setString('kroger_location_id', locationId);
+          prefs.setBool('kroger_store_selected', true);
+          print("Saved Kroger store location to local storage as fallback");
+        }).catchError((e) {
+          print("Error saving to local storage: $e");
+        });
+      });
+    } catch (e) {
+      print("Error in _saveKrogerStoreLocation: $e");
+    }
+    
+    // Return immediately since we're using then/catchError pattern
+    return Future.value();
+  }
+  
+
+  // Save Kroger credentials to local storage
+  Future<void> _saveKrogerCredentialsLocally() async {
+    print("Saving Kroger credentials to local storage");
+    
+    SharedPreferences.getInstance().then((prefs) {
+      try {
+        // Store location settings - store in multiple formats for compatibility
+        if (_krogerLocationId.isNotEmpty) {
+          // Store ID in multiple formats like the web app does
+          prefs.setString('kroger_store_location', _krogerLocationId);
+          prefs.setString('kroger_store_location_id', _krogerLocationId);
+          prefs.setString('kroger_location_id', _krogerLocationId);
+          prefs.setString('krogerStoreLocation', _krogerLocationId);
+          prefs.setString('krogerLocationId', _krogerLocationId);
+          prefs.setString('kroger.store_location', _krogerLocationId);
+          prefs.setString('kroger.location_id', _krogerLocationId);
+          
+          // Save status flags
+          prefs.setBool('kroger_store_selected', true);
+          prefs.setBool('kroger_store_configured', true);
+          prefs.setBool('kroger_store_selection_done', true);
+          prefs.setBool('kroger_needs_store_selection', false);
+          prefs.setBool('kroger_store_selection_required', false);
+          
+          // Save timestamp for debugging
+          prefs.setString('kroger_store_selection_timestamp', DateTime.now().toIso8601String());
+          
+          print("Saved Kroger store ID: $_krogerLocationId to local storage with all variations");
+        }
+        
+        // Store user credentials with multiple variations for compatibility
+        if (_krogerUsername.isNotEmpty) {
+          prefs.setString('kroger_username', _krogerUsername);
+          prefs.setString('krogerUsername', _krogerUsername);
+          prefs.setString('kroger.username', _krogerUsername);
+          print("Saved Kroger username to local storage");
+        }
+        
+        if (_krogerPassword.isNotEmpty) {
+          prefs.setString('kroger_password', _krogerPassword);
+          prefs.setString('krogerPassword', _krogerPassword);
+          prefs.setString('kroger.password', _krogerPassword);
+          print("Saved Kroger password to local storage");
+        }
+        
+        // Store authentication state with all possible variations
+        if (_hasKrogerAuth) {
+          // Standard variations of auth flags
+          prefs.setBool('kroger_authenticated', true);
+          prefs.setBool('kroger_connected', true);
+          prefs.setBool('kroger_auth_code_received', true);
+          prefs.setBool('kroger_has_cart_scope', true);
+          prefs.setBool('kroger_auth_completed', true);
+          
+          // Camel case variations
+          prefs.setBool('krogerAuthenticated', true);
+          prefs.setBool('krogerConnected', true);
+          prefs.setBool('krogerHasCartScope', true);
+          
+          // Dot notation variations
+          prefs.setBool('kroger.authenticated', true);
+          prefs.setBool('kroger.connected', true);
+          
+          // Save timestamp
+          prefs.setString('kroger_auth_timestamp', DateTime.now().toIso8601String());
+          
+          print("Saved Kroger auth status to local storage with all variations");
+        }
+        
+        print("Successfully saved all Kroger credentials to local storage");
+      } catch (e) {
+        print("Error saving Kroger credentials to local storage: $e");
+      }
+    }).catchError((e) {
+      print("Error getting SharedPreferences instance: $e");
+    });
+    
+    // Return immediately since we're using then/catchError pattern
+    return Future.value();
+  }
+
   Future<void> _savePreferences() async {
     setState(() => _isLoading = true);
     
@@ -486,8 +731,6 @@ class _PreferencesScreenState extends State<PreferencesScreen> with SingleTicker
       _krogerLocationId = _krogerLocationIdController.text.trim();
       _krogerUsername = _krogerUsernameController.text.trim();
       _krogerPassword = _krogerPasswordController.text.trim();
-      _walmartZipCode = _walmartZipCodeController.text.trim();
-      _walmartLocationId = _walmartLocationIdController.text.trim();
       
       final preferences = {
         // Original preferences
@@ -507,13 +750,13 @@ class _PreferencesScreenState extends State<PreferencesScreen> with SingleTicker
         'appliances': _appliances,
         'prep_complexity': _complexityLevel.toInt(),
         
-        // Store settings
+        // Store settings - include all possible field names for compatibility
         'kroger_zip_code': _krogerZipCode,
         'kroger_location_id': _krogerLocationId,
         'kroger_username': _krogerUsername,
         'kroger_password': _krogerPassword,
-        'walmart_zip_code': _walmartZipCode,
-        'walmart_location_id': _walmartLocationId,
+        'kroger_store_location': _krogerLocationId, // Alternate field name
+        'kroger_store_location_id': _krogerLocationId, // Another alternate field name
         
         // New preferences added from web app
         'flavor_preferences': _flavorPreferences,
@@ -524,11 +767,17 @@ class _PreferencesScreenState extends State<PreferencesScreen> with SingleTicker
         'prep_preferences': _prepPreferences,
       };
       
+      // Save to API
       final result = await ApiService.updatePreferences(
         userId: widget.userId,
         authToken: widget.authToken,
         preferences: preferences,
       );
+      
+      // Also save to local storage for redundancy and compatibility with web app
+      if (_krogerLocationId.isNotEmpty || _krogerUsername.isNotEmpty || _krogerPassword.isNotEmpty) {
+        await _saveKrogerCredentialsLocally();
+      }
       
       setState(() => _isLoading = false);
       
@@ -1408,6 +1657,23 @@ class _PreferencesScreenState extends State<PreferencesScreen> with SingleTicker
     });
     
     try {
+      // Save any credentials entered in the form to local storage first
+      if (_krogerUsernameController.text.isNotEmpty || _krogerPasswordController.text.isNotEmpty) {
+        SharedPreferences.getInstance().then((prefs) {
+          if (_krogerUsernameController.text.isNotEmpty) {
+            prefs.setString('kroger_username', _krogerUsernameController.text.trim());
+            print("Saved Kroger username to SharedPreferences");
+          }
+          
+          if (_krogerPasswordController.text.isNotEmpty) {
+            prefs.setString('kroger_password', _krogerPasswordController.text.trim());
+            print("Saved Kroger password to SharedPreferences");
+          }
+        }).catchError((e) {
+          print("Error saving credentials to shared preferences: $e");
+        });
+      }
+      
       final authUrl = await ApiService.getKrogerAuthUrl(widget.userId, widget.authToken);
       
       setState(() {
@@ -1427,8 +1693,35 @@ class _PreferencesScreenState extends State<PreferencesScreen> with SingleTicker
         ) ?? false;
         
         if (success) {
-          // Refresh preferences to get updated auth status
-          _fetchPreferences();
+          // Check local storage for updated status
+          SharedPreferences.getInstance().then((prefs) {
+            final isAuthenticated = prefs.getBool('kroger_authenticated') ?? false;
+            
+            // Update UI immediately if we have authenticated
+            if (isAuthenticated) {
+              setState(() {
+                _hasKrogerAuth = true;
+                
+                // Also check for store location
+                final storeId = prefs.getString('kroger_location_id') ?? 
+                                prefs.getString('kroger_store_location') ?? 
+                                '';
+                                
+                if (storeId.isNotEmpty) {
+                  _krogerLocationId = storeId;
+                  _krogerLocationIdController.text = storeId;
+                }
+              });
+            }
+            
+            // Refresh preferences to get updated auth status from backend
+            _fetchPreferences();
+          }).catchError((e) {
+            print("Error checking authentication status: $e");
+            
+            // Still refresh preferences from backend as fallback
+            _fetchPreferences();
+          });
           
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -1524,10 +1817,15 @@ class _PreferencesScreenState extends State<PreferencesScreen> with SingleTicker
         );
         
         if (selectedStore != null) {
+          final storeId = selectedStore['locationId']?.toString() ?? '';
+          
           setState(() {
-            _krogerLocationId = selectedStore['locationId']?.toString() ?? '';
-            _krogerLocationIdController.text = _krogerLocationId;
+            _krogerLocationId = storeId;
+            _krogerLocationIdController.text = storeId;
           });
+          
+          // Save the store ID to database immediately
+          _saveKrogerStoreLocation(storeId);
           
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -1558,104 +1856,6 @@ class _PreferencesScreenState extends State<PreferencesScreen> with SingleTicker
     }
   }
   
-  // Find Walmart store by zip code
-  Future<void> _findWalmartStore() async {
-    final zipCode = _walmartZipCodeController.text.trim();
-    
-    if (zipCode.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Please enter a zip code"),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-    
-    setState(() {
-      _isLoading = true;
-    });
-    
-    try {
-      final result = await ApiService.getWalmartStores(
-        widget.userId,
-        widget.authToken,
-        zipCode,
-      );
-      
-      setState(() {
-        _isLoading = false;
-      });
-      
-      if (result != null && result.containsKey('stores') && result['stores'] is List && (result['stores'] as List).isNotEmpty) {
-        final stores = result['stores'] as List;
-        
-        // Show store selection dialog
-        final selectedStore = await showDialog<Map<String, dynamic>>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: Text("Select Walmart Store"),
-            content: Container(
-              width: double.maxFinite,
-              child: ListView.builder(
-                shrinkWrap: true,
-                itemCount: stores.length,
-                itemBuilder: (context, index) {
-                  final store = stores[index];
-                  final storeName = store['name'] ?? 'Unknown Store';
-                  final storeAddress = store['address'] ?? 'No Address';
-                  
-                  return ListTile(
-                    title: Text(storeName),
-                    subtitle: Text(storeAddress),
-                    onTap: () => Navigator.of(context).pop(store),
-                  );
-                },
-              ),
-            ),
-            actions: [
-              TextButton(
-                child: Text("Cancel"),
-                onPressed: () => Navigator.of(context).pop(),
-              ),
-            ],
-          ),
-        );
-        
-        if (selectedStore != null) {
-          setState(() {
-            _walmartLocationId = selectedStore['storeId']?.toString() ?? '';
-            _walmartLocationIdController.text = _walmartLocationId;
-          });
-          
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text("Walmart store selected"),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("No Walmart stores found for this zip code"),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } catch (e) {
-      setState(() {
-        _isLoading = false;
-      });
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Error finding Walmart stores: $e"),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
   
   // Build the stores tab
   Widget _buildStoresTab() {
@@ -1671,15 +1871,6 @@ class _PreferencesScreenState extends State<PreferencesScreen> with SingleTicker
           ),
           SizedBox(height: 8),
           _buildKrogerSettings(),
-          SizedBox(height: 24),
-          
-          // Walmart settings
-          Text(
-            'Walmart Settings',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          SizedBox(height: 8),
-          _buildWalmartSettings(),
         ],
       ),
     );
@@ -1863,68 +2054,6 @@ class _PreferencesScreenState extends State<PreferencesScreen> with SingleTicker
     );
   }
   
-  // Build Walmart settings section
-  Widget _buildWalmartSettings() {
-    return Card(
-      child: Padding(
-        padding: EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Store Location',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            SizedBox(height: 8),
-            Text(
-              'Enter your zip code to find nearby Walmart stores',
-              style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-            ),
-            SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  flex: 7,
-                  child: TextField(
-                    controller: _walmartZipCodeController,
-                    decoration: InputDecoration(
-                      labelText: 'Zip Code',
-                      border: OutlineInputBorder(),
-                    ),
-                    keyboardType: TextInputType.number,
-                  ),
-                ),
-                SizedBox(width: 8),
-                Expanded(
-                  flex: 3,
-                  child: ElevatedButton(
-                    child: Text('Find'),
-                    onPressed: _findWalmartStore,
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: 16),
-            TextField(
-              controller: _walmartLocationIdController,
-              decoration: InputDecoration(
-                labelText: 'Store ID',
-                border: OutlineInputBorder(),
-                hintText: 'Enter Walmart store ID',
-              ),
-              readOnly: true,
-            ),
-            SizedBox(height: 8),
-            if (_walmartLocationId.isNotEmpty)
-              Text(
-                'Store ID set. You can now search for Walmart products.',
-                style: TextStyle(color: Colors.green, fontSize: 12),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
   
   // Build the advanced tab with new preferences from web app
   Widget _buildAdvancedTab() {
@@ -1967,15 +2096,6 @@ class _PreferencesScreenState extends State<PreferencesScreen> with SingleTicker
           ),
           SizedBox(height: 8),
           _buildTimeConstraintsSection(),
-          SizedBox(height: 24),
-          
-          // Enhanced meal schedule section
-          Text(
-            'Detailed Meal Schedule',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          SizedBox(height: 8),
-          _buildEnhancedMealScheduleSection(),
         ],
       ),
     );
@@ -2197,35 +2317,4 @@ class _PreferencesScreenState extends State<PreferencesScreen> with SingleTicker
     );
   }
   
-  // Enhanced meal schedule section
-  Widget _buildEnhancedMealScheduleSection() {
-    return Card(
-      child: Padding(
-        padding: EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Select all meal times you want to include',
-              style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-            ),
-            SizedBox(height: 16),
-            Column(
-              children: _mealTimePreferences.entries.map((entry) {
-                return SwitchListTile(
-                  title: Text(_formatLabel(entry.key)),
-                  value: entry.value,
-                  onChanged: (value) {
-                    setState(() {
-                      _mealTimePreferences[entry.key] = value;
-                    });
-                  },
-                );
-              }).toList(),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }

@@ -22,6 +22,10 @@ import 'Screens/menu_history_screen.dart';
 import 'Screens/shopping_list_screen.dart';
 import 'Screens/carts_screen.dart';
 import 'Screens/kroger_auth_screen.dart';
+import 'Screens/client_recipes_screen.dart';
+import 'Screens/client_menus_screen.dart';
+import 'Screens/client_preferences_screen.dart';
+import 'Screens/create_client_menu_screen.dart';
 import 'Providers/auth_providers.dart';
 import 'common/custom_theme.dart';
 import 'services/theme_service.dart';
@@ -266,6 +270,60 @@ class _MealPlannerAppState extends State<MealPlannerApp> {
                 case '/organization':
                   return MaterialPageRoute(
                     builder: (_) => OrganizationScreen(userId: userId, authToken: token)
+                  );
+                case '/client-recipes':
+                  final args = settings.arguments as Map<String, dynamic>;
+                  return MaterialPageRoute(
+                    builder: (_) => ClientRecipesScreen(
+                      clientId: args['clientId'],
+                      clientName: args['clientName'],
+                      userId: userId,
+                      authToken: token,
+                    )
+                  );
+                case '/client-menus':
+                  final args = settings.arguments as Map<String, dynamic>;
+                  return MaterialPageRoute(
+                    builder: (_) => ClientMenusScreen(
+                      clientId: args['clientId'],
+                      clientName: args['clientName'],
+                      userId: userId,
+                      authToken: token,
+                    )
+                  );
+                case '/client-preferences':
+                  final args = settings.arguments as Map<String, dynamic>;
+                  return MaterialPageRoute(
+                    builder: (_) => ClientPreferencesScreen(
+                      clientId: args['clientId'],
+                      clientName: args['clientName'],
+                      userId: userId,
+                      authToken: token,
+                    )
+                  );
+                case '/create-client-menu':
+                  final args = settings.arguments as Map<String, dynamic>;
+                  return MaterialPageRoute(
+                    builder: (_) => CreateClientMenuScreen(
+                      clientId: args['clientId'],
+                      clientName: args['clientName'],
+                      userId: userId,
+                      authToken: token,
+                      recipeId: args['recipeId'],
+                      recipeTitle: args['recipeTitle'],
+                    )
+                  );
+                case '/client-menu-creator':
+                  final args = settings.arguments as Map<String, dynamic>;
+                  return MaterialPageRoute(
+                    builder: (_) => CreateClientMenuScreen(
+                      clientId: 0, // Will show client selection dialog
+                      clientName: 'New Client',
+                      userId: userId,
+                      authToken: token,
+                      recipeId: args['recipeId'],
+                      recipeTitle: args['recipeTitle'],
+                    )
                   );
                 case '/menu-history':
                   return MaterialPageRoute(

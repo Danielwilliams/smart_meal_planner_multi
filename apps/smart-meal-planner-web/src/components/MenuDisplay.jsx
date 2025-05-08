@@ -95,12 +95,36 @@ function MenuDisplay({ data }) {
   };
 
   return (
-    <Box sx={{ p: 2 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h4" sx={{ flexGrow: 1 }}>
+    <Box sx={{ 
+      p: { xs: 1, sm: 2 },
+      width: '100%'
+    }}>
+      <Box 
+        sx={{ 
+          display: 'flex', 
+          flexDirection: { xs: 'column', sm: 'row' },
+          alignItems: { xs: 'stretch', sm: 'center' }, 
+          gap: { xs: 2, sm: 1 },
+          mb: 2 
+        }}
+      >
+        <Typography 
+          variant="h4" 
+          sx={{ 
+            flexGrow: 1,
+            fontSize: { xs: '1.5rem', sm: '2rem' }
+          }}
+        >
           Meal Plan (Menu ID: {data.menu_id})
         </Typography>
-        <Button variant="contained" onClick={handlePrint}>
+        <Button 
+          variant="contained" 
+          onClick={handlePrint}
+          sx={{
+            height: { xs: '48px', sm: 'auto' },
+            fontSize: { xs: '1rem', sm: 'inherit' }
+          }}
+        >
           Print Full Menu
         </Button>
       </Box>
@@ -130,7 +154,13 @@ function MenuDisplay({ data }) {
         return (
           <Accordion
             key={dayIdx}
-            sx={{ mb: 2 }}
+            sx={{ 
+              mb: 2,
+              '& .MuiAccordionSummary-root': {
+                minHeight: { xs: '60px', sm: 'auto' },
+                padding: { xs: '0 16px', sm: 'auto' }
+              }
+            }}
             expanded={dayIsExpanded}
             onChange={(event, newVal) => handleDayToggle(dayIdx, newVal)}
           >
@@ -164,7 +194,16 @@ function MenuDisplay({ data }) {
                   return (
                     <Accordion
                       key={mIdx}
-                      sx={{ mb: 2 }}
+                      sx={{ 
+                        mb: 2,
+                        '& .MuiAccordionSummary-root': {
+                          minHeight: { xs: '50px', sm: 'auto' },
+                          padding: { xs: '0 16px', sm: 'auto' }
+                        },
+                        '& .MuiAccordionSummary-content': {
+                          margin: { xs: '12px 0', sm: 'auto' }
+                        }
+                      }}
                       expanded={isMealExpanded}
                       onChange={(event, newVal) => handleMealToggle(dayIdx, mIdx, newVal)}
                     >
@@ -266,7 +305,16 @@ function MenuDisplay({ data }) {
                   return (
                     <Accordion
                       key={sIdx}
-                      sx={{ mb: 2 }}
+                      sx={{ 
+                        mb: 2,
+                        '& .MuiAccordionSummary-root': {
+                          minHeight: { xs: '50px', sm: 'auto' },
+                          padding: { xs: '0 16px', sm: 'auto' }
+                        },
+                        '& .MuiAccordionSummary-content': {
+                          margin: { xs: '12px 0', sm: 'auto' }
+                        }
+                      }}
                       expanded={isSnackExpanded}
                       onChange={(event, newVal) => handleSnackToggle(dayIdx, sIdx, newVal)}
                     >

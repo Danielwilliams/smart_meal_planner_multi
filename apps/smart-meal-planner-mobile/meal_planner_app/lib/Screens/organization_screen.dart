@@ -29,7 +29,7 @@ class _OrganizationScreenState extends State<OrganizationScreen> with SingleTick
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     _loadUserInfo();
   }
   
@@ -188,6 +188,7 @@ class _OrganizationScreenState extends State<OrganizationScreen> with SingleTick
               tabs: [
                 Tab(text: "Clients"),
                 Tab(text: "Invitations"),
+                Tab(text: "Shared Menus"),
               ],
             )
           : null,
@@ -217,6 +218,7 @@ class _OrganizationScreenState extends State<OrganizationScreen> with SingleTick
               children: [
                 _buildClientsTab(),
                 _buildInvitationsTab(),
+                _buildSharedMenusTab(),
               ],
             ),
       floatingActionButton: _userAccount?.isOrganization == true
@@ -344,6 +346,44 @@ class _OrganizationScreenState extends State<OrganizationScreen> with SingleTick
     );
   }
   
+  Widget _buildSharedMenusTab() {
+    // This is a placeholder that will show shared menus across clients
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.restaurant_menu, size: 64, color: Colors.grey),
+          SizedBox(height: 16),
+          Text(
+            "Shared Menus",
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          SizedBox(height: 8),
+          Text(
+            "Manage menus you've shared with clients",
+            style: TextStyle(color: Colors.grey[700]),
+          ),
+          SizedBox(height: 24),
+          ElevatedButton.icon(
+            icon: Icon(Icons.add),
+            label: Text("Create New Menu"),
+            onPressed: () {
+              Navigator.pushNamed(
+                context, 
+                '/client-menu-creator',
+                arguments: {
+                  'organizationId': _organization?.id,
+                  'userId': widget.userId,
+                  'authToken': widget.authToken,
+                },
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+  
   void _showClientDetails(Client client) {
     showModalBottomSheet(
       context: context,
@@ -430,16 +470,74 @@ class _OrganizationScreenState extends State<OrganizationScreen> with SingleTick
                         icon: Icon(Icons.restaurant_menu),
                         label: Text("Create Menu"),
                         onPressed: () {
-                          // TODO: Implement create menu for client
                           Navigator.pop(context);
+                          Navigator.pushNamed(
+                            context, 
+                            '/create-client-menu',
+                            arguments: {
+                              'clientId': client.id,
+                              'clientName': client.name,
+                              'userId': widget.userId,
+                              'authToken': widget.authToken,
+                            },
+                          );
                         },
                       ),
                       OutlinedButton.icon(
                         icon: Icon(Icons.preview),
                         label: Text("View Menus"),
                         onPressed: () {
-                          // TODO: Implement view client menus
                           Navigator.pop(context);
+                          Navigator.pushNamed(
+                            context, 
+                            '/client-menus',
+                            arguments: {
+                              'clientId': client.id,
+                              'clientName': client.name,
+                              'userId': widget.userId,
+                              'authToken': widget.authToken,
+                            },
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      OutlinedButton.icon(
+                        icon: Icon(Icons.book),
+                        label: Text("Saved Recipes"),
+                        onPressed: () {
+                          Navigator.pop(context);
+                          Navigator.pushNamed(
+                            context, 
+                            '/client-recipes',
+                            arguments: {
+                              'clientId': client.id,
+                              'clientName': client.name,
+                              'userId': widget.userId,
+                              'authToken': widget.authToken,
+                            },
+                          );
+                        },
+                      ),
+                      OutlinedButton.icon(
+                        icon: Icon(Icons.settings),
+                        label: Text("Preferences"),
+                        onPressed: () {
+                          Navigator.pop(context);
+                          Navigator.pushNamed(
+                            context, 
+                            '/client-preferences',
+                            arguments: {
+                              'clientId': client.id,
+                              'clientName': client.name,
+                              'userId': widget.userId,
+                              'authToken': widget.authToken,
+                            },
+                          );
                         },
                       ),
                     ],
@@ -453,11 +551,34 @@ class _OrganizationScreenState extends State<OrganizationScreen> with SingleTick
     );
   }
   
-  void _resendInvitation(Invitation invitation) {
-    // TODO: Implement resend invitation
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("Resending invitation to ${invitation.clientEmail}..."))
-    );
+  void _resendInvitation(Invitation invitation) async {
+    setState(() => _isLoading = true);
+    
+    try {
+      final result = await ApiService.resendInvitation(
+        invitation.id,
+        widget.authToken
+      );
+      
+      if (result['success'] == true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Invitation resent successfully to ${invitation.clientEmail}'))
+        );
+        
+        // Refresh data
+        _loadUserInfo();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to resend invitation: ${result['error'] ?? "Unknown error"}'))
+        );
+        setState(() => _isLoading = false);
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e'))
+      );
+      setState(() => _isLoading = false);
+    }
   }
   
   void _showInviteDialog() {

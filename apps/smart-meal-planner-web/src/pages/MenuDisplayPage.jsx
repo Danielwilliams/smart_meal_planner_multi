@@ -629,6 +629,15 @@ function MenuDisplayPage() {
           key={dayIndex} 
           TransitionProps={{ unmountOnExit: false }}
           className={printMode ? 'print-expanded' : ''}
+          sx={{
+            '& .MuiAccordionSummary-root': {
+              minHeight: { xs: '64px', sm: 'auto' },
+              padding: { xs: '0 16px', sm: 'auto' }
+            },
+            '& .MuiAccordionSummary-content': {
+              margin: { xs: '12px 0', sm: '12px 0' }
+            }
+          }}
         >
           <AccordionSummary
             expandIcon={<ExpandMoreIcon />}
@@ -658,7 +667,19 @@ function MenuDisplayPage() {
                 <Accordion 
                   key={mealIndex} 
                   TransitionProps={{ unmountOnExit: false }}
-                  sx={{ mb: 1, boxShadow: 'none', '&:before': { display: 'none' } }}
+                  sx={{ 
+                    mb: 1, 
+                    boxShadow: 'none', 
+                    '&:before': { display: 'none' },
+                    '& .MuiAccordionSummary-root': {
+                      minHeight: { xs: '60px', sm: 'auto' },
+                      padding: { xs: '0 16px', sm: 'auto' }
+                    },
+                    '& .MuiAccordionSummary-content': {
+                      margin: { xs: '12px 0', sm: '12px 0' },
+                      flexDirection: { xs: 'column', sm: 'row' }
+                    }
+                  }}
                 >
                   <AccordionSummary
                     expandIcon={<ExpandMoreIcon />}
@@ -666,11 +687,30 @@ function MenuDisplayPage() {
                     id={`meal${mealIndex}-header`}
                     sx={{ bgcolor: 'background.default', borderRadius: 1 }}
                   >
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
-                      <Typography variant="subtitle1">
+                    <Box sx={{ 
+                      display: 'flex', 
+                      flexDirection: { xs: 'column', sm: 'row' },
+                      justifyContent: 'space-between', 
+                      width: '100%', 
+                      alignItems: { xs: 'flex-start', sm: 'center' },
+                      gap: { xs: 1, sm: 0 }
+                    }}>
+                      <Typography 
+                        variant="subtitle1"
+                        sx={{ 
+                          fontSize: { xs: '1rem', sm: 'inherit' },
+                          fontWeight: { xs: 'bold', sm: 'inherit' }
+                        }}
+                      >
                         {meal.meal_time.charAt(0).toUpperCase() + meal.meal_time.slice(1)}: {meal.title}
                       </Typography>
-                      <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                      <Box sx={{ 
+                        display: 'flex', 
+                        gap: { xs: 2, sm: 1 }, 
+                        alignItems: 'center',
+                        width: { xs: '100%', sm: 'auto' },
+                        justifyContent: { xs: 'flex-start', sm: 'flex-end' }
+                      }}>
                         {/* Save/Unsave Button */}                           
                         <RecipeSaveDialog
                           menuId={menu.menu_id}
@@ -734,7 +774,7 @@ function MenuDisplayPage() {
                     </Box>
                   </AccordionSummary>
                   <AccordionDetails>
-                    <Box sx={{ pl: 2 }}>
+                    <Box sx={{ pl: { xs: 0, sm: 2 }, mt: { xs: 2, sm: 0 } }}>
                       <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
                         <strong>Ingredients:</strong>
                       </Typography>
@@ -832,7 +872,7 @@ function MenuDisplayPage() {
                       </Box>
                     </AccordionSummary>
                     <AccordionDetails>
-                      <Box sx={{ pl: 2 }}>
+                      <Box sx={{ pl: { xs: 0, sm: 2 }, mt: { xs: 2, sm: 0 } }}>
                         <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
                           <strong>Ingredients:</strong>
                         </Typography>
@@ -882,7 +922,13 @@ function MenuDisplayPage() {
   };
   
   return (
-    <Container maxWidth="md">
+    <Container 
+      maxWidth="md"
+      sx={{
+        px: { xs: 1, sm: 2, md: 3 },
+        width: { xs: '100%' }
+      }}
+    >
       <Typography variant="h4" gutterBottom>
         {clientMode && selectedClient ? `${selectedClient.name}'s Meal Plan` : 'Your Meal Plan'}
       </Typography>
@@ -921,7 +967,11 @@ function MenuDisplayPage() {
           <Typography variant="subtitle1" gutterBottom>
             View Meal Times
           </Typography>
-          <Box sx={{ display: 'flex', gap: 2 }}>
+          <Box sx={{ 
+            display: 'flex', 
+            flexDirection: { xs: 'column', sm: 'row' },
+            gap: 1 
+          }}>
             <FormControlLabel
               control={
                 <Checkbox
@@ -930,9 +980,20 @@ function MenuDisplayPage() {
                     ...prev,
                     breakfast: e.target.checked
                   }))}
+                  sx={{ 
+                    padding: { xs: '9px', sm: '9px' },
+                    '& .MuiSvgIcon-root': { fontSize: { xs: 24, sm: 'default' }}
+                  }}
                 />
               }
               label="Breakfast"
+              sx={{ 
+                marginLeft: 0,
+                width: { xs: '100%', sm: 'auto' },
+                borderRadius: { xs: 1, sm: 0 },
+                padding: { xs: '4px 8px', sm: 0 },
+                '&:hover': { bgcolor: { xs: 'rgba(0,0,0,0.04)', sm: 'transparent' }}
+              }}
             />
             <FormControlLabel
               control={
@@ -942,9 +1003,20 @@ function MenuDisplayPage() {
                     ...prev,
                     lunch: e.target.checked
                   }))}
+                  sx={{ 
+                    padding: { xs: '9px', sm: '9px' },
+                    '& .MuiSvgIcon-root': { fontSize: { xs: 24, sm: 'default' }}
+                  }}
                 />
               }
               label="Lunch"
+              sx={{ 
+                marginLeft: 0,
+                width: { xs: '100%', sm: 'auto' },
+                borderRadius: { xs: 1, sm: 0 },
+                padding: { xs: '4px 8px', sm: 0 },
+                '&:hover': { bgcolor: { xs: 'rgba(0,0,0,0.04)', sm: 'transparent' }}
+              }}
             />
             <FormControlLabel
               control={
@@ -954,9 +1026,20 @@ function MenuDisplayPage() {
                     ...prev,
                     dinner: e.target.checked
                   }))}
+                  sx={{ 
+                    padding: { xs: '9px', sm: '9px' },
+                    '& .MuiSvgIcon-root': { fontSize: { xs: 24, sm: 'default' }}
+                  }}
                 />
               }
               label="Dinner"
+              sx={{ 
+                marginLeft: 0,
+                width: { xs: '100%', sm: 'auto' },
+                borderRadius: { xs: 1, sm: 0 },
+                padding: { xs: '4px 8px', sm: 0 },
+                '&:hover': { bgcolor: { xs: 'rgba(0,0,0,0.04)', sm: 'transparent' }}
+              }}
             />
             <FormControlLabel
               control={
@@ -966,9 +1049,20 @@ function MenuDisplayPage() {
                     ...prev,
                     snacks: e.target.checked
                   }))}
+                  sx={{ 
+                    padding: { xs: '9px', sm: '9px' },
+                    '& .MuiSvgIcon-root': { fontSize: { xs: 24, sm: 'default' }}
+                  }}
                 />
               }
               label="Snacks"
+              sx={{ 
+                marginLeft: 0,
+                width: { xs: '100%', sm: 'auto' },
+                borderRadius: { xs: 1, sm: 0 },
+                padding: { xs: '4px 8px', sm: 0 },
+                '&:hover': { bgcolor: { xs: 'rgba(0,0,0,0.04)', sm: 'transparent' }}
+              }}
             />
           </Box>
         </Paper>
@@ -982,6 +1076,11 @@ function MenuDisplayPage() {
               value={selectedMenuId || ''}
               label="Select Previous Menu"
               onChange={(e) => handleMenuSelect(e.target.value)}
+              sx={{
+                '& .MuiInputBase-root': {
+                  height: { xs: '56px', sm: 'auto' },
+                }
+              }}
             >
               {menuHistory.map((menuItem) => (
                 <MenuItem 
@@ -1034,7 +1133,12 @@ function MenuDisplayPage() {
           </FormControl>
         )}
 
-        <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+        <Box sx={{ 
+          display: 'flex', 
+          flexDirection: { xs: 'column', sm: 'row' },
+          gap: 2, 
+          mb: 2 
+        }}>
           <TextField
             label="Number of Days"
             type="number"
@@ -1047,7 +1151,12 @@ function MenuDisplayPage() {
               min: 1,
               max: 7
             }}
-            sx={{ flexGrow: 1 }}
+            sx={{ 
+              flexGrow: 1,
+              '& .MuiInputBase-root': {
+                height: { xs: '56px', sm: 'auto' },
+              }
+            }}
           />
 
           <Button 
@@ -1055,7 +1164,12 @@ function MenuDisplayPage() {
             color="primary"
             onClick={handleGenerateMenu}
             disabled={loading}
-            sx={{ flex: 1 }}
+            sx={{ 
+              flex: { xs: '1 1 100%', sm: 1 },
+              height: { xs: '48px', sm: 'auto' },
+              fontSize: { xs: '1rem', sm: 'inherit' },
+              mb: { xs: 1, sm: 0 }
+            }}
           >
             {clientMode && selectedClient 
               ? `Generate Menu for ${selectedClient.name}` 
@@ -1069,7 +1183,12 @@ function MenuDisplayPage() {
                 startIcon={<PrintIcon />}
                 onClick={handlePrintDialogOpen}
                 disabled={!menu}
-                sx={{ flex: 1 }}
+                sx={{ 
+                  flex: { xs: '1 1 100%', sm: 1 },
+                  height: { xs: '48px', sm: 'auto' },
+                  fontSize: { xs: '1rem', sm: 'inherit' },
+                  mb: { xs: 1, sm: 0 }
+                }}
               >
                 Print Menu
               </Button>
@@ -1080,7 +1199,12 @@ function MenuDisplayPage() {
                 startIcon={<ShoppingCartIcon />}
                 onClick={handleAddToCart}
                 disabled={!menu}
-                sx={{ flex: 1 }}
+                sx={{ 
+                  flex: { xs: '1 1 100%', sm: 1 },
+                  height: { xs: '48px', sm: 'auto' },
+                  fontSize: { xs: '1rem', sm: 'inherit' },
+                  mb: { xs: 1, sm: 0 }
+                }}
               >
                 Shopping List
               </Button>
@@ -1091,7 +1215,11 @@ function MenuDisplayPage() {
                   startIcon={<ShareIcon />}
                   onClick={handleOpenSharingModal}
                   disabled={!menu}
-                  sx={{ flex: 1 }}
+                  sx={{ 
+                    flex: { xs: '1 1 100%', sm: 1 },
+                    height: { xs: '48px', sm: 'auto' },
+                    fontSize: { xs: '1rem', sm: 'inherit' }
+                  }}
                 >
                   Share
                 </Button>

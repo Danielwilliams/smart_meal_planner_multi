@@ -1279,4 +1279,214 @@ class ApiService {
       };
     }
   }
+  
+  // Get client's saved recipes
+  static Future<Map<String, dynamic>> getClientSavedRecipes(
+    int clientId,
+    String authToken,
+  ) async {
+    try {
+      final result = await _get("/organizations/clients/$clientId/recipes", authToken);
+      
+      if (result != null && result is Map) {
+        return _toStringDynamicMap(result);
+      }
+      
+      // Try alternate endpoint
+      final altResult = await _get("/clients/$clientId/saved-recipes", authToken);
+      
+      if (altResult != null) {
+        if (altResult is List) {
+          return {
+            "recipes": altResult,
+            "total": altResult.length
+          };
+        } else if (altResult is Map) {
+          return _toStringDynamicMap(altResult);
+        }
+      }
+      
+      return {
+        "recipes": [],
+        "total": 0,
+        "error": "Could not retrieve client recipes"
+      };
+    } catch (e) {
+      print("Error getting client saved recipes: $e");
+      return {
+        "recipes": [],
+        "total": 0,
+        "error": e.toString()
+      };
+    }
+  }
+  
+  // Get client's preferences
+  static Future<Map<String, dynamic>> getClientPreferences(
+    int clientId,
+    String authToken,
+  ) async {
+    try {
+      final result = await _get("/organizations/clients/$clientId/preferences", authToken);
+      
+      if (result != null && result is Map) {
+        return _toStringDynamicMap(result);
+      }
+      
+      // Try alternate endpoint
+      final altResult = await _get("/clients/$clientId/preferences", authToken);
+      
+      if (altResult != null && altResult is Map) {
+        return _toStringDynamicMap(altResult);
+      }
+      
+      return {
+        "preferences": {},
+        "error": "Could not retrieve client preferences"
+      };
+    } catch (e) {
+      print("Error getting client preferences: $e");
+      return {
+        "preferences": {},
+        "error": e.toString()
+      };
+    }
+  }
+  
+  // Create menu for client
+  static Future<Map<String, dynamic>> createClientMenu(
+    int clientId,
+    String authToken,
+    Map<String, dynamic> menuData,
+  ) async {
+    try {
+      final result = await _post("/organizations/clients/$clientId/menus", menuData, authToken);
+      
+      if (result != null && result is Map) {
+        return _toStringDynamicMap(result);
+      }
+      
+      // Try alternate endpoint
+      final altResult = await _post("/menus/create_for_client", {
+        ...menuData,
+        "client_id": clientId
+      }, authToken);
+      
+      if (altResult != null && altResult is Map) {
+        return _toStringDynamicMap(altResult);
+      }
+      
+      return {
+        "success": false,
+        "error": "Could not create menu for client"
+      };
+    } catch (e) {
+      print("Error creating client menu: $e");
+      return {
+        "success": false,
+        "error": e.toString()
+      };
+    }
+  }
+  
+  // Get menus shared with client
+  static Future<Map<String, dynamic>> getClientMenus(
+    int clientId,
+    String authToken,
+  ) async {
+    try {
+      final result = await _get("/organizations/clients/$clientId/menus", authToken);
+      
+      if (result != null) {
+        if (result is List) {
+          return {
+            "menus": result,
+            "total": result.length
+          };
+        } else if (result is Map) {
+          return _toStringDynamicMap(result);
+        }
+      }
+      
+      // Try alternate endpoint
+      final altResult = await _get("/clients/$clientId/menus", authToken);
+      
+      if (altResult != null) {
+        if (altResult is List) {
+          return {
+            "menus": altResult,
+            "total": altResult.length
+          };
+        } else if (altResult is Map) {
+          return _toStringDynamicMap(altResult);
+        }
+      }
+      
+      return {
+        "menus": [],
+        "total": 0,
+        "error": "Could not retrieve client menus"
+      };
+    } catch (e) {
+      print("Error getting client menus: $e");
+      return {
+        "menus": [],
+        "total": 0,
+        "error": e.toString()
+      };
+    }
+  }
+  
+  // Share a menu with client
+  static Future<Map<String, dynamic>> shareMenuWithClient(
+    int menuId, 
+    int clientId,
+    String authToken,
+  ) async {
+    try {
+      final result = await _post("/menus/$menuId/share", {
+        "client_id": clientId
+      }, authToken);
+      
+      if (result != null && result is Map) {
+        return _toStringDynamicMap(result);
+      }
+      
+      return {
+        "success": false,
+        "error": "Could not share menu with client"
+      };
+    } catch (e) {
+      print("Error sharing menu with client: $e");
+      return {
+        "success": false,
+        "error": e.toString()
+      };
+    }
+  }
+  
+  // Resend invitation
+  static Future<Map<String, dynamic>> resendInvitation(
+    int invitationId,
+    String authToken,
+  ) async {
+    try {
+      final result = await _post("/invitations/$invitationId/resend", {}, authToken);
+      
+      if (result != null && result is Map) {
+        return _toStringDynamicMap(result);
+      }
+      
+      return {
+        "success": false,
+        "error": "Could not resend invitation"
+      };
+    } catch (e) {
+      print("Error resending invitation: $e");
+      return {
+        "success": false,
+        "error": e.toString()
+      };
+    }
+  }
 }
