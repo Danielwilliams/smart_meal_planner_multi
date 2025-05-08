@@ -242,28 +242,6 @@ function NavBar() {
                         >
                           <MenuItem 
                             component={Link} 
-                            to="/shopping-list"
-                            onClick={() => setMoreMenuAnchorEl(null)}
-                          >
-                            <ListItemIcon>
-                              <ListIcon fontSize="small" />
-                            </ListItemIcon>
-                            <ListItemText>Shopping List</ListItemText>
-                          </MenuItem>
-                          
-                          <MenuItem 
-                            component={Link} 
-                            to="/cart"
-                            onClick={() => setMoreMenuAnchorEl(null)}
-                          >
-                            <ListItemIcon>
-                              <CartIcon fontSize="small" />
-                            </ListItemIcon>
-                            <ListItemText>Cart</ListItemText>
-                          </MenuItem>
-                          
-                          <MenuItem 
-                            component={Link} 
                             to="/custom-menu-builder"
                             onClick={() => setMoreMenuAnchorEl(null)}
                           >

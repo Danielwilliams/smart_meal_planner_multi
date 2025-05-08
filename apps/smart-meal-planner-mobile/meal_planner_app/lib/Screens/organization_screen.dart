@@ -262,6 +262,7 @@ class _OrganizationScreenState extends State<OrganizationScreen> with SingleTick
     return Scaffold(
       appBar: AppBar(
         title: Text("Organization Management"),
+        backgroundColor: Colors.blue[800],
         bottom: _userAccount?.isOrganization == true 
           ? TabBar(
               controller: _tabController,

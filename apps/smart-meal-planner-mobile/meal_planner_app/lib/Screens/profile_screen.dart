@@ -19,10 +19,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _isTrainer = false;
   int? _organizationId;
   
+  // Form keys and controllers for invite dialog
+  final _inviteFormKey = GlobalKey<FormState>();
+  final _clientNameController = TextEditingController();
+  final _clientEmailController = TextEditingController();
+  
   @override
   void initState() {
     super.initState();
     _checkTrainerStatus();
+  }
+  
+  @override
+  void dispose() {
+    _clientNameController.dispose();
+    _clientEmailController.dispose();
+    super.dispose();
   }
   
   Future<void> _checkTrainerStatus() async {
@@ -31,20 +43,67 @@ class _ProfileScreenState extends State<ProfileScreen> {
     });
     
     try {
+      // First, check user account info
       final accountInfo = await ApiService.getUserAccountInfo(widget.authToken);
       
+      print("ACCOUNT INFO: $accountInfo");
+      
+      // Check for any indicator of organization/trainer status
+      bool isOrganization = 
+        accountInfo['is_organization'] == true || 
+        accountInfo['is_trainer'] == true ||
+        accountInfo['account_type'] == 'organization' ||
+        accountInfo['account_type'] == 'trainer';
+      
+      // Store organization ID if found
+      int? organizationId;
+      if (accountInfo.containsKey('organization_id')) {
+        if (accountInfo['organization_id'] is int) {
+          organizationId = accountInfo['organization_id'];
+        } else if (accountInfo['organization_id'] is String) {
+          organizationId = int.tryParse(accountInfo['organization_id']);
+        }
+      }
+      
+      // If we don't find it from account info, try to get organizations
+      if (isOrganization && organizationId == null) {
+        try {
+          final orgResult = await ApiService.getUserOrganizations(widget.authToken);
+          print("ORG RESULT: $orgResult");
+          
+          if (orgResult != null && orgResult is List && orgResult.isNotEmpty) {
+            final firstOrg = orgResult[0];
+            if (firstOrg['id'] is int) {
+              organizationId = firstOrg['id'];
+            } else if (firstOrg['id'] is String) {
+              organizationId = int.tryParse(firstOrg['id']);
+            }
+          }
+        } catch (orgError) {
+          print("Error fetching organizations: $orgError");
+        }
+      }
+      
+      // Update UI state
       setState(() {
         _isLoading = false;
-        _isTrainer = accountInfo['is_organization'] == true || 
-                    accountInfo['is_trainer'] == true ||
-                    accountInfo['account_type'] == 'organization';
-        
-        if (_isTrainer && accountInfo.containsKey('organization_id')) {
-          _organizationId = accountInfo['organization_id'];
-        }
+        _isTrainer = isOrganization;
+        _organizationId = organizationId;
       });
+      
+      // If we have confirmed organization status but no ID,
+      // show a message about organization setup
+      if (_isTrainer && _organizationId == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Organization ID not found. Some features may be limited.'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 5),
+          )
+        );
+      }
     } catch (e) {
-      print("Error checking trainer status: $e");
+      print("Error checking organization status: $e");
       setState(() {
         _isLoading = false;
       });
@@ -108,7 +167,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                           borderRadius: BorderRadius.circular(12),
                                         ),
                                         child: Text(
-                                          'Trainer Account',
+                                          'Organization Account',
                                           style: TextStyle(
                                             color: Colors.blue[800],
                                             fontWeight: FontWeight.bold,
@@ -130,7 +189,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             Padding(
                               padding: const EdgeInsets.only(top: 4.0),
                               child: Text(
-                                'Account Type: Trainer',
+                                'Account Type: Organization',
                                 style: TextStyle(
                                   color: Colors.blue[800], 
                                   fontWeight: FontWeight.bold
@@ -154,10 +213,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             children: [
                               Row(
                                 children: [
-                                  Icon(Icons.people, color: Colors.blue[700]),
+                                  Icon(Icons.business, color: Colors.blue[700]),
                                   SizedBox(width: 8),
                                   Text(
-                                    'Trainer Dashboard',
+                                    'Organization Dashboard',
                                     style: TextStyle(
                                       fontSize: 18,
                                       fontWeight: FontWeight.bold,
@@ -168,19 +227,39 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               ),
                               SizedBox(height: 8),
                               Text(
-                                'Manage your clients, create personalized meal plans, and monitor progress.',
+                                'Manage your organization, clients, meal plans, and monitor progress.',
                                 style: TextStyle(color: Colors.grey[700]),
                               ),
-                              SizedBox(height: 12),
-                              ElevatedButton.icon(
-                                icon: Icon(Icons.people),
-                                label: Text('Open Client Management'),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.blue[700],
-                                  foregroundColor: Colors.white,
-                                  minimumSize: Size(double.infinity, 45),
-                                ),
-                                onPressed: () => Navigator.pushNamed(context, '/organization'),
+                              SizedBox(height: 16),
+                              
+                              // Organization management options
+                              Column(
+                                children: [
+                                  _buildOrgOptionButton(
+                                    icon: Icons.people,
+                                    label: 'Client Management',
+                                    onPressed: () => Navigator.pushNamed(context, '/organization'),
+                                  ),
+                                  SizedBox(height: 8),
+                                  _buildOrgOptionButton(
+                                    icon: Icons.restaurant_menu,
+                                    label: 'Create Client Meal Plans',
+                                    onPressed: () => Navigator.pushNamed(
+                                      context, 
+                                      '/client-menu-creator',
+                                      arguments: {
+                                        'recipeId': 0,
+                                        'recipeTitle': '',
+                                      }
+                                    ),
+                                  ),
+                                  SizedBox(height: 8),
+                                  _buildOrgOptionButton(
+                                    icon: Icons.add_circle_outline,
+                                    label: 'Invite New Clients',
+                                    onPressed: () => _showInviteDialog(context),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
@@ -212,13 +291,47 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     trailing: Icon(Icons.chevron_right),
                     onTap: () => Navigator.pushNamed(context, '/store-selection'),
                   ),
-                  if (_isTrainer)
+                  
+                  // Organization Management section
+                  if (_isTrainer) ...[
+                    SizedBox(height: 24),
+                    Text(
+                      'Organization Management',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blue[800],
+                      ),
+                    ),
                     ListTile(
-                      leading: Icon(Icons.people),
+                      leading: Icon(Icons.people, color: Colors.blue[700]),
                       title: Text('Client Management'),
                       trailing: Icon(Icons.chevron_right),
                       onTap: () => Navigator.pushNamed(context, '/organization'),
+                      tileColor: Colors.blue[50],
                     ),
+                    ListTile(
+                      leading: Icon(Icons.restaurant_menu, color: Colors.blue[700]),
+                      title: Text('Create Client Meal Plans'),
+                      trailing: Icon(Icons.chevron_right),
+                      onTap: () => Navigator.pushNamed(
+                        context, 
+                        '/client-menu-creator',
+                        arguments: {
+                          'recipeId': 0,
+                          'recipeTitle': '',
+                        }
+                      ),
+                      tileColor: Colors.blue[50],
+                    ),
+                    ListTile(
+                      leading: Icon(Icons.add_circle_outline, color: Colors.blue[700]),
+                      title: Text('Invite New Client'),
+                      trailing: Icon(Icons.chevron_right),
+                      onTap: () => _showInviteDialog(context),
+                      tileColor: Colors.blue[50],
+                    ),
+                  ],
                   Divider(),
                   ListTile(
                     leading: Icon(Icons.exit_to_app, color: Colors.red),
@@ -253,5 +366,141 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
     );
+    
+  // Helper to build consistent organization option buttons
+  Widget _buildOrgOptionButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onPressed,
+    Color? color,
+  }) {
+    return ElevatedButton.icon(
+      icon: Icon(icon),
+      label: Text(label),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: color ?? Colors.blue[700],
+        foregroundColor: Colors.white,
+        minimumSize: Size(double.infinity, 45),
+        alignment: Alignment.centerLeft,
+      ),
+      onPressed: onPressed,
+    );
   }
+  
+  // Show dialog to invite clients
+  void _showInviteDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text("Invite a Client"),
+        content: Form(
+          key: _inviteFormKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: _clientNameController,
+                decoration: InputDecoration(
+                  labelText: "Client Name",
+                  prefixIcon: Icon(Icons.person),
+                ),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return "Please enter a name";
+                  }
+                  return null;
+                },
+              ),
+              SizedBox(height: 16),
+              TextFormField(
+                controller: _clientEmailController,
+                decoration: InputDecoration(
+                  labelText: "Client Email",
+                  prefixIcon: Icon(Icons.email),
+                ),
+                keyboardType: TextInputType.emailAddress,
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return "Please enter an email";
+                  }
+                  if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
+                    return "Please enter a valid email";
+                  }
+                  return null;
+                },
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text("Cancel"),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (_inviteFormKey.currentState!.validate()) {
+                Navigator.pop(context);
+                _sendInvitation();
+              }
+            },
+            child: Text("Send Invitation"),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  // Send invitation to client
+  Future<void> _sendInvitation() async {
+    if (_organizationId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Organization ID not found. Please try again.'))
+      );
+      return;
+    }
+    
+    setState(() => _isLoading = true);
+    
+    try {
+      final result = await ApiService.createClientInvitation(
+        _organizationId!,
+        widget.authToken,
+        _clientEmailController.text,
+        _clientNameController.text
+      );
+      
+      setState(() => _isLoading = false);
+      
+      if (result != null && (result['success'] == true || result['id'] != null)) {
+        // Show success message
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Invitation sent successfully to ${_clientEmailController.text}!'),
+            backgroundColor: Colors.green,
+          )
+        );
+        
+        // Clear form
+        _clientNameController.clear();
+        _clientEmailController.clear();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to send invitation: ${result['error'] ?? "Unknown error"}'),
+            backgroundColor: Colors.red,
+          )
+        );
+      }
+    } catch (e) {
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: Colors.red,
+        )
+      );
+    }
+  }
+}
 }

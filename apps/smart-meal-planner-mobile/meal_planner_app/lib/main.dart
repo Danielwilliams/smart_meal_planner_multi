@@ -535,8 +535,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     // Add organization tab for trainers
     if (hasOrganizationTab) {
       tabItems.add(BottomNavigationBarItem(
-        icon: Icon(Icons.people),
-        label: 'Clients',
+        icon: Icon(Icons.business),
+        label: 'Organization',
       ));
     }
     
