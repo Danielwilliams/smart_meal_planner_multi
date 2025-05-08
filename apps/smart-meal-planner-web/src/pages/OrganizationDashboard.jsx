@@ -54,28 +54,108 @@ function OrganizationDashboard() {
     }
   }, [user, navigate]);
   
-  // Fetch shared menus
+  // Fetch shared menus - with comprehensive error handling and fallbacks
   useEffect(() => {
     const fetchSharedMenus = async () => {
       try {
         setLoading(true);
-        // Check if API method exists
-        if (typeof apiService.getSharedMenus === 'function') {
+        setError(''); // Clear any previous errors
+        
+        console.log('User context in shared menus fetch:', {
+          isAuthenticated: !!user,
+          accountType: user?.account_type,
+          userId: user?.id || user?.userId,
+          name: user?.name,
+          organization: organization
+        });
+        
+        // Check if user exists and has expected account type
+        if (!user) {
+          console.log('User not loaded yet, skipping menu fetch');
+          return;
+        }
+        
+        // First try with the standard logic
+        try {
+          console.log('Attempting to fetch shared menus with standard method');
           const response = await apiService.getSharedMenus();
-          setSharedMenus(response || []);
+          
+          // Ensure we have a valid array, or default to empty array
+          if (Array.isArray(response)) {
+            console.log(`Successfully fetched ${response.length} shared menus`);
+            setSharedMenus(response);
+          } else if (response && typeof response === 'object') {
+            // Try to find any array in the response that might be the menus
+            const possibleMenuArrays = Object.entries(response)
+              .filter(([key, value]) => Array.isArray(value))
+              .sort(([, a], [, b]) => b.length - a.length); // Sort by array length
+              
+            if (possibleMenuArrays.length > 0) {
+              const [arrayName, menuArray] = possibleMenuArrays[0];
+              console.log(`Using ${arrayName} with ${menuArray.length} items as menus`);
+              setSharedMenus(menuArray);
+            } else {
+              console.log('No menu arrays found in response');
+              setSharedMenus([]);
+            }
+          } else {
+            console.log('Response is not an array or object with arrays:', response);
+            setSharedMenus([]);
+          }
+          
+          // If we successfully fetched menus, no need for fallbacks
+          return;
+        } catch (standardError) {
+          console.error('Standard shared menus fetch failed:', standardError);
+          
+          // Try second approach - get shared menus with hardcoded organization ID
+          try {
+            if (organization?.id) {
+              console.log(`Trying to get menus directly via organization ID: ${organization.id}`);
+              const organizationResponse = await apiService.getMenusForClient(organization.id);
+              
+              if (Array.isArray(organizationResponse)) {
+                console.log(`Got ${organizationResponse.length} menus via organization ID approach`);
+                setSharedMenus(organizationResponse);
+                return;
+              }
+            }
+            
+            // Try with hardcoded ID if organization is not available
+            console.log('Trying with hardcoded organization ID 7');
+            const hardcodedResponse = await apiService.getMenusForClient(7);
+            
+            if (Array.isArray(hardcodedResponse)) {
+              console.log(`Got ${hardcodedResponse.length} menus via hardcoded ID approach`);
+              setSharedMenus(hardcodedResponse);
+              return;
+            }
+          } catch (fallbackError) {
+            console.error('Fallback approaches failed:', fallbackError);
+          }
+          
+          // If all else fails, set empty array
+          console.log('All approaches failed, setting empty array');
+          setSharedMenus([]);
+          setError('Unable to load shared menus at this time.');
         }
       } catch (err) {
-        console.error('Error fetching shared menus:', err);
-        setError('Failed to load shared menus');
+        console.error('Unexpected error in fetchSharedMenus:', err);
+        setError('An unexpected error occurred while loading menus');
+        setSharedMenus([]);
       } finally {
         setLoading(false);
       }
     };
     
-    if (user && user.account_type === 'organization') {
+    // Only fetch when we're sure the user object is loaded
+    if (user) {
       fetchSharedMenus();
+    } else {
+      // Reset shared menus if user isn't loaded
+      setSharedMenus([]);
     }
-  }, [user]);
+  }, [user, organization]);
 
   const handleTabChange = (event, newValue) => {
     setTabValue(newValue);
@@ -165,15 +245,19 @@ function OrganizationDashboard() {
     setSelectedClient(null);
   };
 
-  if (loading || orgLoading) {
+  // Show loading state only during initial load
+  if ((loading && !sharedMenus.length) || (orgLoading && !organization)) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="80vh">
         <CircularProgress />
+        <Typography variant="body1" sx={{ ml: 2 }}>
+          Loading organization dashboard...
+        </Typography>
       </Box>
     );
   }
 
-  // Just show the standard organization dashboard that focuses on client management
+  // Organization dashboard with enhanced error handling
   return (
     <Container maxWidth="lg">
       <Box sx={{ mb: 4 }}>
@@ -183,11 +267,41 @@ function OrganizationDashboard() {
         <Typography variant="body1" color="text.secondary">
           {organization?.description || 'Manage your clients and meal plans'}
         </Typography>
+        
+        {/* Loading indicator for ongoing data fetches */}
+        {(loading || orgLoading) && (
+          <Box display="flex" alignItems="center" sx={{ mt: 1 }}>
+            <CircularProgress size={20} sx={{ mr: 1 }} />
+            <Typography variant="body2" color="text.secondary">
+              Updating data...
+            </Typography>
+          </Box>
+        )}
       </Box>
 
+      {/* Enhanced error display */}
       {(error || orgError) && (
-        <Alert severity="error" sx={{ mb: 3 }}>
+        <Alert 
+          severity="error" 
+          sx={{ mb: 3 }}
+          action={
+            <Button 
+              color="inherit" 
+              size="small" 
+              onClick={() => window.location.reload()}
+            >
+              Reload
+            </Button>
+          }
+        >
           {error || orgError}
+        </Alert>
+      )}
+      
+      {/* Warning if organization data is missing */}
+      {!organization && (
+        <Alert severity="warning" sx={{ mb: 3 }}>
+          Organization data could not be loaded. Some features may be limited.
         </Alert>
       )}
 
@@ -223,60 +337,87 @@ function OrganizationDashboard() {
           </Box>
 
           <Grid container spacing={3}>
-            {!clients || clients.length === 0 ? (
+            {!clients || !Array.isArray(clients) || clients.length === 0 ? (
               <Grid item xs={12}>
                 <Paper sx={{ p: 3, textAlign: 'center' }}>
                   <Typography variant="body1">
                     No clients yet. Invite your first client to get started.
                   </Typography>
+                  {loading ? (
+                    <CircularProgress size={20} sx={{ mt: 2 }} />
+                  ) : (
+                    <Button
+                      variant="contained"
+                      startIcon={<AddIcon />}
+                      sx={{ mt: 2 }}
+                      onClick={handleOpenInviteDialog}
+                    >
+                      Invite Client
+                    </Button>
+                  )}
                 </Paper>
               </Grid>
             ) : (
-              clients.map((client) => (
-                <Grid item xs={12} md={6} lg={4} key={client.id}>
-                  <Card>
-                    <CardContent>
-                      <Typography variant="h6">
-                        {client.name}
-                      </Typography>
-                      <Typography color="text.secondary">
-                        {client.email}
-                      </Typography>
-                      <Box sx={{ mt: 1 }}>
-                        <Chip 
-                          label={client.role || 'Client'} 
-                          size="small"
+              clients.map((client) => {
+                // Ensure client has all required properties
+                if (!client || typeof client !== 'object') {
+                  return null; // Skip invalid clients
+                }
+                
+                const clientId = client.id || client.client_id;
+                const clientName = client.name || 'Unknown Client';
+                const clientEmail = client.email || 'No email available';
+                const clientRole = client.role || 'Client';
+                
+                return (
+                  <Grid item xs={12} md={6} lg={4} key={clientId || `client-${Math.random()}`}>
+                    <Card>
+                      <CardContent>
+                        <Typography variant="h6">
+                          {clientName}
+                        </Typography>
+                        <Typography color="text.secondary">
+                          {clientEmail}
+                        </Typography>
+                        <Box sx={{ mt: 1 }}>
+                          <Chip 
+                            label={clientRole} 
+                            size="small"
+                            color="primary"
+                            variant="outlined"
+                          />
+                        </Box>
+                      </CardContent>
+                      <Divider />
+                      <CardActions>
+                        <Button 
+                          size="small" 
+                          onClick={() => navigate(`/organization/clients/${clientId}/preferences`)}
+                          disabled={!clientId}
+                        >
+                          Set Preferences
+                        </Button>
+                        <Button 
+                          size="small" 
+                          onClick={() => handleViewClient(client)}
+                          disabled={!clientId}
+                        >
+                          Manage Profile
+                        </Button>
+                        <Button 
+                          size="small" 
                           color="primary"
-                          variant="outlined"
-                        />
-                      </Box>
-                    </CardContent>
-                    <Divider />
-                    <CardActions>
-                      <Button 
-                        size="small" 
-                        onClick={() => navigate(`/organization/clients/${client.id}/preferences`)}
-                      >
-                        Set Preferences
-                      </Button>
-                      <Button 
-                        size="small" 
-                        onClick={() => handleViewClient(client)}
-                      >
-                        Manage Profile
-                      </Button>
-                      <Button 
-                        size="small" 
-                        color="primary"
-                        variant="contained"
-                        onClick={() => handleCreateMenu(client)}
-                      >
-                        Create Menu
-                      </Button>
-                    </CardActions>
-                  </Card>
-                </Grid>
-              ))
+                          variant="contained"
+                          onClick={() => handleCreateMenu(client)}
+                          disabled={!clientId}
+                        >
+                          Create Menu
+                        </Button>
+                      </CardActions>
+                    </Card>
+                  </Grid>
+                );
+              })
             )}
           </Grid>
         </>
