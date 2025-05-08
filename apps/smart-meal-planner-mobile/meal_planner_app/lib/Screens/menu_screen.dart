@@ -27,7 +27,94 @@ class _MenuScreenState extends State<MenuScreen> {
   void initState() {
     super.initState();
     _checkUserType(); // Check if the user is a trainer
-    _fetchSavedMenus(); // First try to load existing menus
+    _fetchLatestMenu(); // Try to get latest menu first
+  }
+  
+  // Fetch latest menu first, fallback to menu history
+  Future<void> _fetchLatestMenu() async {
+    setState(() => _isLoading = true);
+    print("============== FETCHING LATEST MENU ==============");
+    print("User ID: ${widget.userId}, Auth Token available: ${widget.authToken.isNotEmpty}");
+    
+    try {
+      // First try to get the latest menu directly
+      final result = await ApiService.getLatestMenu(widget.userId, widget.authToken);
+      
+      if (result != null) {
+        print("Latest menu API response received with keys: ${result.keys.toList()}");
+        
+        try {
+          Menu? latestMenu;
+          
+          // Try to extract menu from different response formats
+          if (result.containsKey('menu') && result['menu'] is Map<String, dynamic>) {
+            print("Found menu in 'menu' key");
+            latestMenu = Menu.fromJson(result['menu'] as Map<String, dynamic>);
+          } else if (result.containsKey('id') || result.containsKey('menu_id') || 
+                     result.containsKey('meal_plan') || result.containsKey('days')) {
+            print("Result appears to be a direct menu object");
+            latestMenu = Menu.fromJson(result);
+          } else {
+            // Try finding menu object in any key
+            for (var key in result.keys) {
+              if (result[key] is Map<String, dynamic>) {
+                final possibleMenu = result[key] as Map<String, dynamic>;
+                if (possibleMenu.containsKey('id') || possibleMenu.containsKey('menu_id') ||
+                    possibleMenu.containsKey('meal_plan') || possibleMenu.containsKey('days')) {
+                  print("Found potential menu in '$key' key");
+                  try {
+                    latestMenu = Menu.fromJson(possibleMenu);
+                    break;
+                  } catch (e) {
+                    print("Error parsing potential menu in '$key': $e");
+                  }
+                }
+              }
+            }
+          }
+          
+          if (latestMenu != null && latestMenu.days.isNotEmpty) {
+            bool hasMeals = false;
+            for (var day in latestMenu.days) {
+              if (day.meals.isNotEmpty) {
+                hasMeals = true;
+                break;
+              }
+            }
+            
+            if (hasMeals) {
+              setState(() {
+                _isLoading = false;
+                _currentMenu = latestMenu;
+                // Add to saved menus if not already there
+                _savedMenus = [latestMenu!];
+                print("Successfully loaded latest menu with ID ${latestMenu!.id}");
+              });
+              
+              // Load all menu history in the background
+              _fetchSavedMenus(setLoading: false);
+              return;
+            } else {
+              print("Latest menu has days but no meals");
+            }
+          } else {
+            print("Latest menu has no days or is null");
+          }
+        } catch (e) {
+          print("Error parsing latest menu: $e");
+        }
+      } else {
+        print("Latest menu API returned null result");
+      }
+      
+      // If we reach here, latest menu failed, fall back to fetching all menus
+      print("Falling back to menu history");
+      _fetchSavedMenus();
+    } catch (e) {
+      print("Error fetching latest menu: $e");
+      _fetchSavedMenus();
+    }
+    print("============== END FETCH LATEST MENU ==============");
   }
   
   // Check if the user is a trainer to show organization management
@@ -50,8 +137,10 @@ class _MenuScreenState extends State<MenuScreen> {
   }
   
   // Fetch user's saved menus
-  Future<void> _fetchSavedMenus() async {
-    setState(() => _isLoading = true);
+  Future<void> _fetchSavedMenus({bool setLoading = true}) async {
+    if (setLoading) {
+      setState(() => _isLoading = true);
+    }
     print("============== FETCHING SAVED MENUS ==============");
     print("User ID: ${widget.userId}, Auth Token available: ${widget.authToken.isNotEmpty}");
     
@@ -1205,11 +1294,12 @@ class _MenuScreenState extends State<MenuScreen> {
                     ClipRRect(
                       borderRadius: BorderRadius.circular(8),
                       child: Image.network(
-                        meal.imageUrl!,
+                        ApiService.cleanImageUrl(meal.imageUrl!),
                         height: 200,
                         width: double.infinity,
                         fit: BoxFit.cover,
                         errorBuilder: (context, error, stackTrace) {
+                          print("Error loading image: $error");
                           return Container(
                             height: 200,
                             color: Colors.grey[200],

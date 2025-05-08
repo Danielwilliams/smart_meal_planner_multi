@@ -205,9 +205,17 @@ const RecipeBrowserPage = () => {
         Recipe Browser
       </Typography>
       
-      <Box sx={{ mb: 4 }}>
+      <Box 
+        sx={{ 
+          mb: 4, 
+          '@media (max-width:600px)': { 
+            mb: 2
+          } 
+        }}
+      >
         <Grid container spacing={2} alignItems="flex-end">
-          <Grid item xs={12} sm={6} md={4}>
+          {/* Search input - full width on mobile */}
+          <Grid item xs={12} md={4}>
             <TextField
               fullWidth
               label="Search recipes"
@@ -221,8 +229,13 @@ const RecipeBrowserPage = () => {
                   </IconButton>
                 ),
               }}
+              sx={{
+                mb: { xs: 2, md: 0 }
+              }}
             />
           </Grid>
+          
+          {/* Filters - stacked on mobile, side by side on desktop */}
           <Grid item xs={12} sm={6} md={2}>
             <FormControl fullWidth>
               <InputLabel>Complexity</InputLabel>
@@ -230,6 +243,11 @@ const RecipeBrowserPage = () => {
                 value={filters.complexity}
                 label="Complexity"
                 onChange={(e) => handleFilterChange('complexity', e.target.value)}
+                sx={{ 
+                  '@media (max-width:600px)': { 
+                    height: '56px' // Larger touch target on mobile
+                  }
+                }}
               >
                 <MenuItem value="">Any</MenuItem>
                 <MenuItem value="easy">Easy</MenuItem>
@@ -245,6 +263,11 @@ const RecipeBrowserPage = () => {
                 value={filters.cuisine}
                 label="Cuisine"
                 onChange={(e) => handleFilterChange('cuisine', e.target.value)}
+                sx={{ 
+                  '@media (max-width:600px)': { 
+                    height: '56px' // Larger touch target on mobile
+                  }
+                }}
               >
                 <MenuItem value="">Any</MenuItem>
                 <MenuItem value="italian">Italian</MenuItem>
@@ -267,6 +290,11 @@ const RecipeBrowserPage = () => {
                 value={filters.tags}
                 label="Tag"
                 onChange={(e) => handleFilterChange('tags', e.target.value)}
+                sx={{ 
+                  '@media (max-width:600px)': { 
+                    height: '56px' // Larger touch target on mobile
+                  }
+                }}
               >
                 <MenuItem value="">Any</MenuItem>
                 <MenuItem value="vegetarian">Vegetarian</MenuItem>
@@ -288,33 +316,68 @@ const RecipeBrowserPage = () => {
               color="primary"
               onClick={handleSearch}
               fullWidth
+              sx={{ 
+                '@media (max-width:600px)': { 
+                  height: '56px', // Larger touch target on mobile
+                  mt: 1
+                }
+              }}
             >
               Search
             </Button>
           </Grid>
-          <Box sx={{ my: 2 }}>
-            {filters.cuisine && (
-              <Chip 
-                label={`Cuisine: ${filters.cuisine}`} 
-                onDelete={() => handleFilterChange('cuisine', '')}
-                sx={{ mr: 1, mb: 1 }}
-              />
-            )}
-            {filters.complexity && (
-              <Chip 
-                label={`Complexity: ${filters.complexity}`} 
-                onDelete={() => handleFilterChange('complexity', '')}
-                sx={{ mr: 1, mb: 1 }}
-              />
-            )}
-            {filters.tags && (
-              <Chip 
-                label={`Tag: ${filters.tags}`} 
-                onDelete={() => handleFilterChange('tags', '')}
-                sx={{ mr: 1, mb: 1 }}
-              />
-            )}
-          </Box>
+          
+          {/* Active filters display */}
+          <Grid item xs={12}>
+            <Box sx={{ 
+              mt: 2, 
+              display: 'flex', 
+              flexWrap: 'wrap',
+              '@media (max-width:600px)': {
+                justifyContent: 'center'
+              }
+            }}>
+              {filters.cuisine && (
+                <Chip 
+                  label={`Cuisine: ${filters.cuisine}`} 
+                  onDelete={() => handleFilterChange('cuisine', '')}
+                  sx={{ 
+                    mr: 1, 
+                    mb: 1,
+                    '@media (max-width:600px)': {
+                      height: '36px' // Larger touch target on mobile
+                    }
+                  }}
+                />
+              )}
+              {filters.complexity && (
+                <Chip 
+                  label={`Complexity: ${filters.complexity}`} 
+                  onDelete={() => handleFilterChange('complexity', '')}
+                  sx={{ 
+                    mr: 1, 
+                    mb: 1,
+                    '@media (max-width:600px)': {
+                      height: '36px' // Larger touch target on mobile
+                    }
+                  }}
+                />
+              )}
+              {filters.tags && (
+                <Chip 
+                  label={`Tag: ${filters.tags}`} 
+                  onDelete={() => handleFilterChange('tags', '')}
+                  sx={{ 
+                    mr: 1, 
+                    mb: 1,
+                    '@media (max-width:600px)': {
+                      height: '36px' // Larger touch target on mobile
+                    }
+                  }}
+                />
+              )}
+            </Box>
+          </Grid>
         </Grid>
       </Box>
       
@@ -341,6 +404,9 @@ const RecipeBrowserPage = () => {
                       transition: 'transform 0.2s ease-in-out',
                       textDecoration: 'none', // Remove underline from Link
                       color: 'inherit', // Keep default text color
+                      '@media (max-width:600px)': {
+                        minHeight: '200px', // Taller cards on mobile
+                      },
                       '&:hover': {
                         transform: 'scale(1.02)',
                         boxShadow: '0 4px 20px rgba(0,0,0,0.12)'
@@ -353,7 +419,12 @@ const RecipeBrowserPage = () => {
                         height="160"
                         image={recipe.image_url}
                         alt={recipe.title}
-                        sx={{ objectFit: 'cover' }}
+                        sx={{ 
+                          objectFit: 'cover',
+                          '@media (max-width:600px)': {
+                            height: '200px',
+                          },
+                        }}
                       />
                     ) : (
                       <Box
@@ -362,7 +433,10 @@ const RecipeBrowserPage = () => {
                           backgroundColor: 'action.selected',
                           display: 'flex',
                           alignItems: 'center',
-                          justifyContent: 'center'
+                          justifyContent: 'center',
+                          '@media (max-width:600px)': {
+                            height: '200px',
+                          },
                         }}
                       >
                         <Typography variant="body2" color="text.secondary">
@@ -426,14 +500,34 @@ const RecipeBrowserPage = () => {
           </Grid>
           
           {totalPages > 1 && (
-            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', mt: 4 }}>
+            <Box sx={{ 
+              display: 'flex', 
+              flexDirection: { xs: 'column', sm: 'row' },
+              justifyContent: 'center', 
+              alignItems: 'center', 
+              mt: 4,
+              gap: { xs: 2, sm: 0 }
+            }}>
               <Pagination 
                 count={totalPages} 
                 page={page} 
                 onChange={handlePageChange}
                 color="primary"
+                size="large"
+                sx={{
+                  '& .MuiPaginationItem-root': {
+                    '@media (max-width:600px)': {
+                      minWidth: '40px',
+                      height: '40px',
+                    }
+                  }
+                }}
               />
-              <Box sx={{ ml: 2, display: 'flex', alignItems: 'center' }}>
+              <Box sx={{ 
+                ml: { xs: 0, sm: 2 }, 
+                display: 'flex', 
+                alignItems: 'center'
+              }}>
                 <TextField
                   size="small"
                   label="Go to page"
@@ -444,7 +538,14 @@ const RecipeBrowserPage = () => {
                       max: totalPages 
                     } 
                   }}
-                  sx={{ width: 100 }}
+                  sx={{ 
+                    width: { xs: 120, sm: 100 },
+                    '& .MuiInputBase-root': {
+                      '@media (max-width:600px)': {
+                        height: '48px',
+                      }
+                    }
+                  }}
                   onKeyPress={(e) => {
                     if (e.key === 'Enter') {
                       const targetPage = parseInt(e.target.value);

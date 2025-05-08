@@ -83,6 +83,7 @@ class _RecipeBrowserScreenState extends State<RecipeBrowserScreen> {
 
     try {
       final result = await ApiService.searchRecipes(
+        userId: widget.userId,
         authToken: widget.authToken,
         query: _searchQuery,
         categories: _selectedCategories.isNotEmpty ? _selectedCategories : null,

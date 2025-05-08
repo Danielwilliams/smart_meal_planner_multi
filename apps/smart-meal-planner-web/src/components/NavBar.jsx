@@ -11,14 +11,31 @@ import {
   MenuItem,
   IconButton,
   Divider,
-  Tooltip
+  Tooltip,
+  Drawer,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  ListItemButton,
+  useMediaQuery,
+  useTheme
 } from '@mui/material';
 import { 
   AccountCircle as AccountIcon,
   Menu as MenuIcon,
   Dashboard as DashboardIcon,
   Person as PersonIcon,
-  ExitToApp as LogoutIcon
+  ExitToApp as LogoutIcon,
+  Home as HomeIcon,
+  Restaurant as RestaurantIcon,
+  List as ListIcon,
+  ShoppingCart as CartIcon,
+  Bookmark as BookmarkIcon,
+  Search as SearchIcon,
+  Settings as SettingsIcon,
+  AdminPanelSettings as AdminIcon,
+  Build as CustomizeIcon
 } from '@mui/icons-material';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -29,7 +46,9 @@ function NavBar() {
   const navigate = useNavigate();
   const [organization, setOrganization] = useState(null);
   const [menuAnchorEl, setMenuAnchorEl] = useState(null);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   // Check user account types
   const isOrgAccount = user?.account_type === 'organization';
@@ -91,196 +110,277 @@ function NavBar() {
     setMenuAnchorEl(null);
   };
 
-  const handleMobileMenuToggle = () => {
-    setMobileMenuOpen(!mobileMenuOpen);
+  const handleDrawerToggle = () => {
+    setDrawerOpen(!drawerOpen);
+  };
+
+  // Navigation items based on user type
+  const getNavItems = () => {
+    if (!isAuthenticated) {
+      return [
+        { text: 'Home', icon: <HomeIcon />, path: '/' },
+        { text: 'Login', icon: <PersonIcon />, path: '/login' },
+        { text: 'Sign Up', icon: <PersonIcon />, path: '/signup' }
+      ];
+    }
+    
+    if (isClientAccount) {
+      return [
+        { text: 'Dashboard', icon: <DashboardIcon />, path: '/client-dashboard' },
+        { text: 'Recipe Browser', icon: <SearchIcon />, path: '/recipes' },
+        { text: 'Saved Recipes', icon: <BookmarkIcon />, path: '/saved-recipes' },
+        { text: 'Cart', icon: <CartIcon />, path: '/cart' }
+      ];
+    }
+    
+    const items = [
+      { text: 'Home', icon: <HomeIcon />, path: '/' },
+      { text: 'Menu', icon: <RestaurantIcon />, path: '/menu' },
+      { text: 'Shopping List', icon: <ListIcon />, path: '/shopping-list' },
+      { text: 'Cart', icon: <CartIcon />, path: '/cart' },
+      { text: 'Saved Recipes', icon: <BookmarkIcon />, path: '/saved-recipes' },
+      { text: 'Recipe Browser', icon: <SearchIcon />, path: '/recipes' },
+      { text: 'Custom Menu', icon: <CustomizeIcon />, path: '/custom-menu-builder' },
+      { text: 'Preferences', icon: <SettingsIcon />, path: '/preferences-page' }
+    ];
+    
+    if (isOrgAccount || user?.account_type === 'admin') {
+      items.push(
+        { text: 'Recipe Admin', icon: <AdminIcon />, path: '/recipe-admin' },
+        { text: 'Manage Organization', icon: <DashboardIcon />, path: '/organization/dashboard' }
+      );
+    }
+    
+    return items;
   };
 
   return (
-    <AppBar position="static">
-      <Toolbar>
-        {/* Logo/Title Area */}
-        <Typography 
-          variant="h6" 
-          component={Link} 
-          to="/"
-          sx={{ 
-            flexGrow: 1, 
-            textDecoration: 'none', 
-            color: 'inherit',
-            display: 'flex',
-            alignItems: 'center'
-          }}
-        >
-          Smart Meal Planner
-          {organization && (
-            <Chip
-              label={organization.name}
-              size="small"
-              color="secondary"
-              sx={{ ml: 1 }}
-            />
-          )}
-        </Typography>
-
-        {/* Mobile Menu Toggle (only displayed on small screens) */}
-        <Box sx={{ display: { xs: 'block', md: 'none' } }}>
-          <IconButton 
-            color="inherit" 
-            aria-label="menu"
-            onClick={handleMobileMenuToggle}
+    <>
+      <AppBar position="static">
+        <Toolbar>
+          {/* Logo/Title Area */}
+          <Typography 
+            variant="h6" 
+            component={Link} 
+            to="/"
+            sx={{ 
+              flexGrow: 1, 
+              textDecoration: 'none', 
+              color: 'inherit',
+              display: 'flex',
+              alignItems: 'center'
+            }}
           >
-            <MenuIcon />
-          </IconButton>
-        </Box>
+            Smart Meal Planner
+            {organization && !isMobile && (
+              <Chip
+                label={organization.name}
+                size="small"
+                color="secondary"
+                sx={{ ml: 1 }}
+              />
+            )}
+          </Typography>
 
-        {/* Desktop Navigation Links */}
-        <Box sx={{ display: { xs: mobileMenuOpen ? 'flex' : 'none', md: 'flex' }, flexDirection: { xs: 'column', md: 'row' } }}>
-          {isAuthenticated ? (
-            <>
-                  {/* Client account gets a simplified menu with their dashboard */}
-              {isClientAccount ? (
+          {/* Desktop Navigation Links */}
+          {!isMobile && (
+            <Box sx={{ display: 'flex' }}>
+              {isAuthenticated ? (
                 <>
-                  <Button color="inherit" component={Link} to="/client-dashboard">
-                    Dashboard
-                  </Button>
-                  <Button color="inherit" component={Link} to="/recipes">
-                    Recipe Browser
-                  </Button>
-                  <Button color="inherit" component={Link} to="/saved-recipes">
-                    Saved Recipes
-                  </Button>
-                  <Button color="inherit" component={Link} to="/cart">
-                    Cart
-                  </Button>
+                  {/* Client account gets a simplified menu with their dashboard */}
+                  {isClientAccount ? (
+                    <>
+                      <Button color="inherit" component={Link} to="/client-dashboard">
+                        Dashboard
+                      </Button>
+                      <Button color="inherit" component={Link} to="/recipes">
+                        Recipe Browser
+                      </Button>
+                      <Button color="inherit" component={Link} to="/saved-recipes">
+                        Saved Recipes
+                      </Button>
+                      <Button color="inherit" component={Link} to="/cart">
+                        Cart
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button color="inherit" component={Link} to="/">
+                        Home
+                      </Button>
+                      <Button color="inherit" component={Link} to="/menu">
+                        Menu
+                      </Button>
+                      <Button color="inherit" component={Link} to="/cart">
+                        Cart
+                      </Button>
+                      <Button color="inherit" component={Link} to="/recipes">
+                        Recipes
+                      </Button>
+                    </>
+                  )}
+                  
+                  {/* User Menu */}
+                  <Tooltip title={user?.name || "Account"}>
+                    <IconButton 
+                      color="inherit" 
+                      aria-label="account"
+                      onClick={handleMenuOpen}
+                      sx={{ ml: 1 }}
+                    >
+                      <AccountIcon />
+                    </IconButton>
+                  </Tooltip>
                 </>
               ) : (
                 <>
                   <Button color="inherit" component={Link} to="/">
                     Home
                   </Button>
-                  <Button color="inherit" component={Link} to="/menu">
-                    Menu
+                  <Button color="inherit" component={Link} to="/login">
+                    Login
                   </Button>
-                  <Button color="inherit" component={Link} to="/shopping-list">
-                    Shopping List
-                  </Button>
-                  <Button color="inherit" component={Link} to="/cart">
-                    Cart
-                  </Button>
-                  <Button color="inherit" component={Link} to="/saved-recipes">
-                    Saved Recipes
-                  </Button>
-                  <Button color="inherit" component={Link} to="/recipes">
-                    Recipe Browser
-                  </Button>
-                  <Button color="inherit" component={Link} to="/custom-menu-builder">
-                    Custom Menu
-                  </Button>
-                  <Button color="inherit" component={Link} to="/preferences-page">
-                    Preferences
+                  <Button color="inherit" component={Link} to="/signup">
+                    Sign Up
                   </Button>
                 </>
               )}
-              
-              {/* Admin/Organization features */}
-              {(isOrgAccount || user?.account_type === 'admin') && (
-                <>
-                  <Button 
-                    color="inherit" 
-                    component={Link} 
-                    to="/recipe-admin"
-                  >
-                    Recipe Admin
-                  </Button>
-                  <Button 
-                    color="inherit" 
-                    component={Link} 
-                    to="/organization/dashboard"
-                  >
-                    Manage Organization
-                  </Button>
-                </>
-              )}
-              
-              {/* User Menu */}
-              <Tooltip title={user?.name || "Account"}>
-                <IconButton 
-                  color="inherit" 
-                  aria-label="account"
-                  onClick={handleMenuOpen}
-                  sx={{ ml: 1 }}
-                >
-                  <AccountIcon />
-                </IconButton>
-              </Tooltip>
-              <Menu
-                anchorEl={menuAnchorEl}
-                open={Boolean(menuAnchorEl)}
-                onClose={handleMenuClose}
-                anchorOrigin={{
-                  vertical: 'bottom',
-                  horizontal: 'right',
-                }}
-                transformOrigin={{
-                  vertical: 'top',
-                  horizontal: 'right',
-                }}
-              >
-                <MenuItem disabled>
-                  <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-                    <Typography variant="body1">{user?.name || 'User'}</Typography>
-                    <Typography variant="body2" color="textSecondary">
-                      {user?.email || ''}
-                    </Typography>
-                    <Typography variant="caption" color="primary">
-                      {user?.account_type === 'organization' 
-                        ? 'Organization Account' 
-                        : user?.account_type === 'client'
-                          ? 'Client Account'
-                          : 'Individual Account'}
-                    </Typography>
-                  </Box>
-                </MenuItem>
-                <Divider />
-                <MenuItem onClick={() => { handleMenuClose(); navigate('/preferences-page'); }}>
-                  <PersonIcon sx={{ mr: 1 }} fontSize="small" />
-                  Profile Settings
-                </MenuItem>
-                {isOrgAccount && (
-                  <MenuItem onClick={() => { handleMenuClose(); navigate('/organization/dashboard'); }}>
-                    <DashboardIcon sx={{ mr: 1 }} fontSize="small" />
-                    Organization Dashboard
-                  </MenuItem>
-                )}
-                {isClientAccount && (
-                  <MenuItem onClick={() => { handleMenuClose(); navigate('/client-dashboard'); }}>
-                    <DashboardIcon sx={{ mr: 1 }} fontSize="small" />
-                    Client Dashboard
-                  </MenuItem>
-                )}
-                <Divider />
-                <MenuItem onClick={handleLogout}>
-                  <LogoutIcon sx={{ mr: 1 }} fontSize="small" />
-                  Logout
-                </MenuItem>
-              </Menu>
-            </>
-          ) : (
+            </Box>
+          )}
+
+          {/* Mobile Menu Toggle */}
+          {isMobile && (
             <>
-              <Button color="inherit" component={Link} to="/">
-                Home
-              </Button>
-              <Button color="inherit" component={Link} to="/login">
-                Login
-              </Button>
-              <Button color="inherit" component={Link} to="/signup">
-                Sign Up
-              </Button>
+              {isAuthenticated && (
+                <Tooltip title="Account">
+                  <IconButton 
+                    color="inherit" 
+                    aria-label="account"
+                    onClick={handleMenuOpen}
+                    sx={{ ml: 1 }}
+                  >
+                    <AccountIcon />
+                  </IconButton>
+                </Tooltip>
+              )}
+              <IconButton 
+                color="inherit" 
+                aria-label="menu"
+                onClick={handleDrawerToggle}
+                edge="end"
+              >
+                <MenuIcon />
+              </IconButton>
             </>
           )}
+
+          {/* Account Menu (Desktop and Mobile) */}
+          <Menu
+            anchorEl={menuAnchorEl}
+            open={Boolean(menuAnchorEl)}
+            onClose={handleMenuClose}
+            anchorOrigin={{
+              vertical: 'bottom',
+              horizontal: 'right',
+            }}
+            transformOrigin={{
+              vertical: 'top',
+              horizontal: 'right',
+            }}
+          >
+            <MenuItem disabled>
+              <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                <Typography variant="body1">{user?.name || 'User'}</Typography>
+                <Typography variant="body2" color="textSecondary">
+                  {user?.email || ''}
+                </Typography>
+                <Typography variant="caption" color="primary">
+                  {user?.account_type === 'organization' 
+                    ? 'Organization Account' 
+                    : user?.account_type === 'client'
+                      ? 'Client Account'
+                      : 'Individual Account'}
+                </Typography>
+              </Box>
+            </MenuItem>
+            <Divider />
+            <MenuItem onClick={() => { handleMenuClose(); navigate('/preferences-page'); }}>
+              <PersonIcon sx={{ mr: 1 }} fontSize="small" />
+              Profile Settings
+            </MenuItem>
+            {isOrgAccount && (
+              <MenuItem onClick={() => { handleMenuClose(); navigate('/organization/dashboard'); }}>
+                <DashboardIcon sx={{ mr: 1 }} fontSize="small" />
+                Organization Dashboard
+              </MenuItem>
+            )}
+            {isClientAccount && (
+              <MenuItem onClick={() => { handleMenuClose(); navigate('/client-dashboard'); }}>
+                <DashboardIcon sx={{ mr: 1 }} fontSize="small" />
+                Client Dashboard
+              </MenuItem>
+            )}
+            <Divider />
+            <MenuItem onClick={handleLogout}>
+              <LogoutIcon sx={{ mr: 1 }} fontSize="small" />
+              Logout
+            </MenuItem>
+          </Menu>
+        </Toolbar>
+      </AppBar>
+
+      {/* Mobile Navigation Drawer */}
+      <Drawer
+        anchor="right"
+        open={drawerOpen}
+        onClose={handleDrawerToggle}
+        sx={{
+          '& .MuiDrawer-paper': {
+            width: { xs: '100%', sm: 300 },
+            boxSizing: 'border-box',
+            paddingTop: 1
+          },
+        }}
+      >
+        <Box
+          sx={{ width: { xs: '100%', sm: 300 }, py: 1 }}
+          role="presentation"
+          onClick={handleDrawerToggle}
+        >
+          <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
+            <Typography variant="h6" component="div">
+              Menu
+            </Typography>
+          </Box>
+          {organization && (
+            <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
+              <Chip
+                label={organization.name}
+                size="small"
+                color="secondary"
+              />
+            </Box>
+          )}
+          <Divider />
+          <List>
+            {getNavItems().map((item) => (
+              <ListItem key={item.text} disablePadding>
+                <ListItemButton
+                  component={Link}
+                  to={item.path}
+                  sx={{ py: 1.5 }} // Larger touch target
+                >
+                  <ListItemIcon>
+                    {item.icon}
+                  </ListItemIcon>
+                  <ListItemText primary={item.text} />
+                </ListItemButton>
+              </ListItem>
+            ))}
+          </List>
         </Box>
-      </Toolbar>
-    </AppBar>
+      </Drawer>
+    </>
   );
 }
 

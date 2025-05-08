@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import '../services/api_service.dart';
 
 class CompareScreen extends StatefulWidget {
   final int userId;
@@ -16,8 +17,8 @@ class CompareScreen extends StatefulWidget {
 }
 
 class _CompareScreenState extends State<CompareScreen> {
-  // Example store options
-  final List<String> allStores = ["Kroger", "Walmart", "Sprouts", "Albertsons"];
+  // Only supporting Kroger for now
+  final List<String> allStores = ["Kroger"];
   List<String> selectedStores = [];
 
   // Results
@@ -132,7 +133,11 @@ class _CompareScreenState extends State<CompareScreen> {
                                   final imageUrl = opt["image_url"];
                                   return ListTile(
                                     leading: imageUrl != null
-                                      ? Image.network(imageUrl, width: 50, height: 50)
+                                      ? Image.network(
+                                          ApiService.cleanImageUrl(imageUrl.toString()), 
+                                          width: 50, 
+                                          height: 50
+                                        )
                                       : Icon(Icons.store),
                                     title: Text("$storeName - \$${price.toStringAsFixed(2)}"),
                                   );

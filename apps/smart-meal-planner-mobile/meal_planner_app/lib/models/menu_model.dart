@@ -148,18 +148,37 @@ class Recipe {
     int parseId() {
       try {
         // Try different ID field names
-        dynamic id = json['id'] ?? json['scraped_recipe_id'] ?? json['recipe_id'] ?? 0;
+        dynamic id = json['id'] ?? json['scraped_recipe_id'] ?? json['recipe_id'] ?? json['menu_id'] ?? 0;
+        
+        // Print the id for debugging
+        print("Parsing ID from value: $id (${id.runtimeType})");
         
         // Handle various types
         if (id is int) return id;
-        if (id is String) return int.tryParse(id) ?? 0;
+        if (id is String) {
+          // Try to parse as integer
+          int? parsedId = int.tryParse(id);
+          if (parsedId != null) {
+            return parsedId;
+          }
+          // If it's a string but not a valid integer, use a hash code as fallback
+          return id.hashCode.abs();
+        }
         if (id is double) return id.toInt();
         
         // Final fallback - force toString and parse
-        return int.tryParse(id.toString()) ?? 0;
+        final stringValue = id.toString();
+        final parsedValue = int.tryParse(stringValue);
+        if (parsedValue != null) {
+          return parsedValue;
+        }
+        
+        // Use hash code as final resort
+        return stringValue.hashCode.abs();
       } catch (e) {
-        print("Error parsing id from ${json['id'] ?? json['scraped_recipe_id']}: $e");
-        return 0;
+        print("Error parsing id from ${json['id'] ?? json['scraped_recipe_id'] ?? json['menu_id']}: $e");
+        // Use current timestamp as last resort ID
+        return DateTime.now().microsecondsSinceEpoch % 1000000;
       }
     }
     
@@ -1075,9 +1094,24 @@ class Menu {
     // Safe parsing helpers
     int safeParseInt(dynamic value) {
       if (value == null) return 0;
+      
+      // Print for debugging
+      print("safeParseInt parsing value: $value (${value.runtimeType})");
+      
       if (value is int) return value;
-      if (value is String) return int.tryParse(value) ?? 0;
-      return 0;
+      if (value is String) {
+        // Try to parse as integer
+        int? parsedValue = int.tryParse(value);
+        if (parsedValue != null) {
+          return parsedValue;
+        }
+        // Use hash code as fallback for string IDs that aren't numeric
+        return value.hashCode.abs();
+      }
+      if (value is double) return value.toInt();
+      
+      // Final fallback - use hash code of string representation
+      return value.toString().hashCode.abs();
     }
     
     DateTime safeParseDate(dynamic value) {
@@ -1093,8 +1127,37 @@ class Menu {
       return DateTime.now();
     }
     
+    // Extract menu ID with more robust handling
+    int getMenuId() {
+      try {
+        // Try different ID field names
+        dynamic menuId = json['id'] ?? json['menu_id'] ?? 0;
+        print("Extracting menu ID from: $menuId (${menuId.runtimeType})");
+        
+        // Handle various types
+        if (menuId is int) return menuId;
+        if (menuId is String) {
+          // Try to parse as integer
+          int? parsedId = int.tryParse(menuId);
+          if (parsedId != null) {
+            return parsedId;
+          }
+          // If it's a string but not parseable as int, use hash code
+          return menuId.hashCode.abs();
+        }
+        if (menuId is double) return menuId.toInt();
+        
+        // Use a hash code for any other type
+        return menuId.toString().hashCode.abs();
+      } catch (e) {
+        print("Error extracting menu ID: $e");
+        // Use timestamp as last resort
+        return DateTime.now().millisecondsSinceEpoch % 1000000;
+      }
+    }
+    
     return Menu(
-      id: safeParseInt(json['id'] ?? json['menu_id']),
+      id: getMenuId(),
       title: json['title']?.toString() ?? json['nickname']?.toString() ?? "Weekly Menu",
       createdAt: json['created_at'] != null 
           ? safeParseDate(json['created_at'])
