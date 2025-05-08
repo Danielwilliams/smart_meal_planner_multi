@@ -1839,64 +1839,215 @@ class ApiService {
     }
   }
   
-  // Get client's preferences
+  // Get client's preferences - Enhanced with multiple fallback approaches
   static Future<Map<String, dynamic>> getClientPreferences(
     int clientId,
     String authToken,
   ) async {
     try {
-      final result = await _get("/organizations/clients/$clientId/preferences", authToken);
+      print("Fetching preferences for client ID: $clientId");
+      List<String> attemptedEndpoints = [];
       
-      if (result != null && result is Map) {
-        return _toStringDynamicMap(result);
+      // First try organization client preferences endpoints
+      final endpoints = [
+        "/organizations/clients/$clientId/preferences",
+        "/clients/$clientId/preferences",
+        "/preferences/$clientId",
+        "/user/$clientId/preferences"
+      ];
+      
+      // Try GET requests to all endpoints
+      for (String endpoint in endpoints) {
+        try {
+          print("Trying GET to endpoint: $endpoint");
+          attemptedEndpoints.add("GET $endpoint");
+          final result = await _get(endpoint, authToken);
+          
+          if (result != null && result is Map) {
+            print("✅ Success from GET endpoint: $endpoint");
+            return _toStringDynamicMap(result);
+          }
+        } catch (endpointError) {
+          print("❌ Error with GET to endpoint $endpoint: $endpointError");
+        }
       }
       
-      // Try alternate endpoint
-      final altResult = await _get("/clients/$clientId/preferences", authToken);
-      
-      if (altResult != null && altResult is Map) {
-        return _toStringDynamicMap(altResult);
+      // Try POST requests to the same endpoints as fallback
+      for (String endpoint in endpoints) {
+        try {
+          print("Trying POST to endpoint: $endpoint");
+          attemptedEndpoints.add("POST $endpoint");
+          
+          // Create a basic POST request
+          final url = Uri.parse("$baseUrl$endpoint");
+          final response = await http.post(
+            url,
+            headers: _getHeaders(authToken),
+          );
+          
+          print("POST $endpoint - Status: ${response.statusCode}");
+          final result = _parseResponse(response);
+          
+          if (result != null && result is Map) {
+            print("✅ Success from POST endpoint: $endpoint");
+            return _toStringDynamicMap(result);
+          }
+        } catch (endpointError) {
+          print("❌ Error with POST to endpoint $endpoint: $endpointError");
+        }
       }
       
+      // As a last resort, try the main preferences endpoint with client_id parameter
+      try {
+        print("Trying preferences endpoint with client_id parameter");
+        attemptedEndpoints.add("GET /preferences?client_id=$clientId");
+        final result = await _get("/preferences?client_id=$clientId", authToken);
+        
+        if (result != null && result is Map) {
+          print("✅ Success from client_id parameter endpoint");
+          return _toStringDynamicMap(result);
+        }
+      } catch (paramError) {
+        print("❌ Error with client_id parameter: $paramError");
+      }
+      
+      print("⚠️ All client preference endpoints failed. Attempted: $attemptedEndpoints");
+      
+      // Return empty preferences with error message
       return {
         "preferences": {},
-        "error": "Could not retrieve client preferences"
+        "diet_type": "",
+        "dietary_restrictions": "",
+        "disliked_ingredients": "",
+        "recipe_type": "",
+        "macro_protein": null,
+        "macro_carbs": null,
+        "macro_fat": null,
+        "calorie_goal": null,
+        "meals": {
+          "breakfast": false,
+          "lunch": false,
+          "dinner": false,
+          "snacks": false
+        },
+        "appliances": {
+          "airFryer": false,
+          "instapot": false,
+          "crockpot": false
+        },
+        "prepComplexity": 50,
+        "snacksPerDay": 0,
+        "servings_per_meal": 1,
+        "kroger_store_location": null,
+        "error": "Could not retrieve client preferences after multiple attempts"
       };
     } catch (e) {
       print("Error getting client preferences: $e");
       return {
         "preferences": {},
+        "diet_type": "",
+        "dietary_restrictions": "",
+        "disliked_ingredients": "",
         "error": e.toString()
       };
     }
   }
   
-  // Create menu for client
+  // Create menu for client - Enhanced with multiple fallback approaches
   static Future<Map<String, dynamic>> createClientMenu(
     int clientId,
     String authToken,
     Map<String, dynamic> menuData,
   ) async {
     try {
-      final result = await _post("/organizations/clients/$clientId/menus", menuData, authToken);
+      print("Creating menu for client ID: $clientId");
+      List<String> attemptedEndpoints = [];
       
-      if (result != null && result is Map) {
-        return _toStringDynamicMap(result);
-      }
-      
-      // Try alternate endpoint
-      final altResult = await _post("/menus/create_for_client", {
+      // Ensure client_id is included in the menu data for all endpoints
+      final Map<String, dynamic> enrichedMenuData = {
         ...menuData,
         "client_id": clientId
-      }, authToken);
+      };
       
-      if (altResult != null && altResult is Map) {
-        return _toStringDynamicMap(altResult);
+      // Try multiple endpoint patterns
+      final endpoints = [
+        "/organizations/clients/$clientId/menus",
+        "/menus/create_for_client",
+        "/menu/generate-for-client/$clientId",
+        "/menu/client/$clientId/custom",
+        "/menu/custom/client/$clientId"
+      ];
+      
+      // Try each endpoint until one succeeds
+      for (String endpoint in endpoints) {
+        try {
+          print("Trying POST to endpoint: $endpoint");
+          attemptedEndpoints.add("POST $endpoint");
+          
+          final result = await _post(endpoint, enrichedMenuData, authToken);
+          
+          if (result != null && result is Map) {
+            print("✅ Success from endpoint: $endpoint");
+            return _toStringDynamicMap(result);
+          }
+        } catch (endpointError) {
+          print("❌ Error with endpoint $endpoint: $endpointError");
+        }
       }
       
+      // Last resort: try to generate and then share a menu
+      try {
+        print("Trying two-step create and share approach");
+        
+        // Step 1: Generate a regular menu
+        print("Step 1: Generate regular menu");
+        final generateResult = await _post("/menu/generate", {
+          ...enrichedMenuData,
+          "for_client": true
+        }, authToken);
+        
+        if (generateResult != null && generateResult is Map) {
+          final safeGenerateResult = _toStringDynamicMap(generateResult);
+          
+          // Extract menu ID
+          String? menuId;
+          if (safeGenerateResult.containsKey('id')) {
+            menuId = safeGenerateResult['id'].toString();
+          } else if (safeGenerateResult.containsKey('menu_id')) {
+            menuId = safeGenerateResult['menu_id'].toString();
+          }
+          
+          if (menuId != null) {
+            // Step 2: Share the menu with the client
+            print("Step 2: Share menu $menuId with client $clientId");
+            final shareResult = await _post("/menu/share/$menuId/client/$clientId", {
+              "permission_level": "read"
+            }, authToken);
+            
+            if (shareResult != null && shareResult is Map) {
+              print("✅ Success with two-step approach");
+              final safeShareResult = _toStringDynamicMap(shareResult);
+              
+              // Combine the results
+              return {
+                ...safeGenerateResult,
+                "shared": true,
+                "share_result": safeShareResult,
+                "two_step_approach": true
+              };
+            }
+          }
+        }
+      } catch (twoStepError) {
+        print("❌ Error with two-step approach: $twoStepError");
+      }
+      
+      print("⚠️ All client menu creation endpoints failed. Attempted: $attemptedEndpoints");
+      
+      // Return error message
       return {
         "success": false,
-        "error": "Could not create menu for client"
+        "error": "Could not create menu for client after multiple attempts"
       };
     } catch (e) {
       print("Error creating client menu: $e");
@@ -1907,43 +2058,157 @@ class ApiService {
     }
   }
   
-  // Get menus shared with client
+  // Get menus shared with client - Enhanced with multiple fallback approaches
   static Future<Map<String, dynamic>> getClientMenus(
     int clientId,
     String authToken,
   ) async {
     try {
-      final result = await _get("/organizations/clients/$clientId/menus", authToken);
+      print("Fetching menus for client ID: $clientId");
+      List<String> attemptedEndpoints = [];
       
-      if (result != null) {
+      // Helper function to normalize menu data
+      Map<String, dynamic> normalizeMenuResponse(dynamic result) {
+        if (result == null) {
+          return {
+            "menus": [],
+            "total": 0
+          };
+        }
+        
         if (result is List) {
+          print("Menu response is a List with ${result.length} items");
           return {
             "menus": result,
             "total": result.length
           };
         } else if (result is Map) {
-          return _toStringDynamicMap(result);
+          // Make sure we have a string keys map
+          final Map<String, dynamic> safeResult = _toStringDynamicMap(result);
+          
+          // If the map contains a 'menus' key, use that
+          if (safeResult.containsKey('menus')) {
+            if (safeResult['menus'] is List) {
+              print("Found 'menus' list in response with ${(safeResult['menus'] as List).length} items");
+              // Ensure total field is present
+              if (!safeResult.containsKey('total')) {
+                safeResult['total'] = (safeResult['menus'] as List).length;
+              }
+              return safeResult;
+            }
+          } 
+          
+          // The map might be a menu itself or contain the data we need
+          print("Response is a Map with keys: ${safeResult.keys.join(', ')}");
+          
+          // If it looks like a list wrapper without 'menus' key
+          if (safeResult.containsKey('data') && safeResult['data'] is List) {
+            print("Using 'data' field as menus list");
+            return {
+              "menus": safeResult['data'],
+              "total": (safeResult['data'] as List).length
+            };
+          }
+          
+          // If it has items or results key
+          if (safeResult.containsKey('items') && safeResult['items'] is List) {
+            print("Using 'items' field as menus list");
+            return {
+              "menus": safeResult['items'],
+              "total": (safeResult['items'] as List).length
+            };
+          }
+          
+          if (safeResult.containsKey('results') && safeResult['results'] is List) {
+            print("Using 'results' field as menus list");
+            return {
+              "menus": safeResult['results'],
+              "total": (safeResult['results'] as List).length
+            };
+          }
+          
+          // Return the map itself as it might contain what we need
+          return safeResult;
+        }
+        
+        // Default empty response
+        return {
+          "menus": [],
+          "total": 0
+        };
+      }
+      
+      // Try multiple endpoint patterns with both GET and POST
+      final endpoints = [
+        "/organizations/clients/$clientId/menus",
+        "/clients/$clientId/menus",
+        "/menu/client/$clientId",
+        "/menu/for-client/$clientId",
+        "/client/menus/list/$clientId"
+      ];
+      
+      // Try GET requests to all endpoints
+      for (String endpoint in endpoints) {
+        try {
+          print("Trying GET to endpoint: $endpoint");
+          attemptedEndpoints.add("GET $endpoint");
+          final result = await _get(endpoint, authToken);
+          
+          if (result != null) {
+            print("✅ Success from GET endpoint: $endpoint");
+            return normalizeMenuResponse(result);
+          }
+        } catch (endpointError) {
+          print("❌ Error with GET to endpoint $endpoint: $endpointError");
         }
       }
       
-      // Try alternate endpoint
-      final altResult = await _get("/clients/$clientId/menus", authToken);
-      
-      if (altResult != null) {
-        if (altResult is List) {
-          return {
-            "menus": altResult,
-            "total": altResult.length
-          };
-        } else if (altResult is Map) {
-          return _toStringDynamicMap(altResult);
+      // Try POST requests to the same endpoints as fallback
+      for (String endpoint in endpoints) {
+        try {
+          print("Trying POST to endpoint: $endpoint");
+          attemptedEndpoints.add("POST $endpoint");
+          
+          // Create a basic POST request
+          final url = Uri.parse("$baseUrl$endpoint");
+          final response = await http.post(
+            url,
+            headers: _getHeaders(authToken),
+          );
+          
+          print("POST $endpoint - Status: ${response.statusCode}");
+          final result = _parseResponse(response);
+          
+          if (result != null) {
+            print("✅ Success from POST endpoint: $endpoint");
+            return normalizeMenuResponse(result);
+          }
+        } catch (endpointError) {
+          print("❌ Error with POST to endpoint $endpoint: $endpointError");
         }
       }
       
+      // Try client-specific menu generation endpoint as a fallback
+      try {
+        print("Trying menu history endpoint for client");
+        attemptedEndpoints.add("GET /menu/history/$clientId");
+        final result = await _get("/menu/history/$clientId", authToken);
+        
+        if (result != null) {
+          print("✅ Success from menu history endpoint");
+          return normalizeMenuResponse(result);
+        }
+      } catch (historyError) {
+        print("❌ Error with menu history endpoint: $historyError");
+      }
+      
+      print("⚠️ All client menu endpoints failed. Attempted: $attemptedEndpoints");
+      
+      // Return empty menu list with error message
       return {
         "menus": [],
         "total": 0,
-        "error": "Could not retrieve client menus"
+        "error": "Could not retrieve client menus after multiple attempts"
       };
     } catch (e) {
       print("Error getting client menus: $e");
