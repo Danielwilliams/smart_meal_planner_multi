@@ -65,7 +65,15 @@
   .MuiToolbar-root {
     padding-left: 16px !important;
     padding-right: 16px !important;
-    justify-content: space-between;
+    justify-content: space-between !important;
+    display: flex !important;
+  }
+  
+  /* Force the mobile menu controls to the right */
+  .MuiToolbar-root > div:last-child {
+    margin-left: auto !important;
+    display: flex !important;
+    justify-content: flex-end !important;
   }
   
   .MuiAccordion-root {

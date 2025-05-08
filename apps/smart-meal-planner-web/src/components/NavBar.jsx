@@ -165,14 +165,14 @@ function NavBar() {
   return (
     <>
       <AppBar position="static">
-        <Toolbar sx={{ flexWrap: 'wrap' }}>
+        <Toolbar sx={{ flexWrap: 'wrap', justifyContent: 'space-between' }}>
           {/* Logo/Title Area */}
           <Typography 
             variant="h6" 
             component={Link} 
             to="/"
             sx={{ 
-              flexGrow: { xs: 1, md: 0 }, 
+              flexGrow: 0, 
               mr: { xs: 0, md: 2 },
               textDecoration: 'none', 
               color: 'inherit',
@@ -193,7 +193,7 @@ function NavBar() {
 
           {/* Desktop Navigation Links */}
           {!isMobile && (
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', ml: 'auto' }}>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
               {isAuthenticated ? (
                 <>
                   {/* Client account gets a simplified menu with their dashboard */}
@@ -321,7 +321,7 @@ function NavBar() {
 
           {/* Mobile Menu Toggle */}
           {isMobile && (
-            <Box sx={{ display: 'flex', ml: 'auto', justifyContent: 'flex-end' }}>
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
               {isAuthenticated && (
                 <Tooltip title="Account">
                   <IconButton 

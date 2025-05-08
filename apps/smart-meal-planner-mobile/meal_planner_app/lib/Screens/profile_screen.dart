@@ -48,12 +48,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
       
       print("ACCOUNT INFO: $accountInfo");
       
-      // Check for any indicator of organization/trainer status
+      // Check specifically for organization account type
       bool isOrganization = 
         accountInfo['is_organization'] == true || 
-        accountInfo['is_trainer'] == true ||
-        accountInfo['account_type'] == 'organization' ||
-        accountInfo['account_type'] == 'trainer';
+        accountInfo['account_type'] == 'organization';
       
       // Store organization ID if found
       int? organizationId;

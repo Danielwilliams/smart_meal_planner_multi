@@ -490,14 +490,22 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       );
     }
     
-    // Enhanced logging to diagnose trainer status
-    print("🔍 TRAINER STATUS CHECK");
+    // Enhanced logging to diagnose organization account status
+    print("🔍 ORGANIZATION STATUS CHECK");
     print("AppState isTrainer: ${appState.isTrainer}");
     print("AuthProvider isTrainer: ${authProvider.isTrainer}");
     print("AuthProvider accountType: ${authProvider.accountType}");
     
-    // Always show all tabs but use consistent indices regardless of user type
-    final hasOrganizationTab = appState.isTrainer;
+    // IMPORTANT: Ensure organization tab shows for organization accounts
+    // Check both sources and specifically look for 'organization' account type
+    final hasOrganizationTab = appState.isTrainer || authProvider.isTrainer || 
+        (authProvider.accountType != null && authProvider.accountType == 'organization');
+    
+    // For testing purposes, can force it to true
+    // final hasOrganizationTab = true;
+    
+    // Debug the final decision
+    print("SHOWING ORGANIZATION TAB: $hasOrganizationTab");
     
     // Define all possible screens
     final Map<String, Widget> allScreens = {

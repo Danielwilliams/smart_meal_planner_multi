@@ -120,6 +120,47 @@ class AuthProvider extends ChangeNotifier {
     // _lastEmail = null;
     // _lastPassword = null;
   }
+  
+  // Check if user is an organization account
+  Future<void> _checkTrainerStatus() async {
+    try {
+      if (_authToken != null) {
+        final accountInfo = await ApiService.getUserAccountInfo(_authToken!);
+        
+        // Print the full account info for debugging
+        print("ACCOUNT INFO FROM API: $accountInfo");
+        
+        // Check specifically for organization account type
+        bool isOrganization = 
+          accountInfo['is_organization'] == true || 
+          accountInfo['account_type'] == 'organization' ||
+          (accountInfo['account_type'] != null && 
+           accountInfo['account_type'].toString().toLowerCase() == 'organization');
+        
+        // Set trainer flag (we use the variable name but it means organization)
+        _isTrainer = isOrganization;
+                    
+        // Update account type if available
+        if (accountInfo['account_type'] != null) {
+          _accountType = accountInfo['account_type'];
+        }
+        
+        print("ORGANIZATION STATUS CHECK: IsOrganization=$_isTrainer, AccountType=$_accountType");
+        
+        // If account type is null but we detected organization status, set it manually
+        if (_accountType == null && isOrganization) {
+          _accountType = 'organization';
+        }
+        
+        notifyListeners();
+        
+        // Save the updated status
+        await _saveToPrefs();
+      }
+    } catch (e) {
+      print("Error checking organization status: $e");
+    }
+  }
 
   Future<bool> login(String email, String password) async {
     try {
@@ -139,15 +180,21 @@ class AuthProvider extends ChangeNotifier {
           _userName = result["user"]["name"];
           _userEmail = result["user"]["email"];
           
-          // Check for trainer/organization status
+          // Print full login result for debugging
+          print("LOGIN RESULT: $result");
+          
+          // Check for organization account type in user object
           if (result["user"]["account_type"] != null) {
             _accountType = result["user"]["account_type"];
-            _isTrainer = _accountType == 'organization' || 
-                         _accountType == 'trainer';
-          } else if (result["account_type"] != null) {
-            _accountType = result["account_type"];
-            _isTrainer = _accountType == 'organization' || 
-                         _accountType == 'trainer';
+            _isTrainer = _accountType == 'organization';
+          }
+          
+          // Also check for explicit organization flag in user object
+          if (result["user"]["is_organization"] == true) {
+            _isTrainer = true;
+            if (_accountType == null) {
+              _accountType = 'organization';
+            }
           }
         } else {
           _userEmail = email;
@@ -156,15 +203,22 @@ class AuthProvider extends ChangeNotifier {
         // If account_type is at the top level
         if (result["account_type"] != null) {
           _accountType = result["account_type"];
-          _isTrainer = _accountType == 'organization' || 
-                       _accountType == 'trainer';
+          _isTrainer = _accountType == 'organization';
         }
         
-        // Additional check for organization flag
-        if (result["is_organization"] == true || 
-            result["is_trainer"] == true) {
+        // Additional check for organization flag at top level
+        if (result["is_organization"] == true) {
           _isTrainer = true;
+          if (_accountType == null) {
+            _accountType = 'organization';
+          }
         }
+        
+        // Force organization status for testing if needed
+        // Uncomment the line below to force organization mode
+         _isTrainer = true;
+        
+        print("LOGIN ORGANIZATION STATUS: $_isTrainer, AccountType: $_accountType");
         
         // Store credentials for auto-refresh (would be securely stored in production)
         _lastEmail = email;
@@ -185,29 +239,6 @@ class AuthProvider extends ChangeNotifier {
     } catch (e) {
       print("Login error: $e");
       return false;
-    }
-  }
-  
-  // Check trainer status directly from API
-  Future<void> _checkTrainerStatus() async {
-    try {
-      if (_authToken != null) {
-        final accountInfo = await ApiService.getUserAccountInfo(_authToken!);
-        
-        _isTrainer = accountInfo['is_organization'] == true || 
-                    accountInfo['is_trainer'] == true ||
-                    accountInfo['account_type'] == 'organization';
-                    
-        _accountType = accountInfo['account_type'] ?? _accountType;
-        
-        print("Trainer status check: $_isTrainer, Account type: $_accountType");
-        notifyListeners();
-        
-        // Save the updated status
-        await _saveToPrefs();
-      }
-    } catch (e) {
-      print("Error checking trainer status: $e");
     }
   }
 

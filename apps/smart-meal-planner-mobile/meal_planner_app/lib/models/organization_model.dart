@@ -142,8 +142,8 @@ class UserAccount {
   }
 
   bool get isOrganization {
-    return accountType.toLowerCase() == 'organization' || 
-           accountType.toLowerCase() == 'trainer';
+    // Only check for organization account type
+    return accountType.toLowerCase() == 'organization';
   }
 
   bool get isClient {

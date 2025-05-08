@@ -71,14 +71,13 @@ class _OrganizationScreenState extends State<OrganizationScreen> with SingleTick
         
         // Check if the account is recognized as an organization/trainer account
         if (!(_userAccount?.isOrganization == true)) {
-          // Try to infer from other account data
-          final isTrainer = accountResult['is_organization'] == true || 
-                          accountResult['is_trainer'] == true ||
-                          accountResult['account_type'] == 'organization';
+          // Check specifically for organization account type
+          final isOrganization = accountResult['is_organization'] == true || 
+                               accountResult['account_type'] == 'organization';
           
-          if (isTrainer) {
-            print("Account not explicitly marked as trainer but has trainer flags. Overriding...");
-            // Create a modified UserAccount with trainer flag set
+          if (isOrganization) {
+            print("Account not explicitly marked as organization but has organization flags. Overriding...");
+            // Create a modified UserAccount with organization flag set
             final Map<String, dynamic> updatedAccount = {
               ...accountResult,
               'account_type': 'organization',
