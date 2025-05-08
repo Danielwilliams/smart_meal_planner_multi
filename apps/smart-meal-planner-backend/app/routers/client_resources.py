@@ -44,29 +44,50 @@ async def get_client_dashboard(user=Depends(get_user_from_token)):
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
 
-        # Get shared menus
+        # Check if shared_menus table exists
         cursor.execute("""
-            SELECT 
-                ms.id as share_id, 
-                ms.menu_id, 
-                ms.client_id, 
-                ms.organization_id, 
-                ms.permission_level,
-                ms.shared_at,
-                ms.message,
-                m.title, 
-                m.nickname,
-                m.description,
-                m.created_at,
-                o.name as organization_name
-            FROM menu_shares ms
-            JOIN menus m ON ms.menu_id = m.id
-            JOIN organizations o ON ms.organization_id = o.id
-            WHERE ms.client_id = %s AND ms.is_active = TRUE
-            ORDER BY ms.shared_at DESC
-        """, (user_id,))
-
-        shared_menus = cursor.fetchall()
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_schema = 'public' 
+                AND table_name = 'shared_menus'
+            )
+        """)
+        
+        has_shared_menus_table = cursor.fetchone()['exists']
+        
+        shared_menus = []
+        
+        if has_shared_menus_table:
+            try:
+                # Get shared menus
+                cursor.execute("""
+                    SELECT 
+                        sm.id as share_id, 
+                        sm.menu_id, 
+                        sm.client_id, 
+                        sm.organization_id, 
+                        sm.permission_level,
+                        sm.shared_at,
+                        sm.message,
+                        m.title, 
+                        m.nickname,
+                        m.description,
+                        m.created_at,
+                        o.name as organization_name
+                    FROM shared_menus sm
+                    JOIN menus m ON sm.menu_id = m.id
+                    JOIN organizations o ON sm.organization_id = o.id
+                    WHERE sm.client_id = %s AND sm.is_active = TRUE
+                    ORDER BY sm.shared_at DESC
+                """, (user_id,))
+                
+                shared_menus = cursor.fetchall()
+                logger.info(f"Found {len(shared_menus)} shared menus for user {user_id}")
+            except Exception as e:
+                logger.error(f"Error fetching shared menus: {e}")
+                shared_menus = []
+        else:
+            logger.warning("shared_menus table does not exist in the database")
 
         # Get saved recipes
         cursor.execute("""
@@ -181,12 +202,27 @@ async def get_client_menu(
             """, (menu_id, user_id))
             has_access = cursor.fetchone() is not None
         else:
-            # Clients can only access menus shared with them
+            # Check if shared_menus table exists
             cursor.execute("""
-                SELECT 1 FROM menu_shares
-                WHERE menu_id = %s AND client_id = %s AND is_active = TRUE
-            """, (menu_id, user_id))
-            has_access = cursor.fetchone() is not None
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name = 'shared_menus'
+                )
+            """)
+            
+            has_shared_menus_table = cursor.fetchone()['exists']
+            
+            if has_shared_menus_table:
+                # Clients can only access menus shared with them
+                cursor.execute("""
+                    SELECT 1 FROM shared_menus
+                    WHERE menu_id = %s AND client_id = %s AND is_active = TRUE
+                """, (menu_id, user_id))
+                has_access = cursor.fetchone() is not None
+            else:
+                logger.warning("shared_menus table does not exist in the database")
+                has_access = False
 
         if not has_access:
             raise HTTPException(status_code=403, detail="You don't have access to this menu")
@@ -241,21 +277,35 @@ async def get_client_menu(
 
         # Get share information if client is accessing
         if user.get('account_type') != 'organization':
+            # Check if shared_menus table exists
             cursor.execute("""
-                SELECT 
-                    id as share_id,
-                    menu_id,
-                    client_id,
-                    organization_id,
-                    permission_level,
-                    shared_at,
-                    message
-                FROM menu_shares
-                WHERE menu_id = %s AND client_id = %s AND is_active = TRUE
-            """, (menu_id, user_id))
-            share_info = cursor.fetchone()
-            if share_info:
-                menu['share_info'] = share_info
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name = 'shared_menus'
+                )
+            """)
+            
+            has_shared_menus_table = cursor.fetchone()['exists']
+            
+            if has_shared_menus_table:
+                cursor.execute("""
+                    SELECT 
+                        id as share_id,
+                        menu_id,
+                        client_id,
+                        organization_id,
+                        permission_level,
+                        shared_at,
+                        message
+                    FROM shared_menus
+                    WHERE menu_id = %s AND client_id = %s AND is_active = TRUE
+                """, (menu_id, user_id))
+                share_info = cursor.fetchone()
+                if share_info:
+                    menu['share_info'] = share_info
+            else:
+                logger.warning("shared_menus table does not exist in the database")
 
         return menu
 
@@ -294,12 +344,27 @@ async def get_client_menu_grocery_list(
             """, (menu_id, user_id))
             has_access = cursor.fetchone() is not None
         else:
-            # Clients can only access menus shared with them
+            # Check if shared_menus table exists
             cursor.execute("""
-                SELECT 1 FROM menu_shares
-                WHERE menu_id = %s AND client_id = %s AND is_active = TRUE
-            """, (menu_id, user_id))
-            has_access = cursor.fetchone() is not None
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name = 'shared_menus'
+                )
+            """)
+            
+            has_shared_menus_table = cursor.fetchone()['exists']
+            
+            if has_shared_menus_table:
+                # Clients can only access menus shared with them
+                cursor.execute("""
+                    SELECT 1 FROM shared_menus
+                    WHERE menu_id = %s AND client_id = %s AND is_active = TRUE
+                """, (menu_id, user_id))
+                has_access = cursor.fetchone() is not None
+            else:
+                logger.warning("shared_menus table does not exist in the database")
+                has_access = False
 
         if not has_access:
             raise HTTPException(status_code=403, detail="You don't have access to this menu")
@@ -499,27 +564,48 @@ async def org_get_client_menus(
         if not cursor.fetchone():
             raise HTTPException(status_code=404, detail="Client not found in your organization")
 
-        # Get all menus created for and shared with this client
+        # First check if shared_menus table exists
         cursor.execute("""
-            SELECT 
-                m.id,
-                m.title,
-                m.description,
-                m.created_at,
-                m.nickname,
-                m.published,
-                m.image_url,
-                ms.permission_level,
-                ms.shared_at,
-                ms.id as share_id,
-                ms.message
-            FROM menus m
-            JOIN menu_shares ms ON m.id = ms.menu_id
-            WHERE ms.client_id = %s AND ms.organization_id = %s AND ms.is_active = TRUE
-            ORDER BY ms.shared_at DESC
-        """, (client_id, organization_id))
-
-        shared_menus = cursor.fetchall()
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_schema = 'public' 
+                AND table_name = 'shared_menus'
+            )
+        """)
+        
+        has_shared_menus_table = cursor.fetchone()['exists']
+        
+        shared_menus = []
+        
+        if has_shared_menus_table:
+            try:
+                # Get all menus created for and shared with this client
+                cursor.execute("""
+                    SELECT 
+                        m.id,
+                        m.title,
+                        m.description,
+                        m.created_at,
+                        m.nickname,
+                        m.published,
+                        m.image_url,
+                        ms.permission_level,
+                        ms.shared_at,
+                        ms.id as share_id,
+                        ms.message
+                    FROM menus m
+                    JOIN shared_menus ms ON m.id = ms.menu_id
+                    WHERE ms.client_id = %s AND ms.organization_id = %s AND ms.is_active = TRUE
+                    ORDER BY ms.shared_at DESC
+                """, (client_id, organization_id))
+                
+                shared_menus = cursor.fetchall()
+                logger.info(f"Found {len(shared_menus)} shared menus for client {client_id}")
+            except Exception as e:
+                logger.error(f"Error fetching shared menus: {e}")
+                shared_menus = []
+        else:
+            logger.warning("shared_menus table does not exist in the database")
 
         # Also get menus directly created for this client
         cursor.execute("""
@@ -863,27 +949,45 @@ async def org_create_client_menu(
         
         menu_id = cursor.fetchone()['id']
         
-        # Share the menu with the client
+        # First check if shared_menus table exists
         cursor.execute("""
-            INSERT INTO menu_shares (
-                menu_id, 
-                client_id, 
-                organization_id, 
-                permission_level, 
-                message, 
-                is_active
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_schema = 'public' 
+                AND table_name = 'shared_menus'
             )
-            VALUES (%s, %s, %s, %s, %s, TRUE)
-            RETURNING id
-        """, (
-            menu_id,
-            client_id,
-            organization_id,
-            'read',
-            f'Menu created for you: {title}'
-        ))
+        """)
         
-        share_id = cursor.fetchone()['id']
+        has_shared_menus_table = cursor.fetchone()['exists']
+        
+        share_id = None
+        
+        if has_shared_menus_table:
+            # Share the menu with the client
+            cursor.execute("""
+                INSERT INTO shared_menus (
+                    menu_id, 
+                    client_id, 
+                    organization_id, 
+                    permission_level, 
+                    message, 
+                    is_active
+                )
+                VALUES (%s, %s, %s, %s, %s, TRUE)
+                RETURNING id
+            """, (
+                menu_id,
+                client_id,
+                organization_id,
+                'read',
+                f'Menu created for you: {title}'
+            ))
+            
+            share_result = cursor.fetchone()
+            if share_result:
+                share_id = share_result['id']
+        else:
+            logger.warning("shared_menus table does not exist in the database - menu created but not shared")
         
         conn.commit()
         
