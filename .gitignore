@@ -1,4 +1,3 @@
-@"
 # Environment variables
 .env
 *.env
@@ -30,7 +29,29 @@ db.sqlite3
 .idea/
 .vscode/
 .DS_Store
+Thumbs.db
 
 # Compiled Python files
 *.pyc
-"@ | Out-File .gitignore -Encoding UTF8
+
+# Binary and build files
+*.bin
+**/android/app/.cxx/
+**/android/.gradle/
+**/android/gradlew
+**/android/gradlew.bat
+**/android/local.properties
+**/android/**/GeneratedPluginRegistrant.*
+
+# Flutter/Dart specific
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+**/ios/Flutter/.last_build_id
+
+# Node modules
+**/node_modules/
