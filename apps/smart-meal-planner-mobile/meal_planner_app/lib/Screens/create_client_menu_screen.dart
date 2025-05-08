@@ -31,13 +31,13 @@ class _CreateClientMenuScreenState extends State<CreateClientMenuScreen> {
   
   // Menu data
   Map<String, List<Map<String, dynamic>>> _menuDays = {
-    'Monday': [],
-    'Tuesday': [],
-    'Wednesday': [],
-    'Thursday': [],
-    'Friday': [],
-    'Saturday': [],
-    'Sunday': [],
+    'Monday': <Map<String, dynamic>>[],
+    'Tuesday': <Map<String, dynamic>>[],
+    'Wednesday': <Map<String, dynamic>>[],
+    'Thursday': <Map<String, dynamic>>[],
+    'Friday': <Map<String, dynamic>>[],
+    'Saturday': <Map<String, dynamic>>[],
+    'Sunday': <Map<String, dynamic>>[],
   };
   
   @override
@@ -95,7 +95,8 @@ class _CreateClientMenuScreenState extends State<CreateClientMenuScreen> {
       // Convert menu days to format expected by API
       List<Map<String, dynamic>> days = [];
       _menuDays.forEach((day, meals) {
-        if (meals.isNotEmpty) {
+        // Only add if the meals list exists and is not empty
+        if (meals != null && meals.isNotEmpty) {
           days.add({
             'day': day,
             'meals': meals,
@@ -145,6 +146,11 @@ class _CreateClientMenuScreenState extends State<CreateClientMenuScreen> {
   }
   
   void _addMeal(String day) {
+    // Ensure the map contains the day
+    if (!_menuDays.containsKey(day)) {
+      _menuDays[day] = <Map<String, dynamic>>[];
+    }
+    
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -198,6 +204,12 @@ class _CreateClientMenuScreenState extends State<CreateClientMenuScreen> {
   void _showRecipeBrowser(String day, String mealType) {
     // This is a placeholder - in a real app, this would navigate to a recipe browser
     // where the user can select a recipe to add to the menu
+    
+    // Ensure the map contains the day with a non-null list
+    if (!_menuDays.containsKey(day)) {
+      _menuDays[day] = <Map<String, dynamic>>[];
+    }
+    
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -253,9 +265,12 @@ class _CreateClientMenuScreenState extends State<CreateClientMenuScreen> {
   }
   
   void _removeMeal(String day, int index) {
-    setState(() {
-      _menuDays[day]!.removeAt(index);
-    });
+    // Ensure the day exists and has a valid list
+    if (_menuDays.containsKey(day) && _menuDays[day] != null && index < _menuDays[day]!.length) {
+      setState(() {
+        _menuDays[day]!.removeAt(index);
+      });
+    }
   }
 
   @override

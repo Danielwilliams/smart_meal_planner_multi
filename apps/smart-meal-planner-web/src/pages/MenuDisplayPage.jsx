@@ -630,12 +630,19 @@ function MenuDisplayPage() {
           TransitionProps={{ unmountOnExit: false }}
           className={printMode ? 'print-expanded' : ''}
           sx={{
+            width: '100%',
+            maxWidth: '100%',
+            overflowX: 'hidden',
+            mb: { xs: 2, sm: 2 },
             '& .MuiAccordionSummary-root': {
               minHeight: { xs: '64px', sm: 'auto' },
               padding: { xs: '0 16px', sm: 'auto' }
             },
             '& .MuiAccordionSummary-content': {
               margin: { xs: '12px 0', sm: '12px 0' }
+            },
+            '& .MuiAccordionDetails-root': {
+              padding: { xs: '8px 8px', sm: '16px 16px' }
             }
           }}
         >
@@ -669,15 +676,22 @@ function MenuDisplayPage() {
                   TransitionProps={{ unmountOnExit: false }}
                   sx={{ 
                     mb: 1, 
+                    width: '100%',
                     boxShadow: 'none', 
                     '&:before': { display: 'none' },
                     '& .MuiAccordionSummary-root': {
                       minHeight: { xs: '60px', sm: 'auto' },
-                      padding: { xs: '0 16px', sm: 'auto' }
+                      padding: { xs: '0 8px', sm: '0 16px' },
+                      width: '100%'
                     },
                     '& .MuiAccordionSummary-content': {
                       margin: { xs: '12px 0', sm: '12px 0' },
-                      flexDirection: { xs: 'column', sm: 'row' }
+                      flexDirection: { xs: 'column', sm: 'row' },
+                      width: '100%'
+                    },
+                    '& .MuiAccordionDetails-root': {
+                      padding: { xs: '8px 8px', sm: '16px 16px' },
+                      width: '100%'
                     }
                   }}
                 >
@@ -774,11 +788,20 @@ function MenuDisplayPage() {
                     </Box>
                   </AccordionSummary>
                   <AccordionDetails>
-                    <Box sx={{ pl: { xs: 0, sm: 2 }, mt: { xs: 2, sm: 0 } }}>
+                    <Box sx={{ 
+                      pl: { xs: 0, sm: 2 }, 
+                      mt: { xs: 2, sm: 0 },
+                      width: '100%',
+                      overflowX: 'hidden'
+                    }}>
                       <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
                         <strong>Ingredients:</strong>
                       </Typography>
-                      <ul style={{ margin: '8px 0' }}>
+                      <ul style={{ 
+                        margin: '8px 0',
+                        paddingLeft: '20px',
+                        boxSizing: 'border-box'
+                      }}>
                         {meal.ingredients.map((ingredient, idx) => (
                           <li key={idx}>
                             <Typography variant="body2">
@@ -792,7 +815,11 @@ function MenuDisplayPage() {
                       <strong>Instructions:</strong>
                     </Typography>
                     {Array.isArray(meal.instructions) ? (
-                      <ol style={{ margin: '8px 0', paddingLeft: '20px' }}>
+                      <ol style={{ 
+                        margin: '8px 0', 
+                        paddingLeft: '20px',
+                        wordBreak: 'break-word'
+                      }}>
                         {meal.instructions.map((step, idx) => {
                           // Remove any leading numbers and dots from the step
                           const cleanStep = step.replace(/^\d+\.\s*/, '');
@@ -809,7 +836,16 @@ function MenuDisplayPage() {
                       </Typography>
                     )}
                       {meal.macros && (
-                      <Box sx={{ mt: 2, p: 1, bgcolor: 'background.default', borderRadius: 1 }}>
+                      <Box sx={{ 
+                        mt: 2, 
+                        p: 1, 
+                        bgcolor: 'background.default', 
+                        borderRadius: 1,
+                        width: '100%',
+                        boxSizing: 'border-box',
+                        overflowX: 'hidden',
+                        wordBreak: 'break-word'
+                      }}>
                         <Typography variant="body2" color="text.secondary">
                           <strong>Number of Servings:</strong> {meal.servings || 1}
                         </Typography>
@@ -886,7 +922,16 @@ function MenuDisplayPage() {
                           ))}
                         </ul>               
                         {snack.macros && (
-                          <Box sx={{ mt: 2, p: 1, bgcolor: 'background.default', borderRadius: 1 }}>
+                          <Box sx={{ 
+                        mt: 2, 
+                        p: 1, 
+                        bgcolor: 'background.default', 
+                        borderRadius: 1,
+                        width: '100%',
+                        boxSizing: 'border-box',
+                        overflowX: 'hidden',
+                        wordBreak: 'break-word'
+                      }}>
                             <Typography variant="body2" color="text.secondary">
                               <strong>Number of Servings:</strong> {snack.servings || 1}
                             </Typography>
@@ -923,19 +968,28 @@ function MenuDisplayPage() {
   
   return (
     <Container 
-      maxWidth="md"
+      maxWidth="xl"
+      disableGutters={true}
       sx={{
-        px: { xs: 1, sm: 2, md: 3 },
-        width: { xs: '100%' }
+        px: { xs: 0, sm: 2, md: 3 },
+        width: '100%',
+        maxWidth: '100%' 
       }}
     >
-      <Typography variant="h4" gutterBottom>
+      <Typography 
+        variant="h4" 
+        gutterBottom
+        sx={{
+          px: { xs: 2, sm: 0 },
+          fontSize: { xs: '1.75rem', sm: '2.125rem' }
+        }}
+      >
         {clientMode && selectedClient ? `${selectedClient.name}'s Meal Plan` : 'Your Meal Plan'}
       </Typography>
 
       {/* Show shared menu attribution */}
       {isShared && creatorName && (
-        <Alert severity="info" sx={{ mb: 2 }}>
+        <Alert severity="info" sx={{ mb: 2, mx: { xs: 2, sm: 0 } }}>
           This menu was created by {creatorName} and shared with you. 
           {accessLevel === 'read' ? 
             ' You have read-only access.' : 
@@ -945,7 +999,7 @@ function MenuDisplayPage() {
 
       {/* Show client mode info */}
       {clientMode && selectedClient && (
-        <Alert severity="info" sx={{ mb: 2 }}>
+        <Alert severity="info" sx={{ mb: 2, mx: { xs: 2, sm: 0 } }}>
           Viewing meal plan for client: <strong>{selectedClient.name}</strong>
         </Alert>
       )}
@@ -962,8 +1016,18 @@ function MenuDisplayPage() {
         </Alert>
       )}
 
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 2 }}>
-        <Paper sx={{ p: 2 }}>
+      <Box sx={{ 
+        display: 'flex',
+        flexDirection: 'column', 
+        gap: 2, 
+        mb: 2, 
+        mx: { xs: 2, sm: 0 } 
+      }}>
+        <Paper sx={{ 
+          p: { xs: 2, sm: 2 },
+          width: '100%',
+          boxSizing: 'border-box'
+        }}>
           <Typography variant="subtitle1" gutterBottom>
             View Meal Times
           </Typography>
@@ -1068,9 +1132,20 @@ function MenuDisplayPage() {
         </Paper>
       </Box>
 
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 2 }}>
+      <Box sx={{ 
+        display: 'flex', 
+        flexDirection: 'column', 
+        gap: 2, 
+        mb: 2,
+        mx: { xs: 2, sm: 0 }
+      }}>
         {menuHistory.length > 0 && (
-          <FormControl fullWidth>
+          <FormControl 
+            fullWidth
+            sx={{
+              width: '100%',
+              boxSizing: 'border-box'
+            }}>
             <InputLabel>Select Previous Menu</InputLabel>
             <Select
               value={selectedMenuId || ''}
@@ -1295,7 +1370,17 @@ function MenuDisplayPage() {
         onModelSelect={handleModelSelect}
       />
 
-      {menu && renderMenuItems()}
+      {menu && (
+        <Box sx={{ 
+          width: '100%',
+          px: { xs: 1, sm: 0 },
+          '& .MuiAccordion-root': {
+            width: '100%'
+          }
+        }}>
+          {renderMenuItems()}
+        </Box>
+      )}
 
       {/* Snackbar for save/unsave messages */}
       <Snackbar

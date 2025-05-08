@@ -1,5 +1,8 @@
 .App {
   text-align: center;
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: hidden;
 }
 
 .App-logo {
@@ -34,5 +37,78 @@
   }
   to {
     transform: rotate(360deg);
+  }
+}
+
+/* Mobile-friendly menu styles */
+@media (max-width: 600px) {
+  body, html {
+    overflow-x: hidden;
+    max-width: 100vw;
+    width: 100%;
+  }
+  
+  .MuiAccordion-root {
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+  }
+  
+  .MuiAccordionDetails-root {
+    padding: 8px !important;
+    width: 100% !important;
+    overflow-x: hidden !important;
+  }
+  
+  .MuiContainer-root {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    max-width: 100vw !important;
+  }
+  
+  ul, ol {
+    padding-left: 20px !important;
+    width: calc(100% - 20px) !important;
+    box-sizing: border-box !important;
+    word-break: break-word !important;
+  }
+  
+  .MuiTypography-root {
+    overflow-wrap: break-word !important;
+    word-wrap: break-word !important;
+  }
+  
+  .MuiBox-root {
+    max-width: 100vw !important;
+    overflow-x: hidden !important;
+  }
+  
+  /* Ensure menu items display full width */
+  .MuiCard-root, 
+  .MuiPaper-root,
+  .MuiGrid-item {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+}
+
+/* Add print-specific styles */
+@media print {
+  .print-hide {
+    display: none !important;
+  }
+  
+  .print-expanded {
+    display: block !important;
+  }
+  
+  .print-expanded .MuiCollapse-root {
+    height: auto !important;
+    visibility: visible !important;
+  }
+  
+  @page {
+    margin: 0.5cm;
   }
 }
