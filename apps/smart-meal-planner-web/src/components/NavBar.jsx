@@ -115,6 +115,12 @@ function NavBar() {
     setDrawerOpen(!drawerOpen);
   };
 
+  // Define menu items for the "More" dropdown
+  const moreItems = [
+    { text: 'Custom Menu', icon: <CustomizeIcon />, path: '/custom-menu-builder' },
+    { text: 'Preferences', icon: <SettingsIcon />, path: '/preferences-page' }
+  ];
+
   // Navigation items based on user type
   const getNavItems = () => {
     if (!isAuthenticated) {
@@ -142,12 +148,6 @@ function NavBar() {
       { text: 'Cart', icon: <CartIcon />, path: '/cart' },
       { text: 'Saved Recipes', icon: <BookmarkIcon />, path: '/saved-recipes' },
       { text: 'Recipe Browser', icon: <SearchIcon />, path: '/recipes' }
-    ];
-    
-    // Items that will appear in the "More" dropdown and drawer
-    const moreItems = [
-      { text: 'Custom Menu', icon: <CustomizeIcon />, path: '/custom-menu-builder' },
-      { text: 'Preferences', icon: <SettingsIcon />, path: '/preferences-page' }
     ];
     
     const items = [...mainItems, ...moreItems];

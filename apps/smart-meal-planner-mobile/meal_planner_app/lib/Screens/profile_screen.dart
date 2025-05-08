@@ -110,6 +110,142 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
   
+  // Helper to build consistent organization option buttons
+  Widget _buildOrgOptionButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onPressed,
+    Color? color,
+  }) {
+    return ElevatedButton.icon(
+      icon: Icon(icon),
+      label: Text(label),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: color ?? Colors.blue[700],
+        foregroundColor: Colors.white,
+        minimumSize: Size(double.infinity, 45),
+        alignment: Alignment.centerLeft,
+      ),
+      onPressed: onPressed,
+    );
+  }
+  
+  // Show dialog to invite clients
+  void _showInviteDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text("Invite a Client"),
+        content: Form(
+          key: _inviteFormKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: _clientNameController,
+                decoration: InputDecoration(
+                  labelText: "Client Name",
+                  prefixIcon: Icon(Icons.person),
+                ),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return "Please enter a name";
+                  }
+                  return null;
+                },
+              ),
+              SizedBox(height: 16),
+              TextFormField(
+                controller: _clientEmailController,
+                decoration: InputDecoration(
+                  labelText: "Client Email",
+                  prefixIcon: Icon(Icons.email),
+                ),
+                keyboardType: TextInputType.emailAddress,
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return "Please enter an email";
+                  }
+                  if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
+                    return "Please enter a valid email";
+                  }
+                  return null;
+                },
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text("Cancel"),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (_inviteFormKey.currentState!.validate()) {
+                Navigator.pop(context);
+                _sendInvitation();
+              }
+            },
+            child: Text("Send Invitation"),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  // Send invitation to client
+  Future<void> _sendInvitation() async {
+    if (_organizationId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Organization ID not found. Please try again.'))
+      );
+      return;
+    }
+    
+    setState(() => _isLoading = true);
+    
+    try {
+      final result = await ApiService.createClientInvitation(
+        _organizationId!,
+        widget.authToken,
+        _clientEmailController.text,
+        _clientNameController.text
+      );
+      
+      setState(() => _isLoading = false);
+      
+      if (result != null && (result['success'] == true || result['id'] != null)) {
+        // Show success message
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Invitation sent successfully to ${_clientEmailController.text}!'),
+            backgroundColor: Colors.green,
+          )
+        );
+        
+        // Clear form
+        _clientNameController.clear();
+        _clientEmailController.clear();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to send invitation: ${result['error'] ?? "Unknown error"}'),
+            backgroundColor: Colors.red,
+          )
+        );
+      }
+    } catch (e) {
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: Colors.red,
+        )
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
@@ -390,141 +526,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
     );
-    
-  // Helper to build consistent organization option buttons
-  Widget _buildOrgOptionButton({
-    required IconData icon,
-    required String label,
-    required VoidCallback onPressed,
-    Color? color,
-  }) {
-    return ElevatedButton.icon(
-      icon: Icon(icon),
-      label: Text(label),
-      style: ElevatedButton.styleFrom(
-        backgroundColor: color ?? Colors.blue[700],
-        foregroundColor: Colors.white,
-        minimumSize: Size(double.infinity, 45),
-        alignment: Alignment.centerLeft,
-      ),
-      onPressed: onPressed,
-    );
-  }
-  
-  // Show dialog to invite clients
-  void _showInviteDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text("Invite a Client"),
-        content: Form(
-          key: _inviteFormKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: _clientNameController,
-                decoration: InputDecoration(
-                  labelText: "Client Name",
-                  prefixIcon: Icon(Icons.person),
-                ),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return "Please enter a name";
-                  }
-                  return null;
-                },
-              ),
-              SizedBox(height: 16),
-              TextFormField(
-                controller: _clientEmailController,
-                decoration: InputDecoration(
-                  labelText: "Client Email",
-                  prefixIcon: Icon(Icons.email),
-                ),
-                keyboardType: TextInputType.emailAddress,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return "Please enter an email";
-                  }
-                  if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
-                    return "Please enter a valid email";
-                  }
-                  return null;
-                },
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text("Cancel"),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (_inviteFormKey.currentState!.validate()) {
-                Navigator.pop(context);
-                _sendInvitation();
-              }
-            },
-            child: Text("Send Invitation"),
-          ),
-        ],
-      ),
-    );
-  }
-  
-  // Send invitation to client
-  Future<void> _sendInvitation() async {
-    if (_organizationId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Organization ID not found. Please try again.'))
-      );
-      return;
-    }
-    
-    setState(() => _isLoading = true);
-    
-    try {
-      final result = await ApiService.createClientInvitation(
-        _organizationId!,
-        widget.authToken,
-        _clientEmailController.text,
-        _clientNameController.text
-      );
-      
-      setState(() => _isLoading = false);
-      
-      if (result != null && (result['success'] == true || result['id'] != null)) {
-        // Show success message
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Invitation sent successfully to ${_clientEmailController.text}!'),
-            backgroundColor: Colors.green,
-          )
-        );
-        
-        // Clear form
-        _clientNameController.clear();
-        _clientEmailController.clear();
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to send invitation: ${result['error'] ?? "Unknown error"}'),
-            backgroundColor: Colors.red,
-          )
-        );
-      }
-    } catch (e) {
-      setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error: $e'),
-          backgroundColor: Colors.red,
-        )
-      );
-    }
   }
 }
 }
