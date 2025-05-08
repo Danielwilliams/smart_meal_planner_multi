@@ -5,6 +5,18 @@
   overflow-x: hidden;
 }
 
+/* Ensure menu items are visible in fullscreen mode */
+.MuiAppBar-root .MuiToolbar-root {
+  flex-wrap: wrap;
+}
+
+/* Make buttons wrap in fullscreen */
+.MuiAppBar-root .MuiBox-root {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .App-logo {
   height: 40vmin;
   pointer-events: none;

@@ -99,6 +99,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                         color: Colors.grey[700],
                                       ),
                                     ),
+                                    SizedBox(height: 4),
+                                    if (authProvider.isTrainer || _isTrainer)
+                                      Container(
+                                        padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.blue[100],
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        child: Text(
+                                          'Trainer Account',
+                                          style: TextStyle(
+                                            color: Colors.blue[800],
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ),
                                   ],
                                 ),
                               ),
@@ -125,6 +142,51 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ),
                   SizedBox(height: 24),
+                  if (_isTrainer)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 20),
+                      child: Card(
+                        color: Colors.blue[50],
+                        child: Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(Icons.people, color: Colors.blue[700]),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'Trainer Dashboard',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.blue[700],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              SizedBox(height: 8),
+                              Text(
+                                'Manage your clients, create personalized meal plans, and monitor progress.',
+                                style: TextStyle(color: Colors.grey[700]),
+                              ),
+                              SizedBox(height: 12),
+                              ElevatedButton.icon(
+                                icon: Icon(Icons.people),
+                                label: Text('Open Client Management'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.blue[700],
+                                  foregroundColor: Colors.white,
+                                  minimumSize: Size(double.infinity, 45),
+                                ),
+                                onPressed: () => Navigator.pushNamed(context, '/organization'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
                   Text(
                     'Account',
                     style: TextStyle(

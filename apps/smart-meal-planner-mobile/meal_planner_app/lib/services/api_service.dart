@@ -1216,6 +1216,38 @@ class ApiService {
     }
   }
   
+  // Get user's organizations
+  static Future<dynamic> getUserOrganizations(String authToken) async {
+    try {
+      print("Fetching user organizations...");
+      
+      // Try multiple possible endpoints
+      final endpoints = [
+        "/organizations/",
+        "/organizations",
+        "/user/organizations"
+      ];
+      
+      for (String endpoint in endpoints) {
+        try {
+          final result = await _get(endpoint, authToken);
+          if (result != null) {
+            print("Found organizations data via endpoint: $endpoint");
+            return result;
+          }
+        } catch (e) {
+          print("Error with endpoint $endpoint: $e");
+        }
+      }
+      
+      print("All organization endpoints failed");
+      return [];
+    } catch (e) {
+      print("Error getting user organizations: $e");
+      return [];
+    }
+  }
+  
   // Get organization clients
   static Future<Map<String, dynamic>> getOrganizationClients(int orgId, String authToken) async {
     try {

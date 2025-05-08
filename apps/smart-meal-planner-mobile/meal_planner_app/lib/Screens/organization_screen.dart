@@ -55,6 +55,9 @@ class _OrganizationScreenState extends State<OrganizationScreen> with SingleTick
       if (accountResult != null) {
         print("User account info received: ${accountResult.keys}");
         
+        // DEBUG: Print the full account result for troubleshooting
+        print("FULL ACCOUNT DATA: $accountResult");
+        
         // Parse user account info
         if (accountResult.containsKey('user')) {
           _userAccount = UserAccount.fromJson(accountResult['user']);
@@ -63,60 +66,137 @@ class _OrganizationScreenState extends State<OrganizationScreen> with SingleTick
         }
         
         print("Account type: ${_userAccount?.accountType}");
+        print("Is organization/trainer: ${_userAccount?.isOrganization}");
+        print("Organization ID: ${_userAccount?.organizationId}");
+        
+        // Check if the account is recognized as an organization/trainer account
+        if (!(_userAccount?.isOrganization == true)) {
+          // Try to infer from other account data
+          final isTrainer = accountResult['is_organization'] == true || 
+                          accountResult['is_trainer'] == true ||
+                          accountResult['account_type'] == 'organization';
+          
+          if (isTrainer) {
+            print("Account not explicitly marked as trainer but has trainer flags. Overriding...");
+            // Create a modified UserAccount with trainer flag set
+            final Map<String, dynamic> updatedAccount = {
+              ...accountResult,
+              'account_type': 'organization',
+              'is_organization': true,
+            };
+            _userAccount = UserAccount.fromJson(updatedAccount);
+          }
+        }
+        
+        // Try to find organization ID if missing
+        if (_userAccount?.isOrganization == true && _userAccount?.organizationId == null) {
+          print("Missing organization ID - trying to find it in account data");
+          int? orgId;
+          
+          if (accountResult.containsKey('organization_id')) {
+            orgId = accountResult['organization_id'] is int 
+                  ? accountResult['organization_id'] 
+                  : int.tryParse(accountResult['organization_id'].toString());
+          }
+          
+          // If we found a valid ID, update the user account
+          if (orgId != null) {
+            print("Found organization ID: $orgId");
+            // Create updated account with organization ID
+            final Map<String, dynamic> updatedAccount = {
+              ...accountResult,
+              'organization_id': orgId,
+            };
+            _userAccount = UserAccount.fromJson(updatedAccount);
+          } else {
+            // Try to fetch organization data to find an ID
+            print("Attempting to fetch organizations to find ID");
+            try {
+              final orgResult = await ApiService.getUserOrganizations(widget.authToken);
+              if (orgResult != null && orgResult is List && orgResult.isNotEmpty) {
+                final firstOrg = orgResult[0];
+                orgId = firstOrg['id'] is int 
+                      ? firstOrg['id'] 
+                      : int.tryParse(firstOrg['id'].toString());
+                              
+                if (orgId != null) {
+                  print("Found organization ID from orgs list: $orgId");
+                  // Create updated account with organization ID
+                  final Map<String, dynamic> updatedAccount = {
+                    ...accountResult,
+                    'organization_id': orgId,
+                  };
+                  _userAccount = UserAccount.fromJson(updatedAccount);
+                }
+              }
+            } catch (e) {
+              print("Error fetching organizations: $e");
+            }
+          }
+        }
         
         // Only proceed if user is an organization/trainer
-        if (_userAccount?.isOrganization == true && _userAccount?.organizationId != null) {
-          // Get organization details
-          print("Loading organization details for ID: ${_userAccount!.organizationId}");
-          final orgResult = await ApiService.getOrganizationDetails(
-            _userAccount!.organizationId!,
-            widget.authToken
-          );
-          
-          if (orgResult != null) {
-            print("Organization details received");
-            if (orgResult.containsKey('organization')) {
-              _organization = Organization.fromJson(orgResult['organization']);
-            } else {
-              _organization = Organization.fromJson(orgResult);
-            }
-            
-            // Get organization clients
-            print("Loading organization clients");
-            final clientsResult = await ApiService.getOrganizationClients(
+        if (_userAccount?.isOrganization == true) {
+          // If we have organization ID
+          if (_userAccount?.organizationId != null) {
+            // Get organization details
+            print("Loading organization details for ID: ${_userAccount!.organizationId}");
+            final orgResult = await ApiService.getOrganizationDetails(
               _userAccount!.organizationId!,
               widget.authToken
             );
             
-            if (clientsResult != null) {
-              print("Client data received");
-              List<Client> clients = [];
-              List<Invitation> invitations = [];
-              
-              // Parse clients
-              if (clientsResult.containsKey('clients') && clientsResult['clients'] is List) {
-                for (var clientData in clientsResult['clients']) {
-                  clients.add(Client.fromJson(clientData));
-                }
+            if (orgResult != null) {
+              print("Organization details received");
+              if (orgResult.containsKey('organization')) {
+                _organization = Organization.fromJson(orgResult['organization']);
+              } else {
+                _organization = Organization.fromJson(orgResult);
               }
               
-              // Parse invitations
-              if (clientsResult.containsKey('invitations') && clientsResult['invitations'] is List) {
-                for (var inviteData in clientsResult['invitations']) {
-                  invitations.add(Invitation.fromJson(inviteData));
-                }
-              }
+              // Get organization clients
+              print("Loading organization clients");
+              final clientsResult = await ApiService.getOrganizationClients(
+                _userAccount!.organizationId!,
+                widget.authToken
+              );
               
-              setState(() {
-                _clients = clients;
-                _invitations = invitations;
-              });
+              if (clientsResult != null) {
+                print("Client data received");
+                List<Client> clients = [];
+                List<Invitation> invitations = [];
+                
+                // Parse clients
+                if (clientsResult.containsKey('clients') && clientsResult['clients'] is List) {
+                  for (var clientData in clientsResult['clients']) {
+                    clients.add(Client.fromJson(clientData));
+                  }
+                }
+                
+                // Parse invitations
+                if (clientsResult.containsKey('invitations') && clientsResult['invitations'] is List) {
+                  for (var inviteData in clientsResult['invitations']) {
+                    invitations.add(Invitation.fromJson(inviteData));
+                  }
+                }
+                
+                setState(() {
+                  _clients = clients;
+                  _invitations = invitations;
+                });
+              }
             }
+          } else {
+            // We have a trainer account but no organization ID
+            setState(() {
+              _errorMessage = 'Your account has trainer permissions but no organization is set up. '
+                            'Please complete your organization setup on the web platform.';
+            });
           }
         } else {
           setState(() {
             _errorMessage = 'You do not have access to organization management. '
-                           'This feature is only available to trainer accounts.';
+                          'This feature is only available to trainer accounts.';
           });
         }
       } else {
@@ -194,22 +274,66 @@ class _OrganizationScreenState extends State<OrganizationScreen> with SingleTick
           : null,
       ),
       body: _isLoading 
-        ? Center(child: CircularProgressIndicator())
+        ? Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 20),
+                Text(
+                  "Loading trainer dashboard...",
+                  style: TextStyle(fontSize: 16),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  "This may take a moment",
+                  style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                ),
+              ],
+            ),
+          )
         : _errorMessage.isNotEmpty 
           ? Center(
               child: Padding(
-                padding: EdgeInsets.all(16),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.error_outline, size: 48, color: Colors.red),
-                    SizedBox(height: 16),
-                    Text(
-                      _errorMessage,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 16),
+                padding: EdgeInsets.all(20),
+                child: Card(
+                  elevation: 3,
+                  child: Padding(
+                    padding: EdgeInsets.all(20),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.error_outline, size: 60, color: Colors.orange),
+                        SizedBox(height: 16),
+                        Text(
+                          "Access Issue",
+                          style: TextStyle(
+                            fontSize: 20, 
+                            fontWeight: FontWeight.bold,
+                            color: Colors.orange[800],
+                          ),
+                        ),
+                        SizedBox(height: 16),
+                        Text(
+                          _errorMessage,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 16),
+                        ),
+                        SizedBox(height: 20),
+                        if (_errorMessage.contains("trainer permissions")) 
+                          OutlinedButton(
+                            onPressed: () => Navigator.pop(context),
+                            child: Text("Return to App"),
+                          )
+                        else
+                          ElevatedButton(
+                            onPressed: _loadUserInfo,
+                            child: Text("Try Again"),
+                          ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ),
             )

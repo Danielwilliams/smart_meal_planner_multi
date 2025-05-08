@@ -158,14 +158,15 @@ function NavBar() {
   return (
     <>
       <AppBar position="static">
-        <Toolbar>
+        <Toolbar sx={{ flexWrap: 'wrap' }}>
           {/* Logo/Title Area */}
           <Typography 
             variant="h6" 
             component={Link} 
             to="/"
             sx={{ 
-              flexGrow: 1, 
+              flexGrow: { xs: 1, md: 0 }, 
+              mr: { xs: 0, md: 2 },
               textDecoration: 'none', 
               color: 'inherit',
               display: 'flex',
@@ -185,7 +186,7 @@ function NavBar() {
 
           {/* Desktop Navigation Links */}
           {!isMobile && (
-            <Box sx={{ display: 'flex' }}>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap' }}>
               {isAuthenticated ? (
                 <>
                   {/* Client account gets a simplified menu with their dashboard */}
@@ -211,6 +212,12 @@ function NavBar() {
                       </Button>
                       <Button color="inherit" component={Link} to="/menu">
                         Menu
+                      </Button>
+                      <Button color="inherit" component={Link} to="/shopping-list">
+                        Shopping List
+                      </Button>
+                      <Button color="inherit" component={Link} to="/cart">
+                        Cart
                       </Button>
                       <Button color="inherit" component={Link} to="/recipes">
                         Recipe Browser

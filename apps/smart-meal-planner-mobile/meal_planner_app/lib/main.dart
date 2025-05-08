@@ -411,6 +411,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     super.initState();
     final appState = Provider.of<AppState>(context, listen: false);
     _pageController = PageController(initialPage: appState.selectedTab);
+    
+    // Check trainer status from both sources for redundancy
     _checkTrainerStatus();
   }
   
@@ -425,11 +427,23 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     setState(() => _isLoading = true);
     
     try {
+      // Method 1: Check from AuthProvider
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      bool isTrainerFromAuth = authProvider.isTrainer;
+      
+      print("Trainer status from AuthProvider: $isTrainerFromAuth");
+      
+      // Method 2: Check directly from API
       final accountInfo = await ApiService.getUserAccountInfo(widget.authToken);
       
-      final isTrainer = accountInfo['is_organization'] == true || 
-                       accountInfo['is_trainer'] == true ||
-                       accountInfo['account_type'] == 'organization';
+      final isTrainerFromApi = accountInfo['is_organization'] == true || 
+                             accountInfo['is_trainer'] == true ||
+                             accountInfo['account_type'] == 'organization';
+      
+      print("Trainer status from API: $isTrainerFromApi");
+      
+      // Combine results - if either source indicates trainer, show organization tab
+      final isTrainer = isTrainerFromAuth || isTrainerFromApi;
       
       // Update app state
       Provider.of<AppState>(context, listen: false).setTrainerStatus(isTrainer);
@@ -437,6 +451,11 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       setState(() => _isLoading = false);
     } catch (e) {
       print("Error checking trainer status: $e");
+      
+      // Fallback to AuthProvider if API fails
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      Provider.of<AppState>(context, listen: false).setTrainerStatus(authProvider.isTrainer);
+      
       setState(() => _isLoading = false);
     }
   }
@@ -454,14 +473,50 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   @override
   Widget build(BuildContext context) {
     final appState = Provider.of<AppState>(context);
+    final authProvider = Provider.of<AuthProvider>(context);
     
     if (_isLoading) {
       return Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 20),
+              Text("Loading your account...", style: TextStyle(fontSize: 16))
+            ],
+          ),
+        ),
       );
     }
     
-    // Create tab items based on user type
+    // Enhanced logging to diagnose trainer status
+    print("🔍 TRAINER STATUS CHECK");
+    print("AppState isTrainer: ${appState.isTrainer}");
+    print("AuthProvider isTrainer: ${authProvider.isTrainer}");
+    print("AuthProvider accountType: ${authProvider.accountType}");
+    
+    // Always show all tabs but use consistent indices regardless of user type
+    final hasOrganizationTab = appState.isTrainer;
+    
+    // Define all possible screens
+    final allScreens = {
+      'menu': MenuScreen(userId: widget.userId, authToken: widget.authToken),
+      'browse': RecipeBrowserScreen(userId: widget.userId, authToken: widget.authToken),
+      'shop': CartsScreen(userId: widget.userId, authToken: widget.authToken),
+      'organization': OrganizationScreen(userId: widget.userId, authToken: widget.authToken),
+      'profile': ProfileScreen(userId: widget.userId, authToken: widget.authToken),
+    };
+    
+    // Define tab order based on user type
+    List<String> tabOrder = hasOrganizationTab
+      ? ['menu', 'browse', 'shop', 'organization', 'profile']
+      : ['menu', 'browse', 'shop', 'profile'];
+    
+    // Create screens in the right order
+    List<Widget> screens = tabOrder.map((key) => allScreens[key]!).toList();
+    
+    // Create tab items in the right order
     List<BottomNavigationBarItem> tabItems = [
       BottomNavigationBarItem(
         icon: Icon(Icons.restaurant_menu),
@@ -475,32 +530,21 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         icon: Icon(Icons.shopping_cart),
         label: 'Shop',
       ),
-      BottomNavigationBarItem(
-        icon: Icon(Icons.person),
-        label: 'Profile',
-      ),
     ];
     
     // Add organization tab for trainers
-    if (appState.isTrainer) {
-      tabItems.insert(3, BottomNavigationBarItem(
+    if (hasOrganizationTab) {
+      tabItems.add(BottomNavigationBarItem(
         icon: Icon(Icons.people),
         label: 'Clients',
       ));
     }
     
-    // Screen content options based on selected tab and user type
-    List<Widget> screens = [
-      MenuScreen(userId: widget.userId, authToken: widget.authToken),
-      RecipeBrowserScreen(userId: widget.userId, authToken: widget.authToken),
-      CartsScreen(userId: widget.userId, authToken: widget.authToken),
-      ProfileScreen(userId: widget.userId, authToken: widget.authToken),
-    ];
-    
-    // Insert organization screen for trainers
-    if (appState.isTrainer) {
-      screens.insert(3, OrganizationScreen(userId: widget.userId, authToken: widget.authToken));
-    }
+    // Always add profile tab at the end
+    tabItems.add(BottomNavigationBarItem(
+      icon: Icon(Icons.person),
+      label: 'Profile',
+    ));
     
     return Scaffold(
       body: PageView(
