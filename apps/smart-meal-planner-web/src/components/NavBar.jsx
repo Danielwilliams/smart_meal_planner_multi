@@ -134,16 +134,23 @@ function NavBar() {
       ];
     }
     
-    const items = [
+    // Items that will appear in both main nav and drawer
+    const mainItems = [
       { text: 'Home', icon: <HomeIcon />, path: '/' },
       { text: 'Menu', icon: <RestaurantIcon />, path: '/menu' },
       { text: 'Shopping List', icon: <ListIcon />, path: '/shopping-list' },
       { text: 'Cart', icon: <CartIcon />, path: '/cart' },
       { text: 'Saved Recipes', icon: <BookmarkIcon />, path: '/saved-recipes' },
-      { text: 'Recipe Browser', icon: <SearchIcon />, path: '/recipes' },
+      { text: 'Recipe Browser', icon: <SearchIcon />, path: '/recipes' }
+    ];
+    
+    // Items that will appear in the "More" dropdown and drawer
+    const moreItems = [
       { text: 'Custom Menu', icon: <CustomizeIcon />, path: '/custom-menu-builder' },
       { text: 'Preferences', icon: <SettingsIcon />, path: '/preferences-page' }
     ];
+    
+    const items = [...mainItems, ...moreItems];
     
     if (isOrgAccount || user?.account_type === 'admin') {
       items.push(
@@ -240,27 +247,19 @@ function NavBar() {
                           open={Boolean(moreMenuAnchorEl)}
                           onClose={() => setMoreMenuAnchorEl(null)}
                         >
-                          <MenuItem 
-                            component={Link} 
-                            to="/custom-menu-builder"
-                            onClick={() => setMoreMenuAnchorEl(null)}
-                          >
-                            <ListItemIcon>
-                              <CustomizeIcon fontSize="small" />
-                            </ListItemIcon>
-                            <ListItemText>Custom Menu</ListItemText>
-                          </MenuItem>
-                          
-                          <MenuItem 
-                            component={Link} 
-                            to="/preferences-page"
-                            onClick={() => setMoreMenuAnchorEl(null)}
-                          >
-                            <ListItemIcon>
-                              <SettingsIcon fontSize="small" />
-                            </ListItemIcon>
-                            <ListItemText>Preferences</ListItemText>
-                          </MenuItem>
+                          {moreItems.map((item) => (
+                            <MenuItem 
+                              key={item.text}
+                              component={Link} 
+                              to={item.path}
+                              onClick={() => setMoreMenuAnchorEl(null)}
+                            >
+                              <ListItemIcon>
+                                {item.icon}
+                              </ListItemIcon>
+                              <ListItemText>{item.text}</ListItemText>
+                            </MenuItem>
+                          ))}
                           
                           {isOrgAccount && (
                             <MenuItem 

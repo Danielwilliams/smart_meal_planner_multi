@@ -500,7 +500,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     final hasOrganizationTab = appState.isTrainer;
     
     // Define all possible screens
-    final allScreens = {
+    final Map<String, Widget> allScreens = {
       'menu': MenuScreen(userId: widget.userId, authToken: widget.authToken),
       'browse': RecipeBrowserScreen(userId: widget.userId, authToken: widget.authToken),
       'shop': CartsScreen(userId: widget.userId, authToken: widget.authToken),
@@ -514,7 +514,12 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       : ['menu', 'browse', 'shop', 'profile'];
     
     // Create screens in the right order
-    List<Widget> screens = tabOrder.map((key) => allScreens[key]!).toList();
+    List<Widget> screens = [];
+    for (String key in tabOrder) {
+      if (allScreens.containsKey(key)) {
+        screens.add(allScreens[key]!);
+      }
+    }
     
     // Create tab items in the right order
     List<BottomNavigationBarItem> tabItems = [

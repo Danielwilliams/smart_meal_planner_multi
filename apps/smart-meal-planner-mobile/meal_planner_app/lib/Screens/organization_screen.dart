@@ -338,12 +338,80 @@ class _OrganizationScreenState extends State<OrganizationScreen> with SingleTick
                 ),
               ),
             )
-          : TabBarView(
-              controller: _tabController,
+          : Column(
               children: [
-                _buildClientsTab(),
-                _buildInvitationsTab(),
-                _buildSharedMenusTab(),
+                // Organization header card
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Card(
+                    color: Colors.blue[100],
+                    elevation: 3,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 30,
+                            backgroundColor: Colors.blue[700],
+                            child: Icon(Icons.business, size: 30, color: Colors.white),
+                          ),
+                          SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _organization?.name ?? "Your Organization",
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.blue[800],
+                                  ),
+                                ),
+                                SizedBox(height: 4),
+                                Text(
+                                  "Organization Management Portal",
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.blue[700],
+                                  ),
+                                ),
+                                SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    Chip(
+                                      label: Text("${_clients.length} Clients"),
+                                      backgroundColor: Colors.white,
+                                      labelStyle: TextStyle(color: Colors.blue[800]),
+                                    ),
+                                    SizedBox(width: 8),
+                                    Chip(
+                                      label: Text("${_invitations.length} Invites"),
+                                      backgroundColor: Colors.white,
+                                      labelStyle: TextStyle(color: Colors.blue[800]),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                
+                // Tabs content
+                Expanded(
+                  child: TabBarView(
+                    controller: _tabController,
+                    children: [
+                      _buildClientsTab(),
+                      _buildInvitationsTab(),
+                      _buildSharedMenusTab(),
+                    ],
+                  ),
+                ),
               ],
             ),
       floatingActionButton: _userAccount?.isOrganization == true

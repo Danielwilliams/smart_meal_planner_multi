@@ -244,14 +244,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   _buildOrgOptionButton(
                                     icon: Icons.restaurant_menu,
                                     label: 'Create Client Meal Plans',
-                                    onPressed: () => Navigator.pushNamed(
-                                      context, 
-                                      '/client-menu-creator',
-                                      arguments: {
-                                        'recipeId': 0,
-                                        'recipeTitle': '',
+                                    onPressed: () {
+                                      try {
+                                        Navigator.pushNamed(
+                                          context, 
+                                          '/create-client-menu',
+                                          arguments: {
+                                            'clientId': 0, // This will show client selection
+                                            'clientName': 'New Client',
+                                            'userId': widget.userId,
+                                            'authToken': widget.authToken,
+                                            'recipeId': 0,
+                                            'recipeTitle': '',
+                                          }
+                                        );
+                                      } catch (e) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text('Feature not available in current version'))
+                                        );
                                       }
-                                    ),
+                                    },
                                   ),
                                   SizedBox(height: 8),
                                   _buildOrgOptionButton(
@@ -314,14 +326,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       leading: Icon(Icons.restaurant_menu, color: Colors.blue[700]),
                       title: Text('Create Client Meal Plans'),
                       trailing: Icon(Icons.chevron_right),
-                      onTap: () => Navigator.pushNamed(
-                        context, 
-                        '/client-menu-creator',
-                        arguments: {
-                          'recipeId': 0,
-                          'recipeTitle': '',
+                      onTap: () {
+                        try {
+                          Navigator.pushNamed(
+                            context, 
+                            '/create-client-menu',
+                            arguments: {
+                              'clientId': 0, // This will show client selection
+                              'clientName': 'New Client',
+                              'userId': widget.userId,
+                              'authToken': widget.authToken,
+                              'recipeId': 0,
+                              'recipeTitle': '',
+                            }
+                          );
+                        } catch (e) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Feature not available in current version'))
+                          );
                         }
-                      ),
+                      },
                       tileColor: Colors.blue[50],
                     ),
                     ListTile(
