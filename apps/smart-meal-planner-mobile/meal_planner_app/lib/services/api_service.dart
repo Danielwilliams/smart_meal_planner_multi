@@ -973,10 +973,11 @@ class ApiService {
     }
   }
   
-  // Get shopping list for a menu
+  // Get shopping list for a menu - Enhanced for shared_menus compatibility
   static Future<Map<String, dynamic>> getShoppingList(int userId, String authToken, int menuId) async {
     try {
       print("Fetching shopping list for menu ID: $menuId");
+      List<String> attemptedEndpoints = [];
       
       // Helper function to normalize shopping list response
       Map<String, dynamic> normalizeShoppingListResponse(dynamic result) {
@@ -992,6 +993,12 @@ class ApiService {
         } else if (result is Map) {
           // Make sure we have a string keys map
           final Map<String, dynamic> safeResult = _toStringDynamicMap(result);
+          
+          // Extract groceryList field if it exists (common format from backend)
+          if (safeResult.containsKey('groceryList') && safeResult['groceryList'] is List) {
+            print("Found 'groceryList' field, using as ingredients");
+            safeResult['ingredients'] = safeResult['groceryList'];
+          }
           
           // Ensure required fields
           if (!safeResult.containsKey('ingredients')) {
@@ -1017,37 +1024,108 @@ class ApiService {
         };
       }
       
-      // Try /menu/{menuId}/grocery-list first
-      final result = await _get("/menu/$menuId/grocery-list", authToken);
-      if (result != null) {
-        print("Primary endpoint response: $result");
-        return normalizeShoppingListResponse(result);
-      }
-      
-      // Try /client/menus/{menuId}/grocery-list as fallback
-      print("Primary endpoint failed, trying client endpoint");
+      // Try client endpoint first (aligned with updated backend using shared_menus)
+      print("Trying client endpoint first (aligns with shared_menus)");
+      attemptedEndpoints.add("/client/menus/$menuId/grocery-list");
       final clientResult = await _get("/client/menus/$menuId/grocery-list", authToken);
       if (clientResult != null) {
-        print("Client endpoint response: $clientResult");
+        print("✅ Success from client endpoint");
         return normalizeShoppingListResponse(clientResult);
       }
       
-      // Try a third endpoint that might be used
-      print("Both endpoints failed, trying third endpoint");
-      final thirdResult = await _get("/grocery-list/$menuId", authToken);
-      if (thirdResult != null) {
-        print("Third endpoint response: $thirdResult");
-        return normalizeShoppingListResponse(thirdResult);
+      // Try standard menu endpoint
+      print("Client endpoint failed, trying standard menu endpoint");
+      attemptedEndpoints.add("/menu/$menuId/grocery-list");
+      final menuResult = await _get("/menu/$menuId/grocery-list", authToken);
+      if (menuResult != null) {
+        print("✅ Success from standard menu endpoint");
+        return normalizeShoppingListResponse(menuResult);
       }
       
+      // Try additional endpoints that might be used
+      final additionalEndpoints = [
+        "/grocery-list/$menuId",
+        "/menu/$menuId/shopping-list",
+        "/menus/$menuId/grocery-list"
+      ];
+      
+      for (String endpoint in additionalEndpoints) {
+        print("Trying additional endpoint: $endpoint");
+        attemptedEndpoints.add(endpoint);
+        final additionalResult = await _get(endpoint, authToken);
+        if (additionalResult != null) {
+          print("✅ Success from additional endpoint: $endpoint");
+          return normalizeShoppingListResponse(additionalResult);
+        }
+      }
+      
+      // Try to extract grocery list directly from menu
+      print("All grocery list endpoints failed, trying to get ingredients from menu directly");
+      attemptedEndpoints.add("/client/menus/$menuId");
+      final menuDetailsResult = await _get("/client/menus/$menuId", authToken);
+      if (menuDetailsResult != null && menuDetailsResult is Map) {
+        final safeMenuDetails = _toStringDynamicMap(menuDetailsResult);
+        
+        // Look for meal_plan or meal_plan_json containing ingredients
+        List<dynamic> extractedIngredients = [];
+        
+        // Try to extract from meal_plan_json
+        if (safeMenuDetails.containsKey('meal_plan_json')) {
+          var mealPlanJson = safeMenuDetails['meal_plan_json'];
+          if (mealPlanJson is String) {
+            try {
+              mealPlanJson = json.decode(mealPlanJson);
+            } catch (e) {
+              print("Error parsing meal_plan_json: $e");
+            }
+          }
+          
+          if (mealPlanJson is Map && mealPlanJson.containsKey('days')) {
+            print("Extracting ingredients from meal_plan_json");
+            final days = mealPlanJson['days'];
+            if (days is List) {
+              for (var day in days) {
+                if (day is Map && day.containsKey('meals')) {
+                  final meals = day['meals'];
+                  if (meals is Map) {
+                    for (var mealType in meals.keys) {
+                      final mealItems = meals[mealType];
+                      if (mealItems is List) {
+                        for (var meal in mealItems) {
+                          if (meal is Map && meal.containsKey('ingredients')) {
+                            extractedIngredients.addAll(meal['ingredients']);
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        
+        // If we found ingredients, return them
+        if (extractedIngredients.isNotEmpty) {
+          print("✅ Successfully extracted ${extractedIngredients.length} ingredients from menu");
+          return {
+            "ingredients": extractedIngredients,
+            "menu_id": menuId,
+            "total_items": extractedIngredients.length,
+            "extracted_from_menu": true
+          };
+        }
+      }
+      
+      print("⚠️ All shopping list endpoints failed. Attempted: $attemptedEndpoints");
+      
       // All endpoints failed, return empty shopping list
-      print("All endpoints failed, returning empty shopping list");
       return {
         "ingredients": [],
         "categories": {},
         "menu_id": menuId,
         "total_items": 0,
-        "error": "Could not fetch shopping list from API"
+        "error": "Could not fetch shopping list from API after multiple attempts"
       };
     } catch (e) {
       print("Error getting shopping list: $e");
@@ -1055,7 +1133,8 @@ class ApiService {
         "ingredients": [],
         "categories": {},
         "menu_id": menuId,
-        "total_items": 0
+        "total_items": 0,
+        "error": e.toString()
       };
     }
   }
@@ -1804,30 +1883,57 @@ class ApiService {
     String authToken,
   ) async {
     try {
-      final result = await _get("/organizations/clients/$clientId/recipes", authToken);
+      print("Fetching saved recipes for client ID: $clientId");
+      List<String> attemptedEndpoints = [];
       
-      if (result != null && result is Map) {
-        return _toStringDynamicMap(result);
-      }
+      // Try multiple endpoints in order of preference
+      final endpoints = [
+        "/organizations/clients/$clientId/recipes",
+        "/clients/$clientId/saved-recipes",
+        "/client/$clientId/recipes",
+        "/saved-recipes/client/$clientId"
+      ];
       
-      // Try alternate endpoint
-      final altResult = await _get("/clients/$clientId/saved-recipes", authToken);
-      
-      if (altResult != null) {
-        if (altResult is List) {
-          return {
-            "recipes": altResult,
-            "total": altResult.length
-          };
-        } else if (altResult is Map) {
-          return _toStringDynamicMap(altResult);
+      // Try each endpoint until one succeeds
+      for (String endpoint in endpoints) {
+        try {
+          print("Trying endpoint: $endpoint");
+          attemptedEndpoints.add(endpoint);
+          final result = await _get(endpoint, authToken);
+          
+          if (result != null) {
+            print("Success from endpoint: $endpoint");
+            if (result is List) {
+              return {
+                "recipes": result,
+                "total": result.length
+              };
+            } else if (result is Map) {
+              final safeResult = _toStringDynamicMap(result);
+              
+              // If it already has a 'recipes' key, return it directly
+              if (safeResult.containsKey('recipes')) {
+                return safeResult;
+              }
+              
+              // Otherwise wrap the result as a recipe list
+              return {
+                "recipes": [safeResult],
+                "total": 1
+              };
+            }
+          }
+        } catch (endpointError) {
+          print("Error with endpoint $endpoint: $endpointError");
         }
       }
+      
+      print("All client recipe endpoints failed. Attempted: $attemptedEndpoints");
       
       return {
         "recipes": [],
         "total": 0,
-        "error": "Could not retrieve client recipes"
+        "error": "Could not retrieve client recipes after multiple attempts"
       };
     } catch (e) {
       print("Error getting client saved recipes: $e");
@@ -1839,7 +1945,7 @@ class ApiService {
     }
   }
   
-  // Get client's preferences - Enhanced with multiple fallback approaches
+  // Get client's preferences - Aligned with web app approach
   static Future<Map<String, dynamic>> getClientPreferences(
     int clientId,
     String authToken,
@@ -1848,32 +1954,165 @@ class ApiService {
       print("Fetching preferences for client ID: $clientId");
       List<String> attemptedEndpoints = [];
       
-      // First try organization client preferences endpoints
-      final endpoints = [
-        "/organizations/clients/$clientId/preferences",
+      // Helper function to ensure preferences have default values for all expected fields
+      Map<String, dynamic> normalizePreferences(Map<String, dynamic> prefs) {
+        // Start with basic default values
+        final defaultPrefs = {
+          "diet_type": prefs['diet_type'] ?? "Mixed",
+          "dietary_restrictions": prefs['dietary_restrictions'] ?? "",
+          "disliked_ingredients": prefs['disliked_ingredients'] ?? [],
+          "recipe_type": prefs['recipe_type'] ?? "",
+          "macro_protein": prefs['macro_protein'] ?? 30,
+          "macro_carbs": prefs['macro_carbs'] ?? 40, 
+          "macro_fat": prefs['macro_fat'] ?? 30,
+          "calorie_goal": prefs['calorie_goal'] ?? 2000,
+          "meal_times": prefs['meal_times'] ?? {
+            "breakfast": false,
+            "lunch": false,
+            "dinner": false,
+            "snacks": false
+          },
+          "appliances": prefs['appliances'] ?? {
+            "airFryer": false,
+            "instapot": false,
+            "crockpot": false
+          },
+          "prep_complexity": prefs['prep_complexity'] ?? 50,
+          "snacks_per_day": prefs['snacks_per_day'] ?? 0,
+          "servings_per_meal": prefs['servings_per_meal'] ?? 1
+        };
+        
+        // Handle advanced preference fields
+        if (!prefs.containsKey('flavor_preferences') || prefs['flavor_preferences'] == null) {
+          defaultPrefs['flavor_preferences'] = {
+            "creamy": false,
+            "cheesy": false,
+            "herbs": false,
+            "umami": false,
+            "sweet": false,
+            "spiced": false,
+            "smoky": false,
+            "garlicky": false,
+            "tangy": false,
+            "peppery": false,
+            "hearty": false,
+            "spicy": false
+          };
+        } else {
+          defaultPrefs['flavor_preferences'] = prefs['flavor_preferences'];
+        }
+        
+        if (!prefs.containsKey('spice_level') || prefs['spice_level'] == null) {
+          defaultPrefs['spice_level'] = "medium";
+        } else {
+          defaultPrefs['spice_level'] = prefs['spice_level'];
+        }
+        
+        if (!prefs.containsKey('recipe_type_preferences') || prefs['recipe_type_preferences'] == null) {
+          defaultPrefs['recipe_type_preferences'] = {
+            "stir-fry": false,
+            "grain-bowl": false,
+            "salad": false,
+            "pasta": false,
+            "main-sides": false,
+            "pizza": false,
+            "burger": false,
+            "sandwich": false,
+            "tacos": false,
+            "wrap": false,
+            "soup-stew": false,
+            "bake": false,
+            "family-meals": false
+          };
+        } else {
+          defaultPrefs['recipe_type_preferences'] = prefs['recipe_type_preferences'];
+        }
+        
+        if (!prefs.containsKey('meal_time_preferences') || prefs['meal_time_preferences'] == null) {
+          defaultPrefs['meal_time_preferences'] = {
+            "breakfast": false,
+            "morning-snack": false,
+            "lunch": false,
+            "afternoon-snack": false,
+            "dinner": false,
+            "evening-snack": false
+          };
+        } else {
+          defaultPrefs['meal_time_preferences'] = prefs['meal_time_preferences'];
+        }
+        
+        if (!prefs.containsKey('time_constraints') || prefs['time_constraints'] == null) {
+          defaultPrefs['time_constraints'] = {
+            "weekday-breakfast": 10,
+            "weekday-lunch": 15,
+            "weekday-dinner": 30,
+            "weekend-breakfast": 20,
+            "weekend-lunch": 30,
+            "weekend-dinner": 45
+          };
+        } else {
+          defaultPrefs['time_constraints'] = prefs['time_constraints'];
+        }
+        
+        if (!prefs.containsKey('prep_preferences') || prefs['prep_preferences'] == null) {
+          defaultPrefs['prep_preferences'] = {
+            "batch-cooking": false,
+            "meal-prep": false,
+            "quick-assembly": false,
+            "one-pot": false,
+            "minimal-dishes": false
+          };
+        } else {
+          defaultPrefs['prep_preferences'] = prefs['prep_preferences'];
+        }
+        
+        // Add a flag to indicate this data has been normalized
+        defaultPrefs['_normalized'] = true;
+        
+        // Merge with original preferences
+        return {...prefs, ...defaultPrefs};
+      }
+      
+      // Primary endpoint aligned with web app and updated backend implementation
+      final primaryEndpoint = "/organizations/clients/$clientId/preferences";
+      
+      // Try primary endpoint first (prioritize implementation matching web app)
+      print("Trying primary endpoint: $primaryEndpoint");
+      attemptedEndpoints.add("GET $primaryEndpoint");
+      final primaryResult = await _get(primaryEndpoint, authToken);
+      
+      if (primaryResult != null && primaryResult is Map) {
+        print("✅ Success from primary endpoint: $primaryEndpoint");
+        final safeResult = _toStringDynamicMap(primaryResult);
+        return normalizePreferences(safeResult);
+      }
+      
+      // Try alternative endpoints in prioritized order
+      final alternateEndpoints = [
         "/clients/$clientId/preferences",
         "/preferences/$clientId",
         "/user/$clientId/preferences"
       ];
       
-      // Try GET requests to all endpoints
-      for (String endpoint in endpoints) {
+      // Try GET requests to alternate endpoints
+      for (String endpoint in alternateEndpoints) {
         try {
-          print("Trying GET to endpoint: $endpoint");
+          print("Trying GET to alternate endpoint: $endpoint");
           attemptedEndpoints.add("GET $endpoint");
           final result = await _get(endpoint, authToken);
           
           if (result != null && result is Map) {
             print("✅ Success from GET endpoint: $endpoint");
-            return _toStringDynamicMap(result);
+            final safeResult = _toStringDynamicMap(result);
+            return normalizePreferences(safeResult);
           }
         } catch (endpointError) {
           print("❌ Error with GET to endpoint $endpoint: $endpointError");
         }
       }
       
-      // Try POST requests to the same endpoints as fallback
-      for (String endpoint in endpoints) {
+      // Try POST requests to the same endpoints as fallback (some APIs implement POST for get operations)
+      for (String endpoint in [primaryEndpoint, ...alternateEndpoints]) {
         try {
           print("Trying POST to endpoint: $endpoint");
           attemptedEndpoints.add("POST $endpoint");
@@ -1890,7 +2129,8 @@ class ApiService {
           
           if (result != null && result is Map) {
             print("✅ Success from POST endpoint: $endpoint");
-            return _toStringDynamicMap(result);
+            final safeResult = _toStringDynamicMap(result);
+            return normalizePreferences(safeResult);
           }
         } catch (endpointError) {
           print("❌ Error with POST to endpoint $endpoint: $endpointError");
@@ -1905,7 +2145,8 @@ class ApiService {
         
         if (result != null && result is Map) {
           print("✅ Success from client_id parameter endpoint");
-          return _toStringDynamicMap(result);
+          final safeResult = _toStringDynamicMap(result);
+          return normalizePreferences(safeResult);
         }
       } catch (paramError) {
         print("❌ Error with client_id parameter: $paramError");
@@ -1913,43 +2154,25 @@ class ApiService {
       
       print("⚠️ All client preference endpoints failed. Attempted: $attemptedEndpoints");
       
-      // Return empty preferences with error message
-      return {
-        "preferences": {},
-        "diet_type": "",
-        "dietary_restrictions": "",
-        "disliked_ingredients": "",
+      // Return default preferences with error message - using the same structure as the web app
+      final defaultPreferences = normalizePreferences({
+        "diet_type": "Mixed",
+        "dietary_restrictions": [],
+        "disliked_ingredients": [],
         "recipe_type": "",
-        "macro_protein": null,
-        "macro_carbs": null,
-        "macro_fat": null,
-        "calorie_goal": null,
-        "meals": {
-          "breakfast": false,
-          "lunch": false,
-          "dinner": false,
-          "snacks": false
-        },
-        "appliances": {
-          "airFryer": false,
-          "instapot": false,
-          "crockpot": false
-        },
-        "prepComplexity": 50,
-        "snacksPerDay": 0,
-        "servings_per_meal": 1,
-        "kroger_store_location": null,
         "error": "Could not retrieve client preferences after multiple attempts"
-      };
+      });
+      
+      return defaultPreferences;
     } catch (e) {
       print("Error getting client preferences: $e");
-      return {
-        "preferences": {},
-        "diet_type": "",
-        "dietary_restrictions": "",
-        "disliked_ingredients": "",
+      // Return default preferences in the same format for error cases
+      return normalizePreferences({
+        "diet_type": "Mixed", 
+        "dietary_restrictions": [],
+        "disliked_ingredients": [],
         "error": e.toString()
-      };
+      });
     }
   }
   
@@ -2059,6 +2282,7 @@ class ApiService {
   }
   
   // Get menus shared with client - Enhanced with multiple fallback approaches
+  // Improved for compatibility with shared_menus table
   static Future<Map<String, dynamic>> getClientMenus(
     int clientId,
     String authToken,
@@ -2098,6 +2322,17 @@ class ApiService {
             }
           } 
           
+          // Handle different field names commonly used in the API
+          
+          // Check for shared_menus field first (aligns with updated backend)
+          if (safeResult.containsKey('shared_menus') && safeResult['shared_menus'] is List) {
+            print("Found 'shared_menus' list in response with ${(safeResult['shared_menus'] as List).length} items");
+            return {
+              "menus": safeResult['shared_menus'],
+              "total": (safeResult['shared_menus'] as List).length
+            };
+          }
+
           // The map might be a menu itself or contain the data we need
           print("Response is a Map with keys: ${safeResult.keys.join(', ')}");
           
@@ -2138,24 +2373,53 @@ class ApiService {
         };
       }
       
-      // Try multiple endpoint patterns with both GET and POST
-      final endpoints = [
-        "/organizations/clients/$clientId/menus",
+      // Primary endpoint in line with web app and backend implementation
+      final primaryEndpoint = "/organizations/clients/$clientId/menus";
+      
+      // Try using the primary endpoint first (which matches web app and updated backend)
+      print("Trying primary endpoint: $primaryEndpoint");
+      attemptedEndpoints.add("GET $primaryEndpoint");
+      final primaryResult = await _get(primaryEndpoint, authToken);
+      
+      if (primaryResult != null) {
+        print("✅ Success with primary endpoint: $primaryEndpoint");
+        return normalizeMenuResponse(primaryResult);
+      }
+      
+      // Try client dashboard endpoint which includes shared menus in its response
+      print("Trying client dashboard endpoint");
+      attemptedEndpoints.add("GET /client/dashboard");
+      final dashboardResult = await _get("/client/dashboard", authToken);
+      
+      if (dashboardResult != null && dashboardResult is Map) {
+        final safeDashboardResult = _toStringDynamicMap(dashboardResult);
+        if (safeDashboardResult.containsKey('shared_menus')) {
+          print("✅ Found shared_menus in dashboard response");
+          return {
+            "menus": safeDashboardResult['shared_menus'],
+            "total": (safeDashboardResult['shared_menus'] as List).length,
+            "from_dashboard": true
+          };
+        }
+      }
+      
+      // Try alternate endpoints if primary failed
+      final alternateEndpoints = [
         "/clients/$clientId/menus",
         "/menu/client/$clientId",
         "/menu/for-client/$clientId",
         "/client/menus/list/$clientId"
       ];
       
-      // Try GET requests to all endpoints
-      for (String endpoint in endpoints) {
+      // Try GET requests to alternate endpoints
+      for (String endpoint in alternateEndpoints) {
         try {
-          print("Trying GET to endpoint: $endpoint");
+          print("Trying GET to alternate endpoint: $endpoint");
           attemptedEndpoints.add("GET $endpoint");
           final result = await _get(endpoint, authToken);
           
           if (result != null) {
-            print("✅ Success from GET endpoint: $endpoint");
+            print("✅ Success from alternate GET endpoint: $endpoint");
             return normalizeMenuResponse(result);
           }
         } catch (endpointError) {
@@ -2163,8 +2427,13 @@ class ApiService {
         }
       }
       
-      // Try POST requests to the same endpoints as fallback
-      for (String endpoint in endpoints) {
+      // Try POST requests to some endpoints as fallback
+      final postEndpoints = [
+        "/organizations/clients/$clientId/menus",
+        "/clients/$clientId/menus"
+      ];
+      
+      for (String endpoint in postEndpoints) {
         try {
           print("Trying POST to endpoint: $endpoint");
           attemptedEndpoints.add("POST $endpoint");
