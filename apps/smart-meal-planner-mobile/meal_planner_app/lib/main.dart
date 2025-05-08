@@ -120,6 +120,25 @@ class CartState extends ChangeNotifier {
   }
 }
 
+// App state management class to track if the user is a trainer
+class AppState extends ChangeNotifier {
+  bool _isTrainer = false;
+  int _selectedTab = 0;
+  
+  bool get isTrainer => _isTrainer;
+  int get selectedTab => _selectedTab;
+  
+  void setTrainerStatus(bool isTrainer) {
+    _isTrainer = isTrainer;
+    notifyListeners();
+  }
+  
+  void setSelectedTab(int tab) {
+    _selectedTab = tab;
+    notifyListeners();
+  }
+}
+
 class MealPlannerApp extends StatefulWidget {
   const MealPlannerApp({Key? key}) : super(key: key);
 
@@ -163,6 +182,7 @@ class _MealPlannerAppState extends State<MealPlannerApp> {
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => CartState()),
+        ChangeNotifierProvider(create: (_) => AppState()),
         Provider<ThemeService>(
           create: (_) => ThemeService(
             toggleTheme: _toggleThemeMode,
@@ -178,7 +198,7 @@ class _MealPlannerAppState extends State<MealPlannerApp> {
           themeMode: _themeMode,
           navigatorKey: navigatorKey, // Add navigator key for global access
           home: auth.isLoggedIn 
-            ? MenuScreen(userId: auth.userId ?? 0, authToken: auth.authToken ?? '')
+            ? MainNavigationScreen(userId: auth.userId ?? 0, authToken: auth.authToken ?? '')
             : LoginScreen(),
           routes: {
             '/login': (context) => LoginScreen(),
@@ -366,6 +386,137 @@ class _MealPlannerAppState extends State<MealPlannerApp> {
             return null;
           },
         ),
+      ),
+    );
+  }
+}
+
+// Main navigation screen with bottom tabs
+class MainNavigationScreen extends StatefulWidget {
+  final int userId;
+  final String authToken;
+
+  MainNavigationScreen({required this.userId, required this.authToken});
+
+  @override
+  _MainNavigationScreenState createState() => _MainNavigationScreenState();
+}
+
+class _MainNavigationScreenState extends State<MainNavigationScreen> {
+  late PageController _pageController;
+  bool _isLoading = true;
+  
+  @override
+  void initState() {
+    super.initState();
+    final appState = Provider.of<AppState>(context, listen: false);
+    _pageController = PageController(initialPage: appState.selectedTab);
+    _checkTrainerStatus();
+  }
+  
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+  
+  // Check if user is a trainer to show organization tab
+  Future<void> _checkTrainerStatus() async {
+    setState(() => _isLoading = true);
+    
+    try {
+      final accountInfo = await ApiService.getUserAccountInfo(widget.authToken);
+      
+      final isTrainer = accountInfo['is_organization'] == true || 
+                       accountInfo['is_trainer'] == true ||
+                       accountInfo['account_type'] == 'organization';
+      
+      // Update app state
+      Provider.of<AppState>(context, listen: false).setTrainerStatus(isTrainer);
+      
+      setState(() => _isLoading = false);
+    } catch (e) {
+      print("Error checking trainer status: $e");
+      setState(() => _isLoading = false);
+    }
+  }
+  
+  void _selectTab(int index) {
+    final appState = Provider.of<AppState>(context, listen: false);
+    appState.setSelectedTab(index);
+    _pageController.animateToPage(
+      index,
+      duration: Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final appState = Provider.of<AppState>(context);
+    
+    if (_isLoading) {
+      return Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+    
+    // Create tab items based on user type
+    List<BottomNavigationBarItem> tabItems = [
+      BottomNavigationBarItem(
+        icon: Icon(Icons.restaurant_menu),
+        label: 'Menus',
+      ),
+      BottomNavigationBarItem(
+        icon: Icon(Icons.search),
+        label: 'Browse',
+      ),
+      BottomNavigationBarItem(
+        icon: Icon(Icons.shopping_cart),
+        label: 'Shop',
+      ),
+      BottomNavigationBarItem(
+        icon: Icon(Icons.person),
+        label: 'Profile',
+      ),
+    ];
+    
+    // Add organization tab for trainers
+    if (appState.isTrainer) {
+      tabItems.insert(3, BottomNavigationBarItem(
+        icon: Icon(Icons.people),
+        label: 'Clients',
+      ));
+    }
+    
+    // Screen content options based on selected tab and user type
+    List<Widget> screens = [
+      MenuScreen(userId: widget.userId, authToken: widget.authToken),
+      RecipeBrowserScreen(userId: widget.userId, authToken: widget.authToken),
+      CartsScreen(userId: widget.userId, authToken: widget.authToken),
+      ProfileScreen(userId: widget.userId, authToken: widget.authToken),
+    ];
+    
+    // Insert organization screen for trainers
+    if (appState.isTrainer) {
+      screens.insert(3, OrganizationScreen(userId: widget.userId, authToken: widget.authToken));
+    }
+    
+    return Scaffold(
+      body: PageView(
+        controller: _pageController,
+        onPageChanged: (index) {
+          Provider.of<AppState>(context, listen: false).setSelectedTab(index);
+        },
+        children: screens,
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        type: BottomNavigationBarType.fixed,
+        currentIndex: appState.selectedTab,
+        onTap: _selectTab,
+        selectedItemColor: Theme.of(context).primaryColor,
+        unselectedItemColor: Colors.grey,
+        items: tabItems,
       ),
     );
   }

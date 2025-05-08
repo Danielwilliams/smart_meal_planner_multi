@@ -46,6 +46,7 @@ function NavBar() {
   const navigate = useNavigate();
   const [organization, setOrganization] = useState(null);
   const [menuAnchorEl, setMenuAnchorEl] = useState(null);
+  const [moreMenuAnchorEl, setMoreMenuAnchorEl] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
@@ -211,12 +212,98 @@ function NavBar() {
                       <Button color="inherit" component={Link} to="/menu">
                         Menu
                       </Button>
-                      <Button color="inherit" component={Link} to="/cart">
-                        Cart
-                      </Button>
                       <Button color="inherit" component={Link} to="/recipes">
-                        Recipes
+                        Recipe Browser
                       </Button>
+                      <Button color="inherit" component={Link} to="/saved-recipes">
+                        Saved Recipes
+                      </Button>
+                      
+                      {/* Create a More dropdown for less frequently used items */}
+                      <Box sx={{ position: 'relative' }}>
+                        <Button 
+                          color="inherit" 
+                          onClick={(e) => setMoreMenuAnchorEl(e.currentTarget)}
+                          endIcon={<MenuIcon fontSize="small" />}
+                        >
+                          More
+                        </Button>
+                        <Menu
+                          anchorEl={moreMenuAnchorEl}
+                          open={Boolean(moreMenuAnchorEl)}
+                          onClose={() => setMoreMenuAnchorEl(null)}
+                        >
+                          <MenuItem 
+                            component={Link} 
+                            to="/shopping-list"
+                            onClick={() => setMoreMenuAnchorEl(null)}
+                          >
+                            <ListItemIcon>
+                              <ListIcon fontSize="small" />
+                            </ListItemIcon>
+                            <ListItemText>Shopping List</ListItemText>
+                          </MenuItem>
+                          
+                          <MenuItem 
+                            component={Link} 
+                            to="/cart"
+                            onClick={() => setMoreMenuAnchorEl(null)}
+                          >
+                            <ListItemIcon>
+                              <CartIcon fontSize="small" />
+                            </ListItemIcon>
+                            <ListItemText>Cart</ListItemText>
+                          </MenuItem>
+                          
+                          <MenuItem 
+                            component={Link} 
+                            to="/custom-menu-builder"
+                            onClick={() => setMoreMenuAnchorEl(null)}
+                          >
+                            <ListItemIcon>
+                              <CustomizeIcon fontSize="small" />
+                            </ListItemIcon>
+                            <ListItemText>Custom Menu</ListItemText>
+                          </MenuItem>
+                          
+                          <MenuItem 
+                            component={Link} 
+                            to="/preferences-page"
+                            onClick={() => setMoreMenuAnchorEl(null)}
+                          >
+                            <ListItemIcon>
+                              <SettingsIcon fontSize="small" />
+                            </ListItemIcon>
+                            <ListItemText>Preferences</ListItemText>
+                          </MenuItem>
+                          
+                          {isOrgAccount && (
+                            <MenuItem 
+                              component={Link} 
+                              to="/recipe-admin"
+                              onClick={() => setMoreMenuAnchorEl(null)}
+                            >
+                              <ListItemIcon>
+                                <AdminIcon fontSize="small" />
+                              </ListItemIcon>
+                              <ListItemText>Recipe Admin</ListItemText>
+                            </MenuItem>
+                          )}
+                          
+                          {isOrgAccount && (
+                            <MenuItem 
+                              component={Link} 
+                              to="/organization/dashboard"
+                              onClick={() => setMoreMenuAnchorEl(null)}
+                            >
+                              <ListItemIcon>
+                                <DashboardIcon fontSize="small" />
+                              </ListItemIcon>
+                              <ListItemText>Organization</ListItemText>
+                            </MenuItem>
+                          )}
+                        </Menu>
+                      </Box>
                     </>
                   )}
                   
