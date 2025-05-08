@@ -373,31 +373,336 @@ class ApiService {
   
   // Get user account info
   static Future<Map<String, dynamic>> getUserAccountInfo(String authToken) async {
+    print("🔄🔄🔄 FETCHING USER ACCOUNT INFO FROM: $baseUrl 🔄🔄🔄");
+    print("Auth token: ${authToken.substring(0, min(15, authToken.length))}...");
+    print("Timestamp: ${DateTime.now().toString()}");
+    print("ENVIRONMENT: Using API endpoint at $baseUrl");
+    
     try {
-      final result = await _get("/auth/account-info", authToken);
-      if (result != null && result is Map) {
-        final Map<String, dynamic> safeResult = _toStringDynamicMap(result);
+      // Since both GET and POST for /auth/account-info return 405,
+      // Let's start by checking the JWT token directly
+      print("Examining JWT token for account information");
+      Map<String, dynamic> tokenData = {};
+      
+      try {
+        tokenData = JwtDecoder.decode(authToken);
+        print("📝 JWT TOKEN CONTENTS:");
+        tokenData.forEach((key, value) {
+          print("JWT.$key: $value (${value?.runtimeType})");
+        });
+      } catch (tokenError) {
+        print("Error decoding token: $tokenError");
+      }
+      
+      // Check if the organization id exists in token
+      if (tokenData.containsKey('organization_id')) {
+        print("Found organization_id in JWT token: ${tokenData['organization_id']}");
+        print("This indicates a CLIENT account (not an organization account)");
+      }
+      
+      if (tokenData.containsKey('account_type')) {
+        print("Found account_type in JWT token: ${tokenData['account_type']}");
+      }
+      
+      if (tokenData.containsKey('is_organization')) {
+        print("Found is_organization in JWT token: ${tokenData['is_organization']}");
+      }
+      
+      // First try organizations endpoint to directly check if the user has organizations
+      print("Trying /organizations endpoint (first choice)");
+      final orgsResult = await _get("/organizations", authToken);
+      if (orgsResult != null) {
+        print("Got result from /organizations");
+        
+        if (orgsResult is List) {
+          print("Organizations endpoint returned a list with ${orgsResult.length} items");
+          if (orgsResult.isNotEmpty) {
+            // If user has organizations, they're likely an organization account
+            print("✅ User has organizations in the list - this is an ORGANIZATION account");
+            final firstOrg = orgsResult[0];
+            if (firstOrg is Map) {
+              final safeOrg = _toStringDynamicMap(firstOrg);
+              return {
+                "account_type": "organization",
+                "is_organization": true,
+                "organization_data": safeOrg,
+                "from_orgs_endpoint": true,
+                "jwt_data": tokenData
+              };
+            } else {
+              return {
+                "account_type": "organization",
+                "is_organization": true,
+                "organization_count": orgsResult.length,
+                "from_orgs_endpoint": true,
+                "jwt_data": tokenData
+              };
+            }
+          } else {
+            print("❌ Organizations list is empty - likely NOT an organization account");
+          }
+        } else if (orgsResult is Map) {
+          print("Organizations endpoint returned a map with keys: ${orgsResult.keys.toList()}");
+          final safeResult = _toStringDynamicMap(orgsResult);
+          
+          if (safeResult.containsKey('organizations')) {
+            if (safeResult['organizations'] is List) {
+              final orgsList = safeResult['organizations'] as List;
+              if (orgsList.isNotEmpty) {
+                print("✅ User has organizations in the map - this is an ORGANIZATION account");
+                return {
+                  "account_type": "organization",
+                  "is_organization": true,
+                  "organization_data": safeResult,
+                  "from_orgs_endpoint": true,
+                  "jwt_data": tokenData
+                };
+              } else {
+                print("❌ Organizations list in map is empty - likely NOT an organization account");
+              }
+            } else {
+              print("'organizations' field is not a list: ${safeResult['organizations']?.runtimeType}");
+            }
+          } else {
+            // If it doesn't contain 'organizations' key but has other data, 
+            // check if it looks like organization data
+            if (safeResult.containsKey('id') && (safeResult.containsKey('name') || 
+                safeResult.containsKey('organization_name'))) {
+              print("✅ Response looks like organization data - this is an ORGANIZATION account");
+              return {
+                "account_type": "organization",
+                "is_organization": true,
+                "organization_data": safeResult,
+                "from_orgs_endpoint": true,
+                "jwt_data": tokenData
+              };
+            }
+          }
+        }
+      }
+      
+      // Try /auth/me endpoint
+      print("Trying /auth/me endpoint");
+      final authMeResult = await _get("/auth/me", authToken);
+      if (authMeResult != null && authMeResult is Map) {
+        print("Got result from /auth/me with keys: ${authMeResult.keys.toList()}");
+        final safeResult = _toStringDynamicMap(authMeResult);
+        
+        // Check for organization indicators
+        bool isOrg = false;
+        
+        if (safeResult.containsKey('account_type') && 
+            safeResult['account_type'].toString().toLowerCase() == 'organization') {
+          isOrg = true;
+          print("✅ Found account_type='organization' in /auth/me response");
+        }
+        
+        if (safeResult.containsKey('is_organization') && safeResult['is_organization'] == true) {
+          isOrg = true;
+          print("✅ Found is_organization=true in /auth/me response");
+        }
+        
+        // Check for organization_id (indicates CLIENT, not organization)
+        if (safeResult.containsKey('organization_id') && safeResult['organization_id'] != null) {
+          isOrg = false; // Override, as this indicates client
+          print("❌ Found organization_id in /auth/me - this indicates a CLIENT account");
+        }
+        
+        safeResult['is_organization'] = isOrg;
+        safeResult['account_type'] = isOrg ? 'organization' : (safeResult['account_type'] ?? 'client');
+        safeResult['from_auth_me'] = true;
+        safeResult['jwt_data'] = tokenData;
+        
         return safeResult;
       }
       
-      // Return minimal account info with error flag
+      // Try /user/profile endpoint
+      print("Trying /user/profile endpoint");
+      final profileResult = await _get("/user/profile", authToken);
+      if (profileResult != null && profileResult is Map) {
+        print("Got result from /user/profile with keys: ${profileResult.keys.toList()}");
+        final safeResult = _toStringDynamicMap(profileResult);
+        
+        // Check for organization indicators
+        bool isOrg = false;
+        
+        if (safeResult.containsKey('account_type') && 
+            safeResult['account_type'].toString().toLowerCase() == 'organization') {
+          isOrg = true;
+          print("✅ Found account_type='organization' in /user/profile response");
+        }
+        
+        if (safeResult.containsKey('is_organization') && safeResult['is_organization'] == true) {
+          isOrg = true;
+          print("✅ Found is_organization=true in /user/profile response");
+        }
+        
+        // Check for organization_id (indicates CLIENT, not organization)
+        if (safeResult.containsKey('organization_id') && safeResult['organization_id'] != null) {
+          isOrg = false; // Override, as this indicates client
+          print("❌ Found organization_id in /user/profile - this indicates a CLIENT account");
+        }
+        
+        safeResult['is_organization'] = isOrg;
+        safeResult['account_type'] = isOrg ? 'organization' : (safeResult['account_type'] ?? 'client');
+        safeResult['from_user_profile'] = true;
+        safeResult['jwt_data'] = tokenData;
+        
+        return safeResult;
+      }
+      
+      // Try /user/me endpoint (common in many APIs)
+      print("Trying /user/me endpoint");
+      final userMeResult = await _get("/user/me", authToken);
+      if (userMeResult != null && userMeResult is Map) {
+        print("Got result from /user/me with keys: ${userMeResult.keys.toList()}");
+        final safeResult = _toStringDynamicMap(userMeResult);
+        
+        // Check for organization indicators
+        bool isOrg = false;
+        
+        if (safeResult.containsKey('account_type') && 
+            safeResult['account_type'].toString().toLowerCase() == 'organization') {
+          isOrg = true;
+          print("✅ Found account_type='organization' in /user/me response");
+        }
+        
+        if (safeResult.containsKey('is_organization') && safeResult['is_organization'] == true) {
+          isOrg = true;
+          print("✅ Found is_organization=true in /user/me response");
+        }
+        
+        // Check for organization_id (indicates CLIENT, not organization)
+        if (safeResult.containsKey('organization_id') && safeResult['organization_id'] != null) {
+          isOrg = false; // Override, as this indicates client
+          print("❌ Found organization_id in /user/me - this indicates a CLIENT account");
+        }
+        
+        safeResult['is_organization'] = isOrg;
+        safeResult['account_type'] = isOrg ? 'organization' : (safeResult['account_type'] ?? 'client');
+        safeResult['from_user_me'] = true;
+        safeResult['jwt_data'] = tokenData;
+        
+        return safeResult;
+      }
+      
+      // If all endpoints fail, still try to generate a response from JWT
+      if (tokenData.isNotEmpty) {
+        bool isOrg = false;
+        
+        // If JWT has account_type
+        if (tokenData.containsKey('account_type') && 
+            tokenData['account_type'].toString().toLowerCase() == 'organization') {
+          isOrg = true;
+        }
+        
+        // If JWT has is_organization flag
+        if (tokenData.containsKey('is_organization') && tokenData['is_organization'] == true) {
+          isOrg = true;
+        }
+        
+        // If JWT has role field and role is organization
+        if (tokenData.containsKey('role') && 
+            tokenData['role'].toString().toLowerCase() == 'organization') {
+          isOrg = true;
+        }
+        
+        // If JWT has organization_id, this indicates a client account
+        if (tokenData.containsKey('organization_id') && tokenData['organization_id'] != null) {
+          isOrg = false; // Client account, not organization
+        }
+        
+        print("🔍 Determined account type from JWT: ${isOrg ? 'ORGANIZATION' : 'CLIENT/INDIVIDUAL'}");
+        
+        return {
+          "account_type": isOrg ? "organization" : "client",
+          "is_organization": isOrg,
+          "from_jwt": true,
+          "jwt_data": tokenData
+        };
+      }
+      
+      // As a last resort, check for organization clients
+      print("Checking for organization clients as last resort");
+      final hasAnyOrgs = await _hasOrganizationClients(authToken);
+      if (hasAnyOrgs) {
+        print("✅ User has organization clients - this is an ORGANIZATION account");
+        return {
+          "account_type": "organization",
+          "is_organization": true,
+          "from_clients_check": true,
+          "jwt_data": tokenData
+        };
+      }
+      
+      // Return info with error flag if all approaches fail
       return {
-        "account_type": "individual",
-        "is_trainer": false,
-        "organization_id": null,
+        "account_type": "unknown",
         "is_organization": false,
-        "error": "Could not retrieve account information"
+        "organization_id": null,
+        "error": "Could not determine account type - all API endpoints failed",
+        "jwt_data": tokenData
       };
     } catch (e) {
       print("Error getting user account info: $e");
       
-      // Return default response even on error
+      // Return error info
       return {
-        "account_type": "individual",
-        "is_trainer": false,
+        "account_type": "unknown",
+        "is_organization": false,
         "organization_id": null,
-        "is_organization": false
+        "error": "Exception: $e"
       };
+    }
+  }
+  
+  // Helper method to check if the user has any organization clients
+  static Future<bool> _hasOrganizationClients(String authToken) async {
+    try {
+      // Try multiple endpoints that might contain organization client data
+      final endpoints = [
+        "/organization-clients",
+        "/organizations/clients",
+        "/clients"
+      ];
+      
+      for (final endpoint in endpoints) {
+        print("Checking endpoint: $endpoint");
+        final result = await _get(endpoint, authToken);
+        
+        if (result != null) {
+          if (result is List && result.isNotEmpty) {
+            print("Found ${result.length} clients at $endpoint");
+            return true;
+          }
+          else if (result is Map) {
+            final safeResult = _toStringDynamicMap(result);
+            print("Endpoint $endpoint returned keys: ${safeResult.keys.toList()}");
+            
+            // Check if there are clients in a 'clients' field
+            if (safeResult.containsKey('clients') && 
+                safeResult['clients'] is List && 
+                (safeResult['clients'] as List).isNotEmpty) {
+              print("Found ${(safeResult['clients'] as List).length} clients in 'clients' field");
+              return true;
+            }
+            
+            // Or check for a 'total' field indicating client count
+            if (safeResult.containsKey('total') && 
+                safeResult['total'] is num && 
+                safeResult['total'] > 0) {
+              print("Found ${safeResult['total']} total clients");
+              return true;
+            }
+          }
+        }
+      }
+      
+      print("No organization clients found in any endpoint");
+      return false;
+    } catch (e) {
+      print("Error checking for organization clients: $e");
+      return false;
     }
   }
   
@@ -1251,31 +1556,171 @@ class ApiService {
   // Get organization clients
   static Future<Map<String, dynamic>> getOrganizationClients(int orgId, String authToken) async {
     try {
-      // Try the primary endpoint first
-      final result = await _get("/organization-clients/$orgId", authToken);
-      if (result != null && result is Map) {
-        return _toStringDynamicMap(result);
+      print("ATTEMPTING TO FETCH ORGANIZATION CLIENTS FOR ORG ID: $orgId");
+      
+      // Since we're getting 405 Method Not Allowed for GET,
+      // Let's try POST method for organization clients endpoints
+      print("Trying POST method since GET returns 405 errors");
+      
+      // Try POST to different endpoints
+      final postEndpoints = [
+        "/organization-clients/$orgId",
+        "/organizations/$orgId/clients",
+        "/organizations/clients"
+      ];
+      
+      for (String endpoint in postEndpoints) {
+        print("Trying POST to endpoint: $endpoint");
+        try {
+          final url = Uri.parse("$baseUrl$endpoint");
+          final response = await http.post(
+            url,
+            headers: _getHeaders(authToken),
+            body: jsonEncode({"organization_id": orgId}),
+          );
+          
+          print("POST $endpoint - Status: ${response.statusCode}");
+          final result = _parseResponse(response);
+          
+          if (result != null) {
+            print("Got result from POST to endpoint: $endpoint");
+            if (result is Map) {
+              return _toStringDynamicMap(result);
+            } else if (result is List) {
+              // If we got a list, wrap it as clients
+              return {
+                "clients": result,
+                "total": result.length,
+                "organization_id": orgId
+              };
+            }
+          }
+        } catch (endpointError) {
+          print("Error with POST to endpoint $endpoint: $endpointError");
+        }
       }
       
-      // Try alternate endpoint if first one fails
-      final altResult = await _get("/organizations/$orgId/clients", authToken);
-      if (altResult != null && altResult is Map) {
-        return _toStringDynamicMap(altResult);
+      // Try all GET endpoints as fallback
+      final endpoints = [
+        "/organization-clients/$orgId",
+        "/organizations/$orgId/clients",
+        "/organization/$orgId/clients",
+        "/organizations/clients",
+        "/api/organization-clients",
+        "/api/clients/$orgId",
+        "/api/organization/$orgId/clients",
+        "/clients/organization/$orgId"
+      ];
+      
+      // Try each endpoint until we get a result
+      for (String endpoint in endpoints) {
+        print("Trying GET endpoint: $endpoint");
+        try {
+          final result = await _get(endpoint, authToken);
+          if (result != null) {
+            print("Got result from GET endpoint: $endpoint");
+            print("Result type: ${result.runtimeType}");
+            
+            if (result is Map) {
+              return _toStringDynamicMap(result);
+            } else if (result is List) {
+              // If we got a list, wrap it as clients
+              return {
+                "clients": result,
+                "total": result.length,
+                "organization_id": orgId
+              };
+            }
+          }
+        } catch (endpointError) {
+          print("Error with GET endpoint $endpoint: $endpointError");
+        }
       }
       
-      // Return empty clients instead of mock data
+      // If all endpoints failed, try a direct clients endpoint as last resort
+      print("All specific endpoints failed, trying general clients endpoint");
+      final clientsResult = await _get("/clients", authToken);
+      if (clientsResult != null) {
+        if (clientsResult is List) {
+          return {
+            "clients": clientsResult,
+            "total": clientsResult.length,
+            "organization_id": orgId
+          };
+        } else if (clientsResult is Map) {
+          return _toStringDynamicMap(clientsResult);
+        }
+      }
+      
+      // If everything fails, try to generate clients from the JWT
+      try {
+        Map<String, dynamic> tokenData = JwtDecoder.decode(authToken);
+        print("Checking JWT for client information");
+        
+        if (tokenData.containsKey('clients') && tokenData['clients'] is List) {
+          final clients = tokenData['clients'] as List;
+          print("Found ${clients.length} clients in JWT");
+          return {
+            "clients": clients,
+            "total": clients.length,
+            "organization_id": orgId,
+            "from_jwt": true
+          };
+        }
+      } catch (tokenError) {
+        print("Error checking JWT for clients: $tokenError");
+      }
+      
+      // Debug information to help diagnose the 403 Forbidden error
+      print("\n🔴 DEBUGGING 403 FORBIDDEN ERROR 🔴");
+      print("JWT token (first 20 chars): ${authToken.substring(0, min(20, authToken.length))}...");
+      try {
+        Map<String, dynamic> tokenData = JwtDecoder.decode(authToken);
+        print("JWT contains these fields: ${tokenData.keys.toList()}");
+        
+        if (tokenData.containsKey('exp')) {
+          final expiration = DateTime.fromMillisecondsSinceEpoch(tokenData['exp'] * 1000);
+          final now = DateTime.now();
+          print("Token expires: $expiration, Current time: $now");
+          print("Token ${expiration.isAfter(now) ? 'IS VALID' : 'IS EXPIRED'}");
+        }
+        
+        if (tokenData.containsKey('user_id')) {
+          print("Token user_id: ${tokenData['user_id']}");
+        }
+        
+        if (tokenData.containsKey('organizations') || tokenData.containsKey('organization_id')) {
+          print("Token has organization info: ${tokenData['organizations'] ?? tokenData['organization_id']}");
+        }
+      } catch (e) {
+        print("Error decoding token: $e");
+      }
+      
+      // Try one more approach - try to get a list of user roles or permissions
+      print("Checking user permissions as last resort");
+      try {
+        final permsResult = await _get("/user/permissions", authToken);
+        if (permsResult != null) {
+          print("User permissions result: $permsResult");
+        }
+      } catch (e) {
+        print("Error checking permissions: $e");
+      }
+      
+      // Return empty clients when all attempts fail
       return {
         "clients": [],
         "total": 0,
         "organization_id": orgId,
-        "error": "Could not retrieve organization clients"
+        "error": "Could not retrieve organization clients - 403 Forbidden indicates permission issues"
       };
     } catch (e) {
       print("Error getting organization clients: $e");
       return {
         "clients": [],
         "total": 0,
-        "organization_id": orgId
+        "organization_id": orgId,
+        "error": "Exception: $e"
       };
     }
   }

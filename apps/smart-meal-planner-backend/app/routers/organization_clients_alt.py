@@ -5,8 +5,9 @@ from app.utils.auth_utils import get_user_from_token
 from app.utils.auth_middleware import require_organization_owner
 from app.models.user import UserWithRole
 from app.db import get_db_connection
-from typing import List
+from typing import List, Dict, Any
 from pydantic import BaseModel, EmailStr
+import logging
 
 router = APIRouter(prefix="/organization-clients", tags=["Organization Clients Alternative"])
 
@@ -17,17 +18,69 @@ class ClientAddRequest(BaseModel):
     organization_id: int
 
 @router.get("/{org_id}")
+@router.post("/{org_id}")  # Add POST method support too
 async def get_organization_clients(
     org_id: int,
-    user=Depends(require_organization_owner)
+    user=Depends(get_user_from_token)  # Use regular token check instead of strict owner check
 ):
-    """Get all clients for an organization (owner only)"""
-    if user.get('organization_id') != org_id:
+    """
+    Get all clients for an organization.
+    This endpoint supports both GET and POST methods.
+    """
+    # Enhanced logging for debugging permission issues
+    logger = logging.getLogger(__name__)
+    logger.info(f"get_organization_clients called for org_id={org_id}")
+    logger.info(f"User token contains: {user}")
+    
+    # If user is not authenticated, return 401
+    if not user:
+        logger.warning("Unauthenticated request to get_organization_clients")
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required"
+        )
+    
+    # Check either:
+    # 1. User is the organization owner 
+    # 2. User has admin role
+    is_authorized = False
+    
+    # Check if token has organization_id matching requested org_id
+    if user.get('organization_id') == org_id and user.get('role') == 'owner':
+        is_authorized = True
+        logger.info("Access granted: User is organization owner")
+    
+    # Check if user is a system admin
+    elif user.get('is_admin') == True:
+        is_authorized = True
+        logger.info("Access granted: User is system admin")
+    
+    # If not authorized through token, check database directly
+    if not is_authorized:
+        conn = get_db_connection()
+        try:
+            with conn.cursor() as cur:
+                # Check if user is org owner
+                cur.execute("""
+                    SELECT 1 FROM organizations 
+                    WHERE id = %s AND owner_id = %s
+                """, (org_id, user.get('user_id')))
+                
+                if cur.fetchone():
+                    is_authorized = True
+                    logger.info("Access granted: Database confirms user is organization owner")
+        finally:
+            conn.close()
+    
+    # If still not authorized, return 403
+    if not is_authorized:
+        logger.warning(f"Access denied for user_id={user.get('user_id')} to org_id={org_id}")
         raise HTTPException(
             status_code=403,
             detail="You don't have access to this organization"
         )
     
+    # If we get here, the user is authorized
     conn = get_db_connection()
     try:
         with conn.cursor() as cur:
@@ -40,7 +93,11 @@ async def get_organization_clients(
             """, (org_id,))
             
             clients = cur.fetchall()
-            return [{
+            
+            # Log number of clients found
+            logger.info(f"Found {len(clients)} clients for org_id={org_id}")
+            
+            client_list = [{
                 "id": client[0],
                 "email": client[1],
                 "name": client[2],
@@ -48,6 +105,12 @@ async def get_organization_clients(
                 "organization_id": client[4],
                 "role": client[5]
             } for client in clients]
+            
+            return {
+                "clients": client_list,
+                "total": len(client_list),
+                "organization_id": org_id
+            }
     finally:
         conn.close()
 

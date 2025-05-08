@@ -1,5 +1,5 @@
 # app/routers/auth.py
-from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
+from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, Request
 from datetime import datetime, timedelta
 from ..models.user import UserSignUp, UserLogin, ForgotPasswordRequest, ResetPasswordRequest, UserProgress, ResendVerificationRequest
 from ..db import get_db_connection
@@ -12,7 +12,13 @@ from app.config import RECAPTCHA_SECRET_KEY, JWT_SECRET, JWT_ALGORITHM
 from email.mime.text import MIMEText
 import smtplib
 from app.config import SMTP_USERNAME, SMTP_PASSWORD, SMTP_SERVER, SMTP_PORT, FRONTEND_URL
+from app.utils.auth_utils import get_user_from_token
+from typing import Dict, Any, Optional, List
+from psycopg2.extras import RealDictCursor
+import logging
 
+# Setup logging
+logger = logging.getLogger(__name__)
 
 # Define router only once at the top
 router = APIRouter(prefix="/auth", tags=["Auth"])
@@ -312,6 +318,107 @@ async def login(user_data: UserLogin):
         )
     finally:
         cursor.close()
+
+@router.get("/account-info")
+@router.post("/account-info") 
+async def get_account_info(current_user: Dict[str, Any] = Depends(get_user_from_token)):
+    """
+    Get the current user's account information.
+    This endpoint supports both GET and POST methods.
+    """
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
+    conn = get_db_connection()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            # Get user details from database
+            cursor.execute("""
+                SELECT 
+                    id, 
+                    email, 
+                    name, 
+                    profile_complete, 
+                    account_type, 
+                    created_at,
+                    has_preferences, 
+                    has_generated_menu, 
+                    has_shopping_list
+                FROM user_profiles 
+                WHERE id = %s
+            """, (current_user["user_id"],))
+            
+            user_data = cursor.fetchone()
+            
+            if not user_data:
+                raise HTTPException(status_code=404, detail="User not found")
+            
+            # Convert to dictionary if needed
+            if not isinstance(user_data, dict):
+                user_data = dict(user_data)
+            
+            # Get organization information if applicable
+            org_id = current_user.get('organization_id')
+            is_organization_owner = False
+            
+            if org_id:
+                # Check if user is an organization owner
+                cursor.execute("""
+                    SELECT id, name, owner_id FROM organizations 
+                    WHERE id = %s
+                """, (org_id,))
+                
+                org_data = cursor.fetchone()
+                
+                if org_data and org_data['owner_id'] == current_user["user_id"]:
+                    is_organization_owner = True
+                    
+                    # Get organization details
+                    user_data["organization"] = {
+                        "id": org_data["id"],
+                        "name": org_data["name"]
+                    }
+            
+            # Update data with token information
+            user_data.update({
+                "is_organization": is_organization_owner,
+                "organization_id": org_id,
+                "role": current_user.get("role")
+            })
+            
+            # Include JWT claims data for debugging
+            user_data["token_data"] = {k: v for k, v in current_user.items() 
+                                     if k not in ["organization_id", "role", "is_admin"]}
+            
+            return user_data
+        
+    except Exception as e:
+        logger.error(f"Error retrieving account info: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+    finally:
+        conn.close()
+
+@router.get("/me")
+@router.post("/me")
+async def get_current_user(current_user: Dict[str, Any] = Depends(get_user_from_token)):
+    """
+    Simple endpoint to get current user info from token.
+    This endpoint supports both GET and POST methods.
+    """
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
+    # Just return user info from the token
+    return {
+        "id": current_user.get("user_id"),
+        "email": current_user.get("email"),
+        "name": current_user.get("name"),
+        "account_type": current_user.get("account_type"),
+        "is_organization": current_user.get("role") == "owner" or current_user.get("account_type") == "organization",
+        "organization_id": current_user.get("organization_id"),
+        "role": current_user.get("role"),
+        "token_data": current_user
+    }
 
 @router.patch("/{user_id}/progress")
 async def update_user_progress(user_id: int, progress: UserProgress):

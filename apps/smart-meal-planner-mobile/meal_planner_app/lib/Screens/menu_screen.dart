@@ -18,7 +18,7 @@ class _MenuScreenState extends State<MenuScreen> {
   bool _isLoading = true;
   Menu? _currentMenu;
   List<Menu> _savedMenus = [];
-  bool _isTrainer = false;
+  bool _isOrganization = false;
   
   // Example meal types for new menu generation
   List<String> mealTypes = ["breakfast", "lunch", "dinner"];
@@ -117,7 +117,7 @@ class _MenuScreenState extends State<MenuScreen> {
     print("============== END FETCH LATEST MENU ==============");
   }
   
-  // Check if the user is a trainer to show organization management
+  // Check if the user is an organization to show organization management
   Future<void> _checkUserType() async {
     try {
       final result = await ApiService.getUserAccountInfo(widget.authToken);
@@ -125,11 +125,12 @@ class _MenuScreenState extends State<MenuScreen> {
         final accountType = result['account_type'] ?? 
                            result['user']?['account_type'] ?? 
                            'individual';
+        // Convert to string and check for 'organization'
+        final accountTypeStr = accountType.toString().toLowerCase();
         setState(() {
-          _isTrainer = accountType.toString().toLowerCase() == 'organization' || 
-                       accountType.toString().toLowerCase() == 'trainer';
+          _isOrganization = accountTypeStr == 'organization';
         });
-        print("User is ${_isTrainer ? 'a trainer' : 'not a trainer'} (account type: $accountType)");
+        print("User is ${_isOrganization ? 'an organization' : 'not an organization'} (account type: $accountType)");
       }
     } catch (e) {
       print("Error checking user type: $e");
@@ -803,8 +804,8 @@ class _MenuScreenState extends State<MenuScreen> {
               },
             ),
             
-            // Only show Organization Management for trainers
-            if (_isTrainer)
+            // Only show Organization Management for organizations
+            if (_isOrganization)
               ListTile(
                 leading: Icon(Icons.business),
                 title: Text('Organization'),

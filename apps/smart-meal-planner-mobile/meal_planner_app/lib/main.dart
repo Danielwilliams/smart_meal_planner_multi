@@ -120,16 +120,16 @@ class CartState extends ChangeNotifier {
   }
 }
 
-// App state management class to track if the user is a trainer
+// App state management class to track if the user is an organization
 class AppState extends ChangeNotifier {
-  bool _isTrainer = false;
+  bool _isOrganization = false;
   int _selectedTab = 0;
   
-  bool get isTrainer => _isTrainer;
+  bool get isOrganization => _isOrganization;
   int get selectedTab => _selectedTab;
   
-  void setTrainerStatus(bool isTrainer) {
-    _isTrainer = isTrainer;
+  void setOrganizationStatus(bool isOrganization) {
+    _isOrganization = isOrganization;
     notifyListeners();
   }
   
@@ -412,8 +412,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     final appState = Provider.of<AppState>(context, listen: false);
     _pageController = PageController(initialPage: appState.selectedTab);
     
-    // Check trainer status from both sources for redundancy
-    _checkTrainerStatus();
+    // Check organization status from both sources for redundancy
+    _checkOrganizationStatus();
   }
   
   @override
@@ -422,39 +422,88 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     super.dispose();
   }
   
-  // Check if user is a trainer to show organization tab
-  Future<void> _checkTrainerStatus() async {
+  // Check if user is an organization to show organization tab
+  Future<void> _checkOrganizationStatus() async {
     setState(() => _isLoading = true);
     
     try {
       // Method 1: Check from AuthProvider
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      bool isTrainerFromAuth = authProvider.isTrainer;
+      bool isOrganizationFromAuth = authProvider.isOrganization;
       
-      print("Trainer status from AuthProvider: $isTrainerFromAuth");
+      print("Organization status from AuthProvider: $isOrganizationFromAuth");
       
       // Method 2: Check directly from API
       final accountInfo = await ApiService.getUserAccountInfo(widget.authToken);
       
-      final isTrainerFromApi = accountInfo['is_organization'] == true || 
-                             accountInfo['is_trainer'] == true ||
-                             accountInfo['account_type'] == 'organization';
+      // Check for organization status in all possible locations
+      bool isOrganizationFromApi = false;
       
-      print("Trainer status from API: $isTrainerFromApi");
+      // Check top-level fields
+      if (accountInfo.containsKey('is_organization')) {
+        isOrganizationFromApi = accountInfo['is_organization'] == true;
+        print("API check: is_organization flag = $isOrganizationFromApi");
+      }
       
-      // Combine results - if either source indicates trainer, show organization tab
-      final isTrainer = isTrainerFromAuth || isTrainerFromApi;
+      // Check account_type field
+      if (accountInfo.containsKey('account_type')) {
+        String accountType = accountInfo['account_type'].toString().toLowerCase();
+        bool isOrgType = accountType == 'organization';
+        print("API check: account_type is organization = $isOrgType");
+        isOrganizationFromApi = isOrganizationFromApi || isOrgType;
+      }
+      
+      // Check type field
+      if (accountInfo.containsKey('type')) {
+        String typeValue = accountInfo['type'].toString().toLowerCase();
+        bool isOrgType = typeValue == 'organization';
+        print("API check: type is organization = $isOrgType");
+        isOrganizationFromApi = isOrganizationFromApi || isOrgType;
+      }
+      
+      // Check user object if it exists
+      if (accountInfo.containsKey('user') && accountInfo['user'] is Map) {
+        var user = accountInfo['user'];
+        
+        // Check user.is_organization
+        if (user.containsKey('is_organization')) {
+          bool isUserOrgFlag = user['is_organization'] == true;
+          print("API check: user.is_organization flag = $isUserOrgFlag");
+          isOrganizationFromApi = isOrganizationFromApi || isUserOrgFlag;
+        }
+        
+        // Check user.account_type
+        if (user.containsKey('account_type')) {
+          String userAccountType = user['account_type'].toString().toLowerCase();
+          bool isUserOrgType = userAccountType == 'organization';
+          print("API check: user.account_type is organization = $isUserOrgType");
+          isOrganizationFromApi = isOrganizationFromApi || isUserOrgType;
+        }
+        
+        // Check user.type
+        if (user.containsKey('type')) {
+          String userType = user['type'].toString().toLowerCase();
+          bool isUserOrgType = userType == 'organization';
+          print("API check: user.type is organization = $isUserOrgType");
+          isOrganizationFromApi = isOrganizationFromApi || isUserOrgType;
+        }
+      }
+      
+      print("Organization status from API: $isOrganizationFromApi");
+      
+      // Combine results - if either source indicates organization, show organization tab
+      final isOrganization = isOrganizationFromAuth || isOrganizationFromApi;
       
       // Update app state
-      Provider.of<AppState>(context, listen: false).setTrainerStatus(isTrainer);
+      Provider.of<AppState>(context, listen: false).setOrganizationStatus(isOrganization);
       
       setState(() => _isLoading = false);
     } catch (e) {
-      print("Error checking trainer status: $e");
+      print("Error checking organization status: $e");
       
       // Fallback to AuthProvider if API fails
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      Provider.of<AppState>(context, listen: false).setTrainerStatus(authProvider.isTrainer);
+      Provider.of<AppState>(context, listen: false).setOrganizationStatus(authProvider.isOrganization);
       
       setState(() => _isLoading = false);
     }
@@ -491,18 +540,16 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     }
     
     // Enhanced logging to diagnose organization account status
-    print("🔍 ORGANIZATION STATUS CHECK");
-    print("AppState isTrainer: ${appState.isTrainer}");
-    print("AuthProvider isTrainer: ${authProvider.isTrainer}");
+    print("🔍 ORGANIZATION STATUS CHECK FOR BOTTOM TAB");
+    print("AppState isOrganization: ${appState.isOrganization}");
+    print("AuthProvider isOrganization: ${authProvider.isOrganization}");
     print("AuthProvider accountType: ${authProvider.accountType}");
+    print("AuthProvider userEmail: ${authProvider.userEmail}");
+    print("AuthProvider userName: ${authProvider.userName}");
     
-    // IMPORTANT: Ensure organization tab shows for organization accounts
-    // Check both sources and specifically look for 'organization' account type
-    final hasOrganizationTab = appState.isTrainer || authProvider.isTrainer || 
-        (authProvider.accountType != null && authProvider.accountType == 'organization');
-    
-    // For testing purposes, can force it to true
-    // final hasOrganizationTab = true;
+    // Only show organization tab for organization accounts
+    final hasOrganizationTab = appState.isOrganization;
+    print("Organization tab visibility: $hasOrganizationTab (based on account type)");
     
     // Debug the final decision
     print("SHOWING ORGANIZATION TAB: $hasOrganizationTab");
@@ -545,7 +592,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       ),
     ];
     
-    // Add organization tab for trainers
+    // Add organization tab for organization accounts
     if (hasOrganizationTab) {
       tabItems.add(BottomNavigationBarItem(
         icon: Icon(Icons.business),
