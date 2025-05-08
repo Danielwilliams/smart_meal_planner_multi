@@ -172,7 +172,7 @@ function NavBar() {
             component={Link} 
             to="/"
             sx={{ 
-              flexGrow: 0, 
+              flexGrow: { xs: 1, md: 0 }, 
               mr: { xs: 0, md: 2 },
               textDecoration: 'none', 
               color: 'inherit',
@@ -321,14 +321,13 @@ function NavBar() {
 
           {/* Mobile Menu Toggle */}
           {isMobile && (
-            <>
+            <Box sx={{ display: 'flex', ml: 'auto', justifyContent: 'flex-end' }}>
               {isAuthenticated && (
                 <Tooltip title="Account">
                   <IconButton 
                     color="inherit" 
                     aria-label="account"
                     onClick={handleMenuOpen}
-                    sx={{ ml: 1 }}
                   >
                     <AccountIcon />
                   </IconButton>
@@ -342,7 +341,7 @@ function NavBar() {
               >
                 <MenuIcon />
               </IconButton>
-            </>
+            </Box>
           )}
 
           {/* Account Menu (Desktop and Mobile) */}

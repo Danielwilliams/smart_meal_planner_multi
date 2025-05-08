@@ -61,6 +61,13 @@
     width: 100%;
   }
   
+  /* Ensure mobile header has proper spacing */
+  .MuiToolbar-root {
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+    justify-content: space-between;
+  }
+  
   .MuiAccordion-root {
     width: 100% !important;
     max-width: 100% !important;
