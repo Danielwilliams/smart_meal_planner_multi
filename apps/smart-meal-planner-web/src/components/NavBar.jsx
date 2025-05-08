@@ -165,7 +165,7 @@ function NavBar() {
             component={Link} 
             to="/"
             sx={{ 
-              flexGrow: { xs: 1, md: 0 }, 
+              flexGrow: 0, 
               mr: { xs: 0, md: 2 },
               textDecoration: 'none', 
               color: 'inherit',
@@ -186,7 +186,7 @@ function NavBar() {
 
           {/* Desktop Navigation Links */}
           {!isMobile && (
-            <Box sx={{ display: 'flex', flexWrap: 'wrap' }}>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', ml: 'auto' }}>
               {isAuthenticated ? (
                 <>
                   {/* Client account gets a simplified menu with their dashboard */}
