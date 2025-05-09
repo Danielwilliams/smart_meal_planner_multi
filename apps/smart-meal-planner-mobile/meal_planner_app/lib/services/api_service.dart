@@ -1311,6 +1311,13 @@ class ApiService {
       if (result != null && result is Map) {
         final Map<String, dynamic> safeResult = _toStringDynamicMap(result);
         return safeResult;
+      } else if (result != null && result is List) {
+        // Handle case where API returns a list of items directly
+        return {
+          "items": result,
+          "total": result.length,
+          "store": storeName
+        };
       }
       
       // Return empty cart instead of mock data
@@ -1472,16 +1479,24 @@ class ApiService {
       if (result != null && result is Map) {
         final Map<String, dynamic> safeResult = _toStringDynamicMap(result);
         return safeResult;
+      } else if (result != null && result is List) {
+        // Handle case where API returns a list directly
+        return {
+          "saved_recipes": result,
+          "recipes": result
+        };
       }
       
       // Return empty recipes array
       return {
+        "saved_recipes": [],
         "recipes": [],
         "error": "Could not retrieve saved recipes"
       };
     } catch (e) {
       print("Error getting saved recipes: $e");
       return {
+        "saved_recipes": [],
         "recipes": [] // Return empty recipes array as fallback
       };
     }

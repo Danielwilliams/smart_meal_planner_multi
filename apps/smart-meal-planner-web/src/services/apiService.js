@@ -717,7 +717,7 @@ const apiService = {
     }
   },
 
-  // Saved Recipie Endpoints
+  // Saved Recipe Endpoints
   saveRecipe: async (saveData) => {
     try {
       const response = await axiosInstance.post('/saved-recipes/', saveData);
@@ -782,7 +782,15 @@ const apiService = {
       return resp.data;
     } catch (err) {
       console.error("Cart contents fetch error:", err);
-      throw err;
+      return {
+        status: 'error',
+        message: 'Failed to load cart contents',
+        cart: {
+          walmart: [],
+          kroger: [],
+          unassigned: []
+        }
+      };
     }
   },
 
@@ -2237,7 +2245,7 @@ const apiService = {
       return response.data;
     } catch (err) {
       console.error('Error fetching scraped recipes:', err);
-      throw err;
+      return { recipes: [], total: 0 };
     }
   },
 
