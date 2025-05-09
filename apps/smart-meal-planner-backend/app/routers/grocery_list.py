@@ -114,12 +114,34 @@ def post_ai_shopping_list(menu_id: int, request: AiShoppingListRequest = None):
     Returns:
         An AI-enhanced shopping list with recommendations and optimizations
     """
+    # Log incoming request to debug potential issues
+    logger.info(f"AI shopping list request for menu ID: {menu_id}")
+    logger.info(f"Request body: {request}")
+    
     # Handle case where request is not provided or AI is not requested
     if request is None:
+        logger.info(f"No request body provided, creating default with menu_id={menu_id}")
         request = AiShoppingListRequest(menu_id=menu_id, use_ai=True)
+    
+    # Ensure the menu_id from path is used
+    if request.menu_id != menu_id:
+        logger.warning(f"Request menu_id {request.menu_id} doesn't match path menu_id {menu_id}, using path parameter")
+        request.menu_id = menu_id
+    
+    # Validate menu ID is positive
+    if menu_id <= 0:
+        logger.error(f"Invalid menu ID: {menu_id}")
+        return {
+            "groceryList": [],
+            "recommendations": ["Invalid menu ID provided"],
+            "error": "Invalid menu ID"
+        }
+    
+    logger.info(f"Processing request: menu_id={request.menu_id}, use_ai={request.use_ai}, preferences={request.additional_preferences}")
     
     if not request.use_ai:
         # If AI is not requested, fall back to standard grocery list
+        logger.info("AI not requested, using standard grocery list")
         return get_grocery_list(menu_id, use_ai=False)
     
     conn = get_db_connection()
@@ -204,22 +226,76 @@ def generate_ai_shopping_list(menu_data, basic_grocery_list, additional_preferen
         
         # Extract items from the basic grocery list
         grocery_items = []
+        logger.info(f"Processing grocery list with {len(basic_grocery_list)} items")
+        
+        # Debug log the structure of the first few items
+        if len(basic_grocery_list) > 0:
+            sample_items = basic_grocery_list[:3]
+            for i, item in enumerate(sample_items):
+                logger.info(f"Sample item {i}: Type={type(item)}, Value={item}")
+        
         for item in basic_grocery_list:
             if isinstance(item, dict) and "name" in item:
                 grocery_items.append(item["name"])
+                logger.info(f"Added dict item: {item['name']}")
             elif isinstance(item, str):
                 grocery_items.append(item)
+                logger.info(f"Added string item: {item}")
             else:
-                # Log unexpected item format
+                # More detailed logging of unexpected formats
                 logger.warning(f"Unexpected item format in grocery list: {type(item)}")
+                try:
+                    logger.warning(f"Item content: {repr(item)}")
+                    # Try to extract name from any object with string representation
+                    item_str = str(item).strip()
+                    if item_str and len(item_str) > 1:
+                        grocery_items.append(item_str)
+                        logger.info(f"Added string representation of item: {item_str}")
+                except Exception as ex:
+                    logger.error(f"Failed to process item: {ex}")
                 
         if not grocery_items:
             logger.warning("Failed to extract any valid items from grocery list")
-            return {
-                "groceryList": basic_grocery_list,  # Return original list
-                "recommendations": ["Could not process ingredients in expected format"],
-                "error": "No valid items found"
-            }
+            
+            # Try a more aggressive approach with the raw grocery list
+            try:
+                # Try to extract any text content from the items
+                logger.info("Attempting aggressive extraction from raw items")
+                for item in basic_grocery_list:
+                    try:
+                        # If it's a dictionary with any key, use the first value
+                        if isinstance(item, dict) and len(item) > 0:
+                            first_key = next(iter(item))
+                            value = item[first_key]
+                            if isinstance(value, str) and value.strip():
+                                grocery_items.append(value.strip())
+                                logger.info(f"Extracted from dict using first key: {value}")
+                            else:
+                                # Use the key itself if it's a meaningful string
+                                if isinstance(first_key, str) and len(first_key) > 1:
+                                    grocery_items.append(first_key)
+                                    logger.info(f"Using dict key as item: {first_key}")
+                        # If it's something with a string representation, use that
+                        elif item is not None:
+                            item_str = str(item).strip()
+                            if item_str and len(item_str) > 1 and item_str.lower() != "none":
+                                grocery_items.append(item_str)
+                                logger.info(f"Using string representation: {item_str}")
+                    except Exception as ex:
+                        logger.error(f"Error in aggressive extraction: {ex}")
+            except Exception as ex:
+                logger.error(f"Failed during aggressive item extraction: {ex}")
+                
+            # If still no items, return a meaningful error
+            if not grocery_items:
+                logger.warning("All extraction methods failed, no valid items found")
+                return {
+                    "groceryList": basic_grocery_list,  # Return original list
+                    "recommendations": ["Could not process ingredients in expected format"],
+                    "error": "No valid items found"
+                }
+            else:
+                logger.info(f"Aggressive extraction found {len(grocery_items)} items")
         
         grocery_text = "\n".join(grocery_items)
         logger.info(f"Prepared {len(grocery_items)} items for AI processing")
@@ -263,7 +339,8 @@ def generate_ai_shopping_list(menu_data, basic_grocery_list, additional_preferen
         prompt += "3. Note which items might already be in a typical pantry\n"
         prompt += "4. Identify items that can be purchased in bulk to save money\n"
         prompt += "5. Highlight any specialty ingredients that might be hard to find\n"
-        prompt += "6. Add nutrition information where relevant\n\n"
+        prompt += "6. Add nutrition information where relevant\n"
+        prompt += "7. Suggest healthy alternatives to ingredients where applicable\n\n"
         prompt += "Shopping List:\n" + grocery_text + "\n\n"
         
         if meal_info:
@@ -276,14 +353,15 @@ def generate_ai_shopping_list(menu_data, basic_grocery_list, additional_preferen
         prompt += """
 {
   "groceryList": [
-    {"category": "Produce", "items": [{"name": "Item Name", "notes": "Optional notes", "alternatives": "Optional alternatives"}]},
+    {"category": "Produce", "items": [{"name": "Item Name", "notes": "Optional notes", "alternatives": "Optional alternatives", "healthyAlternatives": "Optional healthy alternatives"}]},
     {"category": "Dairy", "items": [...]},
     ...
   ],
   "recommendations": ["Recommendation 1", "Recommendation 2", ...],
   "nutritionTips": ["Tip 1", "Tip 2", ...],
   "bulkItems": ["Item 1", "Item 2", ...],
-  "pantryStaples": ["Item 1", "Item 2", ...]
+  "pantryStaples": ["Item 1", "Item 2", ...],
+  "healthySwaps": ["Regular Item -> Healthy Alternative", ...]
 }
 """
         

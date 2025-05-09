@@ -285,12 +285,66 @@ const apiService = {
         payload.additional_preferences = additionalPreferences;
       }
       
-      const resp = await axiosInstance.post(`/menu/${menuId}/ai-shopping-list`, payload);
-      console.log('AI shopping list response:', resp.data);
-      return resp.data;
+      console.log("AI shopping list request payload:", payload);
+      
+      // Use a longer timeout for AI processing
+      const resp = await axiosInstance.post(`/menu/${menuId}/ai-shopping-list`, payload, {
+        timeout: 60000 // 60 second timeout for AI processing
+      });
+      
+      console.log('AI shopping list raw response:', resp);
+      console.log('AI shopping list response data:', resp.data);
+      
+      // Validate and ensure proper response structure
+      let responseData = resp.data;
+      
+      // If we got a string instead of an object (happens with some JSON parsing issues)
+      if (typeof responseData === 'string') {
+        try {
+          console.log("Response is a string, attempting to parse as JSON");
+          responseData = JSON.parse(responseData);
+        } catch (parseErr) {
+          console.error("Failed to parse response string as JSON:", parseErr);
+          // Return a basic valid structure
+          return {
+            groceryList: [],
+            recommendations: ["Error processing AI response"],
+            nutritionTips: ["Try again or use standard list"],
+            error: "Response parsing error"
+          };
+        }
+      }
+      
+      // Ensure we have a valid groceryList property
+      if (!responseData.groceryList) {
+        console.warn("Response missing groceryList property");
+        responseData.groceryList = [];
+      }
+      
+      // Ensure we have valid recommendations
+      if (!responseData.recommendations || !Array.isArray(responseData.recommendations)) {
+        console.warn("Response missing valid recommendations array");
+        responseData.recommendations = ["Shop by category to save time"];
+      }
+      
+      // Ensure we have valid nutritionTips
+      if (!responseData.nutritionTips || !Array.isArray(responseData.nutritionTips)) {
+        console.warn("Response missing valid nutritionTips array");
+        responseData.nutritionTips = ["Focus on whole foods for better nutrition"];
+      }
+      
+      return responseData;
     } catch (err) {
       console.error('AI shopping list generation error:', err);
-      throw err;
+      
+      // Return a fallback response object instead of throwing
+      console.log("Returning fallback AI shopping list due to error");
+      return {
+        groceryList: [],
+        recommendations: ["Error generating AI shopping list"],
+        nutritionTips: ["Using standard list instead"],
+        error: err.message || "Network or server error"
+      };
     }
   },
 

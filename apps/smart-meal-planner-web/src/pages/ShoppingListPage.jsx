@@ -550,9 +550,49 @@ function ShoppingListPage() {
       // User chose AI shopping list
       setAiShoppingLoading(true);
       try {
+        console.log(`Requesting AI shopping list for menu ${selectedMenuId}`);
         const aiResponse = await apiService.generateAiShoppingList(selectedMenuId, aiPreferences);
+        console.log("AI shopping list response:", aiResponse);
+        
+        // Validate response has required data
+        if (!aiResponse) {
+          throw new Error("Empty response from AI shopping list service");
+        }
+        
+        // Check for explicit error message
+        if (aiResponse.error) {
+          console.warn("API returned error:", aiResponse.error);
+          setSnackbarMessage(`Error: ${aiResponse.error}. Using standard list.`);
+          setSnackbarOpen(true);
+          
+          // If there's no grocery list data, don't switch to AI view
+          if (!aiResponse.groceryList || 
+              (Array.isArray(aiResponse.groceryList) && aiResponse.groceryList.length === 0)) {
+            setUsingAiList(false);
+            setAiShoppingLoading(false);
+            return;
+          }
+        }
+        
+        // Even with errors, if we have some data, display it
         setAiShoppingData(aiResponse);
         setUsingAiList(true);
+        
+        // If we have partial data with missing fields, add default values
+        if (!aiResponse.recommendations || !Array.isArray(aiResponse.recommendations)) {
+          console.log("Adding default recommendations");
+          aiResponse.recommendations = ["Shop by category to save time in the store"];
+        }
+        
+        if (!aiResponse.nutritionTips || !Array.isArray(aiResponse.nutritionTips)) {
+          console.log("Adding default nutrition tips");
+          aiResponse.nutritionTips = ["Focus on whole foods for better nutrition"];
+        }
+        
+        if (!aiResponse.healthySwaps || !Array.isArray(aiResponse.healthySwaps)) {
+          console.log("Adding default healthy swaps list");
+          aiResponse.healthySwaps = [];
+        }
       } catch (err) {
         console.error("Error generating AI shopping list:", err);
         setSnackbarMessage("Error generating AI shopping list. Using standard list instead.");
@@ -1184,6 +1224,26 @@ const categorizeItems = (mealPlanData) => {
                       </Card>
                     )}
                     
+                    {/* Healthy Swaps Section */}
+                    {aiShoppingData.healthySwaps && Array.isArray(aiShoppingData.healthySwaps) && aiShoppingData.healthySwaps.length > 0 && (
+                      <Card sx={{ mb: 3 }}>
+                        <CardContent>
+                          <Box display="flex" alignItems="center" mb={1}>
+                            <TipsIcon sx={{ mr: 1 }} color="success" />
+                            <Typography variant="h6">Healthy Alternatives</Typography>
+                          </Box>
+                          <List dense>
+                            {aiShoppingData.healthySwaps.map((item, index) => (
+                              <ListItem key={index}>
+                                <ListItemIcon><TipsIcon color="success" /></ListItemIcon>
+                                <ListItemText primary={item} />
+                              </ListItem>
+                            ))}
+                          </List>
+                        </CardContent>
+                      </Card>
+                    )}
+                    
                     {/* AI Categorized Shopping List */}
                     {aiShoppingData.groceryList && Array.isArray(aiShoppingData.groceryList) && aiShoppingData.groceryList.length > 0 ? (
                       // Case: AI returned properly categorized groceries
@@ -1212,6 +1272,11 @@ const categorizeItems = (mealPlanData) => {
                                       {item.alternatives && (
                                         <Typography variant="body2" color="primary">
                                           Alt: {item.alternatives}
+                                        </Typography>
+                                      )}
+                                      {item.healthyAlternatives && (
+                                        <Typography variant="body2" color="success.main">
+                                          Healthy Option: {item.healthyAlternatives}
                                         </Typography>
                                       )}
                                       <Box sx={{ mt: 1 }}>
@@ -1376,6 +1441,10 @@ const categorizeItems = (mealPlanData) => {
             <ListItem>
               <ListItemIcon><KitchenIcon /></ListItemIcon>
               <ListItemText primary="Common pantry staples identification" />
+            </ListItem>
+            <ListItem>
+              <ListItemIcon><TipsIcon color="success" /></ListItemIcon>
+              <ListItemText primary="Healthy alternatives to ingredients" />
             </ListItem>
           </List>
         </DialogContent>
