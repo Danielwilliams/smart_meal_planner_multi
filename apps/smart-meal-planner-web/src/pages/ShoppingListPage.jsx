@@ -1126,7 +1126,7 @@ const categorizeItems = (mealPlanData) => {
                 {activeTab === 1 && aiShoppingData && (
                   <Box>
                     {/* AI Tips and Recommendations */}
-                    {aiShoppingData.nutritionTips && aiShoppingData.nutritionTips.length > 0 && (
+                    {aiShoppingData.nutritionTips && Array.isArray(aiShoppingData.nutritionTips) && aiShoppingData.nutritionTips.length > 0 && (
                       <Card sx={{ mb: 3 }}>
                         <CardContent>
                           <Box display="flex" alignItems="center" mb={1}>
@@ -1145,7 +1145,7 @@ const categorizeItems = (mealPlanData) => {
                       </Card>
                     )}
                     
-                    {aiShoppingData.recommendations && aiShoppingData.recommendations.length > 0 && (
+                    {aiShoppingData.recommendations && Array.isArray(aiShoppingData.recommendations) && aiShoppingData.recommendations.length > 0 && (
                       <Card sx={{ mb: 3 }}>
                         <CardContent>
                           <Box display="flex" alignItems="center" mb={1}>
@@ -1164,69 +1164,157 @@ const categorizeItems = (mealPlanData) => {
                       </Card>
                     )}
                     
+                    {/* Pantry Items Section */}
+                    {aiShoppingData.pantryStaples && Array.isArray(aiShoppingData.pantryStaples) && aiShoppingData.pantryStaples.length > 0 && (
+                      <Card sx={{ mb: 3 }}>
+                        <CardContent>
+                          <Box display="flex" alignItems="center" mb={1}>
+                            <KitchenIcon sx={{ mr: 1 }} color="primary" />
+                            <Typography variant="h6">Common Pantry Items</Typography>
+                          </Box>
+                          <List dense>
+                            {aiShoppingData.pantryStaples.map((item, index) => (
+                              <ListItem key={index}>
+                                <ListItemIcon><KitchenIcon color="primary" /></ListItemIcon>
+                                <ListItemText primary={item} />
+                              </ListItem>
+                            ))}
+                          </List>
+                        </CardContent>
+                      </Card>
+                    )}
+                    
                     {/* AI Categorized Shopping List */}
-                    {aiShoppingData.groceryList && aiShoppingData.groceryList.map((category, index) => (
-                      <Accordion key={index} defaultExpanded={true} sx={{ mb: 1 }}>
+                    {aiShoppingData.groceryList && Array.isArray(aiShoppingData.groceryList) && aiShoppingData.groceryList.length > 0 ? (
+                      // Case: AI returned properly categorized groceries
+                      aiShoppingData.groceryList.map((category, index) => (
+                        <Accordion key={index} defaultExpanded={true} sx={{ mb: 1 }}>
+                          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                            <Box display="flex" alignItems="center">
+                              <CategoryIcon sx={{ mr: 1 }} />
+                              <Typography variant="h6">{category.category || "Category " + (index + 1)}</Typography>
+                            </Box>
+                          </AccordionSummary>
+                          <AccordionDetails>
+                            <Grid container spacing={2}>
+                              {category.items && Array.isArray(category.items) ? (
+                                category.items.map((item, itemIndex) => (
+                                  <Grid item xs={12} sm={6} key={itemIndex}>
+                                    <Box sx={{ mb: 1 }}>
+                                      <Typography variant="body1" fontWeight="medium">
+                                        {typeof item === 'string' ? item : (item.name || 'Unknown item')}
+                                      </Typography>
+                                      {item.notes && (
+                                        <Typography variant="body2" color="text.secondary">
+                                          {item.notes}
+                                        </Typography>
+                                      )}
+                                      {item.alternatives && (
+                                        <Typography variant="body2" color="primary">
+                                          Alt: {item.alternatives}
+                                        </Typography>
+                                      )}
+                                      <Box sx={{ mt: 1 }}>
+                                        {selectedStore === 'mixed' ? (
+                                          <>
+                                            <Button 
+                                              variant="outlined" 
+                                              size="small" 
+                                              sx={{ mr: 1 }}
+                                              onClick={() => handleAddToMixedCart(typeof item === 'string' ? item : item.name, 'walmart')}
+                                            >
+                                              Add to Walmart
+                                            </Button>
+                                            <Button 
+                                              variant="outlined" 
+                                              size="small" 
+                                              onClick={() => handleAddToMixedCart(typeof item === 'string' ? item : item.name, 'kroger')}
+                                            >
+                                              Add to Kroger
+                                            </Button>
+                                          </>
+                                        ) : (
+                                          <Button 
+                                            variant="outlined" 
+                                            size="small" 
+                                            onClick={() => handleAddToCart(typeof item === 'string' ? item : item.name, selectedStore)}
+                                          >
+                                            Add to {selectedStore.charAt(0).toUpperCase() + selectedStore.slice(1)} Cart
+                                          </Button>
+                                        )}
+                                      </Box>
+                                    </Box>
+                                  </Grid>
+                                ))
+                              ) : (
+                                <Grid item xs={12}>
+                                  <Typography>No items in this category</Typography>
+                                </Grid>
+                              )}
+                            </Grid>
+                          </AccordionDetails>
+                        </Accordion>
+                      ))
+                    ) : (
+                      // Fallback: If AI response doesn't have the expected structure,
+                      // show original list in a single category
+                      <Accordion defaultExpanded={true} sx={{ mb: 1 }}>
                         <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                           <Box display="flex" alignItems="center">
                             <CategoryIcon sx={{ mr: 1 }} />
-                            <Typography variant="h6">{category.category}</Typography>
+                            <Typography variant="h6">All Items</Typography>
                           </Box>
                         </AccordionSummary>
                         <AccordionDetails>
                           <Grid container spacing={2}>
-                            {category.items.map((item, itemIndex) => (
-                              <Grid item xs={12} sm={6} key={itemIndex}>
-                                <Box sx={{ mb: 1 }}>
-                                  <Typography variant="body1" fontWeight="medium">
-                                    {item.name}
-                                  </Typography>
-                                  {item.notes && (
-                                    <Typography variant="body2" color="text.secondary">
-                                      {item.notes}
+                            {groceryList && groceryList.length > 0 ? (
+                              groceryList.map((item, index) => (
+                                <Grid item xs={12} sm={6} key={index}>
+                                  <Box sx={{ mb: 1 }}>
+                                    <Typography variant="body1" fontWeight="medium">
+                                      {typeof item === 'string' ? item : (item.name || 'Unknown item')}
                                     </Typography>
-                                  )}
-                                  {item.alternatives && (
-                                    <Typography variant="body2" color="primary">
-                                      Alt: {item.alternatives}
-                                    </Typography>
-                                  )}
-                                  <Box sx={{ mt: 1 }}>
-                                    {selectedStore === 'mixed' ? (
-                                      <>
+                                    <Box sx={{ mt: 1 }}>
+                                      {selectedStore === 'mixed' ? (
+                                        <>
+                                          <Button 
+                                            variant="outlined" 
+                                            size="small" 
+                                            sx={{ mr: 1 }}
+                                            onClick={() => handleAddToMixedCart(typeof item === 'string' ? item : item.name, 'walmart')}
+                                          >
+                                            Add to Walmart
+                                          </Button>
+                                          <Button 
+                                            variant="outlined" 
+                                            size="small" 
+                                            onClick={() => handleAddToMixedCart(typeof item === 'string' ? item : item.name, 'kroger')}
+                                          >
+                                            Add to Kroger
+                                          </Button>
+                                        </>
+                                      ) : (
                                         <Button 
                                           variant="outlined" 
                                           size="small" 
-                                          sx={{ mr: 1 }}
-                                          onClick={() => handleAddToMixedCart(item.name, 'walmart')}
+                                          onClick={() => handleAddToCart(typeof item === 'string' ? item : item.name, selectedStore)}
                                         >
-                                          Add to Walmart
+                                          Add to {selectedStore.charAt(0).toUpperCase() + selectedStore.slice(1)} Cart
                                         </Button>
-                                        <Button 
-                                          variant="outlined" 
-                                          size="small" 
-                                          onClick={() => handleAddToMixedCart(item.name, 'kroger')}
-                                        >
-                                          Add to Kroger
-                                        </Button>
-                                      </>
-                                    ) : (
-                                      <Button 
-                                        variant="outlined" 
-                                        size="small" 
-                                        onClick={() => handleAddToCart(item.name, selectedStore)}
-                                      >
-                                        Add to {selectedStore.charAt(0).toUpperCase() + selectedStore.slice(1)} Cart
-                                      </Button>
-                                    )}
+                                      )}
+                                    </Box>
                                   </Box>
-                                </Box>
+                                </Grid>
+                              ))
+                            ) : (
+                              <Grid item xs={12}>
+                                <Typography>No items available</Typography>
                               </Grid>
-                            ))}
+                            )}
                           </Grid>
                         </AccordionDetails>
                       </Accordion>
-                    ))}
+                    )}
                   </Box>
                 )}
               </div>

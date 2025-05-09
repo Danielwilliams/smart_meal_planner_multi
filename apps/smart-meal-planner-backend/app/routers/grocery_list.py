@@ -159,7 +159,13 @@ def generate_ai_shopping_list(menu_data, basic_grocery_list, additional_preferen
     """
     try:
         # Extract items from the basic grocery list
-        grocery_items = [item["name"] for item in basic_grocery_list]
+        grocery_items = []
+        for item in basic_grocery_list:
+            if isinstance(item, dict) and "name" in item:
+                grocery_items.append(item["name"])
+            elif isinstance(item, str):
+                grocery_items.append(item)
+        
         grocery_text = "\n".join(grocery_items)
         
         # Convert menu_data to string if it's not already
