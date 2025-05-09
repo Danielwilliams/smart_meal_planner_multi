@@ -394,15 +394,47 @@ def generate_ai_shopping_list(menu_data, basic_grocery_list, additional_preferen
         # Parse the JSON response with enhanced error handling
         try:
             # First try to extract JSON if it's embedded in markdown or other text
-            json_match = re.search(r'```json\n(.*?)\n```', ai_content, re.DOTALL)
+            # Check for different markdown code block formats (with and without language specifier)
+            json_match = re.search(r'```(?:json)?\n([\s\S]*?)\n```', ai_content, re.DOTALL)
+            
             if json_match:
-                json_str = json_match.group(1)
-                ai_result = json.loads(json_str)
-                logger.info("Successfully extracted JSON from markdown code block")
+                json_str = json_match.group(1).strip()
+                logger.info(f"Found JSON code block, content starts with: {json_str[:50]}...")
+                try:
+                    ai_result = json.loads(json_str)
+                    logger.info("Successfully extracted and parsed JSON from markdown code block")
+                except json.JSONDecodeError as block_error:
+                    logger.error(f"Error parsing JSON from code block: {str(block_error)}")
+                    logger.error(f"Code block content starts with: {json_str[:100]}...")
+                    # Try to clean and parse the block (remove indentation, etc.)
+                    cleaned_json = json_str.replace('\n', ' ').replace('\r', '')
+                    # Try to find anything that looks like a JSON object
+                    json_object_match = re.search(r'(\{.*\})', cleaned_json, re.DOTALL)
+                    if json_object_match:
+                        try:
+                            json_object = json_object_match.group(1)
+                            ai_result = json.loads(json_object)
+                            logger.info("Successfully extracted and parsed JSON object from cleaned block")
+                        except:
+                            raise  # Re-throw to fall through to next parsing approach
+                    else:
+                        raise  # Re-throw to fall through to next parsing approach
             else:
-                # Try to parse the whole response as JSON
-                ai_result = json.loads(ai_content)
-                logger.info("Successfully parsed AI response as JSON")
+                # Try to extract any valid JSON object from the response
+                object_match = re.search(r'(\{[\s\S]*\})', ai_content, re.DOTALL)
+                if object_match:
+                    try:
+                        json_object = object_match.group(1)
+                        ai_result = json.loads(json_object)
+                        logger.info("Successfully extracted and parsed JSON object from response")
+                    except json.JSONDecodeError:
+                        # Try to parse the whole response as JSON as a last resort
+                        ai_result = json.loads(ai_content)
+                        logger.info("Successfully parsed entire AI response as JSON")
+                else:
+                    # Try to parse the whole response as JSON as a last resort
+                    ai_result = json.loads(ai_content)
+                    logger.info("Successfully parsed entire AI response as JSON")
             
             # Validate the response structure
             if "groceryList" not in ai_result or not isinstance(ai_result["groceryList"], list):
