@@ -388,7 +388,7 @@ async def get_client_menu_grocery_list(
         if not grocery_list:
             # If no grocery list is found, try to generate one from the menu
             cursor.execute("""
-                SELECT meal_plan, meal_plan_json
+                SELECT meal_plan_json
                 FROM menus
                 WHERE id = %s
             """, (menu_id,))
@@ -414,9 +414,10 @@ async def get_client_menu_grocery_list(
                 if isinstance(meal_plan_json, dict):
                     # Different possible structures
                     if 'days' in meal_plan_json:
+                        # Structure type 1: Direct meals array in day
                         for day in meal_plan_json.get('days', []):
-                            for meal_type, meals in day.get('meals', {}).items():
-                                for meal in meals:
+                            if isinstance(day.get('meals'), list):
+                                for meal in day.get('meals', []):
                                     for ingredient in meal.get('ingredients', []):
                                         if isinstance(ingredient, dict):
                                             ingredients.append({
@@ -428,23 +429,28 @@ async def get_client_menu_grocery_list(
                                                 'name': ingredient,
                                                 'quantity': ''
                                             })
-            
-            # Fallback to meal_plan if meal_plan_json doesn't have ingredients
-            if not ingredients and menu_data.get('meal_plan'):
-                meal_plan = menu_data['meal_plan']
-                if isinstance(meal_plan, str):
-                    try:
-                        meal_plan = json.loads(meal_plan)
-                    except:
-                        meal_plan = {}
-                        
-                # Extract ingredients from meal_plan structure
-                if isinstance(meal_plan, dict):
-                    # Process based on the structure of meal_plan
-                    if 'days' in meal_plan:
-                        for day in meal_plan.get('days', []):
-                            for meal in day.get('meals', []):
-                                for ingredient in meal.get('ingredients', []):
+                            # Structure type 2: Meals grouped by meal_type
+                            elif isinstance(day.get('meals'), dict):
+                                for meal_type, meals in day.get('meals', {}).items():
+                                    if isinstance(meals, list):
+                                        for meal in meals:
+                                            for ingredient in meal.get('ingredients', []):
+                                                if isinstance(ingredient, dict):
+                                                    ingredients.append({
+                                                        'name': ingredient.get('name', ''),
+                                                        'quantity': ingredient.get('quantity', '')
+                                                    })
+                                                elif isinstance(ingredient, str):
+                                                    ingredients.append({
+                                                        'name': ingredient,
+                                                        'quantity': ''
+                                                    })
+                    
+                    # Look for snacks too
+                    for day in meal_plan_json.get('days', []):
+                        if isinstance(day.get('snacks'), list):
+                            for snack in day.get('snacks', []):
+                                for ingredient in snack.get('ingredients', []):
                                     if isinstance(ingredient, dict):
                                         ingredients.append({
                                             'name': ingredient.get('name', ''),

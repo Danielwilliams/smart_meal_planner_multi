@@ -998,7 +998,7 @@ def get_grocery_list(menu_id: int):
         cursor = conn.cursor(cursor_factory=RealDictCursor)
 
         cursor.execute("""
-            SELECT meal_plan_json, meal_plan
+            SELECT meal_plan_json
             FROM menus
             WHERE id = %s;
         """, (menu_id,))
@@ -1008,7 +1008,7 @@ def get_grocery_list(menu_id: int):
             raise HTTPException(status_code=404, detail="No grocery list found for this menu.")
 
         # Dump full menu data for debugging
-        logging.info(f"Menu {menu_id} data retrieved: meal_plan_json exists: {menu.get('meal_plan_json') is not None}, meal_plan exists: {menu.get('meal_plan') is not None}")
+        logging.info(f"Menu {menu_id} data retrieved: meal_plan_json exists: {menu.get('meal_plan_json') is not None}")
         
         # Print raw menu structure for debugging
         menu_keys = list(menu.keys()) if menu else []
@@ -1029,11 +1029,8 @@ def get_grocery_list(menu_id: int):
                 else:
                     logging.info(f"Menu 393 meal_plan_json raw type: {type(menu['meal_plan_json'])}")
                     
-        # Try to use meal_plan_json first, then fall back to meal_plan if needed
+        # Use meal_plan_json
         menu_data = menu.get("meal_plan_json")
-        if not menu_data and menu.get("meal_plan"):
-            menu_data = menu.get("meal_plan")
-            logging.info(f"Using meal_plan instead of meal_plan_json for menu {menu_id}")
             
         # Log raw menu data type
         logging.info(f"Menu {menu_id} data type: {type(menu_data)}")
