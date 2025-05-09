@@ -393,38 +393,111 @@ def generate_ai_shopping_list(menu_data, basic_grocery_list, additional_preferen
         
         # Parse the JSON response with enhanced error handling
         try:
-            # First try to extract JSON if it's embedded in markdown or other text
-            # Check for different markdown code block formats (with and without language specifier)
-            json_match = re.search(r'```(?:json)?\n([\s\S]*?)\n```', ai_content, re.DOTALL)
+            logger.info(f"Attempting to parse AI response, content type: {type(ai_content)}, length: {len(ai_content)}")
+            # Log a sample of the content for debugging
+            logger.info(f"First 200 chars of AI response: {ai_content[:200]}")
             
-            if json_match:
-                json_str = json_match.group(1).strip()
-                logger.info(f"Found JSON code block, content starts with: {json_str[:50]}...")
-                try:
-                    ai_result = json.loads(json_str)
-                    logger.info("Successfully extracted and parsed JSON from markdown code block")
-                except json.JSONDecodeError as block_error:
-                    logger.error(f"Error parsing JSON from code block: {str(block_error)}")
-                    logger.error(f"Code block content starts with: {json_str[:100]}...")
-                    # Try to clean and parse the block (remove indentation, etc.)
-                    cleaned_json = json_str.replace('\n', ' ').replace('\r', '')
-                    # Try to find anything that looks like a JSON object
-                    json_object_match = re.search(r'(\{.*\})', cleaned_json, re.DOTALL)
-                    if json_object_match:
+            # First check if response starts with a Markdown code block
+            if ai_content.strip().startswith("```"):
+                logger.info("Response starts with code block markers")
+                # First try extracting content from code block with language specifier
+                json_match = re.search(r'```(?:json)?\s*\n([\s\S]*?)\n\s*```', ai_content, re.DOTALL)
+                
+                if json_match:
+                    json_str = json_match.group(1).strip()
+                    logger.info(f"Extracted code block content, length: {len(json_str)}")
+                    try:
+                        # Make sure we have a complete JSON object
+                        if json_str.startswith("{") and json_str.endswith("}"):
+                            ai_result = json.loads(json_str)
+                            logger.info("Successfully parsed JSON from code block")
+                        else:
+                            # Sometimes there might be extra newlines or formatting issues
+                            # Try to extract just the JSON object
+                            object_match = re.search(r'(\{[\s\S]*\})', json_str, re.DOTALL)
+                            if object_match:
+                                json_object = object_match.group(1).strip()
+                                ai_result = json.loads(json_object)
+                                logger.info("Successfully extracted and parsed JSON object from code block")
+                            else:
+                                raise ValueError("No valid JSON object found in code block")
+                    except (json.JSONDecodeError, ValueError) as block_error:
+                        logger.error(f"Error parsing JSON from code block: {str(block_error)}")
+                        
+                        # Try alternative approaches - first, clean up the JSON string
+                        minified_json = re.sub(r'\s+', ' ', json_str)  # Replace all whitespace with single spaces
+                        minified_json = re.sub(r',\s*}', '}', minified_json)  # Remove trailing commas
+                        
+                        # Try again with manually reconstructed JSON
                         try:
-                            json_object = json_object_match.group(1)
+                            # Manually reconstruct a JSON object from the content if we detect the structure
+                            if "groceryList" in json_str and "category" in json_str and "items" in json_str:
+                                logger.info("Attempting to manually reconstruct JSON from content")
+                                
+                                # Extract categories and items using regex
+                                categories = []
+                                category_matches = re.finditer(r'"category":\s*"([^"]+)"', json_str)
+                                items_matches = re.finditer(r'"items":\s*\[([\s\S]*?)\]', json_str)
+                                
+                                for cat_match, items_match in zip(category_matches, items_matches):
+                                    category_name = cat_match.group(1)
+                                    items_content = items_match.group(1)
+                                    
+                                    # Extract items as name-value pairs
+                                    items = []
+                                    item_matches = re.finditer(r'\{\s*"name":\s*"([^"]+)"', items_content)
+                                    for item_match in item_matches:
+                                        items.append({"name": item_match.group(1)})
+                                    
+                                    categories.append({
+                                        "category": category_name,
+                                        "items": items
+                                    })
+                                
+                                # Create a structured response
+                                ai_result = {
+                                    "groceryList": categories,
+                                    "recommendations": ["Shop by category to save time in the store"],
+                                    "nutritionTips": ["Focus on whole foods for better nutrition"]
+                                }
+                                logger.info(f"Manually reconstructed JSON with {len(categories)} categories")
+                            else:
+                                raise ValueError("Could not manually reconstruct JSON")
+                        except Exception as rebuild_error:
+                            logger.error(f"Failed to manually reconstruct JSON: {str(rebuild_error)}")
+                            
+                            # As a last resort, try to extract any JSON-like object
+                            try:
+                                object_match = re.search(r'(\{[\s\S]*\})', ai_content, re.DOTALL)
+                                if object_match:
+                                    json_object = object_match.group(1).strip()
+                                    ai_result = json.loads(json_object)
+                                    logger.info("Successfully extracted JSON from raw response")
+                                else:
+                                    raise ValueError("No JSON object found in response")
+                            except Exception:
+                                raise  # Fall through to the next approach
+                else:
+                    # No proper code block match found
+                    logger.warning("Code block markers present but content not properly formatted")
+                    # Try extracting anything that looks like a JSON object
+                    object_match = re.search(r'(\{[\s\S]*\})', ai_content, re.DOTALL)
+                    if object_match:
+                        try:
+                            json_object = object_match.group(1).strip()
                             ai_result = json.loads(json_object)
-                            logger.info("Successfully extracted and parsed JSON object from cleaned block")
-                        except:
-                            raise  # Re-throw to fall through to next parsing approach
+                            logger.info("Successfully extracted JSON from response")
+                        except json.JSONDecodeError:
+                            raise  # Fall through to the next approach
                     else:
-                        raise  # Re-throw to fall through to next parsing approach
+                        raise ValueError("No JSON object found in response")
             else:
-                # Try to extract any valid JSON object from the response
+                # No code block markers, try to extract any JSON object from the response
+                logger.info("No code block markers found, looking for JSON objects directly")
                 object_match = re.search(r'(\{[\s\S]*\})', ai_content, re.DOTALL)
                 if object_match:
                     try:
-                        json_object = object_match.group(1)
+                        json_object = object_match.group(1).strip()
                         ai_result = json.loads(json_object)
                         logger.info("Successfully extracted and parsed JSON object from response")
                     except json.JSONDecodeError:
@@ -437,20 +510,61 @@ def generate_ai_shopping_list(menu_data, basic_grocery_list, additional_preferen
                     logger.info("Successfully parsed entire AI response as JSON")
             
             # Validate the response structure
-            if "groceryList" not in ai_result or not isinstance(ai_result["groceryList"], list):
-                logger.warning("AI response missing required groceryList array")
+            if "groceryList" not in ai_result:
+                logger.warning("AI response missing required groceryList property")
                 # Add a default groceryList if missing
                 ai_result["groceryList"] = [{"category": "All Items", "items": [{"name": item} for item in grocery_items]}]
+            elif not isinstance(ai_result["groceryList"], list):
+                logger.warning(f"AI groceryList is not a list, type: {type(ai_result['groceryList'])}")
+                # Try to handle object format if it's a dictionary instead of list
+                if isinstance(ai_result["groceryList"], dict):
+                    logger.info("Converting groceryList from object to array format")
+                    ai_result["groceryList"] = [ai_result["groceryList"]]
+                else:
+                    # Replace with default structure
+                    ai_result["groceryList"] = [{"category": "All Items", "items": [{"name": item} for item in grocery_items]}]
             
             # Ensure recommendations and nutritionTips are present
             if "recommendations" not in ai_result or not isinstance(ai_result["recommendations"], list):
+                logger.info("Adding default recommendations")
                 ai_result["recommendations"] = ["Shop in bulk when possible to save money"]
                 
             if "nutritionTips" not in ai_result or not isinstance(ai_result["nutritionTips"], list):
+                logger.info("Adding default nutrition tips")
                 ai_result["nutritionTips"] = ["Focus on whole food ingredients for better nutrition"]
                 
             # Add the original list as a fallback
             ai_result["originalList"] = basic_grocery_list
+            
+            # Ensure proper structure for grocery list items
+            try:
+                # Check structure and format as needed
+                for i, category in enumerate(ai_result["groceryList"]):
+                    if not isinstance(category, dict):
+                        logger.warning(f"Category {i} is not a dictionary, converting to standard format")
+                        ai_result["groceryList"][i] = {"category": "Other", "items": [{"name": str(category)}]}
+                        continue
+                        
+                    # Ensure category has a name
+                    if "category" not in category:
+                        category["category"] = "Other"
+                    
+                    # Ensure each category has items array
+                    if "items" not in category or not isinstance(category["items"], list):
+                        category["items"] = []
+                    
+                    # Normalize items to have name property
+                    for j, item in enumerate(category["items"]):
+                        if isinstance(item, str):
+                            category["items"][j] = {"name": item}
+                        elif not isinstance(item, dict):
+                            category["items"][j] = {"name": str(item)}
+                        elif "name" not in item:
+                            category["items"][j]["name"] = "Unknown item"
+            except Exception as structure_error:
+                logger.error(f"Error normalizing grocery list structure: {str(structure_error)}")
+                # If structure normalization fails, replace with simple version
+                ai_result["groceryList"] = [{"category": "All Items", "items": [{"name": item} for item in grocery_items]}]
             
             return ai_result
             
