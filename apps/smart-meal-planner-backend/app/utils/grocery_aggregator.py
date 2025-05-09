@@ -314,10 +314,10 @@ def standardize_ingredient(ing: Any):
         matches = re.findall(pattern, ing_str, re.IGNORECASE)
         
         total_amount = 0
-        for qty, unit in matches:
+        for qty, unit_match in matches:
             amount = safe_convert_to_float(qty)
             if amount is not None:
-                total_amount += convert_to_base_unit(amount, unit)
+                total_amount += convert_to_base_unit(amount, unit_match)
         
         # Remove quantity-unit parts from string
         clean_name = re.sub(pattern, '', ing_str, flags=re.IGNORECASE).strip()
@@ -328,6 +328,7 @@ def standardize_ingredient(ing: Any):
         logger.debug(f"Standardizing string ingredient: {ing}")
         # Try complex parsing first
         amount, name = parse_complex_ingredient(ing)
+        raw_unit = ''  # Initialize raw_unit with default value
         
         # If complex parsing fails, fall back to existing method
         if amount == 0:
@@ -337,10 +338,7 @@ def standardize_ingredient(ing: Any):
         clean_name = sanitize_name(name)
         
         # Sanitize the unit with the ingredient name for default units
-        if 'raw_unit' in locals():
-            unit = sanitize_unit(raw_unit, clean_name)
-        else:
-            unit = sanitize_unit('', clean_name)
+        unit = sanitize_unit(raw_unit, clean_name)
             
         return (clean_name, amount, unit)
     
@@ -366,6 +364,9 @@ def standardize_ingredient(ing: Any):
         
         # Log the quantity we found
         logger.debug(f"Found ingredient quantity: {quantity}")
+        
+        # Look for unit in various fields - initialize earlier
+        unit = ing.get('unit', '')
         
         # Special handling for ingredients with potential qualifiers in quantity
         if isinstance(quantity, str):
@@ -408,9 +409,6 @@ def standardize_ingredient(ing: Any):
         
         # Convert quantity to float
         amount = safe_convert_to_float(quantity)
-        
-        # Look for unit in various fields
-        unit = ing.get('unit', '')
         
         # Remove piece units and apply defaults if needed
         if unit and unit.lower() in ['piece', 'pieces']:
