@@ -13,13 +13,40 @@ import {
   Button,
   CircularProgress,
   Alert,
-  Snackbar
+  Snackbar,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
+  Card,
+  CardContent,
+  Divider,
+  Chip,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  Tabs,
+  Tab,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails
 } from '@mui/material';
 import StoreSelector from '../components/StoreSelector';
 import { useAuth } from '../context/AuthContext';
 import apiService from '../services/apiService';
 import CATEGORY_MAPPING from '../data/categoryMapping';
 import ShoppingList from '../components/ShoppingList';
+import { 
+  AutoAwesome as AiIcon,
+  ExpandMore as ExpandMoreIcon,
+  ShoppingBasket as BasketIcon,
+  TipsAndUpdates as TipsIcon,
+  LocalOffer as OfferIcon,
+  Kitchen as KitchenIcon,
+  Category as CategoryIcon
+} from '@mui/icons-material';
 
 function ShoppingListPage() {
   const { user } = useAuth();
@@ -42,6 +69,14 @@ function ShoppingListPage() {
   const [storeSearchResults, setStoreSearchResults] = useState({});
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
+  
+  // AI shopping list state
+  const [showAiShoppingPrompt, setShowAiShoppingPrompt] = useState(false);
+  const [aiShoppingLoading, setAiShoppingLoading] = useState(false);
+  const [aiShoppingData, setAiShoppingData] = useState(null);
+  const [activeTab, setActiveTab] = useState(0);
+  const [aiPreferences, setAiPreferences] = useState('');
+  const [usingAiList, setUsingAiList] = useState(false);
 
   // Debug log
   console.log("ShoppingListPage params:", { 
@@ -507,9 +542,39 @@ function ShoppingListPage() {
     }
   };
 
+  // Handler for AI prompt dialog
+  const handleAiPromptResponse = async (useAi) => {
+    setShowAiShoppingPrompt(false);
+    
+    if (useAi) {
+      // User chose AI shopping list
+      setAiShoppingLoading(true);
+      try {
+        const aiResponse = await apiService.generateAiShoppingList(selectedMenuId, aiPreferences);
+        setAiShoppingData(aiResponse);
+        setUsingAiList(true);
+      } catch (err) {
+        console.error("Error generating AI shopping list:", err);
+        setSnackbarMessage("Error generating AI shopping list. Using standard list instead.");
+        setSnackbarOpen(true);
+        setUsingAiList(false);
+      } finally {
+        setAiShoppingLoading(false);
+      }
+    } else {
+      // User chose standard shopping list
+      setUsingAiList(false);
+    }
+  };
+
   // Initial data fetch
   useEffect(() => {
     fetchShoppingListData();
+    
+    // Show AI prompt when the page first loads
+    if (selectedMenuId && !showAiShoppingPrompt && !aiShoppingData) {
+      setShowAiShoppingPrompt(true);
+    }
   }, [user, selectedMenuId]);
 
 const categorizeItems = (mealPlanData) => {
@@ -1008,13 +1073,174 @@ const categorizeItems = (mealPlanData) => {
         )}
       </Box>
 
+      {/* Shopping List Display with Tabs */}
       {groceryList && groceryList.length > 0 ? (
-        <ShoppingList 
-          categories={formatCategoriesForDisplay(groceryList)} 
-          selectedStore={selectedStore} 
-          onAddToCart={handleAddToCart} 
-          onAddToMixedCart={handleAddToMixedCart} 
-        />
+        <Box sx={{ width: '100%' }}>
+          {/* Only show tab interface if we have AI data */}
+          {aiShoppingData ? (
+            <>
+              <Tabs 
+                value={activeTab} 
+                onChange={(e, newValue) => setActiveTab(newValue)}
+                aria-label="shopping list tabs"
+                sx={{ mb: 2 }}
+              >
+                <Tab 
+                  icon={<BasketIcon />} 
+                  label="Standard" 
+                  id="tab-0" 
+                  aria-controls="tabpanel-0" 
+                />
+                <Tab 
+                  icon={<AiIcon />} 
+                  label="AI Enhanced" 
+                  id="tab-1" 
+                  aria-controls="tabpanel-1" 
+                />
+              </Tabs>
+              
+              {/* Standard List Tab Panel */}
+              <div
+                role="tabpanel"
+                hidden={activeTab !== 0}
+                id="tabpanel-0"
+                aria-labelledby="tab-0"
+              >
+                {activeTab === 0 && (
+                  <ShoppingList 
+                    categories={formatCategoriesForDisplay(groceryList)} 
+                    selectedStore={selectedStore} 
+                    onAddToCart={handleAddToCart} 
+                    onAddToMixedCart={handleAddToMixedCart} 
+                  />
+                )}
+              </div>
+              
+              {/* AI Enhanced List Tab Panel */}
+              <div
+                role="tabpanel"
+                hidden={activeTab !== 1}
+                id="tabpanel-1"
+                aria-labelledby="tab-1"
+              >
+                {activeTab === 1 && aiShoppingData && (
+                  <Box>
+                    {/* AI Tips and Recommendations */}
+                    {aiShoppingData.nutritionTips && aiShoppingData.nutritionTips.length > 0 && (
+                      <Card sx={{ mb: 3 }}>
+                        <CardContent>
+                          <Box display="flex" alignItems="center" mb={1}>
+                            <TipsIcon sx={{ mr: 1 }} color="primary" />
+                            <Typography variant="h6">Nutrition Tips</Typography>
+                          </Box>
+                          <List dense>
+                            {aiShoppingData.nutritionTips.map((tip, index) => (
+                              <ListItem key={index}>
+                                <ListItemIcon><TipsIcon color="primary" /></ListItemIcon>
+                                <ListItemText primary={tip} />
+                              </ListItem>
+                            ))}
+                          </List>
+                        </CardContent>
+                      </Card>
+                    )}
+                    
+                    {aiShoppingData.recommendations && aiShoppingData.recommendations.length > 0 && (
+                      <Card sx={{ mb: 3 }}>
+                        <CardContent>
+                          <Box display="flex" alignItems="center" mb={1}>
+                            <OfferIcon sx={{ mr: 1 }} color="primary" />
+                            <Typography variant="h6">Shopping Recommendations</Typography>
+                          </Box>
+                          <List dense>
+                            {aiShoppingData.recommendations.map((rec, index) => (
+                              <ListItem key={index}>
+                                <ListItemIcon><OfferIcon color="primary" /></ListItemIcon>
+                                <ListItemText primary={rec} />
+                              </ListItem>
+                            ))}
+                          </List>
+                        </CardContent>
+                      </Card>
+                    )}
+                    
+                    {/* AI Categorized Shopping List */}
+                    {aiShoppingData.groceryList && aiShoppingData.groceryList.map((category, index) => (
+                      <Accordion key={index} defaultExpanded={true} sx={{ mb: 1 }}>
+                        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                          <Box display="flex" alignItems="center">
+                            <CategoryIcon sx={{ mr: 1 }} />
+                            <Typography variant="h6">{category.category}</Typography>
+                          </Box>
+                        </AccordionSummary>
+                        <AccordionDetails>
+                          <Grid container spacing={2}>
+                            {category.items.map((item, itemIndex) => (
+                              <Grid item xs={12} sm={6} key={itemIndex}>
+                                <Box sx={{ mb: 1 }}>
+                                  <Typography variant="body1" fontWeight="medium">
+                                    {item.name}
+                                  </Typography>
+                                  {item.notes && (
+                                    <Typography variant="body2" color="text.secondary">
+                                      {item.notes}
+                                    </Typography>
+                                  )}
+                                  {item.alternatives && (
+                                    <Typography variant="body2" color="primary">
+                                      Alt: {item.alternatives}
+                                    </Typography>
+                                  )}
+                                  <Box sx={{ mt: 1 }}>
+                                    {selectedStore === 'mixed' ? (
+                                      <>
+                                        <Button 
+                                          variant="outlined" 
+                                          size="small" 
+                                          sx={{ mr: 1 }}
+                                          onClick={() => handleAddToMixedCart(item.name, 'walmart')}
+                                        >
+                                          Add to Walmart
+                                        </Button>
+                                        <Button 
+                                          variant="outlined" 
+                                          size="small" 
+                                          onClick={() => handleAddToMixedCart(item.name, 'kroger')}
+                                        >
+                                          Add to Kroger
+                                        </Button>
+                                      </>
+                                    ) : (
+                                      <Button 
+                                        variant="outlined" 
+                                        size="small" 
+                                        onClick={() => handleAddToCart(item.name, selectedStore)}
+                                      >
+                                        Add to {selectedStore.charAt(0).toUpperCase() + selectedStore.slice(1)} Cart
+                                      </Button>
+                                    )}
+                                  </Box>
+                                </Box>
+                              </Grid>
+                            ))}
+                          </Grid>
+                        </AccordionDetails>
+                      </Accordion>
+                    ))}
+                  </Box>
+                )}
+              </div>
+            </>
+          ) : (
+            // No AI data, just show regular shopping list
+            <ShoppingList 
+              categories={formatCategoriesForDisplay(groceryList)} 
+              selectedStore={selectedStore} 
+              onAddToCart={handleAddToCart} 
+              onAddToMixedCart={handleAddToMixedCart} 
+            />
+          )}
+        </Box>
       ) : (
         !loading && (
           <Alert severity="info" sx={{ mt: 3 }}>
@@ -1029,6 +1255,54 @@ const categorizeItems = (mealPlanData) => {
         onClose={handleCloseSnackbar}
         message={snackbarMessage}
       />
+      
+      {/* AI Shopping List Prompt Dialog */}
+      <Dialog
+        open={showAiShoppingPrompt}
+        onClose={() => handleAiPromptResponse(false)}
+        aria-labelledby="ai-shopping-dialog-title"
+      >
+        <DialogTitle id="ai-shopping-dialog-title">
+          <Box display="flex" alignItems="center">
+            <AiIcon sx={{ mr: 1 }} color="primary" />
+            Use AI-Enhanced Shopping List?
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Would you like to generate an AI-enhanced shopping list with:
+          </DialogContentText>
+          <List>
+            <ListItem>
+              <ListItemIcon><CategoryIcon /></ListItemIcon>
+              <ListItemText primary="Smart categorization by store section" />
+            </ListItem>
+            <ListItem>
+              <ListItemIcon><OfferIcon /></ListItemIcon>
+              <ListItemText primary="Alternative brand suggestions" />
+            </ListItem>
+            <ListItem>
+              <ListItemIcon><TipsIcon /></ListItemIcon>
+              <ListItemText primary="Nutritional tips and information" />
+            </ListItem>
+            <ListItem>
+              <ListItemIcon><KitchenIcon /></ListItemIcon>
+              <ListItemText primary="Common pantry staples identification" />
+            </ListItem>
+          </List>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => handleAiPromptResponse(false)}>No, Just Regular List</Button>
+          <Button 
+            onClick={() => handleAiPromptResponse(true)} 
+            variant="contained" 
+            startIcon={<AiIcon />}
+            color="primary"
+          >
+            Yes, Use AI
+          </Button>
+        </DialogActions>
+      </Dialog>
       
       {/* Kroger Store Selection Dialog */}
       <StoreSelector 

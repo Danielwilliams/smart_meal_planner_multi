@@ -272,6 +272,27 @@ const apiService = {
       throw err;
     }
   },
+  
+  async generateAiShoppingList(menuId, additionalPreferences = null) {
+    try {
+      console.log(`Generating AI shopping list for menu ${menuId}`);
+      const payload = {
+        menu_id: menuId,
+        use_ai: true
+      };
+      
+      if (additionalPreferences) {
+        payload.additional_preferences = additionalPreferences;
+      }
+      
+      const resp = await axiosInstance.post(`/menu/${menuId}/ai-shopping-list`, payload);
+      console.log('AI shopping list response:', resp.data);
+      return resp.data;
+    } catch (err) {
+      console.error('AI shopping list generation error:', err);
+      throw err;
+    }
+  },
 
   async updateMenuNickname(menuId, nickname) {
     try {
@@ -466,11 +487,16 @@ const apiService = {
     }
   },
 
-  async getGroceryListByMenuId(menuId) {
+  async getGroceryListByMenuId(menuId, useAi = false) {
     try {
-      console.log(`Fetching grocery list for menu ${menuId}`);
-      const resp = await axiosInstance.get(`/menu/${menuId}/grocery-list`);
+      console.log(`Fetching grocery list for menu ${menuId}, useAi=${useAi}`);
+      const resp = await axiosInstance.get(`/menu/${menuId}/grocery-list?use_ai=${useAi}`);
       console.log('Grocery list response:', resp.data);
+      
+      // If we got an AI-enhanced response, return it as is
+      if (resp.data && (resp.data.groceryList || resp.data.recommendations)) {
+        return resp.data;
+      }
       
       // Ensure we return in the expected format with groceryList property
       if (resp.data && !resp.data.groceryList && Array.isArray(resp.data)) {

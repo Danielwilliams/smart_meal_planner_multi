@@ -973,10 +973,10 @@ class ApiService {
     }
   }
   
-  // Get shopping list for a menu - Enhanced for shared_menus compatibility
-  static Future<Map<String, dynamic>> getShoppingList(int userId, String authToken, int menuId) async {
+  // Get shopping list for a menu - Enhanced with AI option
+  static Future<Map<String, dynamic>> getShoppingList(int userId, String authToken, int menuId, {bool useAi = false}) async {
     try {
-      print("Fetching shopping list for menu ID: $menuId");
+      print("Fetching shopping list for menu ID: $menuId, useAi: $useAi");
       List<String> attemptedEndpoints = [];
       
       // Helper function to normalize shopping list response
@@ -1024,6 +1024,24 @@ class ApiService {
         };
       }
       
+      // If AI shopping list is requested, use the dedicated endpoint
+      if (useAi) {
+        print("Requesting AI-enhanced shopping list");
+        attemptedEndpoints.add("POST /menu/$menuId/ai-shopping-list");
+        
+        final aiResult = await _post("/menu/$menuId/ai-shopping-list", {
+          "menu_id": menuId,
+          "use_ai": true
+        }, authToken);
+        
+        if (aiResult != null) {
+          print("✅ Success from AI shopping list endpoint");
+          return _toStringDynamicMap(aiResult);
+        }
+        
+        print("❌ AI shopping list request failed, falling back to standard endpoints");
+      }
+      
       // Try client endpoint first (aligned with updated backend using shared_menus)
       print("Trying client endpoint first (aligns with shared_menus)");
       attemptedEndpoints.add("/client/menus/$menuId/grocery-list");
@@ -1035,8 +1053,11 @@ class ApiService {
       
       // Try standard menu endpoint
       print("Client endpoint failed, trying standard menu endpoint");
-      attemptedEndpoints.add("/menu/$menuId/grocery-list");
-      final menuResult = await _get("/menu/$menuId/grocery-list", authToken);
+      
+      // Add use_ai parameter if needed
+      String queryParam = useAi ? "?use_ai=true" : "";
+      attemptedEndpoints.add("/menu/$menuId/grocery-list$queryParam");
+      final menuResult = await _get("/menu/$menuId/grocery-list$queryParam", authToken);
       if (menuResult != null) {
         print("✅ Success from standard menu endpoint");
         return normalizeShoppingListResponse(menuResult);
@@ -1135,6 +1156,57 @@ class ApiService {
         "menu_id": menuId,
         "total_items": 0,
         "error": e.toString()
+      };
+    }
+  }
+  
+  // Generate AI-enhanced shopping list
+  static Future<Map<String, dynamic>> generateAiShoppingList(
+    int menuId, 
+    String authToken, 
+    {String? additionalPreferences}
+  ) async {
+    try {
+      print("Generating AI shopping list for menu ID: $menuId");
+      
+      final Map<String, dynamic> payload = {
+        "menu_id": menuId,
+        "use_ai": true
+      };
+      
+      if (additionalPreferences != null && additionalPreferences.isNotEmpty) {
+        payload["additional_preferences"] = additionalPreferences;
+      }
+      
+      final result = await _post("/menu/$menuId/ai-shopping-list", payload, authToken);
+      
+      if (result != null && result is Map) {
+        return _toStringDynamicMap(result);
+      }
+      
+      // If POST request fails, try using a GET request with parameters
+      print("POST failed, trying GET with parameters");
+      String queryParams = "use_ai=true";
+      if (additionalPreferences != null && additionalPreferences.isNotEmpty) {
+        queryParams += "&additional_preferences=${Uri.encodeComponent(additionalPreferences)}";
+      }
+      
+      final getResult = await _get("/menu/$menuId/grocery-list?$queryParams", authToken);
+      
+      if (getResult != null && getResult is Map) {
+        return _toStringDynamicMap(getResult);
+      }
+      
+      // If all attempts fail, return error
+      return {
+        "error": "Failed to generate AI shopping list",
+        "groceryList": []
+      };
+    } catch (e) {
+      print("Error generating AI shopping list: $e");
+      return {
+        "error": "Error: ${e.toString()}",
+        "groceryList": []
       };
     }
   }
