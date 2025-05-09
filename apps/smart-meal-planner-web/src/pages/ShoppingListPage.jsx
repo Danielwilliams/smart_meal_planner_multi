@@ -77,6 +77,10 @@ function ShoppingListPage() {
   const [activeTab, setActiveTab] = useState(0);
   const [aiPreferences, setAiPreferences] = useState('');
   const [usingAiList, setUsingAiList] = useState(false);
+  
+  // Cache management
+  const AI_SHOPPING_CACHE_KEY = 'ai_shopping_cache';
+  const CACHE_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 
   // Debug log
   console.log("ShoppingListPage params:", { 
@@ -542,65 +546,151 @@ function ShoppingListPage() {
     }
   };
 
+  // Cache management functions
+  const getCachedShoppingList = (menuId) => {
+    try {
+      const cacheString = localStorage.getItem(AI_SHOPPING_CACHE_KEY);
+      if (!cacheString) return null;
+      
+      const cacheData = JSON.parse(cacheString);
+      
+      // Check if we have cached data for this menu
+      if (!cacheData[menuId]) return null;
+      
+      const menuCache = cacheData[menuId];
+      
+      // Check if cache has expired
+      const now = Date.now();
+      if (now - menuCache.timestamp > CACHE_EXPIRY_MS) {
+        console.log("Shopping list cache expired for menu", menuId);
+        // Remove expired cache
+        delete cacheData[menuId];
+        localStorage.setItem(AI_SHOPPING_CACHE_KEY, JSON.stringify(cacheData));
+        return null;
+      }
+      
+      console.log("Found valid cached shopping list for menu", menuId);
+      return menuCache.data;
+    } catch (error) {
+      console.error("Error reading cache:", error);
+      return null;
+    }
+  };
+  
+  const setCachedShoppingList = (menuId, data) => {
+    try {
+      // Get existing cache
+      const cacheString = localStorage.getItem(AI_SHOPPING_CACHE_KEY);
+      const cacheData = cacheString ? JSON.parse(cacheString) : {};
+      
+      // Update cache with new data and timestamp
+      cacheData[menuId] = {
+        data,
+        timestamp: Date.now(),
+        preferences: aiPreferences || null
+      };
+      
+      // Save updated cache
+      localStorage.setItem(AI_SHOPPING_CACHE_KEY, JSON.stringify(cacheData));
+      console.log("Cached shopping list for menu", menuId);
+    } catch (error) {
+      console.error("Error writing cache:", error);
+    }
+  };
+  
+  // Function to load AI shopping list with caching
+  const loadAiShoppingList = async (menuId, forceRefresh = false) => {
+    if (!menuId) return null;
+    
+    setAiShoppingLoading(true);
+    
+    try {
+      // Check cache first if not forcing refresh
+      if (!forceRefresh) {
+        const cachedData = getCachedShoppingList(menuId);
+        if (cachedData) {
+          console.log("Using cached AI shopping list");
+          setAiShoppingData(cachedData);
+          setUsingAiList(true);
+          setAiShoppingLoading(false);
+          
+          // Show snackbar to indicate cached data is being used
+          setSnackbarMessage("Using cached shopping list");
+          setSnackbarOpen(true);
+          
+          return cachedData;
+        }
+      }
+      
+      // No cache or refresh requested, make API call
+      console.log(`Requesting AI shopping list for menu ${menuId}`);
+      const aiResponse = await apiService.generateAiShoppingList(menuId, aiPreferences);
+      console.log("AI shopping list response:", aiResponse);
+      
+      // Validate response has required data
+      if (!aiResponse) {
+        throw new Error("Empty response from AI shopping list service");
+      }
+      
+      // Check for explicit error message
+      if (aiResponse.error) {
+        console.warn("API returned error:", aiResponse.error);
+        setSnackbarMessage(`Error: ${aiResponse.error}. Using standard list.`);
+        setSnackbarOpen(true);
+        
+        // If there's no grocery list data, don't switch to AI view
+        if (!aiResponse.groceryList || 
+            (Array.isArray(aiResponse.groceryList) && aiResponse.groceryList.length === 0)) {
+          setUsingAiList(false);
+          setAiShoppingLoading(false);
+          return null;
+        }
+      }
+      
+      // Even with errors, if we have some data, display it
+      setAiShoppingData(aiResponse);
+      setUsingAiList(true);
+      
+      // If we have partial data with missing fields, add default values
+      if (!aiResponse.recommendations || !Array.isArray(aiResponse.recommendations)) {
+        console.log("Adding default recommendations");
+        aiResponse.recommendations = ["Shop by category to save time in the store"];
+      }
+      
+      if (!aiResponse.nutritionTips || !Array.isArray(aiResponse.nutritionTips)) {
+        console.log("Adding default nutrition tips");
+        aiResponse.nutritionTips = ["Focus on whole foods for better nutrition"];
+      }
+      
+      if (!aiResponse.healthySwaps || !Array.isArray(aiResponse.healthySwaps)) {
+        console.log("Adding default healthy swaps list");
+        aiResponse.healthySwaps = [];
+      }
+      
+      // Cache the successful response
+      if (aiResponse.groceryList) {
+        setCachedShoppingList(menuId, aiResponse);
+      }
+      
+      return aiResponse;
+    } catch (err) {
+      console.error("Error generating AI shopping list:", err);
+      setSnackbarMessage("Error generating AI shopping list. Using standard list instead.");
+      setSnackbarOpen(true);
+      setUsingAiList(false);
+      return null;
+    } finally {
+      setAiShoppingLoading(false);
+    }
+  };
+
   // Handler for AI prompt dialog
   const handleAiPromptResponse = async (useAi) => {
     setShowAiShoppingPrompt(false);
     
     if (useAi) {
-      // User chose AI shopping list
-      setAiShoppingLoading(true);
-      try {
-        console.log(`Requesting AI shopping list for menu ${selectedMenuId}`);
-        const aiResponse = await apiService.generateAiShoppingList(selectedMenuId, aiPreferences);
-        console.log("AI shopping list response:", aiResponse);
-        
-        // Validate response has required data
-        if (!aiResponse) {
-          throw new Error("Empty response from AI shopping list service");
-        }
-        
-        // Check for explicit error message
-        if (aiResponse.error) {
-          console.warn("API returned error:", aiResponse.error);
-          setSnackbarMessage(`Error: ${aiResponse.error}. Using standard list.`);
-          setSnackbarOpen(true);
-          
-          // If there's no grocery list data, don't switch to AI view
-          if (!aiResponse.groceryList || 
-              (Array.isArray(aiResponse.groceryList) && aiResponse.groceryList.length === 0)) {
-            setUsingAiList(false);
-            setAiShoppingLoading(false);
-            return;
-          }
-        }
-        
-        // Even with errors, if we have some data, display it
-        setAiShoppingData(aiResponse);
-        setUsingAiList(true);
-        
-        // If we have partial data with missing fields, add default values
-        if (!aiResponse.recommendations || !Array.isArray(aiResponse.recommendations)) {
-          console.log("Adding default recommendations");
-          aiResponse.recommendations = ["Shop by category to save time in the store"];
-        }
-        
-        if (!aiResponse.nutritionTips || !Array.isArray(aiResponse.nutritionTips)) {
-          console.log("Adding default nutrition tips");
-          aiResponse.nutritionTips = ["Focus on whole foods for better nutrition"];
-        }
-        
-        if (!aiResponse.healthySwaps || !Array.isArray(aiResponse.healthySwaps)) {
-          console.log("Adding default healthy swaps list");
-          aiResponse.healthySwaps = [];
-        }
-      } catch (err) {
-        console.error("Error generating AI shopping list:", err);
-        setSnackbarMessage("Error generating AI shopping list. Using standard list instead.");
-        setSnackbarOpen(true);
-        setUsingAiList(false);
-      } finally {
-        setAiShoppingLoading(false);
-      }
+      // User chose AI shopping list - use the new loadAiShoppingList function
+      await loadAiShoppingList(selectedMenuId);
     } else {
       // User chose standard shopping list
       setUsingAiList(false);
@@ -611,9 +701,24 @@ function ShoppingListPage() {
   useEffect(() => {
     fetchShoppingListData();
     
-    // Show AI prompt when the page first loads
-    if (selectedMenuId && !showAiShoppingPrompt && !aiShoppingData) {
-      setShowAiShoppingPrompt(true);
+    // Check if we have a cached AI shopping list for this menu
+    if (selectedMenuId) {
+      const cachedData = getCachedShoppingList(selectedMenuId);
+      
+      if (cachedData) {
+        // Use cached data
+        console.log("Using cached shopping list data on initial load");
+        setAiShoppingData(cachedData);
+        setUsingAiList(true);
+        setActiveTab(1); // Switch to AI tab if we have cached data
+        
+        // Show a toast notification that we're using cached data
+        setSnackbarMessage("Using cached AI shopping list");
+        setSnackbarOpen(true);
+      } else if (!showAiShoppingPrompt && !aiShoppingData) {
+        // No cache, show AI prompt
+        setShowAiShoppingPrompt(true);
+      }
     }
   }, [user, selectedMenuId]);
 
@@ -1119,25 +1224,37 @@ const categorizeItems = (mealPlanData) => {
           {/* Only show tab interface if we have AI data */}
           {aiShoppingData ? (
             <>
-              <Tabs 
-                value={activeTab} 
-                onChange={(e, newValue) => setActiveTab(newValue)}
-                aria-label="shopping list tabs"
-                sx={{ mb: 2 }}
-              >
-                <Tab 
-                  icon={<BasketIcon />} 
-                  label="Standard" 
-                  id="tab-0" 
-                  aria-controls="tabpanel-0" 
-                />
-                <Tab 
-                  icon={<AiIcon />} 
-                  label="AI Enhanced" 
-                  id="tab-1" 
-                  aria-controls="tabpanel-1" 
-                />
-              </Tabs>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Tabs 
+                  value={activeTab} 
+                  onChange={(e, newValue) => setActiveTab(newValue)}
+                  aria-label="shopping list tabs"
+                >
+                  <Tab 
+                    icon={<BasketIcon />} 
+                    label="Standard" 
+                    id="tab-0" 
+                    aria-controls="tabpanel-0" 
+                  />
+                  <Tab 
+                    icon={<AiIcon />} 
+                    label="AI Enhanced" 
+                    id="tab-1" 
+                    aria-controls="tabpanel-1" 
+                  />
+                </Tabs>
+                
+                {/* Refresh button to regenerate AI shopping list */}
+                <Button 
+                  variant="outlined" 
+                  color="primary" 
+                  disabled={aiShoppingLoading}
+                  startIcon={aiShoppingLoading ? <CircularProgress size={20} /> : <AiIcon />}
+                  onClick={() => loadAiShoppingList(selectedMenuId, true)} // Force refresh
+                >
+                  Regenerate AI List
+                </Button>
+              </Box>
               
               {/* Standard List Tab Panel */}
               <div
@@ -1165,6 +1282,20 @@ const categorizeItems = (mealPlanData) => {
               >
                 {activeTab === 1 && aiShoppingData && (
                   <Box>
+                    {/* Display cache info if applicable */}
+                    {aiShoppingData.cached && (
+                      <Alert severity="info" sx={{ mb: 2 }}>
+                        Using cached shopping list from {new Date(aiShoppingData.cache_time).toLocaleString()}. 
+                        <Button 
+                          size="small" 
+                          sx={{ ml: 2 }}
+                          onClick={() => loadAiShoppingList(selectedMenuId, true)}
+                        >
+                          Refresh
+                        </Button>
+                      </Alert>
+                    )}
+                    
                     {/* AI Tips and Recommendations */}
                     {aiShoppingData.nutritionTips && Array.isArray(aiShoppingData.nutritionTips) && aiShoppingData.nutritionTips.length > 0 && (
                       <Card sx={{ mb: 3 }}>

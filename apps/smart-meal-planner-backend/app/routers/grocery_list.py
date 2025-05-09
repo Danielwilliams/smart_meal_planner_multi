@@ -11,6 +11,8 @@ import json
 import openai
 import logging
 import re
+import time
+from datetime import datetime, timedelta
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -19,10 +21,15 @@ logger = logging.getLogger(__name__)
 # Configure OpenAI API
 openai.api_key = OPENAI_API_KEY
 
+# Shopping list cache implementation
+AI_SHOPPING_LIST_CACHE = {}
+CACHE_EXPIRY = 24 * 60 * 60  # 24 hours in seconds
+
 class AiShoppingListRequest(BaseModel):
     menu_id: int
     use_ai: bool = True
     additional_preferences: Optional[str] = None
+    use_cache: bool = True  # Whether to use cached results if available
 
 router = APIRouter(prefix="/menu", tags=["MenuGrocery"])
 
@@ -63,17 +70,41 @@ def get_menu_details(menu_id: int):
 
 
 @router.get("/{menu_id}/grocery-list")
-def get_grocery_list(menu_id: int, use_ai: Optional[bool] = Query(False)):
+def get_grocery_list(
+    menu_id: int, 
+    use_ai: Optional[bool] = Query(False),
+    use_cache: Optional[bool] = Query(True)
+):
     """
     Generate a grocery list from a menu, with optional AI enhancement.
     
     Args:
         menu_id: The ID of the menu to generate the list from
         use_ai: Whether to use AI to enhance the grocery list (default: False)
+        use_cache: Whether to use cached AI results if available (default: True)
     
     Returns:
         A dictionary containing the grocery list and AI recommendations if requested
     """
+    # If AI is requested, check cache first if enabled
+    if use_ai and use_cache:
+        cache_key = f"{menu_id}_no_prefs"  # No preferences for GET requests
+        if cache_key in AI_SHOPPING_LIST_CACHE:
+            cached_data = AI_SHOPPING_LIST_CACHE[cache_key]
+            # Check if cache is still valid
+            if time.time() - cached_data.get('timestamp', 0) < CACHE_EXPIRY:
+                logger.info(f"Returning cached AI shopping list for menu {menu_id}")
+                result = cached_data.get('data')
+                # Mark as cached in the response
+                if isinstance(result, dict):
+                    result['cached'] = True
+                    result['cache_time'] = datetime.fromtimestamp(cached_data.get('timestamp', 0)).isoformat()
+                return result
+            else:
+                # Cache expired, remove it
+                logger.info(f"Cache expired for menu {menu_id}, removing from cache")
+                AI_SHOPPING_LIST_CACHE.pop(cache_key, None)
+    
     conn = get_db_connection()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -92,7 +123,22 @@ def get_grocery_list(menu_id: int, use_ai: Optional[bool] = Query(False)):
         
         # If AI is requested, enhance the list
         if use_ai:
-            return generate_ai_shopping_list(menu_data, grocery_list)
+            result = generate_ai_shopping_list(menu_data, grocery_list)
+            
+            # Store in cache if successful
+            if result and isinstance(result, dict) and "groceryList" in result:
+                logger.info(f"Caching AI shopping list for menu {menu_id}")
+                cache_key = f"{menu_id}_no_prefs"
+                AI_SHOPPING_LIST_CACHE[cache_key] = {
+                    'data': result,
+                    'timestamp': time.time()
+                }
+                
+                # Add cache metadata to the response
+                result['cached'] = False
+                result['cache_timestamp'] = datetime.now().isoformat()
+            
+            return result
         
         return {"groceryList": grocery_list}
 
@@ -137,12 +183,25 @@ def post_ai_shopping_list(menu_id: int, request: AiShoppingListRequest = None):
             "error": "Invalid menu ID"
         }
     
-    logger.info(f"Processing request: menu_id={request.menu_id}, use_ai={request.use_ai}, preferences={request.additional_preferences}")
+    logger.info(f"Processing request: menu_id={request.menu_id}, use_ai={request.use_ai}, preferences={request.additional_preferences}, use_cache={request.use_cache}")
     
     if not request.use_ai:
         # If AI is not requested, fall back to standard grocery list
         logger.info("AI not requested, using standard grocery list")
         return get_grocery_list(menu_id, use_ai=False)
+    
+    # Check cache if enabled
+    cache_key = f"{menu_id}_{request.additional_preferences or 'no_prefs'}"
+    if request.use_cache and cache_key in AI_SHOPPING_LIST_CACHE:
+        cached_data = AI_SHOPPING_LIST_CACHE[cache_key]
+        # Check if cache is still valid
+        if time.time() - cached_data.get('timestamp', 0) < CACHE_EXPIRY:
+            logger.info(f"Returning cached AI shopping list for menu {menu_id}")
+            return cached_data.get('data')
+        else:
+            # Cache expired, remove it
+            logger.info(f"Cache expired for menu {menu_id}, removing from cache")
+            AI_SHOPPING_LIST_CACHE.pop(cache_key, None)
     
     conn = get_db_connection()
     try:
@@ -176,11 +235,25 @@ def post_ai_shopping_list(menu_id: int, request: AiShoppingListRequest = None):
         
         # Generate AI-enhanced shopping list with robust error handling
         try:
-            return generate_ai_shopping_list(
+            result = generate_ai_shopping_list(
                 menu_data, 
                 grocery_list, 
                 additional_preferences=request.additional_preferences
             )
+            
+            # Store in cache if successful
+            if result and isinstance(result, dict) and "groceryList" in result:
+                logger.info(f"Caching AI shopping list for menu {menu_id}")
+                AI_SHOPPING_LIST_CACHE[cache_key] = {
+                    'data': result,
+                    'timestamp': time.time()
+                }
+                
+                # Add cache metadata to the response
+                result['cached'] = False
+                result['cache_timestamp'] = datetime.now().isoformat()
+            
+            return result
         except Exception as ai_error:
             logger.error(f"Error in AI processing: {str(ai_error)}")
             # Return the standard grocery list with error message
@@ -769,4 +842,90 @@ def get_latest_grocery_list(user_id: int):
     return {"menu_id": menu["id"], "groceryList": grocery_list}
 
 
+@router.get("/ai-shopping-cache/status", status_code=200)
+def get_ai_shopping_cache_status():
+    """
+    Get status information about the AI shopping list cache.
+    
+    Returns:
+        A summary of what's currently cached
+    """
+    try:
+        cache_info = {}
+        for key, value in AI_SHOPPING_LIST_CACHE.items():
+            # Try to extract menu ID from key
+            parts = key.split('_')
+            menu_id = parts[0] if parts else "unknown"
+            
+            # Add cache entry info
+            cache_info[key] = {
+                "menu_id": menu_id,
+                "timestamp": value.get("timestamp", 0),
+                "time": datetime.fromtimestamp(value.get("timestamp", 0)).isoformat(),
+                "expires_in": CACHE_EXPIRY - (time.time() - value.get("timestamp", 0)),
+                "size": len(str(value.get("data", "")))
+            }
+        
+        return {
+            "cache_count": len(AI_SHOPPING_LIST_CACHE),
+            "cache_entries": cache_info,
+            "cache_expiry_seconds": CACHE_EXPIRY
+        }
+    except Exception as e:
+        logger.error(f"Error getting AI shopping list cache status: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error getting cache status")
+
+
+@router.delete("/ai-shopping-cache", status_code=200)
+def clear_ai_shopping_cache():
+    """
+    Clear the AI shopping list cache for all menus.
+    This endpoint is meant for administrators to use when needed.
+    
+    Returns:
+        A message indicating the cache was cleared
+    """
+    try:
+        # Get the number of items in the cache
+        count = len(AI_SHOPPING_LIST_CACHE)
+        
+        # Clear the global cache
+        AI_SHOPPING_LIST_CACHE.clear()
+        logger.info("AI shopping list cache cleared")
+        return {"message": f"AI shopping list cache cleared successfully ({count} items)", "count": count}
+    except Exception as e:
+        logger.error(f"Error clearing AI shopping list cache: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error clearing cache")
+
+
+@router.delete("/ai-shopping-cache/{menu_id}", status_code=200)
+def clear_ai_shopping_cache_for_menu(menu_id: int):
+    """
+    Clear the AI shopping list cache for a specific menu.
+    
+    Args:
+        menu_id: The ID of the menu to clear cache for
+        
+    Returns:
+        A message indicating the cache was cleared for the specific menu
+    """
+    try:
+        # Look for any cache entries for this menu ID
+        removed = 0
+        keys_to_remove = []
+        
+        for key in list(AI_SHOPPING_LIST_CACHE.keys()):
+            if key.startswith(f"{menu_id}_"):
+                keys_to_remove.append(key)
+        
+        # Remove the keys
+        for key in keys_to_remove:
+            del AI_SHOPPING_LIST_CACHE[key]
+            removed += 1
+            
+        logger.info(f"Cleared {removed} cache entries for menu {menu_id}")
+        return {"message": f"AI shopping list cache cleared for menu {menu_id}", "count": removed}
+    except Exception as e:
+        logger.error(f"Error clearing AI shopping list cache for menu {menu_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error clearing cache")
         

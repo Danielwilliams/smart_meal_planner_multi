@@ -273,12 +273,13 @@ const apiService = {
     }
   },
   
-  async generateAiShoppingList(menuId, additionalPreferences = null) {
+  async generateAiShoppingList(menuId, additionalPreferences = null, useCache = true) {
     try {
       console.log(`Generating AI shopping list for menu ${menuId}`);
       const payload = {
         menu_id: menuId,
-        use_ai: true
+        use_ai: true,
+        use_cache: useCache
       };
       
       if (additionalPreferences) {
@@ -294,6 +295,11 @@ const apiService = {
       
       console.log('AI shopping list raw response:', resp);
       console.log('AI shopping list response data:', resp.data);
+      
+      // Check if response was from cache
+      if (resp.data && resp.data.cached) {
+        console.log("Retrieved cached response from server:", resp.data.cache_timestamp);
+      }
       
       // Validate and ensure proper response structure
       let responseData = resp.data;
