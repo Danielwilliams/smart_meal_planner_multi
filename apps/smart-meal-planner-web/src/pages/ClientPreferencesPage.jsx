@@ -366,13 +366,50 @@ function ClientPreferencesPage() {
             Dietary Preferences
           </Typography>
           
+          {/* Diet Types - Using checkboxes like the user preferences page */}
+          <Typography variant="subtitle1" gutterBottom>
+            Diet Types
+          </Typography>
+          <Grid container spacing={2}>
+            {[
+              'Vegetarian', 'Vegan', 'Pescatarian', 'Mediterranean', 
+              'Ketogenic', 'Paleo', 'Low-Carb', 'Low-Fat', 
+              'Gluten-Free', 'Dairy-Free'
+            ].map((dietType) => (
+              <Grid item xs={6} sm={4} key={dietType}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={preferences.diet_type.includes(dietType)}
+                      onChange={(e) => {
+                        let currentDietTypes = preferences.diet_type ? 
+                          preferences.diet_type.split(',').map(t => t.trim()) : [];
+                        
+                        if (e.target.checked) {
+                          if (!currentDietTypes.includes(dietType)) {
+                            currentDietTypes.push(dietType);
+                          }
+                        } else {
+                          currentDietTypes = currentDietTypes.filter(t => t !== dietType);
+                        }
+                        
+                        handleChange('diet_type', currentDietTypes.join(', '));
+                      }}
+                    />
+                  }
+                  label={dietType}
+                />
+              </Grid>
+            ))}
+          </Grid>
+          
           <TextField
-            label="Diet Type"
+            label="Other Diet Types"
             fullWidth
             margin="normal"
             value={preferences.diet_type}
             onChange={(e) => handleChange('diet_type', e.target.value)}
-            helperText="Example: Keto, Vegan, Paleo, etc."
+            helperText="Edit or add other diet types separated by commas"
           />
           
           <TextField
@@ -393,13 +430,49 @@ function ClientPreferencesPage() {
             helperText="Enter ingredients to avoid, separated by commas"
           />
           
+          {/* Recipe Types - Using checkboxes like the user preferences page */}
+          <Typography variant="subtitle1" sx={{ mt: 2 }} gutterBottom>
+            Recipe Types
+          </Typography>
+          <Grid container spacing={2}>
+            {[
+              'American', 'Italian', 'Mexican', 'Asian', 'Mediterranean',
+              'Indian', 'French', 'Greek', 'Japanese', 'Thai', 'Chinese'
+            ].map((recipeType) => (
+              <Grid item xs={6} sm={4} key={recipeType}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={preferences.recipe_type.includes(recipeType)}
+                      onChange={(e) => {
+                        let currentRecipeTypes = preferences.recipe_type ? 
+                          preferences.recipe_type.split(',').map(t => t.trim()) : [];
+                        
+                        if (e.target.checked) {
+                          if (!currentRecipeTypes.includes(recipeType)) {
+                            currentRecipeTypes.push(recipeType);
+                          }
+                        } else {
+                          currentRecipeTypes = currentRecipeTypes.filter(t => t !== recipeType);
+                        }
+                        
+                        handleChange('recipe_type', currentRecipeTypes.join(', '));
+                      }}
+                    />
+                  }
+                  label={recipeType}
+                />
+              </Grid>
+            ))}
+          </Grid>
+          
           <TextField
-            label="Recipe Types"
+            label="Other Recipe Types"
             fullWidth
             margin="normal"
             value={preferences.recipe_type}
             onChange={(e) => handleChange('recipe_type', e.target.value)}
-            helperText="Example: American, Italian, Mexican, etc."
+            helperText="Edit or add other cuisine types separated by commas"
           />
         </Box>
 

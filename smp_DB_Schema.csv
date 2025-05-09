@@ -1,0 +1,278 @@
+"table_schema","table_name","column_name","data_type","character_maximum_length","column_default","is_nullable","referenced_schema","referenced_table","referenced_column","foreign_key_name"
+"public","ai_models","id","integer",NULL,"nextval('ai_models_id_seq'::regclass)","NO",NULL,NULL,NULL,NULL
+"public","ai_models","model_name","character varying",100,NULL,"NO",NULL,NULL,NULL,NULL
+"public","ai_models","model_type","character varying",50,NULL,"NO",NULL,NULL,NULL,NULL
+"public","ai_models","model_path","text",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","ai_models","is_active","boolean",NULL,"false","YES",NULL,NULL,NULL,NULL
+"public","ai_models","version","character varying",50,NULL,"YES",NULL,NULL,NULL,NULL
+"public","ai_models","created_at","timestamp without time zone",NULL,"CURRENT_TIMESTAMP","YES",NULL,NULL,NULL,NULL
+"public","ai_models","updated_at","timestamp without time zone",NULL,"CURRENT_TIMESTAMP","YES",NULL,NULL,NULL,NULL
+"public","ai_models","metadata","jsonb",NULL,"'{}'::jsonb","YES",NULL,NULL,NULL,NULL
+"public","client_invitations","id","integer",NULL,"nextval('client_invitations_id_seq'::regclass)","NO",NULL,NULL,NULL,NULL
+"public","client_invitations","organization_id","integer",NULL,NULL,"YES","public","organizations","id","client_invitations_organization_id_fkey"
+"public","client_invitations","email","character varying",255,NULL,"NO",NULL,NULL,NULL,NULL
+"public","client_invitations","invitation_token","character varying",255,NULL,"NO",NULL,NULL,NULL,NULL
+"public","client_invitations","status","character varying",50,"'pending'::character varying","YES",NULL,NULL,NULL,NULL
+"public","client_invitations","created_at","timestamp without time zone",NULL,"CURRENT_TIMESTAMP","YES",NULL,NULL,NULL,NULL
+"public","client_invitations","expires_at","timestamp without time zone",NULL,NULL,"NO",NULL,NULL,NULL,NULL
+"public","component_compatibility","id","integer",NULL,"nextval('component_compatibility_id_seq'::regclass)","NO",NULL,NULL,NULL,NULL
+"public","component_compatibility","component1_id","integer",NULL,NULL,"YES","public","recipe_components","id","component_compatibility_component1_id_fkey"
+"public","component_compatibility","component2_id","integer",NULL,NULL,"YES","public","recipe_components","id","component_compatibility_component2_id_fkey"
+"public","component_compatibility","compatibility_score","integer",NULL,NULL,"NO",NULL,NULL,NULL,NULL
+"public","component_compatibility","reason","text",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","component_compatibility","created_at","timestamp without time zone",NULL,"CURRENT_TIMESTAMP","YES",NULL,NULL,NULL,NULL
+"public","custom_menus","id","integer",NULL,"nextval('custom_menus_id_seq'::regclass)","NO",NULL,NULL,NULL,NULL
+"public","custom_menus","user_id","integer",NULL,NULL,"NO",NULL,NULL,NULL,NULL
+"public","custom_menus","organization_id","integer",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","custom_menus","for_client_id","integer",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","custom_menus","title","character varying",255,NULL,"YES",NULL,NULL,NULL,NULL
+"public","custom_menus","meal_plan_json","jsonb",NULL,NULL,"NO",NULL,NULL,NULL,NULL
+"public","custom_menus","created_at","timestamp without time zone",NULL,"CURRENT_TIMESTAMP","YES",NULL,NULL,NULL,NULL
+"public","custom_menus","updated_at","timestamp without time zone",NULL,"CURRENT_TIMESTAMP","YES",NULL,NULL,NULL,NULL
+"public","grocery_items","id","integer",NULL,"nextval('grocery_items_id_seq'::regclass)","NO",NULL,NULL,NULL,NULL
+"public","grocery_items","name","character varying",100,NULL,"YES",NULL,NULL,NULL,NULL
+"public","grocery_items","price","numeric",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","grocery_items","store","character varying",100,NULL,"YES",NULL,NULL,NULL,NULL
+"public","menus","id","integer",NULL,"nextval('menus_id_seq'::regclass)","NO",NULL,NULL,NULL,NULL
+"public","menus","user_id","integer",NULL,NULL,"YES","public","user_profiles","id","menus_user_profiles_id_fkey"
+"public","menus","total_cost","numeric",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","menus","duration_days","integer",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","menus","meal_times","text",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","menus","snacks_per_day","integer",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","menus","meal_plan_json","jsonb",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","menus","created_at","timestamp without time zone",NULL,"now()","YES",NULL,NULL,NULL,NULL
+"public","menus","nickname","text",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","menus","created_by","integer",NULL,NULL,"YES","public","user_profiles","id","menus_created_by_fkey"
+"public","menus","shared_with_organization","boolean",NULL,"false","YES",NULL,NULL,NULL,NULL
+"public","menus","for_client_id","integer",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","menus","ai_model_used","character varying",50,"'default'::character varying","YES",NULL,NULL,NULL,NULL
+"public","model_training_state","id","integer",NULL,"nextval('model_training_state_id_seq'::regclass)","NO",NULL,NULL,NULL,NULL
+"public","model_training_state","last_trained","timestamp without time zone",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","model_training_state","recipe_count","integer",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","model_training_state","status","character varying",50,NULL,"YES",NULL,NULL,NULL,NULL
+"public","model_training_state","model_path","text",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","model_training_state","created_at","timestamp without time zone",NULL,"CURRENT_TIMESTAMP","YES",NULL,NULL,NULL,NULL
+"public","model_training_state","updated_at","timestamp without time zone",NULL,"CURRENT_TIMESTAMP","YES",NULL,NULL,NULL,NULL
+"public","orders","id","integer",NULL,"nextval('orders_id_seq'::regclass)","NO",NULL,NULL,NULL,NULL
+"public","orders","user_id","integer",NULL,"nextval('orders_user_id_seq'::regclass)","NO",NULL,NULL,NULL,NULL
+"public","orders","store_name","ARRAY",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","orders","order_status","ARRAY",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","orders","order_total","numeric",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","orders","created_at","timestamp without time zone",NULL,"now()","YES",NULL,NULL,NULL,NULL
+"public","organization_clients","id","integer",NULL,"nextval('organization_clients_id_seq'::regclass)","NO",NULL,NULL,NULL,NULL
+"public","organization_clients","organization_id","integer",NULL,NULL,"YES","public","organizations","id","organization_clients_organization_id_fkey"
+"public","organization_clients","client_id","integer",NULL,NULL,"YES","public","user_profiles","id","organization_clients_client_id_fkey"
+"public","organization_clients","role","character varying",50,"'client'::character varying","YES",NULL,NULL,NULL,NULL
+"public","organization_clients","status","character varying",50,"'active'::character varying","YES",NULL,NULL,NULL,NULL
+"public","organization_clients","created_at","timestamp without time zone",NULL,"CURRENT_TIMESTAMP","YES",NULL,NULL,NULL,NULL
+"public","organizations","id","integer",NULL,"nextval('organizations_id_seq'::regclass)","NO",NULL,NULL,NULL,NULL
+"public","organizations","name","character varying",255,NULL,"NO",NULL,NULL,NULL,NULL
+"public","organizations","description","text",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","organizations","created_at","timestamp without time zone",NULL,"CURRENT_TIMESTAMP","YES",NULL,NULL,NULL,NULL
+"public","organizations","owner_id","integer",NULL,NULL,"YES","public","user_profiles","id","organizations_owner_id_fkey"
+"public","password_reset_requests","id","integer",NULL,"nextval('password_reset_requests_id_seq'::regclass)","NO",NULL,NULL,NULL,NULL
+"public","password_reset_requests","user_id","integer",NULL,NULL,"YES","public","user_profiles","id","password_reset_requests_user_id_fkey"
+"public","password_reset_requests","reset_token","character varying",255,NULL,"YES",NULL,NULL,NULL,NULL
+"public","password_reset_requests","expires_at","timestamp without time zone",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","password_reset_requests","used","boolean",NULL,"false","YES",NULL,NULL,NULL,NULL
+"public","recipe_components","id","integer",NULL,"nextval('recipe_components_id_seq'::regclass)","NO",NULL,NULL,NULL,NULL
+"public","recipe_components","recipe_id","integer",NULL,NULL,"YES","public","scraped_recipes","id","recipe_components_recipe_id_fkey"
+"public","recipe_components","component_type","character varying",50,NULL,"NO",NULL,NULL,NULL,NULL
+"public","recipe_components","name","character varying",255,NULL,"YES",NULL,NULL,NULL,NULL
+"public","recipe_components","ingredients","jsonb",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","recipe_components","instructions","jsonb",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","recipe_components","cuisine_type","character varying",100,NULL,"YES",NULL,NULL,NULL,NULL
+"public","recipe_components","cooking_time","integer",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","recipe_components","cooking_method","character varying",50,NULL,"YES",NULL,NULL,NULL,NULL
+"public","recipe_components","flavor_profile","ARRAY",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","recipe_components","diet_compatibility","ARRAY",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","recipe_components","created_at","timestamp without time zone",NULL,"CURRENT_TIMESTAMP","YES",NULL,NULL,NULL,NULL
+"public","recipe_components","is_verified","boolean",NULL,"false","YES",NULL,NULL,NULL,NULL
+"public","recipe_components","updated_at","timestamp without time zone",NULL,"CURRENT_TIMESTAMP","YES",NULL,NULL,NULL,NULL
+"public","recipe_ingredients","id","integer",NULL,"nextval('recipe_ingredients_id_seq'::regclass)","NO",NULL,NULL,NULL,NULL
+"public","recipe_ingredients","recipe_id","integer",NULL,NULL,"YES","public","scraped_recipes","id","recipe_ingredients_recipe_id_fkey"
+"public","recipe_ingredients","name","character varying",100,NULL,"NO",NULL,NULL,NULL,NULL
+"public","recipe_ingredients","amount","character varying",50,NULL,"YES",NULL,NULL,NULL,NULL
+"public","recipe_ingredients","unit","character varying",30,NULL,"YES",NULL,NULL,NULL,NULL
+"public","recipe_ingredients","notes","text",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","recipe_ingredients","category","character varying",50,NULL,"YES",NULL,NULL,NULL,NULL
+"public","recipe_ingredients","is_main_ingredient","boolean",NULL,"false","YES",NULL,NULL,NULL,NULL
+"public","recipe_interactions","id","integer",NULL,"nextval('recipe_interactions_id_seq'::regclass)","NO",NULL,NULL,NULL,NULL
+"public","recipe_interactions","user_id","integer",NULL,NULL,"YES","public","user_profiles","id","recipe_interactions_user_id_fkey"
+"public","recipe_interactions","recipe_id","integer",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","recipe_interactions","interaction_type","character varying",20,NULL,"NO",NULL,NULL,NULL,NULL
+"public","recipe_interactions","rating","integer",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","recipe_interactions","timestamp","timestamp without time zone",NULL,"CURRENT_TIMESTAMP","YES",NULL,NULL,NULL,NULL
+"public","recipe_nutrition","id","integer",NULL,"nextval('recipe_nutrition_id_seq'::regclass)","NO",NULL,NULL,NULL,NULL
+"public","recipe_nutrition","recipe_id","integer",NULL,NULL,"YES","public","scraped_recipes","id","recipe_nutrition_recipe_id_fkey"
+"public","recipe_nutrition","calories","integer",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","recipe_nutrition","protein","real",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","recipe_nutrition","carbs","real",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","recipe_nutrition","fat","real",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","recipe_nutrition","fiber","real",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","recipe_nutrition","sugar","real",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","recipe_nutrition","is_calculated","boolean",NULL,"true","YES",NULL,NULL,NULL,NULL
+"public","recipe_nutrition","saturated_fat","real",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","recipe_nutrition","cholesterol","real",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","recipe_nutrition","sodium","real",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","recipe_nutrition","total_sugars","real",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","recipe_nutrition","added_sugars","real",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","recipe_nutrition","potassium","real",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","recipe_nutrition","nutrition_profiles","ARRAY",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","recipe_nutrition","total_carbohydrate","real",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","recipe_nutrition","dietary_fiber","real",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","recipe_nutrition","servings_per_recipe","integer",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","recipe_nutrition","daily_values","jsonb",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","recipe_preferences","id","integer",NULL,"nextval('recipe_preferences_id_seq'::regclass)","NO",NULL,NULL,NULL,NULL
+"public","recipe_preferences","recipe_id","integer",NULL,NULL,"NO","public","scraped_recipes","id","recipe_preferences_recipe_id_fkey"
+"public","recipe_preferences","diet_type","character varying",50,NULL,"YES",NULL,NULL,NULL,NULL
+"public","recipe_preferences","cuisine","character varying",50,NULL,"YES",NULL,NULL,NULL,NULL
+"public","recipe_preferences","flavor_tags","jsonb",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","recipe_preferences","spice_level","character varying",20,NULL,"YES",NULL,NULL,NULL,NULL
+"public","recipe_preferences","recipe_format","character varying",50,NULL,"YES",NULL,NULL,NULL,NULL
+"public","recipe_preferences","meal_prep_type","character varying",50,NULL,"YES",NULL,NULL,NULL,NULL
+"public","recipe_preferences","prep_complexity","integer",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","recipe_preferences","appliances","jsonb",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","recipe_preferences","created_at","timestamp with time zone",NULL,"now()","YES",NULL,NULL,NULL,NULL
+"public","recipe_preferences","updated_at","timestamp with time zone",NULL,"now()","YES",NULL,NULL,NULL,NULL
+"public","recipe_tags","id","integer",NULL,"nextval('recipe_tags_id_seq'::regclass)","NO",NULL,NULL,NULL,NULL
+"public","recipe_tags","recipe_id","integer",NULL,NULL,"YES","public","scraped_recipes","id","recipe_tags_recipe_id_fkey"
+"public","recipe_tags","tag","character varying",50,NULL,"NO",NULL,NULL,NULL,NULL
+"public","recommendation_metrics","id","integer",NULL,"nextval('recommendation_metrics_id_seq'::regclass)","NO",NULL,NULL,NULL,NULL
+"public","recommendation_metrics","user_id","integer",NULL,NULL,"YES","public","user_profiles","id","recommendation_metrics_user_id_fkey"
+"public","recommendation_metrics","menu_id","integer",NULL,NULL,"YES","public","menus","id","recommendation_metrics_menu_id_fkey"
+"public","recommendation_metrics","source","character varying",20,NULL,"NO",NULL,NULL,NULL,NULL
+"public","recommendation_metrics","was_selected","boolean",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","recommendation_metrics","timestamp","timestamp without time zone",NULL,NULL,"NO",NULL,NULL,NULL,NULL
+"public","recommendation_metrics","feedback_timestamp","timestamp without time zone",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","saved_recipes","id","integer",NULL,"nextval('saved_recipes_id_seq'::regclass)","NO",NULL,NULL,NULL,NULL
+"public","saved_recipes","user_id","integer",NULL,NULL,"YES","public","user_profiles","id","saved_recipes_user_id_fkey"
+"public","saved_recipes","menu_id","integer",NULL,NULL,"YES","public","menus","id","saved_recipes_menu_id_fkey"
+"public","saved_recipes","recipe_id","integer",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","saved_recipes","recipe_name","character varying",255,NULL,"YES",NULL,NULL,NULL,NULL
+"public","saved_recipes","day_number","integer",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","saved_recipes","meal_time","character varying",50,NULL,"YES",NULL,NULL,NULL,NULL
+"public","saved_recipes","notes","text",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","saved_recipes","created_at","timestamp without time zone",NULL,"CURRENT_TIMESTAMP","YES",NULL,NULL,NULL,NULL
+"public","saved_recipes","recipe_identifier ","character",1,NULL,"YES",NULL,NULL,NULL,NULL
+"public","saved_recipes","scraped_recipe_id","integer",NULL,NULL,"YES","public","scraped_recipes","id","saved_recipes_scraped_recipe_id_fkey"
+"public","saved_recipes","shared_with_organization","boolean",NULL,"false","YES",NULL,NULL,NULL,NULL
+"public","saved_recipes","recipe_source","character varying",50,NULL,"YES",NULL,NULL,NULL,NULL
+"public","saved_recipes","macros","jsonb",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","saved_recipes","ingredients","jsonb",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","saved_recipes","instructions","jsonb",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","saved_recipes","complexity_level","character varying",100,NULL,"YES",NULL,NULL,NULL,NULL
+"public","saved_recipes","appliance_used","character varying",100,NULL,"YES",NULL,NULL,NULL,NULL
+"public","saved_recipes","servings","integer",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","saved_recipes","prep_time","integer",NULL,"0","YES",NULL,NULL,NULL,NULL
+"public","scraped_recipes","id","integer",NULL,"nextval('scraped_recipes_id_seq'::regclass)","NO",NULL,NULL,NULL,NULL
+"public","scraped_recipes","title","character varying",255,NULL,"NO",NULL,NULL,NULL,NULL
+"public","scraped_recipes","source","character varying",100,NULL,"NO",NULL,NULL,NULL,NULL
+"public","scraped_recipes","source_url","text",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","scraped_recipes","instructions","jsonb",NULL,NULL,"NO",NULL,NULL,NULL,NULL
+"public","scraped_recipes","date_scraped","timestamp without time zone",NULL,NULL,"NO",NULL,NULL,NULL,NULL
+"public","scraped_recipes","date_processed","timestamp without time zone",NULL,NULL,"NO",NULL,NULL,NULL,NULL
+"public","scraped_recipes","complexity","character varying",20,NULL,"YES",NULL,NULL,NULL,NULL
+"public","scraped_recipes","prep_time","integer",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","scraped_recipes","cook_time","integer",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","scraped_recipes","total_time","integer",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","scraped_recipes","servings","integer",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","scraped_recipes","cuisine","character varying",50,NULL,"YES",NULL,NULL,NULL,NULL
+"public","scraped_recipes","is_verified","boolean",NULL,"false","YES",NULL,NULL,NULL,NULL
+"public","scraped_recipes","raw_content","text",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","scraped_recipes","metadata","jsonb",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","scraped_recipes","image_url","text",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","scraped_recipes","categories","jsonb",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","scraped_recipes","component_type","character varying",50,NULL,"YES",NULL,NULL,NULL,NULL
+"public","scraped_recipes","diet_tags","ARRAY",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","scraped_recipes","flavor_profile","ARRAY",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","scraped_recipes","cooking_method","character varying",50,NULL,"YES",NULL,NULL,NULL,NULL
+"public","scraped_recipes","meal_part","character varying",50,NULL,"YES",NULL,NULL,NULL,NULL
+"public","scraped_recipes","notes","text",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","shared_menus","id","integer",NULL,"nextval('shared_menus_id_seq'::regclass)","NO",NULL,NULL,NULL,NULL
+"public","shared_menus","menu_id","integer",NULL,NULL,"YES","public","menus","id","shared_menus_menu_id_fkey"
+"public","shared_menus","created_by","integer",NULL,NULL,"YES","public","user_profiles","id","shared_menus_created_by_fkey"
+"public","shared_menus","shared_with","integer",NULL,NULL,"YES","public","user_profiles","id","shared_menus_shared_with_fkey"
+"public","shared_menus","organization_id","integer",NULL,NULL,"YES","public","organizations","id","shared_menus_organization_id_fkey"
+"public","shared_menus","permission_level","character varying",50,"'read'::character varying","YES",NULL,NULL,NULL,NULL
+"public","shared_menus","created_at","timestamp without time zone",NULL,"CURRENT_TIMESTAMP","YES",NULL,NULL,NULL,NULL
+"public","shared_recipes","id","integer",NULL,"nextval('shared_recipes_id_seq'::regclass)","NO",NULL,NULL,NULL,NULL
+"public","shared_recipes","recipe_id","integer",NULL,NULL,"YES","public","saved_recipes","id","shared_recipes_recipe_id_fkey"
+"public","shared_recipes","shared_with","integer",NULL,NULL,"YES","public","user_profiles","id","shared_recipes_shared_with_fkey"
+"public","shared_recipes","organization_id","integer",NULL,NULL,"YES","public","organizations","id","shared_recipes_organization_id_fkey"
+"public","shared_recipes","permission_level","character varying",20,"'read'::character varying","YES",NULL,NULL,NULL,NULL
+"public","shared_recipes","created_at","timestamp without time zone",NULL,"CURRENT_TIMESTAMP","YES",NULL,NULL,NULL,NULL
+"public","store_products","id","integer",NULL,"nextval('store_products_id_seq'::regclass)","NO",NULL,NULL,NULL,NULL
+"public","store_products","store_name","character varying",50,NULL,"YES",NULL,NULL,NULL,NULL
+"public","store_products","ingredient_name","character varying",100,NULL,"YES",NULL,NULL,NULL,NULL
+"public","store_products","product_id","character varying",100,NULL,"YES",NULL,NULL,NULL,NULL
+"public","store_products","price","numeric",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","store_products","last_updated","timestamp without time zone",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","store_products","image_url","text",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","temp_kroger_tokens","id","integer",NULL,"nextval('temp_kroger_tokens_id_seq'::regclass)","NO",NULL,NULL,NULL,NULL
+"public","temp_kroger_tokens","token","text",NULL,NULL,"NO",NULL,NULL,NULL,NULL
+"public","temp_kroger_tokens","access_token","text",NULL,NULL,"NO",NULL,NULL,NULL,NULL
+"public","temp_kroger_tokens","refresh_token","text",NULL,NULL,"NO",NULL,NULL,NULL,NULL
+"public","temp_kroger_tokens","created_at","timestamp without time zone",NULL,"now()","NO",NULL,NULL,NULL,NULL
+"public","temp_kroger_tokens","expires_at","timestamp without time zone",NULL,NULL,"NO",NULL,NULL,NULL,NULL
+"public","user_model_preferences","id","integer",NULL,"nextval('user_model_preferences_id_seq'::regclass)","NO",NULL,NULL,NULL,NULL
+"public","user_model_preferences","user_id","integer",NULL,NULL,"NO",NULL,NULL,NULL,NULL
+"public","user_model_preferences","preferred_model","character varying",100,"'default'::character varying","YES",NULL,NULL,NULL,NULL
+"public","user_model_preferences","created_at","timestamp without time zone",NULL,"CURRENT_TIMESTAMP","YES",NULL,NULL,NULL,NULL
+"public","user_model_preferences","updated_at","timestamp without time zone",NULL,"CURRENT_TIMESTAMP","YES",NULL,NULL,NULL,NULL
+"public","user_profiles","id","integer",NULL,"nextval('user_profiles_id_seq'::regclass)","NO",NULL,NULL,NULL,NULL
+"public","user_profiles","name","text",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","user_profiles","email","text",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","user_profiles","dietary_restrictions","text",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","user_profiles","disliked_ingredients","text",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","user_profiles","latitude","numeric",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","user_profiles","longitude","numeric",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","user_profiles","address","text",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","user_profiles","hashed_password","text",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","user_profiles","profile_complete","boolean",NULL,"false","YES",NULL,NULL,NULL,NULL
+"public","user_profiles","diet_type","text",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","user_profiles","zip_code","numeric",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","user_profiles","calorie_goal","integer",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","user_profiles","recipe_type","text",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","user_profiles","macro_protein","integer",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","user_profiles","macro_carbs","integer",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","user_profiles","macro_fat","integer",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","user_profiles","macro_calories","integer",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","user_profiles","has_preferences","boolean",NULL,"false","YES",NULL,NULL,NULL,NULL
+"public","user_profiles","has_generated_menu","boolean",NULL,"false","YES",NULL,NULL,NULL,NULL
+"public","user_profiles","has_shopping_list","boolean",NULL,"false","YES",NULL,NULL,NULL,NULL
+"public","user_profiles","last_login","timestamp with time zone",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","user_profiles","created_at","timestamp with time zone",NULL,"CURRENT_TIMESTAMP","YES",NULL,NULL,NULL,NULL
+"public","user_profiles","updated_at","timestamp with time zone",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","user_profiles","kroger_access_token","character varying",2000,NULL,"YES",NULL,NULL,NULL,NULL
+"public","user_profiles","kroger_refresh_token","character varying",1000,NULL,"YES",NULL,NULL,NULL,NULL
+"public","user_profiles","kroger_store_location_id","character varying",100,NULL,"YES",NULL,NULL,NULL,NULL
+"public","user_profiles","kroger_connected_at","timestamp without time zone",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","user_profiles","kroger_last_synced","timestamp without time zone",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","user_profiles","meal_times","jsonb",NULL,"'{""lunch"": false, ""dinner"": false, ""snacks"": false, ""breakfast"": false}'::jsonb","YES",NULL,NULL,NULL,NULL
+"public","user_profiles","kroger_username","character varying",255,NULL,"YES",NULL,NULL,NULL,NULL
+"public","user_profiles","kroger_password","character varying",255,NULL,"YES",NULL,NULL,NULL,NULL
+"public","user_profiles","verified","boolean",NULL,"false","YES",NULL,NULL,NULL,NULL
+"public","user_profiles","verification_token","text",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","user_profiles","email_verified_at","date",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","user_profiles","appliances","json",NULL,"'{""airFryer"": false, ""instapot"": false, ""crockpot"": false}'::json","YES",NULL,NULL,NULL,NULL
+"public","user_profiles","prep_complexity","integer",NULL,"50","YES",NULL,NULL,NULL,NULL
+"public","user_profiles","servings_per_meal","integer",NULL,"2","YES",NULL,NULL,NULL,NULL
+"public","user_profiles","snacks_per_day","integer",NULL,"0","YES",NULL,NULL,NULL,NULL
+"public","user_profiles","account_type","character varying",20,"'individual'::character varying","YES",NULL,NULL,NULL,NULL
+"public","user_profiles","flavor_preferences","jsonb",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","user_profiles","spice_level","character varying",20,NULL,"YES",NULL,NULL,NULL,NULL
+"public","user_profiles","recipe_type_preferences","jsonb",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","user_profiles","meal_time_preferences","jsonb",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","user_profiles","time_constraints","jsonb",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","user_profiles","prep_preferences","jsonb",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","user_profiles","organization_id","integer",NULL,NULL,"YES","public","organizations","id","user_profiles_organization_id_fkey"
+"public","user_tokens","user_id","integer",NULL,NULL,"YES","public","user_profiles","id","user_tokens_user_id_fkey"
+"public","user_tokens","token","character varying",255,NULL,"NO",NULL,NULL,NULL,NULL
+"public","user_tokens","created_at","timestamp without time zone",NULL,"CURRENT_TIMESTAMP","YES",NULL,NULL,NULL,NULL
+"public","user_tokens","expires_at","timestamp without time zone",NULL,NULL,"YES",NULL,NULL,NULL,NULL
+"public","users","id","integer",NULL,"nextval('users_id_seq'::regclass)","NO",NULL,NULL,NULL,NULL
+"public","users","name","character varying",100,NULL,"YES",NULL,NULL,NULL,NULL
+"public","users","email","character varying",100,NULL,"YES",NULL,NULL,NULL,NULL
+"public","users","role","character varying",50,NULL,"YES",NULL,NULL,NULL,NULL
+"public","users","preferences","text",NULL,NULL,"YES",NULL,NULL,NULL,NULL

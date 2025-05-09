@@ -1535,6 +1535,7 @@ async def get_client_menus(
 async def share_menu_with_client(
     menu_id: int,
     client_id: int,
+    data: dict = Body(default={}),
     user = Depends(get_user_from_token)
 ):
     """Share a menu with a specific client"""
@@ -1623,16 +1624,45 @@ async def share_menu_with_client(
                 """)
                 conn.commit()
             
-            # Check if the menu is already shared with this client
+            # Process data parameter - handle both old and new API styles
+            shared = data.get('shared', True)
+            if data.get('shared') is False:
+                # If shared parameter is explicitly set to False, we'll remove any sharing
+                remove_sharing = True
+            else:
+                remove_sharing = False
+                
+            # Get permission level from request data
+            permission_level = data.get('permission_level', 'read')
+            message = data.get('message', None)
+                
+            logger.info(f"Share menu request data: permission={permission_level}, message={message}, shared={shared}")
+            
+            # Check which version of shared_menus table we have
             cursor.execute("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_schema = 'public' 
+                AND table_name = 'shared_menus' 
+                AND column_name IN ('shared_with', 'client_id')
+            """)
+            
+            columns = cursor.fetchall()
+            column_names = [col['column_name'] for col in columns]
+            
+            # Determine which field names to use based on which columns exist
+            client_field = 'client_id' if 'client_id' in column_names else 'shared_with'
+            
+            # Check if the menu is already shared with this client
+            cursor.execute(f"""
                 SELECT id FROM shared_menus 
-                WHERE menu_id = %s AND shared_with = %s
+                WHERE menu_id = %s AND {client_field} = %s
             """, (menu_id, client_id))
             
             existing_share = cursor.fetchone()
             
-            if existing_share:
-                # Menu is already shared with this client - update it to remove sharing
+            if existing_share and remove_sharing:
+                # Menu is already shared with this client - remove sharing
                 cursor.execute("""
                     DELETE FROM shared_menus 
                     WHERE id = %s
@@ -1646,13 +1676,84 @@ async def share_menu_with_client(
                     "shared": False,
                     "message": "Menu sharing removed"
                 }
-            else:
-                # Share the menu with this client
+            elif existing_share:
+                # Menu is already shared - update the permission level
+                update_query = """
+                    UPDATE shared_menus 
+                    SET permission_level = %s
+                """
+                
+                # Add message field if the parameter is provided
+                if message is not None:
+                    update_query += ", message = %s"
+                    update_params = [permission_level, message, existing_share["id"]]
+                else:
+                    update_params = [permission_level, existing_share["id"]]
+                    
+                # Also update is_active if column exists
                 cursor.execute("""
-                    INSERT INTO shared_menus (menu_id, shared_with, created_by, organization_id) 
-                    VALUES (%s, %s, %s, %s)
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_schema = 'public' 
+                    AND table_name = 'shared_menus' 
+                    AND column_name = 'is_active'
+                """)
+                has_is_active = cursor.fetchone() is not None
+                
+                if has_is_active:
+                    update_query += ", is_active = TRUE"
+                    
+                update_query += " WHERE id = %s RETURNING id"
+                
+                cursor.execute(update_query, update_params)
+                conn.commit()
+                
+                return {
+                    "menu_id": menu_id,
+                    "client_id": client_id,
+                    "permission_level": permission_level,
+                    "shared": True,
+                    "message": "Menu sharing updated"
+                }
+            else:
+                # Share the menu with this client - check which version of the table we have
+                cursor.execute("""
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_schema = 'public' 
+                    AND table_name = 'shared_menus'
+                """)
+                columns = [col['column_name'] for col in cursor.fetchall()]
+                
+                # Prepare the query based on the available columns
+                insert_columns = [client_field, 'menu_id', 'organization_id']
+                insert_values = [client_id, menu_id, org_id]
+                
+                if 'created_by' in columns:
+                    insert_columns.append('created_by')
+                    insert_values.append(user_id)
+                    
+                if 'permission_level' in columns:
+                    insert_columns.append('permission_level')
+                    insert_values.append(permission_level)
+                    
+                if 'message' in columns and message is not None:
+                    insert_columns.append('message')
+                    insert_values.append(message)
+                    
+                if 'is_active' in columns:
+                    insert_columns.append('is_active')
+                    insert_values.append(True)
+                    
+                # Build the INSERT query dynamically
+                placeholders = ', '.join(['%s' for _ in insert_values])
+                column_str = ', '.join(insert_columns)
+                
+                cursor.execute(f"""
+                    INSERT INTO shared_menus ({column_str}) 
+                    VALUES ({placeholders})
                     RETURNING id
-                """, (menu_id, client_id, user_id, org_id))
+                """, insert_values)
                 conn.commit()
                 
                 # Get client name for the response

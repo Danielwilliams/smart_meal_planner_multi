@@ -1945,6 +1945,125 @@ class ApiService {
     }
   }
   
+  // Helper function to normalize preferences with default values for all expected fields
+  static Map<String, dynamic> _normalizePreferences(Map<String, dynamic> prefs) {
+    // Start with basic default values
+    final defaultPrefs = {
+      "diet_type": prefs['diet_type'] ?? "Mixed",
+      "dietary_restrictions": prefs['dietary_restrictions'] ?? "",
+      "disliked_ingredients": prefs['disliked_ingredients'] ?? [],
+      "recipe_type": prefs['recipe_type'] ?? "",
+      "macro_protein": prefs['macro_protein'] ?? 30,
+      "macro_carbs": prefs['macro_carbs'] ?? 40, 
+      "macro_fat": prefs['macro_fat'] ?? 30,
+      "calorie_goal": prefs['calorie_goal'] ?? 2000,
+      "meal_times": prefs['meal_times'] ?? {
+        "breakfast": false,
+        "lunch": false,
+        "dinner": false,
+        "snacks": false
+      },
+      "appliances": prefs['appliances'] ?? {
+        "airFryer": false,
+        "instapot": false,
+        "crockpot": false
+      },
+      "prep_complexity": prefs['prep_complexity'] ?? 50,
+      "snacks_per_day": prefs['snacks_per_day'] ?? 0,
+      "servings_per_meal": prefs['servings_per_meal'] ?? 1
+    };
+    
+    // Handle advanced preference fields
+    if (!prefs.containsKey('flavor_preferences') || prefs['flavor_preferences'] == null) {
+      defaultPrefs['flavor_preferences'] = {
+        "creamy": false,
+        "cheesy": false,
+        "herbs": false,
+        "umami": false,
+        "sweet": false,
+        "spiced": false,
+        "smoky": false,
+        "garlicky": false,
+        "tangy": false,
+        "peppery": false,
+        "hearty": false,
+        "spicy": false
+      };
+    } else {
+      defaultPrefs['flavor_preferences'] = prefs['flavor_preferences'];
+    }
+    
+    if (!prefs.containsKey('spice_level') || prefs['spice_level'] == null) {
+      defaultPrefs['spice_level'] = "medium";
+    } else {
+      defaultPrefs['spice_level'] = prefs['spice_level'];
+    }
+    
+    if (!prefs.containsKey('recipe_type_preferences') || prefs['recipe_type_preferences'] == null) {
+      defaultPrefs['recipe_type_preferences'] = {
+        "stir-fry": false,
+        "grain-bowl": false,
+        "salad": false,
+        "pasta": false,
+        "main-sides": false,
+        "pizza": false,
+        "burger": false,
+        "sandwich": false,
+        "tacos": false,
+        "wrap": false,
+        "soup-stew": false,
+        "bake": false,
+        "family-meals": false
+      };
+    } else {
+      defaultPrefs['recipe_type_preferences'] = prefs['recipe_type_preferences'];
+    }
+    
+    if (!prefs.containsKey('meal_time_preferences') || prefs['meal_time_preferences'] == null) {
+      defaultPrefs['meal_time_preferences'] = {
+        "breakfast": false,
+        "morning-snack": false,
+        "lunch": false,
+        "afternoon-snack": false,
+        "dinner": false,
+        "evening-snack": false
+      };
+    } else {
+      defaultPrefs['meal_time_preferences'] = prefs['meal_time_preferences'];
+    }
+    
+    if (!prefs.containsKey('time_constraints') || prefs['time_constraints'] == null) {
+      defaultPrefs['time_constraints'] = {
+        "weekday-breakfast": 10,
+        "weekday-lunch": 15,
+        "weekday-dinner": 30,
+        "weekend-breakfast": 20,
+        "weekend-lunch": 30,
+        "weekend-dinner": 45
+      };
+    } else {
+      defaultPrefs['time_constraints'] = prefs['time_constraints'];
+    }
+    
+    if (!prefs.containsKey('prep_preferences') || prefs['prep_preferences'] == null) {
+      defaultPrefs['prep_preferences'] = {
+        "batch-cooking": false,
+        "meal-prep": false,
+        "quick-assembly": false,
+        "one-pot": false,
+        "minimal-dishes": false
+      };
+    } else {
+      defaultPrefs['prep_preferences'] = prefs['prep_preferences'];
+    }
+    
+    // Add a flag to indicate this data has been normalized
+    defaultPrefs['_normalized'] = true;
+    
+    // Merge with original preferences
+    return {...prefs, ...defaultPrefs};
+  }
+  
   // Get client's preferences - Aligned with web app approach
   static Future<Map<String, dynamic>> getClientPreferences(
     int clientId,
@@ -1953,125 +2072,6 @@ class ApiService {
     try {
       print("Fetching preferences for client ID: $clientId");
       List<String> attemptedEndpoints = [];
-      
-      // Helper function to ensure preferences have default values for all expected fields
-      Map<String, dynamic> normalizePreferences(Map<String, dynamic> prefs) {
-        // Start with basic default values
-        final defaultPrefs = {
-          "diet_type": prefs['diet_type'] ?? "Mixed",
-          "dietary_restrictions": prefs['dietary_restrictions'] ?? "",
-          "disliked_ingredients": prefs['disliked_ingredients'] ?? [],
-          "recipe_type": prefs['recipe_type'] ?? "",
-          "macro_protein": prefs['macro_protein'] ?? 30,
-          "macro_carbs": prefs['macro_carbs'] ?? 40, 
-          "macro_fat": prefs['macro_fat'] ?? 30,
-          "calorie_goal": prefs['calorie_goal'] ?? 2000,
-          "meal_times": prefs['meal_times'] ?? {
-            "breakfast": false,
-            "lunch": false,
-            "dinner": false,
-            "snacks": false
-          },
-          "appliances": prefs['appliances'] ?? {
-            "airFryer": false,
-            "instapot": false,
-            "crockpot": false
-          },
-          "prep_complexity": prefs['prep_complexity'] ?? 50,
-          "snacks_per_day": prefs['snacks_per_day'] ?? 0,
-          "servings_per_meal": prefs['servings_per_meal'] ?? 1
-        };
-        
-        // Handle advanced preference fields
-        if (!prefs.containsKey('flavor_preferences') || prefs['flavor_preferences'] == null) {
-          defaultPrefs['flavor_preferences'] = {
-            "creamy": false,
-            "cheesy": false,
-            "herbs": false,
-            "umami": false,
-            "sweet": false,
-            "spiced": false,
-            "smoky": false,
-            "garlicky": false,
-            "tangy": false,
-            "peppery": false,
-            "hearty": false,
-            "spicy": false
-          };
-        } else {
-          defaultPrefs['flavor_preferences'] = prefs['flavor_preferences'];
-        }
-        
-        if (!prefs.containsKey('spice_level') || prefs['spice_level'] == null) {
-          defaultPrefs['spice_level'] = "medium";
-        } else {
-          defaultPrefs['spice_level'] = prefs['spice_level'];
-        }
-        
-        if (!prefs.containsKey('recipe_type_preferences') || prefs['recipe_type_preferences'] == null) {
-          defaultPrefs['recipe_type_preferences'] = {
-            "stir-fry": false,
-            "grain-bowl": false,
-            "salad": false,
-            "pasta": false,
-            "main-sides": false,
-            "pizza": false,
-            "burger": false,
-            "sandwich": false,
-            "tacos": false,
-            "wrap": false,
-            "soup-stew": false,
-            "bake": false,
-            "family-meals": false
-          };
-        } else {
-          defaultPrefs['recipe_type_preferences'] = prefs['recipe_type_preferences'];
-        }
-        
-        if (!prefs.containsKey('meal_time_preferences') || prefs['meal_time_preferences'] == null) {
-          defaultPrefs['meal_time_preferences'] = {
-            "breakfast": false,
-            "morning-snack": false,
-            "lunch": false,
-            "afternoon-snack": false,
-            "dinner": false,
-            "evening-snack": false
-          };
-        } else {
-          defaultPrefs['meal_time_preferences'] = prefs['meal_time_preferences'];
-        }
-        
-        if (!prefs.containsKey('time_constraints') || prefs['time_constraints'] == null) {
-          defaultPrefs['time_constraints'] = {
-            "weekday-breakfast": 10,
-            "weekday-lunch": 15,
-            "weekday-dinner": 30,
-            "weekend-breakfast": 20,
-            "weekend-lunch": 30,
-            "weekend-dinner": 45
-          };
-        } else {
-          defaultPrefs['time_constraints'] = prefs['time_constraints'];
-        }
-        
-        if (!prefs.containsKey('prep_preferences') || prefs['prep_preferences'] == null) {
-          defaultPrefs['prep_preferences'] = {
-            "batch-cooking": false,
-            "meal-prep": false,
-            "quick-assembly": false,
-            "one-pot": false,
-            "minimal-dishes": false
-          };
-        } else {
-          defaultPrefs['prep_preferences'] = prefs['prep_preferences'];
-        }
-        
-        // Add a flag to indicate this data has been normalized
-        defaultPrefs['_normalized'] = true;
-        
-        // Merge with original preferences
-        return {...prefs, ...defaultPrefs};
-      }
       
       // Primary endpoint aligned with web app and updated backend implementation
       final primaryEndpoint = "/organizations/clients/$clientId/preferences";
@@ -2084,7 +2084,7 @@ class ApiService {
       if (primaryResult != null && primaryResult is Map) {
         print("✅ Success from primary endpoint: $primaryEndpoint");
         final safeResult = _toStringDynamicMap(primaryResult);
-        return normalizePreferences(safeResult);
+        return _normalizePreferences(safeResult);
       }
       
       // Try alternative endpoints in prioritized order
@@ -2104,7 +2104,7 @@ class ApiService {
           if (result != null && result is Map) {
             print("✅ Success from GET endpoint: $endpoint");
             final safeResult = _toStringDynamicMap(result);
-            return normalizePreferences(safeResult);
+            return _normalizePreferences(safeResult);
           }
         } catch (endpointError) {
           print("❌ Error with GET to endpoint $endpoint: $endpointError");
@@ -2130,7 +2130,7 @@ class ApiService {
           if (result != null && result is Map) {
             print("✅ Success from POST endpoint: $endpoint");
             final safeResult = _toStringDynamicMap(result);
-            return normalizePreferences(safeResult);
+            return _normalizePreferences(safeResult);
           }
         } catch (endpointError) {
           print("❌ Error with POST to endpoint $endpoint: $endpointError");
@@ -2146,7 +2146,7 @@ class ApiService {
         if (result != null && result is Map) {
           print("✅ Success from client_id parameter endpoint");
           final safeResult = _toStringDynamicMap(result);
-          return normalizePreferences(safeResult);
+          return _normalizePreferences(safeResult);
         }
       } catch (paramError) {
         print("❌ Error with client_id parameter: $paramError");
@@ -2155,24 +2155,115 @@ class ApiService {
       print("⚠️ All client preference endpoints failed. Attempted: $attemptedEndpoints");
       
       // Return default preferences with error message - using the same structure as the web app
-      final defaultPreferences = normalizePreferences({
+      final Map<String, dynamic> defaultPreferences = {
         "diet_type": "Mixed",
         "dietary_restrictions": [],
         "disliked_ingredients": [],
         "recipe_type": "",
+        "macro_protein": 30,
+        "macro_carbs": 40, 
+        "macro_fat": 30,
+        "calorie_goal": 2000,
+        "meal_times": {
+          "breakfast": false,
+          "lunch": false,
+          "dinner": false,
+          "snacks": false
+        },
+        "appliances": {
+          "airFryer": false,
+          "instapot": false,
+          "crockpot": false
+        },
+        "prep_complexity": 50,
+        "snacks_per_day": 0,
+        "servings_per_meal": 1,
+        "flavor_preferences": {
+          "creamy": false,
+          "cheesy": false,
+          "herbs": false,
+          "umami": false,
+          "sweet": false,
+          "spiced": false,
+          "smoky": false,
+          "garlicky": false,
+          "tangy": false,
+          "peppery": false,
+          "hearty": false,
+          "spicy": false
+        },
+        "spice_level": "medium",
+        "recipe_type_preferences": {
+          "stir-fry": false,
+          "grain-bowl": false,
+          "salad": false,
+          "pasta": false,
+          "main-sides": false,
+          "pizza": false,
+          "burger": false,
+          "sandwich": false,
+          "tacos": false,
+          "wrap": false,
+          "soup-stew": false,
+          "bake": false,
+          "family-meals": false
+        },
+        "meal_time_preferences": {
+          "breakfast": false,
+          "morning-snack": false,
+          "lunch": false,
+          "afternoon-snack": false,
+          "dinner": false,
+          "evening-snack": false
+        },
+        "time_constraints": {
+          "weekday-breakfast": 10,
+          "weekday-lunch": 15,
+          "weekday-dinner": 30,
+          "weekend-breakfast": 20,
+          "weekend-lunch": 30,
+          "weekend-dinner": 45
+        },
+        "prep_preferences": {
+          "batch-cooking": false,
+          "meal-prep": false,
+          "quick-assembly": false,
+          "one-pot": false,
+          "minimal-dishes": false
+        },
         "error": "Could not retrieve client preferences after multiple attempts"
-      });
+      };
       
       return defaultPreferences;
     } catch (e) {
       print("Error getting client preferences: $e");
       // Return default preferences in the same format for error cases
-      return normalizePreferences({
+      final Map<String, dynamic> errorPreferences = {
         "diet_type": "Mixed", 
         "dietary_restrictions": [],
         "disliked_ingredients": [],
+        "macro_protein": 30,
+        "macro_carbs": 40, 
+        "macro_fat": 30,
+        "calorie_goal": 2000,
+        "meal_times": {
+          "breakfast": false,
+          "lunch": false,
+          "dinner": false,
+          "snacks": false
+        },
+        "appliances": {
+          "airFryer": false,
+          "instapot": false,
+          "crockpot": false
+        },
+        "prep_complexity": 50,
+        "snacks_per_day": 0,
+        "servings_per_meal": 1,
         "error": e.toString()
-      });
+      };
+      
+      return errorPreferences;
     }
   }
   

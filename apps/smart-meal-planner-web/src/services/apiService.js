@@ -2077,12 +2077,13 @@ const apiService = {
       const userId = userData.userId;
       const role = userData.role || null;
       const organizationId = userData.organizationId || userData.organization_id || null;
+      const accountType = userData.account_type || null;
       
       console.log('Getting shared menus for user:', {
         userId,
         role,
         organizationId,
-        accountType: userData.account_type,
+        accountType,
         fullUserData: userData
       });
       
@@ -2091,41 +2092,72 @@ const apiService = {
         return [];
       }
       
-      // Try the client dashboard endpoint first
-      try {
-        console.log('Attempting to fetch client dashboard data');
-        const dashboardResponse = await axiosInstance.get('/client/dashboard');
-        console.log('Client dashboard response:', dashboardResponse.data);
-        
-        // If we get a successful response, extract the shared menus
-        if (dashboardResponse.data && dashboardResponse.data.shared_menus) {
-          // Process shared menus to ensure dates are valid
-          const processedMenus = dashboardResponse.data.shared_menus.map(menu => {
-            // Check if shared_at is valid date and format it if needed
-            if (menu.shared_at) {
-              try {
-                const date = new Date(menu.shared_at);
-                if (!isNaN(date.getTime())) {
-                  menu.shared_at = date.toISOString();
-                }
-              } catch (e) {
-                // If date parsing fails, use current time
-                menu.shared_at = new Date().toISOString();
-              }
+      // Try the client dashboard endpoint first for client accounts
+      if (accountType === 'client' || organizationId) {
+        try {
+          console.log('Attempting to fetch client dashboard data');
+          const dashboardResponse = await axiosInstance.get('/client/dashboard');
+          console.log('Client dashboard response:', dashboardResponse.data);
+          
+          // If we get a successful response, extract the shared menus
+          if (dashboardResponse.data && dashboardResponse.data.shared_menus) {
+            if (dashboardResponse.data.shared_menus.length === 0) {
+              console.warn('No shared menus found in dashboard response, will try alternative endpoints');
             } else {
+              console.log(`Found ${dashboardResponse.data.shared_menus.length} shared menus in dashboard`);
+              
+              // Process shared menus to ensure dates are valid
+              const processedMenus = dashboardResponse.data.shared_menus.map(menu => {
+                // Check if shared_at is valid date and format it if needed
+                if (menu.shared_at) {
+                  try {
+                    const date = new Date(menu.shared_at);
+                    if (!isNaN(date.getTime())) {
+                      menu.shared_at = date.toISOString();
+                    }
+                  } catch (e) {
+                    // If date parsing fails, use current time
+                    menu.shared_at = new Date().toISOString();
+                  }
+                } else {
+                  menu.shared_at = new Date().toISOString();
+                }
+                return menu;
+              });
+              return processedMenus;
+            }
+          } else {
+            console.warn('Dashboard response did not contain shared_menus property');
+          }
+        } catch (dashboardErr) {
+          console.warn('Could not fetch client dashboard, falling back to shared menus endpoint:', dashboardErr);
+        }
+      }
+      
+      // Try the shared endpoint without userId parameter first
+      try {
+        console.log('Trying /menu/shared endpoint');
+        const generalResponse = await axiosInstance.get('/menu/shared');
+        console.log('Shared menus response from general endpoint:', generalResponse.data);
+        
+        if (Array.isArray(generalResponse.data) && generalResponse.data.length > 0) {
+          const processedMenus = generalResponse.data.map(menu => {
+            // Add shared_at if missing
+            if (!menu.shared_at) {
               menu.shared_at = new Date().toISOString();
             }
             return menu;
           });
           return processedMenus;
         }
-      } catch (dashboardErr) {
-        console.warn('Could not fetch client dashboard, falling back to shared menus endpoint:', dashboardErr);
+      } catch (generalErr) {
+        console.warn('General shared endpoint failed, trying with user ID:', generalErr);
       }
       
-      // Fall back to the regular shared menus endpoint
+      // Fall back to the user-specific shared menus endpoint
+      console.log(`Trying /menu/shared/${userId} endpoint`);
       const response = await axiosInstance.get(`/menu/shared/${userId}`);
-      console.log('Shared menus response:', response.data);
+      console.log('Shared menus response from user-specific endpoint:', response.data);
       
       // Process shared menus to ensure dates are valid
       if (Array.isArray(response.data)) {
@@ -2149,7 +2181,25 @@ const apiService = {
         return processedMenus;
       }
       
-      return response.data;
+      // Last resort: try to get menu history and filter for shared menus
+      try {
+        console.log('Trying menu history as last resort');
+        const historyResponse = await axiosInstance.get(`/menu/history/${userId}`);
+        console.log('Menu history response:', historyResponse.data);
+        
+        if (Array.isArray(historyResponse.data)) {
+          // Look for menus with sharing info or from other users
+          return historyResponse.data.filter(menu => 
+            menu.is_shared === true || 
+            menu.shared_with !== undefined || 
+            menu.created_by !== userId
+          );
+        }
+      } catch (historyErr) {
+        console.warn('Menu history endpoint also failed:', historyErr);
+      }
+      
+      return response.data || [];
     } catch (err) {
       console.error('Error fetching shared menus:', err);
       // Log detailed error information
@@ -2325,13 +2375,25 @@ const apiService = {
     }
   },
 
-  // New function to share a menu directly with a client
-  shareMenuWithClient: async (menuId, clientId) => {
+  // Share a menu directly with a client
+  shareMenuWithClient: async (menuId, clientId, permission = 'read') => {
     try {
-      const response = await axiosInstance.post(`/menu/share/${menuId}/client/${clientId}`);
+      console.log(`Sharing menu ${menuId} with client ${clientId}, permission: ${permission}`);
+      const response = await axiosInstance.post(`/menu/share/${menuId}/client/${clientId}`, {
+        permission_level: permission
+      });
+      console.log('Menu sharing response:', response.data);
       return response.data;
     } catch (err) {
       console.error(`Error sharing menu ${menuId} with client ${clientId}:`, err);
+      // Log detailed error information
+      if (err.response) {
+        console.error('Response error details:', {
+          status: err.response.status,
+          data: err.response.data,
+          headers: err.response.headers
+        });
+      }
       throw err;
     }
   },

@@ -36,25 +36,55 @@ class _ClientMenusScreenState extends State<ClientMenusScreen> {
     });
 
     try {
+      print("Loading menus for client ID: ${widget.clientId}");
       final result = await ApiService.getClientMenus(
         widget.clientId,
         widget.authToken,
       );
-
-      if (result.containsKey('menus') && result['menus'] is List) {
-        setState(() {
-          _menus = result['menus'];
-        });
-      } else if (result.containsKey('error')) {
-        setState(() {
-          _errorMessage = result['error'] ?? 'Failed to load menus';
-        });
+      
+      print("Client Menus API Result: $result");
+      print("Result type: ${result.runtimeType}");
+      
+      // Since ApiService.getClientMenus ALWAYS returns a Map<String, dynamic>,
+      // we don't need to check if result is List - it will never be a List
+      if (result is Map<String, dynamic>) {
+        // Check for menus field first
+        if (result.containsKey('menus') && result['menus'] is List) {
+          setState(() {
+            _menus = List<dynamic>.from(result['menus']);
+          });
+          print("Found 'menus' key with ${_menus.length} menus");
+        }
+        // Check for shared_menus field (specific to the client dashboard endpoint)
+        else if (result.containsKey('shared_menus') && result['shared_menus'] is List) {
+          setState(() {
+            _menus = List<dynamic>.from(result['shared_menus']);
+          });
+          print("Found 'shared_menus' key with ${_menus.length} menus");
+        }
+        // Check for error
+        else if (result.containsKey('error')) {
+          setState(() {
+            _errorMessage = result['error'] ?? 'Failed to load menus';
+          });
+          print("Error loading menus: $_errorMessage");
+        }
+        // If no menus are found, set an appropriate error message
+        else {
+          setState(() {
+            _errorMessage = 'No menus found';
+          });
+          print("No menus found in response");
+        }
       } else {
+        // This should never happen since getClientMenus always returns Map<String, dynamic>
         setState(() {
-          _errorMessage = 'No menus found';
+          _errorMessage = 'Unexpected response format';
         });
+        print("Unexpected response format: ${result.runtimeType}");
       }
     } catch (e) {
+      print("Exception loading client menus: $e");
       setState(() {
         _errorMessage = 'Error: $e';
       });
@@ -62,6 +92,7 @@ class _ClientMenusScreenState extends State<ClientMenusScreen> {
       setState(() {
         _isLoading = false;
       });
+      print("Menu loading complete. Found ${_menus.length} menus");
     }
   }
 

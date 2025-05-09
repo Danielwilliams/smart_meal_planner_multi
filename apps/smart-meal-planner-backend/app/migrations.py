@@ -449,11 +449,12 @@ def create_shared_menus_table():
                     CREATE TABLE IF NOT EXISTS shared_menus (
                         id SERIAL PRIMARY KEY,
                         menu_id INTEGER NOT NULL,
-                        shared_with INTEGER NOT NULL,
-                        created_by INTEGER NOT NULL,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        organization_id INTEGER,
-                        permission_level VARCHAR(20) DEFAULT 'read'
+                        client_id INTEGER NOT NULL,
+                        organization_id INTEGER NOT NULL,
+                        shared_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        permission_level VARCHAR(20) DEFAULT 'read',
+                        message TEXT,
+                        is_active BOOLEAN DEFAULT TRUE
                     )
                 """)
                 
@@ -464,24 +465,145 @@ def create_shared_menus_table():
                 """)
                 
                 cursor.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_shared_menus_shared_with 
-                    ON shared_menus(shared_with)
+                    CREATE INDEX IF NOT EXISTS idx_shared_menus_client_id 
+                    ON shared_menus(client_id)
                 """)
                 
                 cursor.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_shared_menus_created_by 
-                    ON shared_menus(created_by)
+                    CREATE INDEX IF NOT EXISTS idx_shared_menus_organization_id 
+                    ON shared_menus(organization_id)
+                """)
+                
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_shared_menus_is_active 
+                    ON shared_menus(is_active)
                 """)
                 
                 conn.commit()
                 logger.info("shared_menus table created successfully")
             else:
-                logger.info("shared_menus table already exists")
+                # Check if we need to update the table schema
+                logger.info("shared_menus table already exists, checking for schema updates")
+                
+                # Check for client_id column
+                cursor.execute("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.columns 
+                        WHERE table_schema = 'public' 
+                        AND table_name = 'shared_menus' 
+                        AND column_name = 'client_id'
+                    )
+                """)
+                
+                has_client_id = cursor.fetchone()[0]
+                
+                # Check for shared_with column (old schema)
+                cursor.execute("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.columns 
+                        WHERE table_schema = 'public' 
+                        AND table_name = 'shared_menus' 
+                        AND column_name = 'shared_with'
+                    )
+                """)
+                
+                has_shared_with = cursor.fetchone()[0]
+                
+                # Check for created_by column (old schema)
+                cursor.execute("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.columns 
+                        WHERE table_schema = 'public' 
+                        AND table_name = 'shared_menus' 
+                        AND column_name = 'created_by'
+                    )
+                """)
+                
+                has_created_by = cursor.fetchone()[0]
+                
+                # Check for is_active column
+                cursor.execute("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.columns 
+                        WHERE table_schema = 'public' 
+                        AND table_name = 'shared_menus' 
+                        AND column_name = 'is_active'
+                    )
+                """)
+                
+                has_is_active = cursor.fetchone()[0]
+                
+                # Add missing columns
+                if not has_client_id and has_shared_with:
+                    logger.info("Migrating shared_with to client_id")
+                    cursor.execute("""
+                        ALTER TABLE shared_menus
+                        ADD COLUMN client_id INTEGER
+                    """)
+                    
+                    cursor.execute("""
+                        UPDATE shared_menus
+                        SET client_id = shared_with
+                    """)
+                    
+                    cursor.execute("""
+                        ALTER TABLE shared_menus
+                        ALTER COLUMN client_id SET NOT NULL
+                    """)
+                
+                if not has_is_active:
+                    logger.info("Adding is_active column")
+                    cursor.execute("""
+                        ALTER TABLE shared_menus
+                        ADD COLUMN is_active BOOLEAN DEFAULT TRUE
+                    """)
+                    
+                    cursor.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_shared_menus_is_active 
+                        ON shared_menus(is_active)
+                    """)
+                
+                # Check for message column
+                cursor.execute("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.columns 
+                        WHERE table_schema = 'public' 
+                        AND table_name = 'shared_menus' 
+                        AND column_name = 'message'
+                    )
+                """)
+                
+                if not cursor.fetchone()[0]:
+                    logger.info("Adding message column")
+                    cursor.execute("""
+                        ALTER TABLE shared_menus
+                        ADD COLUMN message TEXT
+                    """)
+                
+                # Check for shared_at column
+                cursor.execute("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.columns 
+                        WHERE table_schema = 'public' 
+                        AND table_name = 'shared_menus' 
+                        AND column_name = 'shared_at'
+                    )
+                """)
+                
+                if not cursor.fetchone()[0]:
+                    logger.info("Adding shared_at column")
+                    cursor.execute("""
+                        ALTER TABLE shared_menus
+                        ADD COLUMN shared_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    """)
+                
+                conn.commit()
+                logger.info("shared_menus table schema updated")
                 
     except Exception as e:
         if conn:
             conn.rollback()
-        logger.error(f"Error creating shared_menus table: {str(e)}")
+        logger.error(f"Error creating/updating shared_menus table: {str(e)}")
         # Don't re-raise, just log the error
     finally:
         if conn:

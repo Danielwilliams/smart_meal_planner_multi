@@ -123,13 +123,20 @@ class CartState extends ChangeNotifier {
 // App state management class to track if the user is an organization
 class AppState extends ChangeNotifier {
   bool _isOrganization = false;
+  bool _isActuallyOrganization = false;
   int _selectedTab = 0;
   
   bool get isOrganization => _isOrganization;
+  bool get isActuallyOrganization => _isActuallyOrganization;
   int get selectedTab => _selectedTab;
   
   void setOrganizationStatus(bool isOrganization) {
     _isOrganization = isOrganization;
+    notifyListeners();
+  }
+  
+  void setIsActuallyOrganization(bool isActuallyOrganization) {
+    _isActuallyOrganization = isActuallyOrganization;
     notifyListeners();
   }
   
@@ -494,16 +501,21 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       // Combine results - if either source indicates organization, show organization tab
       final isOrganization = isOrganizationFromAuth || isOrganizationFromApi;
       
-      // Update app state
-      Provider.of<AppState>(context, listen: false).setOrganizationStatus(isOrganization);
+      // IMPORTANT: If all checks fail, set to true to always show the bottom tab
+      // This ensures the bottom bar will always appear even if the organization check fails
+      Provider.of<AppState>(context, listen: false).setOrganizationStatus(true);
+      // Update the actual organization state for the correct tab content
+      Provider.of<AppState>(context, listen: false).setIsActuallyOrganization(isOrganization);
       
       setState(() => _isLoading = false);
     } catch (e) {
       print("Error checking organization status: $e");
       
-      // Fallback to AuthProvider if API fails
+      // Always show bottom tab in case of error
+      Provider.of<AppState>(context, listen: false).setOrganizationStatus(true);
+      
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      Provider.of<AppState>(context, listen: false).setOrganizationStatus(authProvider.isOrganization);
+      Provider.of<AppState>(context, listen: false).setIsActuallyOrganization(authProvider.isOrganization);
       
       setState(() => _isLoading = false);
     }
