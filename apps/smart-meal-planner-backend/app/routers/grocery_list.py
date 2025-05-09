@@ -553,14 +553,127 @@ def generate_ai_shopping_list(menu_data, basic_grocery_list, additional_preferen
                     if "items" not in category or not isinstance(category["items"], list):
                         category["items"] = []
                     
-                    # Normalize items to have name property
+                    # Normalize items to have name property and ensure quantities
                     for j, item in enumerate(category["items"]):
                         if isinstance(item, str):
-                            category["items"][j] = {"name": item}
+                            # Convert string item to object with name and default quantity
+                            category["items"][j] = {
+                                "name": item,
+                                "quantity": "1",
+                                "alternatives": "N/A",
+                                "healthyAlternatives": "N/A"
+                            }
                         elif not isinstance(item, dict):
-                            category["items"][j] = {"name": str(item)}
-                        elif "name" not in item:
-                            category["items"][j]["name"] = "Unknown item"
+                            # Convert non-dict item to object with name and default quantity
+                            category["items"][j] = {
+                                "name": str(item),
+                                "quantity": "1",
+                                "alternatives": "N/A",
+                                "healthyAlternatives": "N/A"
+                            }
+                        else:
+                            # Ensure dict item has all required properties
+                            if "name" not in item:
+                                item["name"] = "Unknown item"
+                                
+                            # Function to sanitize quantity values
+                            def sanitize_quantity(qty, food_name):
+                                name_lower = food_name.lower()
+                                
+                                # If quantity is missing or invalid, assign a default
+                                if not qty or qty == "N/A":
+                                    # Common food items with typical quantities
+                                    if any(meat in name_lower for meat in ["chicken", "beef", "turkey", "salmon", "pork", "sirloin"]):
+                                        return "1 lb"
+                                    elif "cheese" in name_lower:
+                                        return "8 oz"
+                                    elif any(veg in name_lower for veg in ["onion", "pepper", "tomato", "carrot", "cucumber", "zucchini"]):
+                                        return "1"
+                                    elif "garlic" in name_lower:
+                                        return "1 clove"
+                                    elif "spice" in name_lower or "seasoning" in name_lower:
+                                        return "1 tsp"
+                                    elif "oil" in name_lower or "sauce" in name_lower:
+                                        return "1 tbsp"
+                                    elif "beans" in name_lower:
+                                        return "1 can"
+                                    elif "oats" in name_lower or "quinoa" in name_lower or "rice" in name_lower:
+                                        return "1 cup"
+                                    elif "bread" in name_lower or "tortilla" in name_lower:
+                                        return "1 package"
+                                    elif "berries" in name_lower:
+                                        return "1 cup"
+                                    else:
+                                        return "1"
+                                
+                                # Convert quantity to string if it's not already
+                                qty_str = str(qty)
+                                
+                                # Check for reasonable units and quantities
+                                # Extract numeric part and unit
+                                import re
+                                match = re.match(r'(\d+(?:\.\d+)?)\s*(\w+)?', qty_str)
+                                if match:
+                                    number = float(match.group(1))
+                                    unit = match.group(2) if match.group(2) else ""
+                                    
+                                    # Check for unreasonable quantities and adjust
+                                    # Handle meat items (keep quantities reasonable)
+                                    if any(meat in name_lower for meat in ["chicken", "beef", "turkey", "salmon", "pork", "sirloin"]):
+                                        if unit in ["lb", "pound", "pounds"] and number > 5:
+                                            # Cap at 5 pounds for meats
+                                            return "5 lb"
+                                        elif not unit and number > 5:
+                                            # Add pounds if missing
+                                            return "5 lb"
+                                    
+                                    # Handle cheese quantities
+                                    elif "cheese" in name_lower:
+                                        if unit in ["lb", "pound", "pounds"] and number > 2:
+                                            return "2 lb"
+                                        elif unit in ["g", "gram", "grams"] and number > 500:
+                                            return "500 g"
+                                        elif unit in ["oz", "ounce"] and number > 16:
+                                            return "16 oz"
+                                        elif not unit and number > 16:
+                                            return "16 oz"
+                                    
+                                    # Handle produce and vegetables
+                                    elif any(veg in name_lower for veg in ["onion", "pepper", "tomato", "carrot", "cucumber", "zucchini"]):
+                                        if not unit and number > 10:
+                                            return "10"  # Limit to reasonable number
+                                    
+                                    # Handle oils and sauces
+                                    elif "oil" in name_lower or "sauce" in name_lower:
+                                        if unit in ["cup", "cups"] and number > 2:
+                                            return "2 cups"
+                                        elif not unit and number > 2:
+                                            return "2 cups"
+                                    
+                                    # Default case: if it's a very large number without unit, cap it
+                                    elif not unit and number > 20:
+                                        return "20"
+                                
+                                return qty_str
+                            
+                            # Handle missing or undefined quantities
+                            if "quantity" not in item or not item["quantity"]:
+                                # Set a default quantity
+                                item["quantity"] = sanitize_quantity(None, item["name"])
+                            else:
+                                # Sanitize existing quantity
+                                item["quantity"] = sanitize_quantity(item["quantity"], item["name"])
+                            
+                            # Ensure alternatives
+                            if "alternatives" not in item or not item["alternatives"]:
+                                item["alternatives"] = "N/A"
+                                
+                            # Ensure healthy alternatives
+                            if "healthyAlternatives" not in item or not item["healthyAlternatives"]:
+                                item["healthyAlternatives"] = "N/A"
+                                
+                            # Update the item in the category
+                            category["items"][j] = item
             except Exception as structure_error:
                 logger.error(f"Error normalizing grocery list structure: {str(structure_error)}")
                 # If structure normalization fails, replace with simple version
