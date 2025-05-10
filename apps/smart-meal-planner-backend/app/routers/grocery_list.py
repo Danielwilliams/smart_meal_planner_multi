@@ -275,6 +275,9 @@ def process_ai_shopping_list_background(menu_id: int, menu_data, grocery_list, a
                     "For a balanced diet, include items from each food group",
                     "Fresh produce typically offers better nutrition than processed alternatives"
                 ],
+                "pantryStaples": ["Salt", "Pepper", "Olive Oil", "Flour", "Sugar"],
+                "healthySwaps": [],
+                "bulkItems": [],
                 "status": "completed",  # Mark as completed so UI doesn't stay in loading state
                 "menu_id": menu_id,
                 "timestamp": datetime.now().isoformat(),
@@ -300,6 +303,9 @@ def process_ai_shopping_list_background(menu_id: int, menu_data, grocery_list, a
                 "groceryList": categorized_list,
                 "recommendations": ["Error during AI processing, showing basic categorized list"],
                 "nutritionTips": ["Using basic grocery list with categories"],
+                "pantryStaples": ["Salt", "Pepper", "Olive Oil", "Flour", "Sugar"],
+                "healthySwaps": [],
+                "bulkItems": [],
                 "status": "completed",  # Mark as completed so UI doesn't stay in loading state
                 "error": str(e),
                 "menu_id": menu_id,
@@ -321,6 +327,9 @@ def process_ai_shopping_list_background(menu_id: int, menu_data, grocery_list, a
                     "groceryList": [{"category": "All Items", "items": grocery_list}],
                     "recommendations": ["Error during AI processing"],
                     "nutritionTips": ["Using basic grocery list instead"],
+                    "pantryStaples": ["Salt", "Pepper", "Olive Oil"],
+                    "healthySwaps": [],
+                    "bulkItems": [],
                     "status": "completed",  # Still mark as completed to avoid UI getting stuck
                     "error": str(e),
                     "menu_id": menu_id,
@@ -1341,13 +1350,13 @@ def generate_ai_shopping_list(menu_data, basic_grocery_list, additional_preferen
         except json.JSONDecodeError as json_error:
             logger.error(f"Failed to parse AI response as JSON: {str(json_error)}")
             logger.error(f"AI response content: {ai_content[:100]}...")
-            
+
             # Try to create a manual structure from the text if possible
             try:
                 # Create a simple structured response from the raw text
                 lines = ai_content.split('\n')
                 formatted_items = []
-                
+
                 for item in grocery_items:
                     # Clean up item name and add appropriate unit
                     item_name = item.split(':')[0] if ':' in item else item
@@ -1357,7 +1366,7 @@ def generate_ai_shopping_list(menu_data, basic_grocery_list, additional_preferen
                         "unit": appropriate_unit(item_name),
                         "display_name": f"{item_name}: 1 {appropriate_unit(item_name)}"
                     })
-                
+
                 # Create a manually structured response
                 manual_response = {
                     "groceryList": [
@@ -1368,6 +1377,9 @@ def generate_ai_shopping_list(menu_data, basic_grocery_list, additional_preferen
                     ],
                     "recommendations": ["AI response format was invalid - showing standard list"],
                     "nutritionTips": ["Try to include a variety of food groups for balanced nutrition"],
+                    "pantryStaples": ["Salt", "Pepper", "Olive Oil", "Flour", "Sugar"],
+                    "healthySwaps": [],
+                    "bulkItems": [],
                     "ai_text": ai_content[:500],  # Include truncated AI text for reference
                     "originalList": basic_grocery_list,
                     "error": "AI response format was invalid"
@@ -1378,17 +1390,21 @@ def generate_ai_shopping_list(menu_data, basic_grocery_list, additional_preferen
                 # If all parsing fails, return a simple response with the original list
                 return {
                     "groceryList": [{
-                        "category": "All Items", 
+                        "category": "All Items",
                         "items": [
                             {
-                                "name": item, 
-                                "quantity": "1", 
-                                "unit": "piece", 
+                                "name": item,
+                                "quantity": "1",
+                                "unit": "piece",
                                 "display_name": f"{item}: 1 piece"
                             } for item in grocery_items
                         ]
                     }],
                     "recommendations": ["AI response could not be processed"],
+                    "nutritionTips": ["Try to include a variety of food groups for balanced nutrition"],
+                    "pantryStaples": ["Salt", "Pepper", "Olive Oil"],
+                    "healthySwaps": [],
+                    "bulkItems": [],
                     "error": "AI response format was invalid"
                 }
             
@@ -1424,6 +1440,10 @@ def generate_ai_shopping_list(menu_data, basic_grocery_list, additional_preferen
                     }
                 ],
                 "recommendations": ["Error processing AI shopping list"],
+                "nutritionTips": ["Try to include a variety of food groups for balanced nutrition"],
+                "pantryStaples": ["Salt", "Pepper", "Olive Oil"],
+                "healthySwaps": [],
+                "bulkItems": [],
                 "error": str(e)
             }
         except:
@@ -1431,6 +1451,10 @@ def generate_ai_shopping_list(menu_data, basic_grocery_list, additional_preferen
             return {
                 "groceryList": [],
                 "recommendations": ["Failed to process shopping list"],
+                "nutritionTips": ["Try to include a variety of food groups for balanced nutrition"],
+                "pantryStaples": ["Salt", "Pepper", "Olive Oil"],
+                "healthySwaps": [],
+                "bulkItems": [],
                 "error": "Critical error in AI processing"
             }
 
