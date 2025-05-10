@@ -55,3 +55,5 @@ build/
 
 # Node modules
 **/node_modules/
+
+**/.claude/settings.local.json
