@@ -71,18 +71,18 @@ def get_menu_details(menu_id: int):
 
 @router.get("/{menu_id}/grocery-list")
 def get_grocery_list(
-    menu_id: int, 
+    menu_id: int,
     use_ai: Optional[bool] = Query(False),
     use_cache: Optional[bool] = Query(True)
 ):
     """
     Generate a grocery list from a menu, with optional AI enhancement.
-    
+
     Args:
         menu_id: The ID of the menu to generate the list from
         use_ai: Whether to use AI to enhance the grocery list (default: False)
         use_cache: Whether to use cached AI results if available (default: True)
-    
+
     Returns:
         A dictionary containing the grocery list and AI recommendations if requested
     """
@@ -99,12 +99,17 @@ def get_grocery_list(
                 if isinstance(result, dict):
                     result['cached'] = True
                     result['cache_time'] = datetime.fromtimestamp(cached_data.get('timestamp', 0)).isoformat()
+
+                # Log what we're returning
+                if 'groceryList' in result:
+                    logger.info(f"Returning cached AI result with {len(result['groceryList'])} categories")
+
                 return result
             else:
                 # Cache expired, remove it
                 logger.info(f"Cache expired for menu {menu_id}, removing from cache")
                 AI_SHOPPING_LIST_CACHE.pop(cache_key, None)
-    
+
     conn = get_db_connection()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -120,29 +125,61 @@ def get_grocery_list(
 
         # Standard aggregation
         grocery_list = aggregate_grocery_list(menu_data)
-        
+
+        # Log the format of the basic grocery list
+        logger.info(f"Basic grocery list has {len(grocery_list)} items")
+        if grocery_list and len(grocery_list) > 0:
+            logger.info(f"First item format: {type(grocery_list[0])}")
+            logger.info(f"Sample item: {grocery_list[0]}")
+
         # If AI is requested, enhance the list
         if use_ai:
+            # If the process might take time, first create a categorized version for immediate display
+            # Use our fallback categorization mechanism to provide instant categorized results
+            categorized_list = create_categorized_fallback(grocery_list)
+
+            # Then call the AI enhancement (which might take longer)
             result = generate_ai_shopping_list(menu_data, grocery_list)
-            
+
             # Store in cache if successful
             if result and isinstance(result, dict) and "groceryList" in result:
                 logger.info(f"Caching AI shopping list for menu {menu_id}")
+                logger.info(f"AI result has {len(result.get('groceryList', []))} categories")
+
                 cache_key = f"{menu_id}_no_prefs"
                 AI_SHOPPING_LIST_CACHE[cache_key] = {
                     'data': result,
                     'timestamp': time.time(),
                     'status': 'completed'
                 }
-                
+
                 # Add cache metadata to the response
                 result['cached'] = False
                 result['cache_timestamp'] = datetime.now().isoformat()
                 result['status'] = 'completed'
-            
-            return result
-        
-        return {"groceryList": grocery_list}
+
+                return result
+            else:
+                # If AI enhancement failed, return our categorized version instead
+                logger.info(f"AI enhancement failed, returning categorized fallback with {len(categorized_list)} categories")
+                return {
+                    "groceryList": categorized_list,
+                    "recommendations": ["Using basic categorized list - AI enhancement unavailable"],
+                    "nutritionTips": ["For a balanced diet, include items from each food group"],
+                    "status": "completed",
+                    "cached": False,
+                    "fallback": True
+                }
+
+        # If no AI requested, use our categorization function to provide a better experience than flat list
+        categorized_list = create_categorized_fallback(grocery_list)
+        logger.info(f"Returning categorized version with {len(categorized_list)} categories")
+
+        return {
+            "groceryList": categorized_list,
+            "status": "completed",
+            "ai_enhanced": False
+        }
 
     except Exception as e:
         logger.error(f"Error retrieving grocery list: {str(e)}")
@@ -468,6 +505,18 @@ async def get_ai_shopping_list_status(menu_id: int, preferences: Optional[str] =
                     elapsed = time.time() - cached_data.get('timestamp', 0)
                     result['elapsed_seconds'] = round(elapsed)
                     result['message'] = f"AI shopping list is being processed (elapsed time: {round(elapsed)} seconds)"
+
+                # Log the structure being returned
+                if status == 'completed':
+                    logger.info(f"Returning completed AI shopping list with structure: {type(result)}")
+                    if 'groceryList' in result:
+                        logger.info(f"groceryList has {len(result['groceryList'])} categories")
+                        # Check first category format
+                        if result['groceryList'] and isinstance(result['groceryList'][0], dict):
+                            first_cat = result['groceryList'][0]
+                            logger.info(f"First category: {first_cat.get('category', 'unknown')}")
+                            if 'items' in first_cat and first_cat['items']:
+                                logger.info(f"Sample items: {first_cat['items'][:2]}")
 
             return result
         else:
@@ -1392,7 +1441,7 @@ def get_latest_grocery_list(user_id: int):
     """
     conn = get_db_connection()
     cursor = conn.cursor(cursor_factory=RealDictCursor)
-    
+
     cursor.execute("""
         SELECT id, meal_plan_json
         FROM menus
@@ -1410,7 +1459,17 @@ def get_latest_grocery_list(user_id: int):
 
     # Process grocery list from the latest menu
     grocery_list = aggregate_grocery_list(menu["meal_plan_json"])
-    return {"menu_id": menu["id"], "groceryList": grocery_list}
+
+    # Use our categorization function to provide a better experience
+    categorized_list = create_categorized_fallback(grocery_list)
+    logger.info(f"Created categorized list for latest menu with {len(categorized_list)} categories")
+
+    return {
+        "menu_id": menu["id"],
+        "groceryList": categorized_list,
+        "status": "completed",
+        "ai_enhanced": False
+    }
 
 
 @router.get("/ai-shopping-cache/status", status_code=200)
