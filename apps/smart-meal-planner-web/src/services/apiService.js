@@ -339,6 +339,41 @@ const apiService = {
         responseData.nutritionTips = ["Focus on whole foods for better nutrition"];
       }
 
+      // Process all grocery list items to ensure they have quantity and display_name
+      if (responseData.groceryList && Array.isArray(responseData.groceryList)) {
+        responseData.groceryList.forEach(category => {
+          if (category.items && Array.isArray(category.items)) {
+            category.items = category.items.map(item => {
+              // Handle string items
+              if (typeof item === 'string') {
+                return {
+                  name: item,
+                  quantity: "1",
+                  unit: "",
+                  display_name: `${item}: 1`
+                };
+              }
+              // Handle object items with missing fields
+              else if (typeof item === 'object') {
+                const name = item.name || "Unknown item";
+                const quantity = item.quantity || "1";
+                const unit = item.unit || "";
+                const display_name = `${name}: ${quantity} ${unit}`.trim();
+
+                return {
+                  ...item,
+                  name,
+                  quantity,
+                  unit,
+                  display_name
+                };
+              }
+              return item;
+            });
+          }
+        });
+      }
+
       return responseData;
     } catch (err) {
       console.error('AI shopping list generation error:', err);

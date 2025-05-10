@@ -1,0 +1,69 @@
+QUICK FIX FOR SHOPPING LIST ISSUES
+
+Issue 1: Snackbar notification keeps showing repeatedly
+Issue 2: Items don't have quantities displayed
+
+STEP 1: Fix the apiService.js file
+
+In the apiService.js file, find the getAiShoppingListStatus function (around line 357).
+Add this code before returning responseData (around line 396):
+
+```javascript
+// Format all shopping list items to ensure they have quantities
+if (responseData.groceryList && Array.isArray(responseData.groceryList)) {
+  responseData.groceryList.forEach(category => {
+    if (category.items && Array.isArray(category.items)) {
+      category.items = category.items.map(item => {
+        // Handle string items
+        if (typeof item === 'string') {
+          return {
+            name: item,
+            quantity: "1",
+            unit: "",
+            display_name: `${item}: 1`
+          };
+        }
+        // Handle object items with missing fields
+        else if (typeof item === 'object') {
+          const name = item.name || "Unknown item";
+          const quantity = item.quantity || "1";
+          const unit = item.unit || "";
+          const display_name = `${name}: ${quantity} ${unit}`.trim();
+          
+          return {
+            ...item,
+            name,
+            quantity,
+            unit,
+            display_name
+          };
+        }
+        return item;
+      });
+    }
+  });
+}
+```
+
+STEP 2: Fix the ShoppingListPage.jsx file
+
+In ShoppingListPage.jsx, find the checkAiShoppingListStatus function.
+In the code that handles "statusResponse.status === 'completed'", find where it shows the notification:
+
+```javascript
+// Show notification
+setSnackbarMessage("AI shopping list ready!");
+setSnackbarOpen(true);
+```
+
+Change it to:
+
+```javascript
+// Show notification only on first couple of polls to prevent looping
+if (pollCount <= 2) {
+  setSnackbarMessage("AI shopping list ready!");
+  setSnackbarOpen(true);
+}
+```
+
+That's it! These two changes should fix both issues.

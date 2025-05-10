@@ -626,29 +626,7 @@ function ShoppingListPage() {
       setPollCount(prevCount => prevCount + 1);
 
       // Check if processing is complete
-      if (statusResponse.status === "completed") {
-        console.log("AI shopping list processing completed!");
-
-        // Stop the polling
-        clearStatusPolling();
-
-        // Update state with the completed data
-        setAiShoppingData(statusResponse);
-        setAiShoppingLoading(false);
-
-        // Show notification
-        setSnackbarMessage("AI shopping list ready!");
-        setSnackbarOpen(true);
-
-        // Cache the results
-        setCachedShoppingList(menuId, statusResponse);
-      }
-      // Handle error state
-      else if (statusResponse.status === "error") {
-        console.warn("AI processing resulted in error:", statusResponse.message || "Unknown error");
-
-        // Stop the polling
-        clearStatusPolling();
+      // Check if processing is complete\n      if (statusResponse.status === "completed") {\n        console.log("AI shopping list processing completed!");\n\n        // Stop the polling\n        clearStatusPolling();\n\n        // Format and normalize all items to ensure quantities are shown\n        if (statusResponse.groceryList && Array.isArray(statusResponse.groceryList)) {\n          statusResponse.groceryList.forEach(category => {\n            if (category.items && Array.isArray(category.items)) {\n              category.items = category.items.map(item => {\n                // If item is just a string, convert to object with name\n                if (typeof item === "string") {\n                  return { \n                    name: item,\n                    quantity: "1",\n                    unit: "",\n                    display_name: `${item}: 1`\n                  };\n                }\n                // If item is object but missing quantity/unit, add them\n                else if (typeof item === "object") {\n                  // Ensure name exists\n                  const name = item.name || "Unknown item";\n                  // Ensure quantity exists\n                  const quantity = item.quantity || "1";\n                  // Ensure unit exists\n                  const unit = item.unit || "";\n                  // Create or update display_name\n                  const display_name = `${name}: ${quantity} ${unit}`.trim();\n                  \n                  return {\n                    ...item,\n                    name,\n                    quantity,\n                    unit,\n                    display_name\n                  };\n                }\n                return item;\n              });\n            }\n          });\n        }\n        \n        // Update state with the completed data\n        setAiShoppingData(statusResponse);\n        setAiShoppingLoading(false);\n        \n        // Show notification only on first couple of polls to prevent looping\n        if (pollCount <= 2) {\n          setSnackbarMessage("AI shopping list ready!");\n          setSnackbarOpen(true);\n        }\n        \n        // Cache the results\n        setCachedShoppingList(menuId, statusResponse);\n      }
 
         // Show error message
         setSnackbarMessage(`AI processing error: ${statusResponse.message || "Unknown error"}`);
