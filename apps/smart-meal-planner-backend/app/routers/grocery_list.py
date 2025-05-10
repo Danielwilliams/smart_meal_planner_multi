@@ -1175,7 +1175,7 @@ def generate_ai_shopping_list(menu_data, basic_grocery_list, additional_preferen
                             quantity_part = name_parts[1].strip() if len(name_parts) > 1 else ""
                             
                             # Parse quantity and unit
-                            import re
+                            # re is already imported at the module level
                             qty_match = re.match(r'^([\d./]+)\s*(.*)$', quantity_part)
                             qty = qty_match.group(1) if qty_match else "1"
                             unit = qty_match.group(2).strip() if qty_match and qty_match.group(2) else "piece"
