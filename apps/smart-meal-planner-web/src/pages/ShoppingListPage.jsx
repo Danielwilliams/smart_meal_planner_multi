@@ -625,9 +625,9 @@ function ShoppingListPage() {
       // Update poll count
       setPollCount(prevCount => prevCount + 1);
 
-      // Check if processing is complete
-      if (statusResponse.status === "completed") {
-        console.log("AI shopping list processing completed!");
+      // Check if processing is complete or if this is cached data
+      if (statusResponse.status === "completed" || statusResponse.cached === true) {
+        console.log("AI shopping list processing completed or using cached data!");
 
         // Stop the polling
         clearStatusPolling();
@@ -822,17 +822,17 @@ function ShoppingListPage() {
       }
 
       // Check if the response indicates processing is still happening
-      if (aiResponse.status === "processing") {
+      if (aiResponse.status === "processing" && !aiResponse.cached) {
         console.log("AI shopping list is being processed, starting status polling");
 
         // Start polling for status updates
         startStatusPolling(menuId);
       } else {
-        // If not processing, we're done
+        // If not processing or using cached data, we're done
         setAiShoppingLoading(false);
 
-        // Cache the successful response if it's completed
-        if (aiResponse.status === "completed" && aiResponse.groceryList) {
+        // Cache the successful response if it's completed and not already cached
+        if (aiResponse.status === "completed" && aiResponse.groceryList && !aiResponse.cached) {
           setCachedShoppingList(menuId, aiResponse);
         }
       }
@@ -872,10 +872,16 @@ function ShoppingListPage() {
       if (cachedData) {
         // Use cached data
         console.log("Using cached shopping list data on initial load");
+        // Make sure cached data has cached flag set
+        if (cachedData) {
+          cachedData.cached = true;
+        }
+
         setAiShoppingData(cachedData);
         setUsingAiList(true);
         setActiveTab(1); // Switch to AI tab if we have cached data
-        
+        setAiShoppingLoading(false); // Ensure loading is turned off
+
         // Show a toast notification that we're using cached data
         setSnackbarMessage("Using cached AI shopping list");
         setSnackbarOpen(true);
@@ -1559,8 +1565,9 @@ const categorizeItems = (mealPlanData) => {
                                       <Typography variant="body1" fontWeight="medium">
                                         {typeof item === 'string' ? item : (
                                           // Handle cheese special case with 1g quantity
-                                          item.name && item.name.toLowerCase().includes('cheese') &&
-                                          item.quantity === '1' && item.unit === 'g' ? (
+                                          ((item.name && (item.name.toLowerCase().includes('cheese') ||
+                                                         item.name.toLowerCase().includes('mozzarella'))) &&
+                                          item.quantity === '1' && item.unit === 'g') ? (
                                             // Apply proper cheese quantities based on type
                                             item.name.toLowerCase().includes('cheddar') ||
                                             item.name.toLowerCase().includes('mozzarella') ?
