@@ -641,12 +641,12 @@ def generate_ai_shopping_list(menu_data, basic_grocery_list, additional_preferen
             logger.error(f"Error parsing menu JSON: {str(parse_error)}")
             menu_dict = {}
         
-        # Extract meal information for context
-        meal_info = []
+        # Extract meal information for context in a simple format
+        meal_titles = []
 
         # Handle simplified menu format (from background task)
         if isinstance(menu_dict, dict) and "meal_titles" in menu_dict:
-            meal_info = menu_dict["meal_titles"]
+            meal_titles = menu_dict["meal_titles"]
         # Try to find days array and extract meal titles
         elif isinstance(menu_dict, dict) and "days" in menu_dict:
             try:
@@ -654,11 +654,18 @@ def generate_ai_shopping_list(menu_data, basic_grocery_list, additional_preferen
                     if "meals" in day and isinstance(day["meals"], list):
                         for meal in day["meals"]:
                             if "title" in meal:
-                                meal_info.append(meal["title"])
+                                meal_titles.append(meal["title"])
             except Exception as meal_error:
                 logger.error(f"Error extracting meal information: {str(meal_error)}")
 
-        # Build the AI prompt with simple string concatenation to avoid potential f-string errors
+        # Create a simple plain text meal plan context
+        meal_plan_text = ""
+        if meal_titles:
+            meal_plan_text = "Meals in this plan:\n- " + "\n- ".join(meal_titles[:10])
+            if len(meal_titles) > 10:
+                meal_plan_text += "\n- (and more...)"
+
+        # Build the AI prompt with simple text only - no complex JSON
         prompt = "You are a helpful meal planning assistant. I'll provide you with a shopping list and meal plan information.\n"
         prompt += "Please organize this shopping list in a more efficient way with the following enhancements:\n\n"
         prompt += "1. Categorize items by store section (produce, dairy, meat, etc.)\n"
@@ -669,116 +676,55 @@ def generate_ai_shopping_list(menu_data, basic_grocery_list, additional_preferen
         prompt += "6. Add nutrition information where relevant\n"
         prompt += "7. Suggest healthy alternatives to ingredients where applicable\n\n"
         prompt += "Shopping List:\n" + grocery_text + "\n\n"
-        
-        if meal_info:
-            prompt += "Meal Plan Overview:\n" + ', '.join(meal_info[:10]) + "\n\n"
+
+        if meal_plan_text:
+            prompt += meal_plan_text + "\n\n"
         
         if additional_preferences:
             prompt += "Additional Preferences: " + additional_preferences + "\n\n"
             
-        prompt += "Format your response as a JSON object with the following structure, paying special attention to the format of each item:\n"
+        prompt += "Format your response as a simple JSON object. I need the output in this exact format to process correctly:\n"
         prompt += """
 {
   "groceryList": [
     {
-      "category": "Produce", 
+      "category": "Produce",
       "items": [
-        {
-          "name": "Bell Pepper", 
-          "quantity": "2", 
-          "unit": "medium", 
-          "alternatives": "Red or yellow bell peppers", 
-          "healthyAlternatives": "Organic bell peppers"
-        },
-        {
-          "name": "Spinach", 
-          "quantity": "3", 
-          "unit": "cups", 
-          "alternatives": "Baby spinach", 
-          "healthyAlternatives": "Organic spinach"
-        }
+        { "name": "Bell Pepper", "quantity": "2", "unit": "medium" },
+        { "name": "Spinach", "quantity": "3", "unit": "cups" }
       ]
     },
     {
-      "category": "Meat and Proteins", 
+      "category": "Meat and Proteins",
       "items": [
-        {
-          "name": "Chicken Breast", 
-          "quantity": "1.5", 
-          "unit": "lb", 
-          "alternatives": "Chicken tenders", 
-          "healthyAlternatives": "Free-range organic chicken"
-        }
+        { "name": "Chicken Breast", "quantity": "1.5", "unit": "lb" }
       ]
     },
     {
-      "category": "Dairy", 
+      "category": "Dairy",
       "items": [
-        {
-          "name": "Cheddar Cheese", 
-          "quantity": "8", 
-          "unit": "oz", 
-          "alternatives": "Monterey Jack", 
-          "healthyAlternatives": "Low-fat cheddar"
-        }
-      ]
-    },
-    {
-      "category": "Grains", 
-      "items": [
-        {
-          "name": "Brown Rice", 
-          "quantity": "300", 
-          "unit": "g", 
-          "alternatives": "White rice", 
-          "healthyAlternatives": "Quinoa"
-        }
-      ]
-    },
-    {
-      "category": "Condiments and Oils", 
-      "items": [
-        {
-          "name": "Olive Oil", 
-          "quantity": "2", 
-          "unit": "tbsp", 
-          "alternatives": "Vegetable oil", 
-          "healthyAlternatives": "Avocado oil"
-        }
-      ]
-    },
-    {
-      "category": "Spices and Herbs", 
-      "items": [
-        {
-          "name": "Garlic", 
-          "quantity": "3", 
-          "unit": "cloves", 
-          "alternatives": "Garlic powder", 
-          "healthyAlternatives": "Fresh organic garlic"
-        }
+        { "name": "Cheddar Cheese", "quantity": "8", "unit": "oz" }
       ]
     }
   ],
-  "recommendations": ["Shop for produce first to ensure freshness", "Check your pantry for staples before shopping"],
-  "nutritionTips": ["This meal plan is high in protein and fiber", "Includes plenty of vegetables for essential vitamins"],
-  "bulkItems": ["Brown Rice", "Chicken Breast"],
-  "pantryStaples": ["Olive Oil", "Salt", "Pepper"],
-  "healthySwaps": ["White Rice -> Brown Rice", "Regular Pasta -> Whole Grain Pasta"]
+  "recommendations": [
+    "Shop for produce first to ensure freshness",
+    "Check your pantry for staples before shopping"
+  ],
+  "nutritionTips": [
+    "This meal plan is high in protein and fiber"
+  ]
 }
 """
-        prompt += "\n\nVERY IMPORTANT: For every item, you MUST separate the item name, quantity, and unit of measure into separate fields. DO NOT include the quantity in the item name field. Every item MUST have a sensible unit of measure (pieces, lb, cups, oz, etc.)."
-        prompt += "\n\nFor example, instead of: \"name\": \"Chicken Breast: 2 lb\", use: \"name\": \"Chicken Breast\", \"quantity\": \"2\", \"unit\": \"lb\""
-        prompt += "\n\nAlso, correct any unrealistic quantities like \"Bell Peppers: 205/4 medium\" or \"Chicken Breast: 22 lb\" to reasonable values."
-        prompt += "\n\nUse these guidelines for units and quantities:"
-        prompt += "\n1. For meats (chicken, beef, etc.): Use lb or oz, with reasonable quantities (1-5 lb typically)"
-        prompt += "\n2. For produce (onions, peppers, etc.): Use either 'medium' or count by piece"
-        prompt += "\n3. For spices: Use tsp or tbsp (not large quantities like cups)"
-        prompt += "\n4. For grains (rice, quinoa): Use cups or g (200-400g is typical)"
-        prompt += "\n5. For oils and sauces: Use tbsp or cup (avoid very large quantities)"
-        prompt += "\n6. For dairy: Use cups, oz, or g depending on the item"
-        prompt += "\n7. NEVER use fractional formats like '205/4' - convert these to decimal"
-        prompt += "\n\nEnsure every item has reasonable quantities appropriate for a meal plan (not restaurant quantities). Double-check all values before including them."
+        # Simplified instructions focusing on the most critical aspects
+        prompt += "\n\nIMPORTANT FORMATTING RULES:"
+        prompt += "\n1. Keep the name field SIMPLE - just the ingredient name (e.g., \"Chicken Breast\", not \"Chicken Breast: 2 lb\")"
+        prompt += "\n2. Use REASONABLE quantities - 1-5 lb for meats, 1-3 cups for grains, 1-3 for produce items"
+        prompt += "\n3. Choose APPROPRIATE units - lb for meats, cups/oz for grains, medium/piece for produce, tsp/tbsp for spices"
+        prompt += "\n4. Include THESE CATEGORIES: Produce, Meat and Proteins, Dairy, Grains, Condiments, Spices and Herbs, Baking, Frozen"
+        prompt += "\n5. Format as VALID JSON - the JSON must parse correctly with proper quotes, commas, and brackets"
+
+        prompt += "\n\nI need to parse your response programmatically, so it MUST be valid JSON. Don't include explanations outside the JSON structure."
         
         logger.info("Making OpenAI API call")
         # Make OpenAI API call with better error handling
@@ -813,7 +759,7 @@ def generate_ai_shopping_list(menu_data, basic_grocery_list, additional_preferen
             # Extract and parse the response
             ai_content = response.choices[0].message.content.strip()
             logger.info("Received OpenAI response")
-            
+
         except Exception as openai_error:
             logger.error(f"Error calling OpenAI API: {str(openai_error)}")
             # Return a graceful error response
@@ -822,124 +768,76 @@ def generate_ai_shopping_list(menu_data, basic_grocery_list, additional_preferen
                 "recommendations": ["AI service unavailable - showing standard list"],
                 "error": "OpenAI API error"
             }
-        
+
         # Parse the JSON response with enhanced error handling
         try:
             logger.info(f"Attempting to parse AI response, content type: {type(ai_content)}, length: {len(ai_content)}")
             # Log a sample of the content for debugging
             logger.info(f"First 200 chars of AI response: {ai_content[:200]}")
-            
-            # First check if response starts with a Markdown code block
-            if ai_content.strip().startswith("```"):
-                logger.info("Response starts with code block markers")
-                # First try extracting content from code block with language specifier
-                json_match = re.search(r'```(?:json)?\s*\n([\s\S]*?)\n\s*```', ai_content, re.DOTALL)
-                
-                if json_match:
-                    json_str = json_match.group(1).strip()
-                    logger.info(f"Extracted code block content, length: {len(json_str)}")
-                    try:
-                        # Make sure we have a complete JSON object
-                        if json_str.startswith("{") and json_str.endswith("}"):
-                            ai_result = json.loads(json_str)
-                            logger.info("Successfully parsed JSON from code block")
-                        else:
-                            # Sometimes there might be extra newlines or formatting issues
-                            # Try to extract just the JSON object
-                            object_match = re.search(r'(\{[\s\S]*\})', json_str, re.DOTALL)
-                            if object_match:
-                                json_object = object_match.group(1).strip()
-                                ai_result = json.loads(json_object)
-                                logger.info("Successfully extracted and parsed JSON object from code block")
-                            else:
-                                raise ValueError("No valid JSON object found in code block")
-                    except (json.JSONDecodeError, ValueError) as block_error:
-                        logger.error(f"Error parsing JSON from code block: {str(block_error)}")
-                        
-                        # Try alternative approaches - first, clean up the JSON string
-                        minified_json = re.sub(r'\s+', ' ', json_str)  # Replace all whitespace with single spaces
-                        minified_json = re.sub(r',\s*}', '}', minified_json)  # Remove trailing commas
-                        
-                        # Try again with manually reconstructed JSON
-                        try:
-                            # Manually reconstruct a JSON object from the content if we detect the structure
-                            if "groceryList" in json_str and "category" in json_str and "items" in json_str:
-                                logger.info("Attempting to manually reconstruct JSON from content")
-                                
-                                # Extract categories and items using regex
-                                categories = []
-                                category_matches = re.finditer(r'"category":\s*"([^"]+)"', json_str)
-                                items_matches = re.finditer(r'"items":\s*\[([\s\S]*?)\]', json_str)
-                                
-                                for cat_match, items_match in zip(category_matches, items_matches):
-                                    category_name = cat_match.group(1)
-                                    items_content = items_match.group(1)
-                                    
-                                    # Extract items as name-value pairs
-                                    items = []
-                                    item_matches = re.finditer(r'\{\s*"name":\s*"([^"]+)"', items_content)
-                                    for item_match in item_matches:
-                                        items.append({"name": item_match.group(1)})
-                                    
-                                    categories.append({
-                                        "category": category_name,
-                                        "items": items
-                                    })
-                                
-                                # Create a structured response
-                                ai_result = {
-                                    "groceryList": categories,
-                                    "recommendations": ["Shop by category to save time in the store"],
-                                    "nutritionTips": ["Focus on whole foods for better nutrition"]
-                                }
-                                logger.info(f"Manually reconstructed JSON with {len(categories)} categories")
-                            else:
-                                raise ValueError("Could not manually reconstruct JSON")
-                        except Exception as rebuild_error:
-                            logger.error(f"Failed to manually reconstruct JSON: {str(rebuild_error)}")
-                            
-                            # As a last resort, try to extract any JSON-like object
-                            try:
-                                object_match = re.search(r'(\{[\s\S]*\})', ai_content, re.DOTALL)
-                                if object_match:
-                                    json_object = object_match.group(1).strip()
-                                    ai_result = json.loads(json_object)
-                                    logger.info("Successfully extracted JSON from raw response")
-                                else:
-                                    raise ValueError("No JSON object found in response")
-                            except Exception:
-                                raise  # Fall through to the next approach
-                else:
-                    # No proper code block match found
-                    logger.warning("Code block markers present but content not properly formatted")
-                    # Try extracting anything that looks like a JSON object
-                    object_match = re.search(r'(\{[\s\S]*\})', ai_content, re.DOTALL)
-                    if object_match:
-                        try:
-                            json_object = object_match.group(1).strip()
-                            ai_result = json.loads(json_object)
-                            logger.info("Successfully extracted JSON from response")
-                        except json.JSONDecodeError:
-                            raise  # Fall through to the next approach
-                    else:
-                        raise ValueError("No JSON object found in response")
+
+            # Simplified, more robust extraction approach to handle typical GPT responses
+
+            # First, try to extract any JSON block enclosed in triple backticks (common markdown format)
+            code_block_pattern = r'```(?:json)?\s*\n?([\s\S]*?)\n?\s*```'
+            code_blocks = re.findall(code_block_pattern, ai_content)
+
+            # Check if we found any code blocks
+            if code_blocks:
+                logger.info(f"Found {len(code_blocks)} code blocks, using the first one")
+                json_str = code_blocks[0].strip()
+
+                # Find the outermost JSON object in the code block
+                json_obj_match = re.search(r'(\{[\s\S]*\})', json_str, re.DOTALL)
+                if json_obj_match:
+                    json_str = json_obj_match.group(1).strip()
+                    logger.info(f"Extracted JSON object from code block, length: {len(json_str)}")
+
+                # Try to parse the JSON
+                try:
+                    ai_result = json.loads(json_str)
+                    logger.info("Successfully parsed JSON from code block")
+                except json.JSONDecodeError as json_err:
+                    logger.error(f"JSON parse error from code block: {str(json_err)}")
+                    # Fall through to the next approach
+                    raise
+
+            # If no code blocks or parsing failed, look for JSON directly in the text
             else:
-                # No code block markers, try to extract any JSON object from the response
-                logger.info("No code block markers found, looking for JSON objects directly")
-                object_match = re.search(r'(\{[\s\S]*\})', ai_content, re.DOTALL)
-                if object_match:
+                logger.info("No code blocks found or parsing failed, looking for JSON objects directly")
+                # Look for any JSON object pattern in the content
+                json_obj_match = re.search(r'(\{[\s\S]*\})', ai_content, re.DOTALL)
+
+                if json_obj_match:
+                    json_str = json_obj_match.group(1).strip()
+                    logger.info(f"Found direct JSON object, length: {len(json_str)}")
+
+                    # Try to parse it
                     try:
-                        json_object = object_match.group(1).strip()
-                        ai_result = json.loads(json_object)
-                        logger.info("Successfully extracted and parsed JSON object from response")
-                    except json.JSONDecodeError:
-                        # Try to parse the whole response as JSON as a last resort
-                        ai_result = json.loads(ai_content)
-                        logger.info("Successfully parsed entire AI response as JSON")
+                        ai_result = json.loads(json_str)
+                        logger.info("Successfully parsed JSON object from text")
+                    except json.JSONDecodeError as json_err:
+                        logger.error(f"JSON parse error from direct object: {str(json_err)}")
+
+                        # Clean the JSON before trying again - fix common GPT formatting issues
+                        try:
+                            # 1. Standardize quote usage (replace single quotes with double quotes)
+                            clean_json = re.sub(r"'([^']*)'", r'"\1"', json_str)
+                            # 2. Remove trailing commas in arrays and objects
+                            clean_json = re.sub(r',\s*}', '}', clean_json)
+                            clean_json = re.sub(r',\s*\]', ']', clean_json)
+                            # 3. Ensure property names are quoted
+                            clean_json = re.sub(r'(\s*)([a-zA-Z0-9_]+)(\s*):(\s*)', r'\1"\2"\3:\4', clean_json)
+
+                            logger.info("Trying with cleaned JSON")
+                            ai_result = json.loads(clean_json)
+                            logger.info("Successfully parsed cleaned JSON")
+                        except json.JSONDecodeError:
+                            logger.error("Failed to parse even with cleaned JSON")
+                            # Fall back to manual structure creation
+                            raise
                 else:
-                    # Try to parse the whole response as JSON as a last resort
-                    ai_result = json.loads(ai_content)
-                    logger.info("Successfully parsed entire AI response as JSON")
+                    logger.error("No JSON object pattern found in response")
+                    raise ValueError("No JSON object pattern found in response")
             
             # Validate the response structure
             if "groceryList" not in ai_result:
