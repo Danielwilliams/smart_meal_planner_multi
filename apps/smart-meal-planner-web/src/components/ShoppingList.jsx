@@ -1175,6 +1175,25 @@ const ShoppingListItem = ({
   onAddToMixedCart,
   onKrogerNeededSetup
 }) => {
+  // Parse the display data and item data from the item object if available
+  let displayName = item;
+  let itemName = item;
+  
+  // Handle different item formats
+  if (typeof item === 'object' && item !== null) {
+    // Use display_name if available
+    if (item.display_name) {
+      displayName = item.display_name;
+    } 
+    // Otherwise construct from name, quantity and unit
+    else if (item.name) {
+      displayName = `${item.name}: ${item.quantity || '1'} ${item.unit || 'piece'}`;
+    }
+    
+    // Use the base name (without quantity/unit) for cart operations
+    itemName = item.name || String(item);
+  }
+  
   const handleStoreClick = async (store, itemName) => {
     if (store === 'kroger') {
       try {
@@ -1211,7 +1230,7 @@ const ShoppingListItem = ({
   
   return (
     <Grid item xs={12} sm={6}>
-      <Typography>{item}</Typography>
+      <Typography>{displayName}</Typography>
       
       {selectedStore === 'mixed' ? (
         <Box sx={{ mt: 1 }}>
@@ -1219,14 +1238,14 @@ const ShoppingListItem = ({
             variant="outlined" 
             size="small" 
             sx={{ mr: 1 }}
-            onClick={() => handleStoreClick('walmart', item)}
+            onClick={() => handleStoreClick('walmart', itemName)}
           >
             Add to Walmart
           </Button>
           <Button 
             variant="outlined" 
             size="small" 
-            onClick={() => handleStoreClick('kroger', item)}
+            onClick={() => handleStoreClick('kroger', itemName)}
           >
             Add to Kroger
           </Button>
@@ -1236,7 +1255,7 @@ const ShoppingListItem = ({
           variant="outlined" 
           size="small" 
           sx={{ mt: 1 }}
-          onClick={() => handleStoreClick(selectedStore, item)}
+          onClick={() => handleStoreClick(selectedStore, itemName)}
         >
           Add to {selectedStore.charAt(0).toUpperCase() + selectedStore.slice(1)} Cart
         </Button>

@@ -1,5 +1,3 @@
-# smart_meal_planner/meal_planner_backend/app/routers/grocery_list.py
-
 from fastapi import APIRouter, HTTPException, Query, Body
 from psycopg2.extras import RealDictCursor
 from ..db import get_db_connection
@@ -422,34 +420,139 @@ def generate_ai_shopping_list(menu_data, basic_grocery_list, additional_preferen
         if additional_preferences:
             prompt += "Additional Preferences: " + additional_preferences + "\n\n"
             
-        prompt += "Format your response as a JSON object with the following structure:\n"
+        prompt += "Format your response as a JSON object with the following structure, paying special attention to the format of each item:\n"
         prompt += """
 {
   "groceryList": [
-    {"category": "Produce", "items": [{"name": "Item Name", "notes": "Optional notes", "alternatives": "Optional alternatives", "healthyAlternatives": "Optional healthy alternatives"}]},
-    {"category": "Dairy", "items": [...]},
-    ...
+    {
+      "category": "Produce", 
+      "items": [
+        {
+          "name": "Bell Pepper", 
+          "quantity": "2", 
+          "unit": "medium", 
+          "alternatives": "Red or yellow bell peppers", 
+          "healthyAlternatives": "Organic bell peppers"
+        },
+        {
+          "name": "Spinach", 
+          "quantity": "3", 
+          "unit": "cups", 
+          "alternatives": "Baby spinach", 
+          "healthyAlternatives": "Organic spinach"
+        }
+      ]
+    },
+    {
+      "category": "Meat and Proteins", 
+      "items": [
+        {
+          "name": "Chicken Breast", 
+          "quantity": "1.5", 
+          "unit": "lb", 
+          "alternatives": "Chicken tenders", 
+          "healthyAlternatives": "Free-range organic chicken"
+        }
+      ]
+    },
+    {
+      "category": "Dairy", 
+      "items": [
+        {
+          "name": "Cheddar Cheese", 
+          "quantity": "8", 
+          "unit": "oz", 
+          "alternatives": "Monterey Jack", 
+          "healthyAlternatives": "Low-fat cheddar"
+        }
+      ]
+    },
+    {
+      "category": "Grains", 
+      "items": [
+        {
+          "name": "Brown Rice", 
+          "quantity": "300", 
+          "unit": "g", 
+          "alternatives": "White rice", 
+          "healthyAlternatives": "Quinoa"
+        }
+      ]
+    },
+    {
+      "category": "Condiments and Oils", 
+      "items": [
+        {
+          "name": "Olive Oil", 
+          "quantity": "2", 
+          "unit": "tbsp", 
+          "alternatives": "Vegetable oil", 
+          "healthyAlternatives": "Avocado oil"
+        }
+      ]
+    },
+    {
+      "category": "Spices and Herbs", 
+      "items": [
+        {
+          "name": "Garlic", 
+          "quantity": "3", 
+          "unit": "cloves", 
+          "alternatives": "Garlic powder", 
+          "healthyAlternatives": "Fresh organic garlic"
+        }
+      ]
+    }
   ],
-  "recommendations": ["Recommendation 1", "Recommendation 2", ...],
-  "nutritionTips": ["Tip 1", "Tip 2", ...],
-  "bulkItems": ["Item 1", "Item 2", ...],
-  "pantryStaples": ["Item 1", "Item 2", ...],
-  "healthySwaps": ["Regular Item -> Healthy Alternative", ...]
+  "recommendations": ["Shop for produce first to ensure freshness", "Check your pantry for staples before shopping"],
+  "nutritionTips": ["This meal plan is high in protein and fiber", "Includes plenty of vegetables for essential vitamins"],
+  "bulkItems": ["Brown Rice", "Chicken Breast"],
+  "pantryStaples": ["Olive Oil", "Salt", "Pepper"],
+  "healthySwaps": ["White Rice -> Brown Rice", "Regular Pasta -> Whole Grain Pasta"]
 }
 """
+        prompt += "\n\nVERY IMPORTANT: For every item, you MUST separate the item name, quantity, and unit of measure into separate fields. DO NOT include the quantity in the item name field. Every item MUST have a sensible unit of measure (pieces, lb, cups, oz, etc.)."
+        prompt += "\n\nFor example, instead of: \"name\": \"Chicken Breast: 2 lb\", use: \"name\": \"Chicken Breast\", \"quantity\": \"2\", \"unit\": \"lb\""
+        prompt += "\n\nAlso, correct any unrealistic quantities like \"Bell Peppers: 205/4 medium\" or \"Chicken Breast: 22 lb\" to reasonable values."
+        prompt += "\n\nUse these guidelines for units and quantities:"
+        prompt += "\n1. For meats (chicken, beef, etc.): Use lb or oz, with reasonable quantities (1-5 lb typically)"
+        prompt += "\n2. For produce (onions, peppers, etc.): Use either 'medium' or count by piece"
+        prompt += "\n3. For spices: Use tsp or tbsp (not large quantities like cups)"
+        prompt += "\n4. For grains (rice, quinoa): Use cups or g (200-400g is typical)"
+        prompt += "\n5. For oils and sauces: Use tbsp or cup (avoid very large quantities)"
+        prompt += "\n6. For dairy: Use cups, oz, or g depending on the item"
+        prompt += "\n7. NEVER use fractional formats like '205/4' - convert these to decimal"
+        prompt += "\n\nEnsure every item has reasonable quantities appropriate for a meal plan (not restaurant quantities). Double-check all values before including them."
         
         logger.info("Making OpenAI API call")
         # Make OpenAI API call with better error handling
         try:
-            response = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {"role": "system", "content": "You are a helpful meal planning assistant that helps organize shopping lists efficiently."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.7,
-                max_tokens=2000
-            )
+            system_prompt = "You are a helpful meal planning assistant that helps organize shopping lists efficiently. You always return well-structured JSON with consistent formatting for grocery items. Follow the format example precisely."
+            message_array = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt}
+            ]
+            
+            # First try with GPT-4
+            try:
+                logger.info("Attempting to use GPT-4 for best quality response")
+                response = openai.ChatCompletion.create(
+                    model="gpt-4",  # Using GPT-4 for better structured data and more accurate item formatting
+                    messages=message_array,
+                    temperature=0.5,  # Lower temperature for more consistent responses
+                    max_tokens=2000
+                )
+                logger.info("Successfully used GPT-4 model")
+            except Exception as model_error:
+                # If GPT-4 fails (e.g., user doesn't have access), fall back to GPT-3.5
+                logger.warning(f"GPT-4 call failed: {str(model_error)}. Falling back to GPT-3.5-turbo")
+                response = openai.ChatCompletion.create(
+                    model="gpt-3.5-turbo",
+                    messages=message_array,
+                    temperature=0.5,  # Lower temperature for more consistent responses
+                    max_tokens=2000
+                )
+                logger.info("Used GPT-3.5-turbo as fallback")
             
             # Extract and parse the response
             ai_content = response.choices[0].message.content.strip()
@@ -609,7 +712,7 @@ def generate_ai_shopping_list(menu_data, basic_grocery_list, additional_preferen
             # Add the original list as a fallback
             ai_result["originalList"] = basic_grocery_list
             
-            # Ensure proper structure for grocery list items
+            # Ensure proper structure for grocery list items with correct units
             try:
                 # Check structure and format as needed
                 for i, category in enumerate(ai_result["groceryList"]):
@@ -626,21 +729,340 @@ def generate_ai_shopping_list(menu_data, basic_grocery_list, additional_preferen
                     if "items" not in category or not isinstance(category["items"], list):
                         category["items"] = []
                     
-                    # Normalize items to have name property and ensure quantities
+                    # Normalize items to have name, quantity, and unit properties
                     for j, item in enumerate(category["items"]):
+                        # Function to determine appropriate unit based on item type
+                        def appropriate_unit(name):
+                            name_lower = name.lower()
+                            
+                            # Meats category
+                            if any(meat in name_lower for meat in ["chicken", "beef", "turkey", "salmon", "pork", "sirloin", "steak", "ground"]):
+                                return "lb"
+                            
+                            # Cheese and dairy
+                            elif "cheese" in name_lower:
+                                if "cheddar" in name_lower or "mozzarella" in name_lower:
+                                    return "oz"
+                                elif "feta" in name_lower or "parmesan" in name_lower:
+                                    return "cup"
+                                else:
+                                    return "oz"
+                            
+                            # Produce and vegetables
+                            elif any(veg in name_lower for veg in ["onion", "pepper", "bell pepper", "tomato", "potato", "avocado"]):
+                                return "medium"
+                            elif any(veg in name_lower for veg in ["carrot", "cucumber", "zucchini"]):
+                                return "piece"
+                            elif "lettuce" in name_lower or "greens" in name_lower or "spinach" in name_lower or "kale" in name_lower:
+                                return "cup"
+                            elif "broccoli" in name_lower or "cabbage" in name_lower:
+                                return "cup"
+                            
+                            # Spices, herbs and seasonings
+                            elif "garlic" in name_lower:
+                                return "clove"
+                            elif "basil" in name_lower or "cilantro" in name_lower or "parsley" in name_lower:
+                                return "cup"
+                            elif any(spice in name_lower for spice in ["spice", "seasoning", "powder", "salt", "pepper"]):
+                                return "tsp"
+                            
+                            # Oils, sauces and condiments
+                            elif any(condiment in name_lower for condiment in ["oil", "sauce", "vinegar", "mustard", "mayo"]):
+                                return "tbsp"
+                            elif "honey" in name_lower or "syrup" in name_lower:
+                                return "tbsp"
+                            elif "salsa" in name_lower or "dressing" in name_lower:
+                                return "cup"
+                            
+                            # Canned items
+                            elif "beans" in name_lower or "chickpeas" in name_lower:
+                                return "can"
+                            elif "broth" in name_lower or "stock" in name_lower:
+                                return "cup"
+                            
+                            # Grains
+                            elif any(grain in name_lower for grain in ["oats", "quinoa", "rice"]):
+                                # If it's cooked, use cups
+                                if "cooked" in name_lower:
+                                    return "cup"
+                                # Otherwise use weight
+                                else:
+                                    return "g"
+                            
+                            # Baked goods
+                            elif "bread" in name_lower or "tortilla" in name_lower or "bagel" in name_lower:
+                                return "piece"
+                            
+                            # Fruits and berries
+                            elif "berries" in name_lower or "fruit" in name_lower:
+                                return "cup"
+                            elif "apple" in name_lower or "orange" in name_lower or "banana" in name_lower:
+                                return "medium"
+                            
+                            # Dairy liquids
+                            elif "milk" in name_lower or "cream" in name_lower or "yogurt" in name_lower:
+                                return "cup"
+                            
+                            # Eggs
+                            elif "eggs" in name_lower or "egg" in name_lower:
+                                return "large"
+                            
+                            # Baking ingredients
+                            elif "flour" in name_lower or "sugar" in name_lower:
+                                return "cup"
+                            
+                            # Nuts and seeds
+                            elif any(nut in name_lower for nut in ["almond", "walnut", "peanut", "cashew", "seed"]):
+                                return "cup"
+                            
+                            # Butter and spreads
+                            elif "butter" in name_lower:
+                                return "tbsp"
+                            
+                            # Default case
+                            else:
+                                return "piece"
+                        
+                        # Function to sanitize quantity values with more reasonable constraints
+                        def sanitize_quantity(qty, food_name):
+                            name_lower = food_name.lower()
+                            
+                            # If quantity is missing or invalid, assign a reasonable default
+                            if not qty or qty == "N/A":
+                                # Meats
+                                if any(meat in name_lower for meat in ["chicken", "beef", "turkey", "salmon", "pork", "sirloin", "steak", "ground"]):
+                                    return "1.5"  # 1.5 lb is a reasonable default for meat
+                                
+                                # Cheese
+                                elif "cheese" in name_lower:
+                                    if "cheddar" in name_lower or "mozzarella" in name_lower:
+                                        return "8"  # 8 oz
+                                    elif "feta" in name_lower or "parmesan" in name_lower:
+                                        return "0.5"  # 1/2 cup
+                                    else:
+                                        return "4"  # 4 oz
+                                
+                                # Vegetables and produce
+                                elif any(veg in name_lower for veg in ["onion", "pepper", "bell pepper", "tomato", "potato", "avocado"]):
+                                    return "2"  # 2 medium
+                                elif any(veg in name_lower for veg in ["carrot", "cucumber", "zucchini"]):
+                                    return "2"  # 2 pieces
+                                elif "lettuce" in name_lower or "greens" in name_lower or "spinach" in name_lower:
+                                    return "2"  # 2 cups
+                                elif "broccoli" in name_lower or "cabbage" in name_lower:
+                                    return "2"  # 2 cups
+                                
+                                # Herbs and spices
+                                elif "garlic" in name_lower:
+                                    return "3"  # 3 cloves
+                                elif "basil" in name_lower or "cilantro" in name_lower:
+                                    return "0.25"  # 1/4 cup
+                                elif any(spice in name_lower for spice in ["spice", "seasoning", "powder", "salt", "pepper"]):
+                                    return "1"  # 1 tsp
+                                
+                                # Oils and condiments
+                                elif "oil" in name_lower or "vinegar" in name_lower:
+                                    return "2"  # 2 tbsp
+                                elif "sauce" in name_lower:
+                                    return "0.25"  # 1/4 cup
+                                elif "honey" in name_lower or "syrup" in name_lower:
+                                    return "1"  # 1 tbsp
+                                
+                                # Grains
+                                elif any(grain in name_lower for grain in ["rice", "quinoa"]):
+                                    if "cooked" in name_lower:
+                                        return "2"  # 2 cups cooked
+                                    else:
+                                        return "200"  # 200g uncooked
+                                elif "oats" in name_lower:
+                                    return "1"  # 1 cup
+                                
+                                # Dairy
+                                elif "milk" in name_lower or "yogurt" in name_lower:
+                                    return "1"  # 1 cup
+                                
+                                # Other common items
+                                elif "eggs" in name_lower or "egg" in name_lower:
+                                    return "2"  # 2 eggs
+                                elif "beans" in name_lower:
+                                    return "1"  # 1 can
+                                elif "bread" in name_lower or "tortilla" in name_lower:
+                                    return "4"  # 4 pieces
+                                elif "berries" in name_lower or "fruit" in name_lower:
+                                    return "1"  # 1 cup
+                                else:
+                                    return "1"  # Default
+                            
+                            # Convert quantity to string if it's not already
+                            qty_str = str(qty)
+                            
+                            # Handle fractional values written as "X/Y"
+                            fraction_match = re.match(r'(\d+)/(\d+)', qty_str)
+                            if fraction_match:
+                                try:
+                                    num = int(fraction_match.group(1))
+                                    denom = int(fraction_match.group(2))
+                                    
+                                    # Check for unrealistic fractions like "205/4"
+                                    if num > 100 or denom > 100 or (num > denom * 10):
+                                        if "oil" in name_lower or "sauce" in name_lower or "spice" in name_lower:
+                                            return "2"  # Default for condiments
+                                        elif any(meat in name_lower for meat in ["chicken", "beef", "turkey"]):
+                                            return "2"  # 2 lb for meat
+                                        else:
+                                            return "2"  # General default
+                                    
+                                    # Calculate decimal value
+                                    result = num / denom
+                                    # For small values like 1/4, 1/3, etc., keep the full precision
+                                    if result < 1:
+                                        return str(round(result, 2))
+                                    # For larger values, round to 1 decimal place
+                                    return str(round(result, 1))
+                                except:
+                                    return "1"  # Default if conversion fails
+                            
+                            # Handle other strange fraction formats
+                            if re.search(r'\d+/\d+', qty_str) and len(qty_str) > 5:
+                                # Use category-specific defaults
+                                if any(meat in name_lower for meat in ["chicken", "beef", "turkey"]):
+                                    return "1.5"  # 1.5 lb for meat
+                                elif "oil" in name_lower or "sauce" in name_lower:
+                                    return "2"  # 2 tbsp for condiments
+                                else:
+                                    return "2"  # General default
+                            
+                            # Extract the numeric part for validation and range checking
+                            number_match = re.match(r'([\d.]+)', qty_str)
+                            if number_match:
+                                try:
+                                    number = float(number_match.group(1))
+                                    
+                                    # Apply category-specific constraints
+                                    
+                                    # Meats - typically in pounds, not more than 5lb for a recipe
+                                    if any(meat in name_lower for meat in ["chicken", "beef", "turkey", "salmon", "pork", "sirloin", "steak", "ground"]):
+                                        if number > 5:
+                                            return "3"  # Cap at 3 pounds - more realistic for a recipe
+                                        elif number < 0.25:  # Too small
+                                            return "1"  # Minimum 1 lb
+                                    
+                                    # Cheese - typically in ounces or cups
+                                    elif "cheese" in name_lower:
+                                        if "cheddar" in name_lower or "mozzarella" in name_lower:
+                                            if number > 16:  # Too much
+                                                return "8"  # 8 oz is reasonable
+                                        elif "feta" in name_lower or "parmesan" in name_lower:
+                                            if number > 2:  # Too much for these strong cheeses
+                                                return "0.5"  # 1/2 cup is reasonable
+                                    
+                                    # Produce and vegetables
+                                    elif any(veg in name_lower for veg in ["onion", "bell pepper", "potato", "avocado"]):
+                                        if number > 6:  # Too many
+                                            return "3"  # 3 is reasonable
+                                        elif number < 0.5:  # Too few
+                                            return "1"  # At least 1
+                                    elif "tomato" in name_lower:
+                                        if number > 8:
+                                            return "4"  # 4 tomatoes is reasonable
+                                    elif any(veg in name_lower for veg in ["carrot", "cucumber", "zucchini"]):
+                                        if number > 6:
+                                            return "3"  # 3 pieces is reasonable
+                                    elif "lettuce" in name_lower or "greens" in name_lower or "spinach" in name_lower:
+                                        if number > 6:  # Too many cups
+                                            return "3"  # 3 cups is reasonable
+                                    
+                                    # Herbs, spices and seasonings
+                                    elif "garlic" in name_lower:
+                                        if number > 10:  # Too many cloves
+                                            return "4"  # 4 cloves is reasonable
+                                    elif "basil" in name_lower or "cilantro" in name_lower or "parsley" in name_lower:
+                                        if number > 1:  # Too much
+                                            return "0.5"  # 1/2 cup is reasonable
+                                    elif any(spice in name_lower for spice in ["spice", "seasoning", "powder"]):
+                                        if number > 3:  # Too much
+                                            return "1"  # 1 tsp/tbsp is reasonable
+                                        elif "salt" in name_lower or "pepper" in name_lower:
+                                            if number > 2:  # Too much
+                                                return "0.5"  # 1/2 tsp is reasonable
+                                    
+                                    # Oils, sauces and condiments
+                                    elif "oil" in name_lower:
+                                        if number > 8:  # Too much
+                                            return "2"  # 2 tbsp is reasonable
+                                    elif "sauce" in name_lower or "dressing" in name_lower:
+                                        if number > 2:  # Too much
+                                            return "0.5"  # 1/2 cup is reasonable
+                                    elif "honey" in name_lower or "syrup" in name_lower:
+                                        if number > 6:  # Too much
+                                            return "2"  # 2 tbsp is reasonable
+                                    
+                                    # Grains
+                                    elif any(grain in name_lower for grain in ["rice", "quinoa"]):
+                                        if "cooked" in name_lower:
+                                            if number > 6:  # Too much
+                                                return "3"  # 3 cups cooked is reasonable
+                                        elif number > 1000:  # Too much in grams
+                                            return "350"  # 350g uncooked is reasonable
+                                        elif number < 50 and "g" not in qty_str:  # Likely cups, not grams
+                                            if number > 3:  # Too many cups
+                                                return "1.5"  # 1.5 cups is reasonable
+                                    
+                                    # Dairy
+                                    elif "milk" in name_lower or "yogurt" in name_lower:
+                                        if number > 4:  # Too much
+                                            return "2"  # 2 cups is reasonable
+                                    
+                                    # Eggs
+                                    elif "egg" in name_lower:
+                                        if number > 12:  # Too many
+                                            return "6"  # 6 eggs is reasonable
+                                        elif number < 1:  # Too few
+                                            return "2"  # At least 2
+                                    
+                                    # Extreme outliers for any category - likely an error
+                                    elif number > 100:
+                                        # If it's likely a weight in grams
+                                        if any(grain in name_lower for grain in ["flour", "sugar", "oats"]):
+                                            return "250"  # 250g is reasonable
+                                        else:
+                                            return "20"  # General cap
+                                    
+                                    return qty_str
+                                except:
+                                    return "1"  # Default if conversion fails
+                            
+                            return qty_str
+                        
                         if isinstance(item, str):
-                            # Convert string item to object with name and default quantity
+                            # Parse string items to extract name, quantity and unit (if present)
+                            # Example formats: "Apple: 2" or "Chicken: 2 lb" or just "Garlic"
+                            name_parts = item.split(":")
+                            name = name_parts[0].strip() if len(name_parts) > 0 else item
+                            quantity_part = name_parts[1].strip() if len(name_parts) > 1 else ""
+                            
+                            # Parse quantity and unit
+                            import re
+                            qty_match = re.match(r'^([\d./]+)\s*(.*)$', quantity_part)
+                            qty = qty_match.group(1) if qty_match else "1"
+                            unit = qty_match.group(2).strip() if qty_match and qty_match.group(2) else "piece"
+                            
+                            # Convert string item to object with name, quantity and unit
                             category["items"][j] = {
-                                "name": item,
-                                "quantity": "1",
+                                "name": name,
+                                "quantity": sanitize_quantity(qty, name),
+                                "unit": unit if unit else appropriate_unit(name),
                                 "alternatives": "N/A",
                                 "healthyAlternatives": "N/A"
                             }
+                            
                         elif not isinstance(item, dict):
                             # Convert non-dict item to object with name and default quantity
+                            item_str = str(item)
                             category["items"][j] = {
-                                "name": str(item),
+                                "name": item_str,
                                 "quantity": "1",
+                                "unit": appropriate_unit(item_str),
                                 "alternatives": "N/A",
                                 "healthyAlternatives": "N/A"
                             }
@@ -649,93 +1071,36 @@ def generate_ai_shopping_list(menu_data, basic_grocery_list, additional_preferen
                             if "name" not in item:
                                 item["name"] = "Unknown item"
                                 
-                            # Function to sanitize quantity values
-                            def sanitize_quantity(qty, food_name):
-                                name_lower = food_name.lower()
+                            # Clean item name to remove any quantity that might be included
+                            if ":" in item["name"]:
+                                parts = item["name"].split(":")
+                                item["name"] = parts[0].strip()
                                 
-                                # If quantity is missing or invalid, assign a default
-                                if not qty or qty == "N/A":
-                                    # Common food items with typical quantities
-                                    if any(meat in name_lower for meat in ["chicken", "beef", "turkey", "salmon", "pork", "sirloin"]):
-                                        return "1 lb"
-                                    elif "cheese" in name_lower:
-                                        return "8 oz"
-                                    elif any(veg in name_lower for veg in ["onion", "pepper", "tomato", "carrot", "cucumber", "zucchini"]):
-                                        return "1"
-                                    elif "garlic" in name_lower:
-                                        return "1 clove"
-                                    elif "spice" in name_lower or "seasoning" in name_lower:
-                                        return "1 tsp"
-                                    elif "oil" in name_lower or "sauce" in name_lower:
-                                        return "1 tbsp"
-                                    elif "beans" in name_lower:
-                                        return "1 can"
-                                    elif "oats" in name_lower or "quinoa" in name_lower or "rice" in name_lower:
-                                        return "1 cup"
-                                    elif "bread" in name_lower or "tortilla" in name_lower:
-                                        return "1 package"
-                                    elif "berries" in name_lower:
-                                        return "1 cup"
-                                    else:
-                                        return "1"
-                                
-                                # Convert quantity to string if it's not already
-                                qty_str = str(qty)
-                                
-                                # Check for reasonable units and quantities
-                                # Extract numeric part and unit
-                                import re
-                                match = re.match(r'(\d+(?:\.\d+)?)\s*(\w+)?', qty_str)
-                                if match:
-                                    number = float(match.group(1))
-                                    unit = match.group(2) if match.group(2) else ""
+                                # If quantity is missing but present in name, extract it
+                                if ("quantity" not in item or not item["quantity"]) and len(parts) > 1:
+                                    qty_part = parts[1].strip()
+                                    qty_match = re.match(r'^([\d./]+)\s*(.*)$', qty_part)
                                     
-                                    # Check for unreasonable quantities and adjust
-                                    # Handle meat items (keep quantities reasonable)
-                                    if any(meat in name_lower for meat in ["chicken", "beef", "turkey", "salmon", "pork", "sirloin"]):
-                                        if unit in ["lb", "pound", "pounds"] and number > 5:
-                                            # Cap at 5 pounds for meats
-                                            return "5 lb"
-                                        elif not unit and number > 5:
-                                            # Add pounds if missing
-                                            return "5 lb"
-                                    
-                                    # Handle cheese quantities
-                                    elif "cheese" in name_lower:
-                                        if unit in ["lb", "pound", "pounds"] and number > 2:
-                                            return "2 lb"
-                                        elif unit in ["g", "gram", "grams"] and number > 500:
-                                            return "500 g"
-                                        elif unit in ["oz", "ounce"] and number > 16:
-                                            return "16 oz"
-                                        elif not unit and number > 16:
-                                            return "16 oz"
-                                    
-                                    # Handle produce and vegetables
-                                    elif any(veg in name_lower for veg in ["onion", "pepper", "tomato", "carrot", "cucumber", "zucchini"]):
-                                        if not unit and number > 10:
-                                            return "10"  # Limit to reasonable number
-                                    
-                                    # Handle oils and sauces
-                                    elif "oil" in name_lower or "sauce" in name_lower:
-                                        if unit in ["cup", "cups"] and number > 2:
-                                            return "2 cups"
-                                        elif not unit and number > 2:
-                                            return "2 cups"
-                                    
-                                    # Default case: if it's a very large number without unit, cap it
-                                    elif not unit and number > 20:
-                                        return "20"
-                                
-                                return qty_str
+                                    if qty_match:
+                                        if "quantity" not in item or not item["quantity"]:
+                                            item["quantity"] = qty_match.group(1)
+                                        
+                                        if "unit" not in item or not item["unit"]:
+                                            item["unit"] = qty_match.group(2).strip() or "piece"
                             
                             # Handle missing or undefined quantities
                             if "quantity" not in item or not item["quantity"]:
-                                # Set a default quantity
                                 item["quantity"] = sanitize_quantity(None, item["name"])
                             else:
-                                # Sanitize existing quantity
                                 item["quantity"] = sanitize_quantity(item["quantity"], item["name"])
+                            
+                            # Handle missing or undefined units
+                            if "unit" not in item or not item["unit"]:
+                                item["unit"] = appropriate_unit(item["name"])
+                            
+                            # Clean up units
+                            if item["unit"] in ["", "N/A", "None", "none"]:
+                                item["unit"] = appropriate_unit(item["name"])
                             
                             # Ensure alternatives
                             if "alternatives" not in item or not item["alternatives"]:
@@ -747,10 +1112,26 @@ def generate_ai_shopping_list(menu_data, basic_grocery_list, additional_preferen
                                 
                             # Update the item in the category
                             category["items"][j] = item
+                            
+                # Format all items as "Item Name: Quantity Unit" for display
+                for category in ai_result["groceryList"]:
+                    for item in category["items"]:
+                        # Create a formatted display name that includes quantity and unit
+                        item["display_name"] = f"{item['name']}: {item['quantity']} {item['unit']}"
             except Exception as structure_error:
                 logger.error(f"Error normalizing grocery list structure: {str(structure_error)}")
                 # If structure normalization fails, replace with simple version
-                ai_result["groceryList"] = [{"category": "All Items", "items": [{"name": item} for item in grocery_items]}]
+                ai_result["groceryList"] = [{
+                    "category": "All Items", 
+                    "items": [
+                        {
+                            "name": item, 
+                            "quantity": "1", 
+                            "unit": "piece", 
+                            "display_name": f"{item}: 1 piece"
+                        } for item in grocery_items
+                    ]
+                }]
             
             return ai_result
             
@@ -765,7 +1146,14 @@ def generate_ai_shopping_list(menu_data, basic_grocery_list, additional_preferen
                 formatted_items = []
                 
                 for item in grocery_items:
-                    formatted_items.append({"name": item})
+                    # Clean up item name and add appropriate unit
+                    item_name = item.split(':')[0] if ':' in item else item
+                    formatted_items.append({
+                        "name": item_name,
+                        "quantity": "1",
+                        "unit": appropriate_unit(item_name),
+                        "display_name": f"{item_name}: 1 {appropriate_unit(item_name)}"
+                    })
                 
                 # Create a manually structured response
                 manual_response = {
@@ -786,7 +1174,17 @@ def generate_ai_shopping_list(menu_data, basic_grocery_list, additional_preferen
                 logger.error(f"Failed to create manual structure: {str(format_error)}")
                 # If all parsing fails, return a simple response with the original list
                 return {
-                    "groceryList": [{"category": "All Items", "items": [{"name": item} for item in grocery_items]}],
+                    "groceryList": [{
+                        "category": "All Items", 
+                        "items": [
+                            {
+                                "name": item, 
+                                "quantity": "1", 
+                                "unit": "piece", 
+                                "display_name": f"{item}: 1 piece"
+                            } for item in grocery_items
+                        ]
+                    }],
                     "recommendations": ["AI response could not be processed"],
                     "error": "AI response format was invalid"
                 }
@@ -796,11 +1194,30 @@ def generate_ai_shopping_list(menu_data, basic_grocery_list, additional_preferen
         # Return a formatted version of the basic grocery list in case of error
         try:
             # Try to create a properly formatted response even in case of error
+            default_items = []
+            for item in (grocery_items if 'grocery_items' in locals() else []):
+                item_name = item.split(':')[0] if ':' in item else item
+                unit = "piece"
+                
+                # Determine appropriate unit
+                name_lower = item_name.lower()
+                if any(meat in name_lower for meat in ["chicken", "beef", "turkey", "salmon", "pork", "sirloin"]):
+                    unit = "lb"
+                elif "cheese" in name_lower:
+                    unit = "oz"
+                
+                default_items.append({
+                    "name": item_name,
+                    "quantity": "1",
+                    "unit": unit,
+                    "display_name": f"{item_name}: 1 {unit}"
+                })
+                
             return {
                 "groceryList": [
                     {
                         "category": "All Items",
-                        "items": [{"name": item} for item in (grocery_items if 'grocery_items' in locals() else [])]
+                        "items": default_items
                     }
                 ],
                 "recommendations": ["Error processing AI shopping list"],
@@ -928,4 +1345,3 @@ def clear_ai_shopping_cache_for_menu(menu_id: int):
     except Exception as e:
         logger.error(f"Error clearing AI shopping list cache for menu {menu_id}: {str(e)}")
         raise HTTPException(status_code=500, detail="Error clearing cache")
-        
