@@ -1,0 +1,137 @@
+COMPLETE FIX FOR ESLINT ERROR: Missing catch or finally clause
+
+The error indicates there's an incomplete try-catch block in the ShoppingListPage.jsx file. This is likely due to a malformed structure in the checkAiShoppingListStatus function.
+
+To fix this issue, we need to completely repair the checkAiShoppingListStatus function. Here's the complete, corrected function:
+
+```javascript
+// Function to check the status of an AI shopping list
+const checkAiShoppingListStatus = async (menuId) => {
+  if (!menuId || pollCount >= MAX_POLLS) {
+    // Stop polling if we've reached the maximum number of polls
+    if (pollCount >= MAX_POLLS) {
+      console.log(`Maximum polls (${MAX_POLLS}) reached, stopping status checks`);
+      setSnackbarMessage("AI processing is taking longer than expected. Stopping status checks.");
+      setSnackbarOpen(true);
+    }
+    clearStatusPolling();
+    return;
+  }
+
+  try {
+    console.log(`Polling AI shopping list status (attempt ${pollCount + 1}/${MAX_POLLS})`);
+    const statusResponse = await apiService.getAiShoppingListStatus(menuId, aiPreferences);
+    console.log("Status response:", statusResponse);
+
+    // Update poll count
+    setPollCount(prevCount => prevCount + 1);
+
+    // Check if processing is complete
+    if (statusResponse.status === "completed") {
+      console.log("AI shopping list processing completed!");
+
+      // Stop the polling
+      clearStatusPolling();
+
+      // Format and normalize all items to ensure quantities are shown
+      if (statusResponse.groceryList && Array.isArray(statusResponse.groceryList)) {
+        statusResponse.groceryList.forEach(category => {
+          if (category.items && Array.isArray(category.items)) {
+            category.items = category.items.map(item => {
+              // If item is just a string, convert to object with name
+              if (typeof item === "string") {
+                return { 
+                  name: item,
+                  quantity: "1",
+                  unit: "",
+                  display_name: `${item}: 1`
+                };
+              }
+              // If item is object but missing quantity/unit, add them
+              else if (typeof item === "object") {
+                // Ensure name exists
+                const name = item.name || "Unknown item";
+                // Ensure quantity exists
+                const quantity = item.quantity || "1";
+                // Ensure unit exists
+                const unit = item.unit || "";
+                // Create or update display_name
+                const display_name = `${name}: ${quantity} ${unit}`.trim();
+                
+                return {
+                  ...item,
+                  name,
+                  quantity,
+                  unit,
+                  display_name
+                };
+              }
+              return item;
+            });
+          }
+        });
+      }
+      
+      // Update state with the completed data
+      setAiShoppingData(statusResponse);
+      setAiShoppingLoading(false);
+      
+      // Show notification only on first couple of polls to prevent looping
+      if (pollCount <= 2) {
+        setSnackbarMessage("AI shopping list ready!");
+        setSnackbarOpen(true);
+      }
+      
+      // Cache the results
+      setCachedShoppingList(menuId, statusResponse);
+    }
+    // Handle error state
+    else if (statusResponse.status === "error") {
+      console.warn("AI processing resulted in error:", statusResponse.message || "Unknown error");
+
+      // Stop the polling
+      clearStatusPolling();
+
+      // Show error message
+      setSnackbarMessage(`AI processing error: ${statusResponse.message || "Unknown error"}`);
+      setSnackbarOpen(true);
+
+      // Still update the data with what we got (might contain fallback data)
+      setAiShoppingData(statusResponse);
+      setAiShoppingLoading(false);
+    }
+    // Handle "not found" status (processing hasn't started or cache expired)
+    else if (statusResponse.status === "not_found" || statusResponse.status === "expired") {
+      console.warn("AI processing status not found or expired");
+
+      // Stop polling as there's nothing to poll for
+      clearStatusPolling();
+
+      // Notify user
+      setSnackbarMessage("AI processing not found. Please try again.");
+      setSnackbarOpen(true);
+      setAiShoppingLoading(false);
+    }
+    // For "processing" status, we continue polling until completion or max attempts
+  } catch (err) {
+    console.error("Error checking AI shopping list status:", err);
+
+    // Don't stop polling on error, just log it and continue
+    // This makes the polling more resilient to temporary network issues
+  }
+};
+```
+
+Replace the entire checkAiShoppingListStatus function in your ShoppingListPage.jsx file with the code above. This should fix the missing catch clause error.
+
+STEP-BY-STEP INSTRUCTIONS:
+
+1. Open the file `/mnt/c/Users/Daniel/OneDrive - City of Loveland/Documents/Smart Meal Planner/smart_meal_planner_multi/apps/smart-meal-planner-web/src/pages/ShoppingListPage.jsx`
+
+2. Search for "checkAiShoppingListStatus"
+
+3. Replace the entire function (from the line that starts with "const checkAiShoppingListStatus" to the line with the closing brace "};" after the catch block) with the code above.
+
+4. Save the file and rebuild the application.
+
+This should fix both the ESLint error and the two issues we were addressing: looping notifications and missing quantities.
