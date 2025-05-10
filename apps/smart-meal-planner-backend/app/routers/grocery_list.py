@@ -225,36 +225,73 @@ def process_ai_shopping_list_background(menu_id: int, menu_data, grocery_list, a
 
             logger.info(f"Completed AI shopping list for menu {menu_id} and stored in cache")
         else:
-            # If AI processing failed, update cache with basic list
-            logger.error(f"AI processing failed for menu {menu_id}, result was: {result}")
+            # If AI processing failed, create a categorized fallback grocery list
+            logger.warning(f"AI processing failed for menu {menu_id}, creating fallback categorized list")
+
+            # Generate a categorized fallback list
+            categorized_list = create_categorized_fallback(grocery_list)
+
+            fallback_result = {
+                "groceryList": categorized_list,
+                "recommendations": ["AI enhancement temporarily unavailable, showing categorized list"],
+                "nutritionTips": [
+                    "For a balanced diet, include items from each food group",
+                    "Fresh produce typically offers better nutrition than processed alternatives"
+                ],
+                "status": "completed",  # Mark as completed so UI doesn't stay in loading state
+                "menu_id": menu_id,
+                "timestamp": datetime.now().isoformat(),
+                "fallback": True  # Mark this as a fallback result
+            }
+
+            # Update cache with categorized fallback list
+            AI_SHOPPING_LIST_CACHE[cache_key] = {
+                'data': fallback_result,
+                'timestamp': time.time(),
+                'status': 'completed'  # Important: Mark as completed so UI moves past loading state
+            }
+
+            logger.info(f"Created fallback categorized list for menu {menu_id} with {len(categorized_list)} categories")
+    except Exception as e:
+        logger.error(f"Error in background processing for menu {menu_id}: {str(e)}")
+        # Update cache with error status but also include a categorized list
+        try:
+            # Try to create a categorized fallback even when an exception occurs
+            categorized_list = create_categorized_fallback(grocery_list)
+
+            fallback_result = {
+                "groceryList": categorized_list,
+                "recommendations": ["Error during AI processing, showing basic categorized list"],
+                "nutritionTips": ["Using basic grocery list with categories"],
+                "status": "completed",  # Mark as completed so UI doesn't stay in loading state
+                "error": str(e),
+                "menu_id": menu_id,
+                "timestamp": datetime.now().isoformat(),
+                "fallback": True
+            }
+
+            AI_SHOPPING_LIST_CACHE[cache_key] = {
+                'data': fallback_result,
+                'timestamp': time.time(),
+                'status': 'completed'  # Important: Mark as completed so UI moves past loading state
+            }
+            logger.info(f"Created error fallback categorized list with {len(categorized_list)} categories")
+        except Exception as fallback_error:
+            logger.error(f"Failed to create fallback categorized list: {str(fallback_error)}")
+            # Absolute last resort - just return the basic list with "All Items" category
             AI_SHOPPING_LIST_CACHE[cache_key] = {
                 'data': {
                     "groceryList": [{"category": "All Items", "items": grocery_list}],
-                    "recommendations": ["AI processing failed, showing basic list"],
-                    "nutritionTips": ["Try again later for enhanced AI recommendations"],
-                    "status": "failed",
+                    "recommendations": ["Error during AI processing"],
+                    "nutritionTips": ["Using basic grocery list instead"],
+                    "status": "completed",  # Still mark as completed to avoid UI getting stuck
+                    "error": str(e),
                     "menu_id": menu_id,
                     "timestamp": datetime.now().isoformat()
                 },
                 'timestamp': time.time(),
-                'status': 'failed'
+                'status': 'completed'
             }
-    except Exception as e:
-        logger.error(f"Error in background processing for menu {menu_id}: {str(e)}")
-        # Update cache with error status
-        AI_SHOPPING_LIST_CACHE[cache_key] = {
-            'data': {
-                "groceryList": [{"category": "All Items", "items": grocery_list}],
-                "recommendations": ["Error during AI processing"],
-                "nutritionTips": ["Using basic grocery list instead"],
-                "status": "error",
-                "error": str(e),
-                "menu_id": menu_id,
-                "timestamp": datetime.now().isoformat()
-            },
-            'timestamp': time.time(),
-            'status': 'error'
-        }
 
 @router.post("/{menu_id}/ai-shopping-list")
 async def post_ai_shopping_list(menu_id: int, background_tasks: BackgroundTasks, request: AiShoppingListRequest = None):
@@ -1534,14 +1571,168 @@ def clear_ai_shopping_cache():
         raise HTTPException(status_code=500, detail="Error clearing cache")
 
 
+def create_categorized_fallback(grocery_list):
+    """
+    Create a categorized version of the grocery list as a fallback when AI processing fails.
+
+    Args:
+        grocery_list: The basic grocery list (list of items)
+
+    Returns:
+        A list of categories, each containing items that belong to that category
+    """
+    # Define common categories and keywords that belong to each
+    categories = {
+        "Produce": [
+            "apple", "banana", "orange", "grape", "berry", "berries", "lemon", "lime",
+            "lettuce", "spinach", "kale", "arugula", "tomato", "potato", "onion", "garlic",
+            "carrot", "cucumber", "zucchini", "squash", "pepper", "eggplant", "broccoli",
+            "cauliflower", "celery", "asparagus", "avocado", "mushroom", "ginger", "herbs",
+            "cilantro", "parsley", "mint", "basil", "thyme", "rosemary", "fruit", "vegetable"
+        ],
+        "Meat and Proteins": [
+            "chicken", "beef", "pork", "lamb", "turkey", "fish", "salmon", "tuna", "shrimp",
+            "tofu", "tempeh", "seitan", "eggs", "sausage", "bacon", "ground", "steak",
+            "tenderloin", "fillet", "meat", "protein", "ribs", "chuck", "sirloin"
+        ],
+        "Dairy": [
+            "milk", "cheese", "yogurt", "cream", "butter", "margarine", "ghee", "cheddar",
+            "mozzarella", "parmesan", "ricotta", "cottage", "sour cream", "half and half",
+            "creamer", "buttermilk", "whey", "dairy"
+        ],
+        "Grains and Bread": [
+            "bread", "roll", "bun", "bagel", "tortilla", "wrap", "pita", "naan", "rice",
+            "quinoa", "pasta", "noodle", "flour", "oats", "oatmeal", "cereal", "grain",
+            "barley", "couscous", "cracker", "panko", "breadcrumb", "cornmeal"
+        ],
+        "Canned and Packaged": [
+            "can", "beans", "chickpea", "lentil", "pea", "tomato sauce", "paste", "broth",
+            "stock", "soup", "tuna", "salmon", "sardine", "sauce", "salsa", "jam", "jelly",
+            "peanut butter", "nutella", "spread", "conserve"
+        ],
+        "Condiments and Oils": [
+            "oil", "olive oil", "vegetable oil", "coconut oil", "vinegar", "mustard",
+            "ketchup", "mayonnaise", "hot sauce", "soy sauce", "tamari", "fish sauce",
+            "worcestershire", "salad dressing", "dressing", "marinade", "barbecue", "bbq"
+        ],
+        "Spices and Herbs": [
+            "salt", "pepper", "spice", "herb", "seasoning", "paprika", "cumin", "oregano",
+            "basil", "thyme", "rosemary", "sage", "cinnamon", "nutmeg", "clove", "cardamom",
+            "turmeric", "curry", "powder", "flake", "seed", "anise", "bay leaf", "chili",
+            "garlic powder", "onion powder", "vanilla"
+        ],
+        "Baking Supplies": [
+            "sugar", "brown sugar", "powdered sugar", "honey", "maple syrup", "molasses",
+            "flour", "baking powder", "baking soda", "yeast", "chocolate chip", "cocoa",
+            "vanilla extract", "almond extract", "food coloring", "sprinkle", "frosting"
+        ],
+        "Snacks and Desserts": [
+            "chip", "crisp", "pretzel", "popcorn", "nut", "almond", "cashew", "peanut",
+            "walnut", "pecan", "cookie", "cracker", "candy", "chocolate", "ice cream",
+            "sweet", "snack", "granola", "bar", "dessert", "treat"
+        ],
+        "Beverages": [
+            "water", "juice", "soda", "pop", "coffee", "tea", "milk", "almond milk",
+            "soy milk", "oat milk", "drink", "beverage", "smoothie", "beer", "wine",
+            "alcohol", "liquor", "cocktail", "mixer"
+        ],
+        "Frozen Foods": [
+            "frozen", "ice cream", "fries", "pizza", "meal", "veggie burger", "waffle"
+        ],
+        "Breakfast Items": [
+            "cereal", "oatmeal", "pancake", "waffle", "syrup", "breakfast", "bacon", "egg"
+        ]
+    }
+
+    # Create a function to determine which category an item belongs to
+    def determine_category(item_name):
+        item_name_lower = item_name.lower()
+
+        # Check each category's keywords
+        for category, keywords in categories.items():
+            for keyword in keywords:
+                if keyword in item_name_lower:
+                    return category
+
+        # Default category if no match found
+        return "Other"
+
+    # Initialize result structure with empty categories
+    result = [{"category": category, "items": []} for category in categories.keys()]
+    result.append({"category": "Other", "items": []})  # Add "Other" category
+
+    # Create a mapping from category name to index in result
+    category_indices = {cat["category"]: i for i, cat in enumerate(result)}
+
+    # Process each grocery item
+    for item in grocery_list:
+        try:
+            # Extract the item name from string or dictionary format
+            if isinstance(item, dict) and "name" in item:
+                # If it's already a dict with a name field, use that
+                item_name = item["name"]
+                item_obj = item
+            elif isinstance(item, str):
+                # If it's a string, use it directly and create a dict
+                item_name = item
+                item_obj = {"name": item, "quantity": "1", "unit": ""}
+            else:
+                # Convert any other type to string
+                item_name = str(item)
+                item_obj = {"name": item_name, "quantity": "1", "unit": ""}
+
+            # Clean up item name if it contains quantity info
+            if ":" in item_name:
+                item_name = item_name.split(":")[0].strip()
+                item_obj["name"] = item_name
+
+                # If there's quantity info after the colon, extract it
+                if len(item_name.split(":")) > 1:
+                    qty_info = item_name.split(":")[1].strip()
+                    # Try to extract quantity and unit
+                    qty_match = re.match(r'^([\d./]+)\s*(.*)$', qty_info)
+                    if qty_match:
+                        item_obj["quantity"] = qty_match.group(1)
+                        item_obj["unit"] = qty_match.group(2).strip()
+
+            # Determine which category this item belongs to
+            category = determine_category(item_name)
+
+            # Ensure each item has a display_name
+            if "display_name" not in item_obj:
+                unit_str = f" {item_obj.get('unit', '')}" if item_obj.get('unit') else ""
+                item_obj["display_name"] = f"{item_name}: {item_obj.get('quantity', '1')}{unit_str}".strip()
+
+            # Add the item to the appropriate category
+            result[category_indices[category]]["items"].append(item_obj)
+
+        except Exception as e:
+            logger.error(f"Error categorizing item {item}: {str(e)}")
+            # If there's an error, add it to the "Other" category
+            other_index = category_indices["Other"]
+            if isinstance(item, dict) and "name" in item:
+                result[other_index]["items"].append(item)
+            else:
+                result[other_index]["items"].append({"name": str(item), "quantity": "1", "unit": ""})
+
+    # Remove empty categories
+    result = [cat for cat in result if len(cat["items"]) > 0]
+
+    # Log the results
+    logger.info(f"Created fallback categorized list with {len(result)} non-empty categories")
+    for cat in result:
+        logger.info(f"  Category: {cat['category']} - {len(cat['items'])} items")
+
+    return result
+
 @router.delete("/ai-shopping-cache/{menu_id}", status_code=200)
 def clear_ai_shopping_cache_for_menu(menu_id: int):
     """
     Clear the AI shopping list cache for a specific menu.
-    
+
     Args:
         menu_id: The ID of the menu to clear cache for
-        
+
     Returns:
         A message indicating the cache was cleared for the specific menu
     """
@@ -1549,16 +1740,16 @@ def clear_ai_shopping_cache_for_menu(menu_id: int):
         # Look for any cache entries for this menu ID
         removed = 0
         keys_to_remove = []
-        
+
         for key in list(AI_SHOPPING_LIST_CACHE.keys()):
             if key.startswith(f"{menu_id}_"):
                 keys_to_remove.append(key)
-        
+
         # Remove the keys
         for key in keys_to_remove:
             del AI_SHOPPING_LIST_CACHE[key]
             removed += 1
-            
+
         logger.info(f"Cleared {removed} cache entries for menu {menu_id}")
         return {"message": f"AI shopping list cache cleared for menu {menu_id}", "count": removed}
     except Exception as e:
