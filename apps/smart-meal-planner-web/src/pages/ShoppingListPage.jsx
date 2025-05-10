@@ -1557,7 +1557,12 @@ const categorizeItems = (mealPlanData) => {
                                   <Grid item xs={12} sm={6} key={itemIndex}>
                                     <Box sx={{ mb: 1 }}>
                                       <Typography variant="body1" fontWeight="medium">
-                                        {typeof item === 'string' ? item : (item.name || 'Unknown item')}
+                                        {typeof item === 'string' ? item : (
+                                          // Use display_name if available, or construct a display with quantity and unit
+                                          item.display_name ? item.display_name :
+                                          // Otherwise build a string with name, quantity and unit
+                                          `${item.name || 'Unknown item'}${item.quantity ? ': ' + item.quantity : ''}${item.unit ? ' ' + item.unit : ''}`
+                                        )}
                                       </Typography>
                                       {item.notes && (
                                         <Typography variant="body2" color="text.secondary">

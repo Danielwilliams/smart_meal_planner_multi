@@ -146,18 +146,26 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
   Future<void> _processShoppingListItems(Map<String, dynamic> data) async {
     // Initialize empty categories map
     Map<String, List<Map<String, dynamic>>> categorizedItems = {};
-    
+
     // Check for 'ingredient_list' or 'ingredients' key
     List<dynamic> ingredients = [];
     if (data.containsKey('ingredient_list')) {
       ingredients = data['ingredient_list'] as List<dynamic>;
     } else if (data.containsKey('ingredients')) {
       ingredients = data['ingredients'] as List<dynamic>;
+    } else if (data.containsKey('groceryList')) {
+      // Check for AI-enhanced format with groceryList
+      List<dynamic> categories = data['groceryList'] as List<dynamic>;
+      for (var category in categories) {
+        if (category is Map && category.containsKey('items') && category['items'] is List) {
+          ingredients.addAll(category['items'] as List);
+        }
+      }
     }
-    
+
     // Log for debugging
     print("Processing ${ingredients.length} ingredients");
-    
+
     // If no ingredients found and this is a menu with ID, try to extract from the menu object
     if (ingredients.isEmpty && widget.menuId > 0) {
       try {
@@ -242,15 +250,39 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
           ingredient = match.group(3) ?? ingredient;
         }
       } else if (item is Map<String, dynamic>) {
+        // Extract ingredient name
         ingredient = item['name'] ?? item['ingredient'] ?? '';
-        quantity = item['quantity'] != null ? 
-                    (item['quantity'] is int ? 
-                     (item['quantity'] as int).toDouble() : 
-                     (item['quantity'] is String ? 
-                      double.tryParse(item['quantity']) ?? 0.0 : 
-                      item['quantity'] as double)) : null;
+
+        // Better quantity handling for various data types
+        if (item['quantity'] != null) {
+          var qtyVal = item['quantity'];
+          // Handle various quantity formats
+          if (qtyVal is int) {
+            quantity = qtyVal.toDouble();
+          } else if (qtyVal is double) {
+            quantity = qtyVal;
+          } else if (qtyVal is String) {
+            // Try to parse string to double
+            try {
+              quantity = double.tryParse(qtyVal);
+            } catch (e) {
+              print("Error parsing quantity from string: $qtyVal");
+            }
+          } else {
+            print("Unknown quantity type: ${qtyVal.runtimeType}");
+            // Try to convert to string and parse
+            try {
+              quantity = double.tryParse(qtyVal.toString());
+            } catch (e) {
+              print("Failed to parse quantity: $e");
+            }
+          }
+        }
+
         unit = item['unit']?.toString();
         notes = item['notes']?.toString() ?? '';
+
+        print("Processed item: name=$ingredient, quantity=$quantity, unit=$unit");
       }
       
       if (ingredient.isEmpty) continue;
@@ -389,7 +421,21 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
           // Format each ingredient with quantity and unit
           String displayText = item['name'];
           if (item['quantity'] != null) {
-            displayText = "${item['quantity']} ${item['unit'] ?? ''} $displayText".trim();
+            // Format quantity to show as integer if whole number
+            String quantityText = "";
+            var qty = item['quantity'];
+            if (qty is int) {
+              quantityText = qty.toString();
+            } else if (qty is double) {
+              // Format double to avoid showing decimals for whole numbers
+              quantityText = qty == qty.toInt() ? qty.toInt().toString() : qty.toString();
+            } else {
+              // Just use the value directly
+              quantityText = qty.toString();
+            }
+
+            // Combine with unit and name
+            displayText = "$quantityText ${item['unit'] ?? ''} $displayText".trim();
           }
           if (item['notes'] != null && item['notes'].isNotEmpty) {
             displayText += " (${item['notes']})";
@@ -617,7 +663,21 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
                                   ...entry.value.map((item) {
                                     String displayText = item['name'];
                                     if (item['quantity'] != null) {
-                                      displayText = "${item['quantity']} ${item['unit'] ?? ''} $displayText".trim();
+                                      // Format quantity to show as integer if whole number
+                                      String quantityText = "";
+                                      var qty = item['quantity'];
+                                      if (qty is int) {
+                                        quantityText = qty.toString();
+                                      } else if (qty is double) {
+                                        // Format double to avoid showing decimals for whole numbers
+                                        quantityText = qty == qty.toInt() ? qty.toInt().toString() : qty.toString();
+                                      } else {
+                                        // Just use the value directly
+                                        quantityText = qty.toString();
+                                      }
+
+                                      // Combine with unit and name
+                                      displayText = "$quantityText ${item['unit'] ?? ''} $displayText".trim();
                                     }
                                     if (item['notes'] != null && item['notes'].isNotEmpty) {
                                       displayText += " (${item['notes']})";
@@ -671,7 +731,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
                                                         
                                                         try {
                                                           // Use the displayed text with quantities and units
-                                                          print("Adding item to cart: $displayText");
+                                                          print("Adding item to cart: $displayText (quantity: ${item['quantity']}, unit: ${item['unit']})");
                                                           
                                                           // Directly pass the real ingredient data
                                                           final cartItem = {

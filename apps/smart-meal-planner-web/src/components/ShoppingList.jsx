@@ -1230,30 +1230,30 @@ const ShoppingListItem = ({
   
   return (
     <Grid item xs={12} sm={6}>
-      <Typography>{displayName}</Typography>
-      
+      <Typography>{typeof item === 'object' && item.name && !item.quantity ? item.name : displayName}</Typography>
+
       {selectedStore === 'mixed' ? (
         <Box sx={{ mt: 1 }}>
-          <Button 
-            variant="outlined" 
-            size="small" 
+          <Button
+            variant="outlined"
+            size="small"
             sx={{ mr: 1 }}
             onClick={() => handleStoreClick('walmart', itemName)}
           >
             Add to Walmart
           </Button>
-          <Button 
-            variant="outlined" 
-            size="small" 
+          <Button
+            variant="outlined"
+            size="small"
             onClick={() => handleStoreClick('kroger', itemName)}
           >
             Add to Kroger
           </Button>
         </Box>
       ) : (
-        <Button 
-          variant="outlined" 
-          size="small" 
+        <Button
+          variant="outlined"
+          size="small"
           sx={{ mt: 1 }}
           onClick={() => handleStoreClick(selectedStore, itemName)}
         >
