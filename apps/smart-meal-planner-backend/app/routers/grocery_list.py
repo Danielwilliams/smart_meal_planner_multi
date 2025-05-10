@@ -153,8 +153,14 @@ def get_grocery_list(
 def process_ai_shopping_list_background(menu_id: int, menu_data, grocery_list, additional_preferences=None):
     """Background task to process AI shopping list and store in cache"""
     cache_key = f"{menu_id}_{additional_preferences or 'no_prefs'}"
-    
+
     try:
+        logger.info(f"Starting background AI processing for menu {menu_id}")
+
+        # Log status for debugging
+        logger.info(f"Cache key: {cache_key}")
+        logger.info(f"Grocery list has {len(grocery_list)} items")
+
         # Update cache to show processing status
         AI_SHOPPING_LIST_CACHE[cache_key] = {
             'data': {
@@ -168,31 +174,59 @@ def process_ai_shopping_list_background(menu_id: int, menu_data, grocery_list, a
             'timestamp': time.time(),
             'status': 'processing'
         }
-        
-        # Process with AI
+
+        # Process with AI - don't pass the whole menu to avoid overloading the API
+        # Just extract meal titles for context
+        meal_titles = []
+        try:
+            if isinstance(menu_data, str):
+                menu_dict = json.loads(menu_data)
+            else:
+                menu_dict = menu_data
+
+            if isinstance(menu_dict, dict) and "days" in menu_dict:
+                for day in menu_dict["days"]:
+                    if "meals" in day and isinstance(day["meals"], list):
+                        for meal in day["meals"]:
+                            if "title" in meal:
+                                meal_titles.append(meal["title"])
+        except Exception as extract_error:
+            logger.error(f"Error extracting meal titles: {str(extract_error)}")
+            # Continue with empty meal titles
+
+        # Create simplified menu context with just titles
+        simplified_menu = {"meal_titles": meal_titles}
+
+        # Process with AI using simplified menu data
+        logger.info(f"Calling AI with {len(grocery_list)} ingredients and {len(meal_titles)} meal titles")
         result = generate_ai_shopping_list(
-            menu_data, 
-            grocery_list, 
+            simplified_menu,
+            grocery_list,
             additional_preferences=additional_preferences
         )
-        
+
+        # Log AI result
+        logger.info(f"AI processing completed for menu {menu_id}")
+        if result:
+            logger.info(f"Result contains {len(result.get('groceryList', []))} categories")
+
         # Store the completed result in cache
         if result and isinstance(result, dict) and "groceryList" in result:
             result['status'] = 'completed'
             result['cached'] = False
             result['cache_timestamp'] = datetime.now().isoformat()
             result['menu_id'] = menu_id
-            
+
             AI_SHOPPING_LIST_CACHE[cache_key] = {
                 'data': result,
                 'timestamp': time.time(),
                 'status': 'completed'
             }
-            
+
             logger.info(f"Completed AI shopping list for menu {menu_id} and stored in cache")
         else:
             # If AI processing failed, update cache with basic list
-            logger.error(f"AI processing failed for menu {menu_id}")
+            logger.error(f"AI processing failed for menu {menu_id}, result was: {result}")
             AI_SHOPPING_LIST_CACHE[cache_key] = {
                 'data': {
                     "groceryList": [{"category": "All Items", "items": grocery_list}],
@@ -364,46 +398,95 @@ async def post_ai_shopping_list(menu_id: int, background_tasks: BackgroundTasks,
 async def get_ai_shopping_list_status(menu_id: int, preferences: Optional[str] = None):
     """
     Check the status of an AI shopping list generation process.
-    
+
     Args:
         menu_id: The ID of the menu to check
         preferences: Any additional preferences that were used in the original request
-        
+
     Returns:
         The current status of the AI shopping list generation
     """
     cache_key = f"{menu_id}_{preferences or 'no_prefs'}"
-    
+    logger.info(f"Checking AI shopping list status for menu {menu_id}, cache key: {cache_key}")
+
+    # First check for the cache
     if cache_key in AI_SHOPPING_LIST_CACHE:
         cached_data = AI_SHOPPING_LIST_CACHE[cache_key]
-        
+        status = cached_data.get('status', 'unknown')
+        logger.info(f"Found cache entry with status: {status}")
+
         # Check if cache is still valid
         if time.time() - cached_data.get('timestamp', 0) < CACHE_EXPIRY:
-            status = cached_data.get('status', 'unknown')
             result = cached_data.get('data', {})
-            
+
             # Add status metadata
             if isinstance(result, dict):
                 result['cached'] = True
                 result['cache_timestamp'] = datetime.fromtimestamp(cached_data.get('timestamp', 0)).isoformat()
                 result['status'] = status
                 result['menu_id'] = menu_id
-            
+
+                # If still processing, add more info
+                if status == 'processing':
+                    elapsed = time.time() - cached_data.get('timestamp', 0)
+                    result['elapsed_seconds'] = round(elapsed)
+                    result['message'] = f"AI shopping list is being processed (elapsed time: {round(elapsed)} seconds)"
+
             return result
         else:
             # Cache expired
+            logger.info(f"Cache expired for menu {menu_id}")
             return {
                 "status": "expired",
                 "menu_id": menu_id,
                 "message": "The AI shopping list request has expired, please make a new request"
             }
     else:
-        # No processing found
-        return {
-            "status": "not_found",
-            "menu_id": menu_id,
-            "message": "No AI shopping list processing found for this menu, please make a new request"
-        }
+        # No processing found - try listing all active cache keys for debugging
+        active_keys = list(AI_SHOPPING_LIST_CACHE.keys())
+        menu_keys = [k for k in active_keys if k.startswith(f"{menu_id}_")]
+        logger.info(f"No cache entry found for key: {cache_key}")
+        logger.info(f"Active cache keys for menu {menu_id}: {menu_keys}")
+
+        # If there are other keys for this menu, return info about them
+        if menu_keys:
+            return {
+                "status": "not_found",
+                "menu_id": menu_id,
+                "message": f"No AI shopping list processing found with these preferences, but found {len(menu_keys)} other processes for this menu",
+                "available_keys": menu_keys
+            }
+        else:
+            # Check if a basic grocery list is available
+            conn = get_db_connection()
+            try:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    # Check if the menu exists
+                    cur.execute("SELECT EXISTS(SELECT 1 FROM menus WHERE id=%s)", (menu_id,))
+                    exists = cur.fetchone()['exists']
+
+                if exists:
+                    return {
+                        "status": "not_found",
+                        "menu_id": menu_id,
+                        "message": "No AI shopping list processing found for this menu, please make a new request using the POST endpoint",
+                        "action_required": "POST to /menu/{menu_id}/ai-shopping-list to start processing"
+                    }
+                else:
+                    return {
+                        "status": "error",
+                        "menu_id": menu_id,
+                        "message": "Menu not found"
+                    }
+            except Exception as e:
+                logger.error(f"Error checking menu existence: {str(e)}")
+                return {
+                    "status": "not_found",
+                    "menu_id": menu_id,
+                    "message": "No AI shopping list processing found for this menu, please make a new request"
+                }
+            finally:
+                conn.close()
 
 def generate_ai_shopping_list(menu_data, basic_grocery_list, additional_preferences=None):
     """
@@ -523,9 +606,12 @@ def generate_ai_shopping_list(menu_data, basic_grocery_list, additional_preferen
         
         # Extract meal information for context
         meal_info = []
-        
+
+        # Handle simplified menu format (from background task)
+        if isinstance(menu_dict, dict) and "meal_titles" in menu_dict:
+            meal_info = menu_dict["meal_titles"]
         # Try to find days array and extract meal titles
-        if isinstance(menu_dict, dict) and "days" in menu_dict:
+        elif isinstance(menu_dict, dict) and "days" in menu_dict:
             try:
                 for day in menu_dict["days"]:
                     if "meals" in day and isinstance(day["meals"], list):
@@ -534,7 +620,7 @@ def generate_ai_shopping_list(menu_data, basic_grocery_list, additional_preferen
                                 meal_info.append(meal["title"])
             except Exception as meal_error:
                 logger.error(f"Error extracting meal information: {str(meal_error)}")
-        
+
         # Build the AI prompt with simple string concatenation to avoid potential f-string errors
         prompt = "You are a helpful meal planning assistant. I'll provide you with a shopping list and meal plan information.\n"
         prompt += "Please organize this shopping list in a more efficient way with the following enhancements:\n\n"
