@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Query, Body
+from fastapi import APIRouter, HTTPException, Query, Body, BackgroundTasks
 from psycopg2.extras import RealDictCursor
 from ..db import get_db_connection
 from ..utils.grocery_aggregator import aggregate_grocery_list
@@ -10,6 +10,8 @@ import openai
 import logging
 import re
 import time
+import asyncio
+import threading
 from datetime import datetime, timedelta
 
 # Set up logging
@@ -129,12 +131,14 @@ def get_grocery_list(
                 cache_key = f"{menu_id}_no_prefs"
                 AI_SHOPPING_LIST_CACHE[cache_key] = {
                     'data': result,
-                    'timestamp': time.time()
+                    'timestamp': time.time(),
+                    'status': 'completed'
                 }
                 
                 # Add cache metadata to the response
                 result['cached'] = False
                 result['cache_timestamp'] = datetime.now().isoformat()
+                result['status'] = 'completed'
             
             return result
         
@@ -146,21 +150,93 @@ def get_grocery_list(
     finally:
         conn.close()
 
+def process_ai_shopping_list_background(menu_id: int, menu_data, grocery_list, additional_preferences=None):
+    """Background task to process AI shopping list and store in cache"""
+    cache_key = f"{menu_id}_{additional_preferences or 'no_prefs'}"
+    
+    try:
+        # Update cache to show processing status
+        AI_SHOPPING_LIST_CACHE[cache_key] = {
+            'data': {
+                "groceryList": [{"category": "All Items", "items": grocery_list}],
+                "recommendations": ["AI shopping list is being processed..."],
+                "nutritionTips": ["Please wait for enhanced list to be completed"],
+                "status": "processing",
+                "menu_id": menu_id,
+                "timestamp": datetime.now().isoformat()
+            },
+            'timestamp': time.time(),
+            'status': 'processing'
+        }
+        
+        # Process with AI
+        result = generate_ai_shopping_list(
+            menu_data, 
+            grocery_list, 
+            additional_preferences=additional_preferences
+        )
+        
+        # Store the completed result in cache
+        if result and isinstance(result, dict) and "groceryList" in result:
+            result['status'] = 'completed'
+            result['cached'] = False
+            result['cache_timestamp'] = datetime.now().isoformat()
+            result['menu_id'] = menu_id
+            
+            AI_SHOPPING_LIST_CACHE[cache_key] = {
+                'data': result,
+                'timestamp': time.time(),
+                'status': 'completed'
+            }
+            
+            logger.info(f"Completed AI shopping list for menu {menu_id} and stored in cache")
+        else:
+            # If AI processing failed, update cache with basic list
+            logger.error(f"AI processing failed for menu {menu_id}")
+            AI_SHOPPING_LIST_CACHE[cache_key] = {
+                'data': {
+                    "groceryList": [{"category": "All Items", "items": grocery_list}],
+                    "recommendations": ["AI processing failed, showing basic list"],
+                    "nutritionTips": ["Try again later for enhanced AI recommendations"],
+                    "status": "failed",
+                    "menu_id": menu_id,
+                    "timestamp": datetime.now().isoformat()
+                },
+                'timestamp': time.time(),
+                'status': 'failed'
+            }
+    except Exception as e:
+        logger.error(f"Error in background processing for menu {menu_id}: {str(e)}")
+        # Update cache with error status
+        AI_SHOPPING_LIST_CACHE[cache_key] = {
+            'data': {
+                "groceryList": [{"category": "All Items", "items": grocery_list}],
+                "recommendations": ["Error during AI processing"],
+                "nutritionTips": ["Using basic grocery list instead"],
+                "status": "error",
+                "error": str(e),
+                "menu_id": menu_id,
+                "timestamp": datetime.now().isoformat()
+            },
+            'timestamp': time.time(),
+            'status': 'error'
+        }
+
 @router.post("/{menu_id}/ai-shopping-list")
-def post_ai_shopping_list(menu_id: int, request: AiShoppingListRequest = None):
+async def post_ai_shopping_list(menu_id: int, background_tasks: BackgroundTasks, request: AiShoppingListRequest = None):
     """
     Generate an AI-enhanced shopping list from a menu.
     
     Args:
         menu_id: The ID of the menu to generate the list from
+        background_tasks: FastAPI background tasks for async processing
         request: The request containing the additional preferences
         
     Returns:
-        An AI-enhanced shopping list with recommendations and optimizations
+        An immediate basic response, with AI enhancements processed asynchronously
     """
     # Log incoming request to debug potential issues
     logger.info(f"AI shopping list request for menu ID: {menu_id}")
-    logger.info(f"Request body: {request}")
     
     # Handle case where request is not provided or AI is not requested
     if request is None:
@@ -178,29 +254,38 @@ def post_ai_shopping_list(menu_id: int, request: AiShoppingListRequest = None):
         return {
             "groceryList": [],
             "recommendations": ["Invalid menu ID provided"],
-            "error": "Invalid menu ID"
+            "error": "Invalid menu ID",
+            "status": "error",
+            "menu_id": menu_id
         }
     
-    logger.info(f"Processing request: menu_id={request.menu_id}, use_ai={request.use_ai}, preferences={request.additional_preferences}, use_cache={request.use_cache}")
+    logger.info(f"Processing request: menu_id={request.menu_id}, use_ai={request.use_ai}, use_cache={request.use_cache}")
     
     if not request.use_ai:
         # If AI is not requested, fall back to standard grocery list
         logger.info("AI not requested, using standard grocery list")
         return get_grocery_list(menu_id, use_ai=False)
     
-    # Check cache if enabled
+    # Check cache if enabled - this helps avoid timeouts by using cached results
     cache_key = f"{menu_id}_{request.additional_preferences or 'no_prefs'}"
     if request.use_cache and cache_key in AI_SHOPPING_LIST_CACHE:
         cached_data = AI_SHOPPING_LIST_CACHE[cache_key]
         # Check if cache is still valid
         if time.time() - cached_data.get('timestamp', 0) < CACHE_EXPIRY:
             logger.info(f"Returning cached AI shopping list for menu {menu_id}")
-            return cached_data.get('data')
+            result = cached_data.get('data')
+            # Mark as cached in response
+            if isinstance(result, dict) and "groceryList" in result:
+                result['cached'] = True
+                result['cache_timestamp'] = datetime.fromtimestamp(cached_data.get('timestamp', 0)).isoformat()
+            return result
         else:
             # Cache expired, remove it
             logger.info(f"Cache expired for menu {menu_id}, removing from cache")
             AI_SHOPPING_LIST_CACHE.pop(cache_key, None)
     
+    # If we don't have a valid cache entry, process the request
+    # First, get the basic grocery list which is faster
     conn = get_db_connection()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -228,49 +313,97 @@ def post_ai_shopping_list(menu_id: int, request: AiShoppingListRequest = None):
                 "groceryList": [],
                 "recommendations": ["Could not extract ingredients from this menu"],
                 "nutritionTips": ["Try generating a new menu with recipes to get ingredient information"],
-                "error": "No ingredients found in menu"
+                "error": "No ingredients found in menu",
+                "status": "error",
+                "menu_id": menu_id
             }
         
-        # Generate AI-enhanced shopping list with robust error handling
-        try:
-            result = generate_ai_shopping_list(
-                menu_data, 
-                grocery_list, 
-                additional_preferences=request.additional_preferences
-            )
-            
-            # Store in cache if successful
-            if result and isinstance(result, dict) and "groceryList" in result:
-                logger.info(f"Caching AI shopping list for menu {menu_id}")
-                AI_SHOPPING_LIST_CACHE[cache_key] = {
-                    'data': result,
-                    'timestamp': time.time()
-                }
-                
-                # Add cache metadata to the response
-                result['cached'] = False
-                result['cache_timestamp'] = datetime.now().isoformat()
-            
-            return result
-        except Exception as ai_error:
-            logger.error(f"Error in AI processing: {str(ai_error)}")
-            # Return the standard grocery list with error message
-            return {
-                "groceryList": grocery_list,
-                "recommendations": ["AI enhancement failed, showing standard list instead"],
-                "error": "AI processing error"
-            }
-
+        # For timeout prevention, immediately return a basic response with the standard grocery list
+        basic_response = {
+            "groceryList": [{"category": "All Items", "items": grocery_list}],
+            "recommendations": ["Enhanced AI grocery list is being processed..."],
+            "nutritionTips": ["Check status endpoint for complete AI list"],
+            "status": "processing",
+            "menu_id": menu_id,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        # Store the processing status in cache
+        AI_SHOPPING_LIST_CACHE[cache_key] = {
+            'data': basic_response,
+            'timestamp': time.time(),
+            'status': 'processing'
+        }
+        
+        # Add background task to process the AI shopping list
+        background_tasks.add_task(
+            process_ai_shopping_list_background,
+            menu_id,
+            menu_data,
+            grocery_list,
+            request.additional_preferences
+        )
+        
+        # Return the basic response immediately to avoid timeout
+        return basic_response
+        
     except Exception as e:
-        logger.error(f"Error generating AI shopping list: {str(e)}")
+        logger.error(f"Error generating basic grocery list: {str(e)}")
         # Return an error response that the frontend can handle
         return {
             "groceryList": [],
             "recommendations": ["Error processing shopping list"],
-            "error": str(e)
+            "error": str(e),
+            "status": "error",
+            "menu_id": menu_id
         }
     finally:
         conn.close()
+
+@router.get("/{menu_id}/ai-shopping-list/status")
+async def get_ai_shopping_list_status(menu_id: int, preferences: Optional[str] = None):
+    """
+    Check the status of an AI shopping list generation process.
+    
+    Args:
+        menu_id: The ID of the menu to check
+        preferences: Any additional preferences that were used in the original request
+        
+    Returns:
+        The current status of the AI shopping list generation
+    """
+    cache_key = f"{menu_id}_{preferences or 'no_prefs'}"
+    
+    if cache_key in AI_SHOPPING_LIST_CACHE:
+        cached_data = AI_SHOPPING_LIST_CACHE[cache_key]
+        
+        # Check if cache is still valid
+        if time.time() - cached_data.get('timestamp', 0) < CACHE_EXPIRY:
+            status = cached_data.get('status', 'unknown')
+            result = cached_data.get('data', {})
+            
+            # Add status metadata
+            if isinstance(result, dict):
+                result['cached'] = True
+                result['cache_timestamp'] = datetime.fromtimestamp(cached_data.get('timestamp', 0)).isoformat()
+                result['status'] = status
+                result['menu_id'] = menu_id
+            
+            return result
+        else:
+            # Cache expired
+            return {
+                "status": "expired",
+                "menu_id": menu_id,
+                "message": "The AI shopping list request has expired, please make a new request"
+            }
+    else:
+        # No processing found
+        return {
+            "status": "not_found",
+            "menu_id": menu_id,
+            "message": "No AI shopping list processing found for this menu, please make a new request"
+        }
 
 def generate_ai_shopping_list(menu_data, basic_grocery_list, additional_preferences=None):
     """
