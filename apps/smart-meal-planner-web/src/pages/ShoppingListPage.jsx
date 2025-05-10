@@ -598,12 +598,125 @@ function ShoppingListPage() {
     }
   };
   
+  // Status polling mechanism for AI shopping list
+  const [statusPollingInterval, setStatusPollingInterval] = useState(null);
+  const [pollCount, setPollCount] = useState(0);
+  const MAX_POLLS = 60; // Maximum number of status checks (5 minutes at 5-second intervals)
+  const POLL_INTERVAL = 5000; // Poll every 5 seconds
+
+  // Function to check the status of an AI shopping list
+  const checkAiShoppingListStatus = async (menuId) => {
+    if (!menuId || pollCount >= MAX_POLLS) {
+      // Stop polling if we've reached the maximum number of polls
+      if (pollCount >= MAX_POLLS) {
+        console.log(`Maximum polls (${MAX_POLLS}) reached, stopping status checks`);
+        setSnackbarMessage("AI processing is taking longer than expected. Stopping status checks.");
+        setSnackbarOpen(true);
+      }
+      clearStatusPolling();
+      return;
+    }
+
+    try {
+      console.log(`Polling AI shopping list status (attempt ${pollCount + 1}/${MAX_POLLS})`);
+      const statusResponse = await apiService.getAiShoppingListStatus(menuId, aiPreferences);
+      console.log("Status response:", statusResponse);
+
+      // Update poll count
+      setPollCount(prevCount => prevCount + 1);
+
+      // Check if processing is complete
+      if (statusResponse.status === "completed") {
+        console.log("AI shopping list processing completed!");
+
+        // Stop the polling
+        clearStatusPolling();
+
+        // Update state with the completed data
+        setAiShoppingData(statusResponse);
+        setAiShoppingLoading(false);
+
+        // Show notification
+        setSnackbarMessage("AI shopping list ready!");
+        setSnackbarOpen(true);
+
+        // Cache the results
+        setCachedShoppingList(menuId, statusResponse);
+      }
+      // Handle error state
+      else if (statusResponse.status === "error") {
+        console.warn("AI processing resulted in error:", statusResponse.message || "Unknown error");
+
+        // Stop the polling
+        clearStatusPolling();
+
+        // Show error message
+        setSnackbarMessage(`AI processing error: ${statusResponse.message || "Unknown error"}`);
+        setSnackbarOpen(true);
+
+        // Still update the data with what we got (might contain fallback data)
+        setAiShoppingData(statusResponse);
+        setAiShoppingLoading(false);
+      }
+      // Handle "not found" status (processing hasn't started or cache expired)
+      else if (statusResponse.status === "not_found" || statusResponse.status === "expired") {
+        console.warn("AI processing status not found or expired");
+
+        // Stop polling as there's nothing to poll for
+        clearStatusPolling();
+
+        // Notify user
+        setSnackbarMessage("AI processing not found. Please try again.");
+        setSnackbarOpen(true);
+        setAiShoppingLoading(false);
+      }
+      // For "processing" status, we continue polling until completion or max attempts
+    } catch (err) {
+      console.error("Error checking AI shopping list status:", err);
+
+      // Don't stop polling on error, just log it and continue
+      // This makes the polling more resilient to temporary network issues
+    }
+  };
+
+  // Helper to clear the polling interval
+  const clearStatusPolling = () => {
+    if (statusPollingInterval) {
+      console.log("Clearing status polling interval");
+      clearInterval(statusPollingInterval);
+      setStatusPollingInterval(null);
+      setPollCount(0);
+    }
+  };
+
+  // Function to start polling for status updates
+  const startStatusPolling = (menuId) => {
+    // Clear any existing polling first
+    clearStatusPolling();
+
+    // Reset poll count
+    setPollCount(0);
+
+    // Start a new polling interval
+    console.log(`Starting status polling for menu ${menuId}`);
+    const intervalId = setInterval(() => checkAiShoppingListStatus(menuId), POLL_INTERVAL);
+    setStatusPollingInterval(intervalId);
+
+    // Do an immediate check
+    checkAiShoppingListStatus(menuId);
+  };
+
+  // Clean up interval on component unmount
+  useEffect(() => {
+    return () => clearStatusPolling();
+  }, []);
+
   // Function to load AI shopping list with caching
   const loadAiShoppingList = async (menuId, forceRefresh = false) => {
     if (!menuId) return null;
-    
+
     setAiShoppingLoading(true);
-    
+
     try {
       // Check cache first if not forcing refresh
       if (!forceRefresh) {
@@ -613,74 +726,84 @@ function ShoppingListPage() {
           setAiShoppingData(cachedData);
           setUsingAiList(true);
           setAiShoppingLoading(false);
-          
+
           // Show snackbar to indicate cached data is being used
           setSnackbarMessage("Using cached shopping list");
           setSnackbarOpen(true);
-          
+
           return cachedData;
         }
       }
-      
+
       // No cache or refresh requested, make API call
       console.log(`Requesting AI shopping list for menu ${menuId}`);
       const aiResponse = await apiService.generateAiShoppingList(menuId, aiPreferences);
       console.log("AI shopping list response:", aiResponse);
-      
+
       // Validate response has required data
       if (!aiResponse) {
         throw new Error("Empty response from AI shopping list service");
       }
-      
+
       // Check for explicit error message
       if (aiResponse.error) {
         console.warn("API returned error:", aiResponse.error);
         setSnackbarMessage(`Error: ${aiResponse.error}. Using standard list.`);
         setSnackbarOpen(true);
-        
+
         // If there's no grocery list data, don't switch to AI view
-        if (!aiResponse.groceryList || 
+        if (!aiResponse.groceryList ||
             (Array.isArray(aiResponse.groceryList) && aiResponse.groceryList.length === 0)) {
           setUsingAiList(false);
           setAiShoppingLoading(false);
           return null;
         }
       }
-      
+
       // Even with errors, if we have some data, display it
       setAiShoppingData(aiResponse);
       setUsingAiList(true);
-      
+
       // If we have partial data with missing fields, add default values
       if (!aiResponse.recommendations || !Array.isArray(aiResponse.recommendations)) {
         console.log("Adding default recommendations");
         aiResponse.recommendations = ["Shop by category to save time in the store"];
       }
-      
+
       if (!aiResponse.nutritionTips || !Array.isArray(aiResponse.nutritionTips)) {
         console.log("Adding default nutrition tips");
         aiResponse.nutritionTips = ["Focus on whole foods for better nutrition"];
       }
-      
+
       if (!aiResponse.healthySwaps || !Array.isArray(aiResponse.healthySwaps)) {
         console.log("Adding default healthy swaps list");
         aiResponse.healthySwaps = [];
       }
-      
-      // Cache the successful response
-      if (aiResponse.groceryList) {
-        setCachedShoppingList(menuId, aiResponse);
+
+      // Check if the response indicates processing is still happening
+      if (aiResponse.status === "processing") {
+        console.log("AI shopping list is being processed, starting status polling");
+
+        // Start polling for status updates
+        startStatusPolling(menuId);
+      } else {
+        // If not processing, we're done
+        setAiShoppingLoading(false);
+
+        // Cache the successful response if it's completed
+        if (aiResponse.status === "completed" && aiResponse.groceryList) {
+          setCachedShoppingList(menuId, aiResponse);
+        }
       }
-      
+
       return aiResponse;
     } catch (err) {
       console.error("Error generating AI shopping list:", err);
       setSnackbarMessage("Error generating AI shopping list. Using standard list instead.");
       setSnackbarOpen(true);
       setUsingAiList(false);
-      return null;
-    } finally {
       setAiShoppingLoading(false);
+      return null;
     }
   };
 

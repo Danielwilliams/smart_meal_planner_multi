@@ -496,24 +496,141 @@ async def get_ai_shopping_list_status(menu_id: int, preferences: Optional[str] =
     if cache_key in AI_SHOPPING_LIST_CACHE:
         cached_data = AI_SHOPPING_LIST_CACHE[cache_key]
         status = cached_data.get('status', 'unknown')
+        timestamp = cached_data.get('timestamp', 0)
         logger.info(f"Found cache entry with status: {status}")
 
         # Check if cache is still valid
-        if time.time() - cached_data.get('timestamp', 0) < CACHE_EXPIRY:
+        if time.time() - timestamp < CACHE_EXPIRY:
             result = cached_data.get('data', {})
+
+            # Check for timeout on processing jobs (force complete after 5 minutes)
+            PROCESSING_TIMEOUT = 300  # 5 minutes in seconds
+            if status == 'processing' and time.time() - timestamp > PROCESSING_TIMEOUT:
+                # Processing has been stuck too long, force it to complete
+                logger.warning(f"Processing timeout reached for menu {menu_id}, forcing status to completed")
+
+                # Create a categorized fallback result
+                try:
+                    # Extract the basic grocery list from the processing data if available
+                    grocery_list = []
+                    if isinstance(result, dict) and "groceryList" in result:
+                        # Try to extract items from All Items category
+                        for category in result["groceryList"]:
+                            if category.get("category") == "All Items" and "items" in category:
+                                # Get items from the All Items category
+                                for item in category["items"]:
+                                    if isinstance(item, dict) and "name" in item:
+                                        grocery_list.append(item["name"])
+                                    elif isinstance(item, str):
+                                        grocery_list.append(item)
+
+                    # If we couldn't extract items, try to find a menu to regenerate the list
+                    if not grocery_list:
+                        conn = get_db_connection()
+                        try:
+                            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                                # Fetch the meal_plan_json field
+                                cur.execute("SELECT meal_plan_json FROM menus WHERE id=%s", (menu_id,))
+                                row = cur.fetchone()
+
+                                if row:
+                                    menu_data = row["meal_plan_json"]
+                                    grocery_list = aggregate_grocery_list(menu_data)
+                        except Exception as menu_error:
+                            logger.error(f"Error fetching menu data for timeout fallback: {str(menu_error)}")
+                        finally:
+                            conn.close()
+
+                    # Create a categorized fallback list
+                    categorized_list = create_categorized_fallback(grocery_list)
+
+                    # Create a complete fallback result
+                    fallback_result = {
+                        "groceryList": categorized_list,
+                        "recommendations": ["AI processing timed out, showing categorized list"],
+                        "nutritionTips": [
+                            "For a balanced diet, include items from each food group",
+                            "Fresh produce typically offers better nutrition than processed alternatives"
+                        ],
+                        "pantryStaples": ["Salt", "Pepper", "Olive Oil", "Flour", "Sugar"],
+                        "healthySwaps": [],
+                        "bulkItems": [],
+                        "status": "completed",  # Mark as completed so UI doesn't stay in loading state
+                        "menu_id": menu_id,
+                        "timestamp": datetime.now().isoformat(),
+                        "timeout": True,  # Mark this as a timeout result
+                        "fallback": True   # Mark as fallback result
+                    }
+
+                    # Update cache with fallback result
+                    AI_SHOPPING_LIST_CACHE[cache_key] = {
+                        'data': fallback_result,
+                        'timestamp': time.time(),
+                        'status': 'completed'  # Important: Mark as completed
+                    }
+
+                    # Use the fallback result
+                    result = fallback_result
+                    status = 'completed'
+                    logger.info(f"Created timeout fallback list with {len(categorized_list)} categories")
+                except Exception as fallback_error:
+                    logger.error(f"Error creating timeout fallback: {str(fallback_error)}")
+                    # If fallback creation fails, still update the status but with minimal data
+                    simple_fallback = {
+                        "groceryList": [{"category": "All Items", "items": [{"name": "Processing timed out", "quantity": "1", "unit": ""}]}],
+                        "recommendations": ["AI processing timed out, please try again"],
+                        "nutritionTips": ["Using basic grocery list"],
+                        "pantryStaples": ["Salt", "Pepper", "Olive Oil"],
+                        "healthySwaps": [],
+                        "bulkItems": [],
+                        "status": "completed",  # Mark as completed so UI doesn't stay in loading state
+                        "menu_id": menu_id,
+                        "error": "Processing timeout",
+                        "timestamp": datetime.now().isoformat(),
+                        "timeout": True
+                    }
+
+                    # Update cache with simple fallback
+                    AI_SHOPPING_LIST_CACHE[cache_key] = {
+                        'data': simple_fallback,
+                        'timestamp': time.time(),
+                        'status': 'completed'
+                    }
+
+                    # Use the simple fallback
+                    result = simple_fallback
+                    status = 'completed'
 
             # Add status metadata
             if isinstance(result, dict):
                 result['cached'] = True
-                result['cache_timestamp'] = datetime.fromtimestamp(cached_data.get('timestamp', 0)).isoformat()
+                result['cache_timestamp'] = datetime.fromtimestamp(timestamp).isoformat()
                 result['status'] = status
                 result['menu_id'] = menu_id
 
+                # Ensure required fields exist
+                if "pantryStaples" not in result:
+                    result["pantryStaples"] = ["Salt", "Pepper", "Olive Oil", "Flour", "Sugar"]
+                if "healthySwaps" not in result:
+                    result["healthySwaps"] = []
+                if "bulkItems" not in result:
+                    result["bulkItems"] = []
+                if "nutritionTips" not in result:
+                    result["nutritionTips"] = ["For a balanced diet, include items from each food group"]
+                if "recommendations" not in result:
+                    result["recommendations"] = ["Shop in bulk when possible to save money"]
+
                 # If still processing, add more info
                 if status == 'processing':
-                    elapsed = time.time() - cached_data.get('timestamp', 0)
+                    elapsed = time.time() - timestamp
                     result['elapsed_seconds'] = round(elapsed)
                     result['message'] = f"AI shopping list is being processed (elapsed time: {round(elapsed)} seconds)"
+                    # Calculate remaining time before timeout
+                    PROCESSING_TIMEOUT = 300  # 5 minutes in seconds
+                    remaining = PROCESSING_TIMEOUT - elapsed
+                    if remaining > 0:
+                        result['remaining_seconds'] = round(remaining)
+                        result['timeout_in'] = f"{round(remaining)} seconds"
 
                 # Log the structure being returned
                 if status == 'completed':
@@ -527,6 +644,7 @@ async def get_ai_shopping_list_status(menu_id: int, preferences: Optional[str] =
                             if 'items' in first_cat and first_cat['items']:
                                 logger.info(f"Sample items: {first_cat['items'][:2]}")
 
+            logger.info(f"Returning AI shopping list status: {status}")
             return result
         else:
             # Cache expired
@@ -534,7 +652,12 @@ async def get_ai_shopping_list_status(menu_id: int, preferences: Optional[str] =
             return {
                 "status": "expired",
                 "menu_id": menu_id,
-                "message": "The AI shopping list request has expired, please make a new request"
+                "message": "The AI shopping list request has expired, please make a new request",
+                "pantryStaples": ["Salt", "Pepper", "Olive Oil"],
+                "healthySwaps": [],
+                "bulkItems": [],
+                "nutritionTips": ["Request expired, please make a new request"],
+                "recommendations": ["Request expired, please make a new request"]
             }
     else:
         # No processing found - try listing all active cache keys for debugging
@@ -549,7 +672,12 @@ async def get_ai_shopping_list_status(menu_id: int, preferences: Optional[str] =
                 "status": "not_found",
                 "menu_id": menu_id,
                 "message": f"No AI shopping list processing found with these preferences, but found {len(menu_keys)} other processes for this menu",
-                "available_keys": menu_keys
+                "available_keys": menu_keys,
+                "pantryStaples": ["Salt", "Pepper", "Olive Oil"],
+                "healthySwaps": [],
+                "bulkItems": [],
+                "nutritionTips": ["No processing found with these preferences"],
+                "recommendations": ["Try making a new request"]
             }
         else:
             # Check if a basic grocery list is available
@@ -565,20 +693,35 @@ async def get_ai_shopping_list_status(menu_id: int, preferences: Optional[str] =
                         "status": "not_found",
                         "menu_id": menu_id,
                         "message": "No AI shopping list processing found for this menu, please make a new request using the POST endpoint",
-                        "action_required": "POST to /menu/{menu_id}/ai-shopping-list to start processing"
+                        "action_required": "POST to /menu/{menu_id}/ai-shopping-list to start processing",
+                        "pantryStaples": ["Salt", "Pepper", "Olive Oil"],
+                        "healthySwaps": [],
+                        "bulkItems": [],
+                        "nutritionTips": ["No processing found for this menu"],
+                        "recommendations": ["Make a new request to generate an AI shopping list"]
                     }
                 else:
                     return {
                         "status": "error",
                         "menu_id": menu_id,
-                        "message": "Menu not found"
+                        "message": "Menu not found",
+                        "pantryStaples": ["Salt", "Pepper", "Olive Oil"],
+                        "healthySwaps": [],
+                        "bulkItems": [],
+                        "nutritionTips": ["Menu not found"],
+                        "recommendations": ["Select a valid menu first"]
                     }
             except Exception as e:
                 logger.error(f"Error checking menu existence: {str(e)}")
                 return {
                     "status": "not_found",
                     "menu_id": menu_id,
-                    "message": "No AI shopping list processing found for this menu, please make a new request"
+                    "message": "No AI shopping list processing found for this menu, please make a new request",
+                    "pantryStaples": ["Salt", "Pepper", "Olive Oil"],
+                    "healthySwaps": [],
+                    "bulkItems": [],
+                    "nutritionTips": ["No processing found for this menu"],
+                    "recommendations": ["Make a new request to generate an AI shopping list"]
                 }
             finally:
                 conn.close()

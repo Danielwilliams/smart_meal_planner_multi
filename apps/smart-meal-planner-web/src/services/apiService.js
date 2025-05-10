@@ -281,29 +281,29 @@ const apiService = {
         use_ai: true,
         use_cache: useCache
       };
-      
+
       if (additionalPreferences) {
         payload.additional_preferences = additionalPreferences;
       }
-      
+
       console.log("AI shopping list request payload:", payload);
-      
+
       // Use a longer timeout for AI processing
       const resp = await axiosInstance.post(`/menu/${menuId}/ai-shopping-list`, payload, {
         timeout: 60000 // 60 second timeout for AI processing
       });
-      
+
       console.log('AI shopping list raw response:', resp);
       console.log('AI shopping list response data:', resp.data);
-      
+
       // Check if response was from cache
       if (resp.data && resp.data.cached) {
         console.log("Retrieved cached response from server:", resp.data.cache_timestamp);
       }
-      
+
       // Validate and ensure proper response structure
       let responseData = resp.data;
-      
+
       // If we got a string instead of an object (happens with some JSON parsing issues)
       if (typeof responseData === 'string') {
         try {
@@ -320,29 +320,29 @@ const apiService = {
           };
         }
       }
-      
+
       // Ensure we have a valid groceryList property
       if (!responseData.groceryList) {
         console.warn("Response missing groceryList property");
         responseData.groceryList = [];
       }
-      
+
       // Ensure we have valid recommendations
       if (!responseData.recommendations || !Array.isArray(responseData.recommendations)) {
         console.warn("Response missing valid recommendations array");
         responseData.recommendations = ["Shop by category to save time"];
       }
-      
+
       // Ensure we have valid nutritionTips
       if (!responseData.nutritionTips || !Array.isArray(responseData.nutritionTips)) {
         console.warn("Response missing valid nutritionTips array");
         responseData.nutritionTips = ["Focus on whole foods for better nutrition"];
       }
-      
+
       return responseData;
     } catch (err) {
       console.error('AI shopping list generation error:', err);
-      
+
       // Return a fallback response object instead of throwing
       console.log("Returning fallback AI shopping list due to error");
       return {
@@ -350,6 +350,63 @@ const apiService = {
         recommendations: ["Error generating AI shopping list"],
         nutritionTips: ["Using standard list instead"],
         error: err.message || "Network or server error"
+      };
+    }
+  },
+
+  async getAiShoppingListStatus(menuId, preferences = null) {
+    try {
+      console.log(`Checking AI shopping list status for menu ${menuId}`);
+      const url = `/menu/${menuId}/ai-shopping-list/status`;
+
+      // Add preferences as query parameter if provided
+      const params = preferences ? `?preferences=${encodeURIComponent(preferences)}` : '';
+
+      const resp = await axiosInstance.get(`${url}${params}`);
+      console.log('AI shopping list status response:', resp.data);
+
+      // Ensure consistent structure even for error responses
+      const responseData = resp.data;
+
+      // Add default fields if missing
+      if (!responseData.groceryList) {
+        responseData.groceryList = [];
+      }
+
+      if (!responseData.recommendations || !Array.isArray(responseData.recommendations)) {
+        responseData.recommendations = [];
+      }
+
+      if (!responseData.nutritionTips || !Array.isArray(responseData.nutritionTips)) {
+        responseData.nutritionTips = [];
+      }
+
+      if (!responseData.pantryStaples || !Array.isArray(responseData.pantryStaples)) {
+        responseData.pantryStaples = ["Salt", "Pepper", "Olive Oil"];
+      }
+
+      if (!responseData.healthySwaps || !Array.isArray(responseData.healthySwaps)) {
+        responseData.healthySwaps = [];
+      }
+
+      if (!responseData.bulkItems || !Array.isArray(responseData.bulkItems)) {
+        responseData.bulkItems = [];
+      }
+
+      return responseData;
+    } catch (err) {
+      console.error('AI shopping list status check error:', err);
+
+      // Return a valid error response
+      return {
+        status: "error",
+        message: err.message || "Error checking AI shopping list status",
+        groceryList: [],
+        recommendations: ["Error checking status"],
+        nutritionTips: ["Please try again"],
+        pantryStaples: ["Salt", "Pepper", "Olive Oil"],
+        healthySwaps: [],
+        bulkItems: []
       };
     }
   },
