@@ -1193,7 +1193,7 @@ def generate_ai_shopping_list(menu_data, basic_grocery_list, additional_preferen
                                     if "cheddar" in name_lower or "mozzarella" in name_lower:
                                         return "8"  # 8 oz
                                     elif "feta" in name_lower or "parmesan" in name_lower:
-                                        return "0.5"  # 1/2 cup
+                                        return "0.25"  # 1/4 cup
                                     else:
                                         return "4"  # 4 oz
                                 
@@ -1309,7 +1309,7 @@ def generate_ai_shopping_list(menu_data, basic_grocery_list, additional_preferen
                                                 return "8"  # 8 oz is reasonable
                                         elif "feta" in name_lower or "parmesan" in name_lower:
                                             if number > 2:  # Too much for these strong cheeses
-                                                return "0.5"  # 1/2 cup is reasonable
+                                                return "0.25"  # 1/4 cup is reasonable
                                     
                                     # Produce and vegetables
                                     elif any(veg in name_lower for veg in ["onion", "bell pepper", "potato", "avocado"]):

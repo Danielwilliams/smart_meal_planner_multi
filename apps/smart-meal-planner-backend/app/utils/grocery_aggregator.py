@@ -178,7 +178,13 @@ def sanitize_unit(unit_str: str, ingredient_name: str = "") -> str:
         for item in weight_items:
             if item in clean_name:
                 if 'cheese' in clean_name:
-                    return 'g'  # Use grams for cheese
+                    # Use appropriate units for different cheese types
+                    if 'cheddar' in clean_name or 'mozzarella' in clean_name:
+                        return 'oz'  # Use ounces for hard cheeses
+                    elif 'feta' in clean_name or 'parmesan' in clean_name:
+                        return 'cup'  # Use cups for crumbly/grated cheeses
+                    else:
+                        return 'oz'  # Default to ounces for other cheeses
                 return 'lb'     # Use pounds for most meats and weight items
         
         return ""
@@ -457,7 +463,8 @@ def combine_amount_and_unit(amount_float: float, unit: str, name: str) -> str:
             'salsa': '1.5 cups',
             'kalamata olive': '1/4 cup',
             'soy ginger dressing': '1/4 cup',
-            'feta cheese': '1/2 cup',
+            'feta cheese': '1/4 cup',
+            'parmesan cheese': '1/4 cup',
             'saffron': '1/2 tsp',
             'salt': 'To taste'
         }
@@ -481,7 +488,17 @@ def combine_amount_and_unit(amount_float: float, unit: str, name: str) -> str:
             return f"{display_name}: 1 tbsp"
         if 'extract' in clean_name:
             return f"{display_name}: 1 tsp"
-        
+        # Cheese quantities
+        if 'cheese' in clean_name:
+            if 'cheddar' in clean_name:
+                return f"{display_name}: 8 oz"
+            elif 'mozzarella' in clean_name:
+                return f"{display_name}: 8 oz"
+            elif 'parmesan' in clean_name:
+                return f"{display_name}: 1/4 cup"
+            else:
+                return f"{display_name}: 4 oz"
+
         # Generic fallback - just display the name
         return display_name
     

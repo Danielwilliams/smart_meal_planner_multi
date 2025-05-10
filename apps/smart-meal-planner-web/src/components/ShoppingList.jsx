@@ -785,7 +785,7 @@ const formatDisplayName = (name, quantity, unit, originalItem) => {
   
   // For special unit handling for feta cheese
   if (name.includes('feta') && name.includes('cheese')) {
-    return `${displayName}: ${quantity || '1/2'} cup`;
+    return `${displayName}: ${quantity || '1/4'} cup`;
   }
   
   // For special unit handling for kalamata olives

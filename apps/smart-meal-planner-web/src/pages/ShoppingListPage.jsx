@@ -675,8 +675,8 @@ function ShoppingListPage() {
         setAiShoppingData(statusResponse);
         setAiShoppingLoading(false);
 
-        // Show notification only on first couple of polls to prevent looping
-        if (pollCount <= 2) {
+        // Only show notification once when the list is complete
+        if (!statusPollingInterval || pollCount === 1) {
           setSnackbarMessage("AI shopping list ready!");
           setSnackbarOpen(true);
         }
@@ -1558,10 +1558,23 @@ const categorizeItems = (mealPlanData) => {
                                     <Box sx={{ mb: 1 }}>
                                       <Typography variant="body1" fontWeight="medium">
                                         {typeof item === 'string' ? item : (
-                                          // Use display_name if available, or construct a display with quantity and unit
-                                          item.display_name ? item.display_name :
-                                          // Otherwise build a string with name, quantity and unit
-                                          `${item.name || 'Unknown item'}${item.quantity ? ': ' + item.quantity : ''}${item.unit ? ' ' + item.unit : ''}`
+                                          // Handle cheese special case with 1g quantity
+                                          item.name && item.name.toLowerCase().includes('cheese') &&
+                                          item.quantity === '1' && item.unit === 'g' ? (
+                                            // Apply proper cheese quantities based on type
+                                            item.name.toLowerCase().includes('cheddar') ||
+                                            item.name.toLowerCase().includes('mozzarella') ?
+                                              `${item.name}: 8 oz` :
+                                            item.name.toLowerCase().includes('feta') ||
+                                            item.name.toLowerCase().includes('parmesan') ?
+                                              `${item.name}: 1/4 cup` :
+                                              `${item.name}: 4 oz`
+                                          ) : (
+                                            // Otherwise use display_name if available
+                                            item.display_name ? item.display_name :
+                                            // Or build a string with name, quantity and unit
+                                            `${item.name || 'Unknown item'}${item.quantity ? ': ' + item.quantity : ''}${item.unit ? ' ' + item.unit : ''}`
+                                          )
                                         )}
                                       </Typography>
                                       {item.notes && (
