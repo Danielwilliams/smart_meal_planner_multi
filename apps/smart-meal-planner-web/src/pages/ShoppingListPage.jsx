@@ -601,16 +601,14 @@ function ShoppingListPage() {
   // Status polling mechanism for AI shopping list
   const [statusPollingInterval, setStatusPollingInterval] = useState(null);
   const [pollCount, setPollCount] = useState(0);
-  const [isPollingEnabled, setIsPollingEnabled] = useState(true); // Flag to control polling
   const MAX_POLLS = 60; // Maximum number of status checks (5 minutes at 5-second intervals)
   const POLL_INTERVAL = 5000; // Poll every 5 seconds
 
   // Function to check the status of an AI shopping list
   const checkAiShoppingListStatus = async (menuId) => {
-    // Check if polling is disabled or there's no interval
-    if (!isPollingEnabled || !statusPollingInterval) {
-      console.log("Polling is disabled or no active interval found, stopping check");
-      clearStatusPolling();
+    // Check if there's no interval (don't check isPollingEnabled anymore)
+    if (!statusPollingInterval) {
+      console.log("No active interval found, stopping check");
       return;
     }
 
@@ -643,8 +641,7 @@ function ShoppingListPage() {
       if (statusResponse.status === "completed" || statusResponse.cached === true) {
         console.log("AI shopping list processing completed or using cached data!");
 
-        // Immediately disable polling to prevent future callbacks
-        setIsPollingEnabled(false);
+        // No need to use isPollingEnabled flag anymore
 
         // Stop the polling - must explicitly clear interval first to be safe
         if (statusPollingInterval) {
@@ -696,11 +693,8 @@ function ShoppingListPage() {
         setAiShoppingData(statusResponse);
         setAiShoppingLoading(false);
 
-        // Only show notification once when the list is complete
-        if (!statusPollingInterval || pollCount === 1) {
-          setSnackbarMessage("AI shopping list ready!");
-          setSnackbarOpen(true);
-        }
+        // Don't show notification for AI shopping list ready
+        // This was causing repeating snackbar issues
 
         // Cache the results
         setCachedShoppingList(menuId, statusResponse);
@@ -744,8 +738,6 @@ function ShoppingListPage() {
   // Helper to clear the polling interval
   const clearStatusPolling = () => {
     console.log("Clearing status polling interval - current interval:", statusPollingInterval);
-    // Disable polling for 5 seconds to avoid race conditions
-    setIsPollingEnabled(false);
 
     // Clear the interval
     if (statusPollingInterval) {
@@ -753,11 +745,6 @@ function ShoppingListPage() {
       setStatusPollingInterval(null);
     }
     setPollCount(0);
-
-    // Re-enable polling after a short delay
-    setTimeout(() => {
-      setIsPollingEnabled(true);
-    }, 5000);
   };
 
   // Function to start polling for status updates
