@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'dart:convert';
 import '../services/api_service.dart';
 import '../models/menu_model.dart';
 import '../main.dart'; // Import to access CartState provider
@@ -100,13 +101,36 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
       });
       return;
     }
-    
+
     setState(() {
       _isLoading = true;
       _error = '';
     });
 
     try {
+      // Try the AI-enhanced shopping list first
+      print("Attempting to fetch AI-enhanced shopping list first");
+      final aiResult = await ApiService.generateAiShoppingList(
+        _selectedMenuId,
+        widget.authToken,
+      );
+
+      if (aiResult != null) {
+        print("AI shopping list returned with keys: ${aiResult.keys.toList()}");
+
+        // Check if this is a genuine AI result and not an error
+        if (!aiResult.containsKey('error') ||
+            (aiResult.containsKey('groceryList') && aiResult['groceryList'] is List)) {
+          print("Processing AI shopping list result");
+          await _processShoppingListItems(aiResult);
+          return; // Success, exit early
+        } else {
+          print("AI shopping list returned an error, falling back to regular shopping list");
+        }
+      }
+
+      // Fallback to regular shopping list
+      print("Fetching regular shopping list");
       final result = await ApiService.getShoppingList(
         widget.userId,
         widget.authToken,
@@ -115,15 +139,21 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
 
       if (result != null) {
         print("Shopping list API returned result with keys: ${result.keys.toList()}");
-        
+
         if (result.containsKey('ingredient_list')) {
           print("Ingredient list contains ${(result['ingredient_list'] as List).length} items");
         } else if (result.containsKey('ingredients')) {
           print("Ingredients list contains ${(result['ingredients'] as List).length} items");
+        } else if (result.containsKey('groceryList')) {
+          print("Grocery list found, examining format");
+          var groceryList = result['groceryList'];
+          if (groceryList is List) {
+            print("Grocery list contains ${groceryList.length} items/categories");
+          }
         } else {
           print("WARNING: Shopping list result doesn't contain expected keys. Available keys: ${result.keys.toList()}");
         }
-        
+
         // Process and categorize items
         await _processShoppingListItems(result);
       } else {
@@ -133,6 +163,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
         });
       }
     } catch (e) {
+      print("Error in _fetchShoppingList: $e");
       setState(() {
         _error = 'Error: $e';
       });
@@ -147,18 +178,118 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
     // Initialize empty categories map
     Map<String, List<Map<String, dynamic>>> categorizedItems = {};
 
-    // Check for 'ingredient_list' or 'ingredients' key
+    // Check for various possible keys for ingredient data
     List<dynamic> ingredients = [];
+
+    // Debug log
+    print("Processing shopping list data with keys: ${data.keys.toList()}");
+
+    // Check for 'ingredient_list' key - common in the backend API
     if (data.containsKey('ingredient_list')) {
+      print("Found 'ingredient_list' key");
       ingredients = data['ingredient_list'] as List<dynamic>;
-    } else if (data.containsKey('ingredients')) {
+    }
+    // Check for 'ingredients' key
+    else if (data.containsKey('ingredients')) {
+      print("Found 'ingredients' key");
       ingredients = data['ingredients'] as List<dynamic>;
-    } else if (data.containsKey('groceryList')) {
-      // Check for AI-enhanced format with groceryList
-      List<dynamic> categories = data['groceryList'] as List<dynamic>;
-      for (var category in categories) {
-        if (category is Map && category.containsKey('items') && category['items'] is List) {
-          ingredients.addAll(category['items'] as List);
+    }
+    // Check for 'groceryList' key - common in AI-enhanced responses
+    else if (data.containsKey('groceryList')) {
+      print("Found 'groceryList' key (AI-enhanced format)");
+
+      // Handle groceryList which could be a list of categories or a list of items
+      var groceryList = data['groceryList'];
+      if (groceryList is List) {
+        if (groceryList.isNotEmpty) {
+          // Check if first item is a category or a direct item
+          if (groceryList[0] is Map &&
+              (groceryList[0].containsKey('category') || groceryList[0].containsKey('items'))) {
+            // This is a categorized list
+            print("Grocery list contains categorized items");
+            for (var category in groceryList) {
+              if (category is Map && category.containsKey('items') && category['items'] is List) {
+                print("Processing category: ${category['category'] ?? 'unnamed'} with ${(category['items'] as List).length} items");
+                ingredients.addAll(category['items'] as List);
+              }
+            }
+          } else {
+            // Direct list of items
+            print("Grocery list contains direct items");
+            ingredients.addAll(groceryList);
+          }
+        }
+      }
+    }
+    // Check for 'data' key with embedded ingredient information
+    else if (data.containsKey('data')) {
+      print("Found 'data' key, examining contents");
+      var dataField = data['data'];
+
+      if (dataField is Map && (dataField.containsKey('ingredients') ||
+                               dataField.containsKey('ingredient_list') ||
+                               dataField.containsKey('groceryList'))) {
+        // Recursively process the nested data
+        print("Found nested ingredient data, processing recursively");
+        return _processShoppingListItems(dataField as Map<String, dynamic>);
+      } else if (dataField is List) {
+        // Direct list of ingredients
+        print("Data field is a direct list of ${dataField.length} items");
+        ingredients.addAll(dataField);
+      }
+    }
+    // Check for AI status field with shopping list data
+    else if (data.containsKey('ai_shopping_list')) {
+      print("Found 'ai_shopping_list' key");
+      var aiList = data['ai_shopping_list'];
+
+      if (aiList is Map && (aiList.containsKey('ingredients') ||
+                           aiList.containsKey('groceryList') ||
+                           aiList.containsKey('items'))) {
+        // Process the AI shopping list data
+        print("Found structured AI shopping list data");
+        if (aiList.containsKey('ingredients')) {
+          ingredients.addAll(aiList['ingredients'] as List);
+        } else if (aiList.containsKey('groceryList')) {
+          var groceryList = aiList['groceryList'];
+          if (groceryList is List) {
+            for (var item in groceryList) {
+              if (item is Map && item.containsKey('items')) {
+                ingredients.addAll(item['items'] as List);
+              } else {
+                ingredients.add(item);
+              }
+            }
+          }
+        } else if (aiList.containsKey('items')) {
+          ingredients.addAll(aiList['items'] as List);
+        }
+      } else if (aiList is List) {
+        // Direct list of items
+        print("AI shopping list is a direct list of ${aiList.length} items");
+        ingredients.addAll(aiList);
+      } else if (aiList is String) {
+        // Handle string format (could be JSON)
+        print("AI shopping list is a string, attempting to parse");
+        try {
+          var parsed = json.decode(aiList);
+          if (parsed is List) {
+            ingredients.addAll(parsed);
+          } else if (parsed is Map) {
+            // Try to extract ingredients from parsed data
+            if (parsed.containsKey('ingredients')) {
+              ingredients.addAll(parsed['ingredients'] as List);
+            } else if (parsed.containsKey('groceryList')) {
+              var groceryList = parsed['groceryList'];
+              if (groceryList is List) {
+                ingredients.addAll(groceryList);
+              }
+            }
+          }
+        } catch (e) {
+          print("Error parsing AI shopping list string: $e");
+          // If can't parse as JSON, treat as a single ingredient
+          ingredients.add(aiList);
         }
       }
     }
@@ -420,23 +551,46 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
         for (var item in category) {
           // Format each ingredient with quantity and unit
           String displayText = item['name'];
-          if (item['quantity'] != null) {
-            // Format quantity to show as integer if whole number
-            String quantityText = "";
-            var qty = item['quantity'];
-            if (qty is int) {
-              quantityText = qty.toString();
-            } else if (qty is double) {
-              // Format double to avoid showing decimals for whole numbers
-              quantityText = qty == qty.toInt() ? qty.toInt().toString() : qty.toString();
-            } else {
-              // Just use the value directly
-              quantityText = qty.toString();
-            }
 
-            // Combine with unit and name
-            displayText = "$quantityText ${item['unit'] ?? ''} $displayText".trim();
+          if (item['quantity'] != null) {
+            // Check if this is a cheese item with "1 g" quantity
+            if ((displayText.toLowerCase().contains('cheese') ||
+                 displayText.toLowerCase().contains('mozzarella')) &&
+                item['quantity'] != null && item['quantity'].toString() == '1' &&
+                (item['unit'] == 'g' || item['unit'] == null)) {
+
+              // Apply proper cheese quantities based on type
+              if (displayText.toLowerCase().contains('cheddar') ||
+                  displayText.toLowerCase().contains('mozzarella')) {
+                displayText = "$displayText: 8 oz";
+              } else if (displayText.toLowerCase().contains('feta') ||
+                        displayText.toLowerCase().contains('parmesan')) {
+                displayText = "$displayText: 1/4 cup";
+              } else {
+                displayText = "$displayText: 4 oz";
+              }
+            } else {
+              // Standard quantity formatting
+              String quantityText = "";
+              var qty = item['quantity'];
+              if (qty is int) {
+                quantityText = qty.toString();
+              } else if (qty is double) {
+                // Format double to avoid showing decimals for whole numbers
+                quantityText = qty == qty.toInt() ? qty.toInt().toString() : qty.toString();
+              } else if (qty != null) {
+                // Just use the value directly
+                quantityText = qty.toString();
+              }
+
+              // Only add quantity if it exists
+              if (quantityText.isNotEmpty) {
+                // Combine with unit and name
+                displayText = "$quantityText ${item['unit'] ?? ''} $displayText".trim();
+              }
+            }
           }
+
           if (item['notes'] != null && item['notes'].isNotEmpty) {
             displayText += " (${item['notes']})";
           }
@@ -663,7 +817,24 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
                                   ...entry.value.map((item) {
                                     String displayText = item['name'];
                                     if (item['quantity'] != null) {
-                                      // Format quantity to show as integer if whole number
+                                      // Check if this is a cheese item with "1 g" quantity
+                                    if ((displayText.toLowerCase().contains('cheese') ||
+                                         displayText.toLowerCase().contains('mozzarella')) &&
+                                        item['quantity'] != null && item['quantity'].toString() == '1' &&
+                                        (item['unit'] == 'g' || item['unit'] == null)) {
+
+                                      // Apply proper cheese quantities based on type
+                                      if (displayText.toLowerCase().contains('cheddar') ||
+                                          displayText.toLowerCase().contains('mozzarella')) {
+                                        displayText = "$displayText: 8 oz";
+                                      } else if (displayText.toLowerCase().contains('feta') ||
+                                                displayText.toLowerCase().contains('parmesan')) {
+                                        displayText = "$displayText: 1/4 cup";
+                                      } else {
+                                        displayText = "$displayText: 4 oz";
+                                      }
+                                    } else {
+                                      // Standard quantity formatting
                                       String quantityText = "";
                                       var qty = item['quantity'];
                                       if (qty is int) {
@@ -671,13 +842,17 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
                                       } else if (qty is double) {
                                         // Format double to avoid showing decimals for whole numbers
                                         quantityText = qty == qty.toInt() ? qty.toInt().toString() : qty.toString();
-                                      } else {
+                                      } else if (qty != null) {
                                         // Just use the value directly
                                         quantityText = qty.toString();
                                       }
 
-                                      // Combine with unit and name
-                                      displayText = "$quantityText ${item['unit'] ?? ''} $displayText".trim();
+                                      // Only add quantity if it exists
+                                      if (quantityText.isNotEmpty) {
+                                        // Combine with unit and name
+                                        displayText = "$quantityText ${item['unit'] ?? ''} $displayText".trim();
+                                      }
+                                    }
                                     }
                                     if (item['notes'] != null && item['notes'].isNotEmpty) {
                                       displayText += " (${item['notes']})";

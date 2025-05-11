@@ -650,43 +650,51 @@ function ShoppingListPage() {
         setStatusPollingInterval(null);
         setPollCount(0);
 
-        // Format and normalize all items to ensure quantities are shown
-        if (statusResponse.groceryList && Array.isArray(statusResponse.groceryList)) {
-          statusResponse.groceryList.forEach(category => {
-            if (category.items && Array.isArray(category.items)) {
-              category.items = category.items.map(item => {
-                // If item is just a string, convert to object with name
-                if (typeof item === "string") {
-                  return {
-                    name: item,
-                    quantity: "1",
-                    unit: "",
-                    display_name: `${item}: 1`
-                  };
-                }
-                // If item is object but missing quantity/unit, add them
-                else if (typeof item === "object") {
-                  // Ensure name exists
-                  const name = item.name || "Unknown item";
-                  // Ensure quantity exists
-                  const quantity = item.quantity || "1";
-                  // Ensure unit exists
-                  const unit = item.unit || "";
-                  // Create or update display_name
-                  const display_name = `${name}: ${quantity} ${unit}`.trim();
+        // Process the items through our helper function
+        processAiShoppingItems(statusResponse);
 
-                  return {
-                    ...item,
-                    name,
-                    quantity,
-                    unit,
-                    display_name
-                  };
-                }
-                return item;
-              });
-            }
-          });
+        // Define the processAiShoppingItems function to handle formatting
+        function processAiShoppingItems(response) {
+          // Format and normalize all items to ensure quantities are shown
+          if (response.groceryList && Array.isArray(response.groceryList)) {
+            console.log(`Processing ${response.groceryList.length} AI shopping list categories`);
+            response.groceryList.forEach(category => {
+              if (category.items && Array.isArray(category.items)) {
+                console.log(`Processing ${category.items.length} items in category ${category.category || 'unknown'}`);
+                category.items = category.items.map(item => {
+                  // If item is just a string, convert to object with name
+                  if (typeof item === "string") {
+                    return {
+                      name: item,
+                      quantity: "1",
+                      unit: "",
+                      display_name: `${item}: 1`
+                    };
+                  }
+                  // If item is object but missing quantity/unit, add them
+                  else if (typeof item === "object") {
+                    // Ensure name exists
+                    const name = item.name || "Unknown item";
+                    // Ensure quantity exists
+                    const quantity = item.quantity || "1";
+                    // Ensure unit exists
+                    const unit = item.unit || "";
+                    // Create or update display_name
+                    const display_name = `${name}: ${quantity} ${unit}`.trim();
+
+                    return {
+                      ...item,
+                      name,
+                      quantity,
+                      unit,
+                      display_name
+                    };
+                  }
+                  return item;
+                });
+              }
+            });
+          }
         }
 
         // Update state with the completed data
@@ -749,13 +757,7 @@ function ShoppingListPage() {
 
   // Function to start polling for status updates
   const startStatusPolling = (menuId) => {
-    // Don't start if we already have an interval
-    if (statusPollingInterval) {
-      console.log("Polling already in progress, not starting a new one");
-      return;
-    }
-
-    // Clear any existing polling first as a safety measure
+    // Always clear any existing polling first for safety
     clearStatusPolling();
 
     // Reset poll count
@@ -766,10 +768,8 @@ function ShoppingListPage() {
     const intervalId = setInterval(() => checkAiShoppingListStatus(menuId), POLL_INTERVAL);
     setStatusPollingInterval(intervalId);
 
-    // Do an immediate check, but only if we successfully set the interval
-    if (intervalId) {
-      checkAiShoppingListStatus(menuId);
-    }
+    // Always do an immediate check - critical to start the loading process
+    checkAiShoppingListStatus(menuId);
   };
 
   // Clean up interval on component unmount
@@ -854,18 +854,24 @@ function ShoppingListPage() {
       }
 
       // Check if the response indicates processing is still happening
-      if (aiResponse.status === "processing" && !aiResponse.cached) {
+      if (aiResponse.status === "processing") {
         console.log("AI shopping list is being processed, starting status polling");
 
-        // Start polling for status updates
+        // Always start polling for processing responses, even if cached
         startStatusPolling(menuId);
       } else {
-        // If not processing or using cached data, we're done
+        // If not processing, we're done
         setAiShoppingLoading(false);
 
         // Cache the successful response if it's completed and not already cached
         if (aiResponse.status === "completed" && aiResponse.groceryList && !aiResponse.cached) {
           setCachedShoppingList(menuId, aiResponse);
+        }
+
+        // Make sure to process items even for completed responses
+        if (aiResponse.groceryList && Array.isArray(aiResponse.groceryList)) {
+          console.log("Processing completed AI shopping list");
+          processAiShoppingItems(aiResponse);
         }
       }
 
