@@ -601,11 +601,19 @@ function ShoppingListPage() {
   // Status polling mechanism for AI shopping list
   const [statusPollingInterval, setStatusPollingInterval] = useState(null);
   const [pollCount, setPollCount] = useState(0);
+  const [isPollingEnabled, setIsPollingEnabled] = useState(true); // Flag to control polling
   const MAX_POLLS = 60; // Maximum number of status checks (5 minutes at 5-second intervals)
   const POLL_INTERVAL = 5000; // Poll every 5 seconds
 
   // Function to check the status of an AI shopping list
   const checkAiShoppingListStatus = async (menuId) => {
+    // Check if polling is disabled or there's no interval
+    if (!isPollingEnabled || !statusPollingInterval) {
+      console.log("Polling is disabled or no active interval found, stopping check");
+      clearStatusPolling();
+      return;
+    }
+
     if (!menuId || pollCount >= MAX_POLLS) {
       // Stop polling if we've reached the maximum number of polls
       if (pollCount >= MAX_POLLS) {
@@ -625,12 +633,25 @@ function ShoppingListPage() {
       // Update poll count
       setPollCount(prevCount => prevCount + 1);
 
+      // ALWAYS check for polling activity first
+      if (!statusPollingInterval) {
+        console.log("No active polling interval, aborting status check");
+        return;
+      }
+
       // Check if processing is complete or if this is cached data
       if (statusResponse.status === "completed" || statusResponse.cached === true) {
         console.log("AI shopping list processing completed or using cached data!");
 
-        // Stop the polling
-        clearStatusPolling();
+        // Immediately disable polling to prevent future callbacks
+        setIsPollingEnabled(false);
+
+        // Stop the polling - must explicitly clear interval first to be safe
+        if (statusPollingInterval) {
+          clearInterval(statusPollingInterval);
+        }
+        setStatusPollingInterval(null);
+        setPollCount(0);
 
         // Format and normalize all items to ensure quantities are shown
         if (statusResponse.groceryList && Array.isArray(statusResponse.groceryList)) {
@@ -722,17 +743,32 @@ function ShoppingListPage() {
 
   // Helper to clear the polling interval
   const clearStatusPolling = () => {
+    console.log("Clearing status polling interval - current interval:", statusPollingInterval);
+    // Disable polling for 5 seconds to avoid race conditions
+    setIsPollingEnabled(false);
+
+    // Clear the interval
     if (statusPollingInterval) {
-      console.log("Clearing status polling interval");
       clearInterval(statusPollingInterval);
       setStatusPollingInterval(null);
-      setPollCount(0);
     }
+    setPollCount(0);
+
+    // Re-enable polling after a short delay
+    setTimeout(() => {
+      setIsPollingEnabled(true);
+    }, 5000);
   };
 
   // Function to start polling for status updates
   const startStatusPolling = (menuId) => {
-    // Clear any existing polling first
+    // Don't start if we already have an interval
+    if (statusPollingInterval) {
+      console.log("Polling already in progress, not starting a new one");
+      return;
+    }
+
+    // Clear any existing polling first as a safety measure
     clearStatusPolling();
 
     // Reset poll count
@@ -743,13 +779,22 @@ function ShoppingListPage() {
     const intervalId = setInterval(() => checkAiShoppingListStatus(menuId), POLL_INTERVAL);
     setStatusPollingInterval(intervalId);
 
-    // Do an immediate check
-    checkAiShoppingListStatus(menuId);
+    // Do an immediate check, but only if we successfully set the interval
+    if (intervalId) {
+      checkAiShoppingListStatus(menuId);
+    }
   };
 
   // Clean up interval on component unmount
   useEffect(() => {
-    return () => clearStatusPolling();
+    // Clean up on mount too, to ensure no leftover polling
+    clearStatusPolling();
+
+    // And clean up on unmount
+    return () => {
+      console.log("Component unmounting, clearing polling interval");
+      clearStatusPolling();
+    };
   }, []);
 
   // Function to load AI shopping list with caching
