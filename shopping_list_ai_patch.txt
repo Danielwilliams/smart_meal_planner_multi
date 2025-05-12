@@ -1,0 +1,64 @@
+# This file contains the changes needed to add Smart/AI Shopping List to ShoppingListPage.jsx
+
+1. Add import at the top of the file:
+```javascript
+import SmartShoppingList from '../components/SmartShoppingList';
+```
+
+2. Add viewMode state:
+```javascript
+const [viewMode, setViewMode] = useState('regular'); // 'regular' or 'smart'
+```
+
+3. Find the regular ShoppingList component code, which likely looks like:
+```jsx
+<ShoppingList
+  categories={groceryList}
+  selectedStore={selectedStore}
+  onAddToCart={handleAddToCart}
+  onAddToMixedCart={handleAddToMixedCart}
+/>
+```
+
+4. Replace it with this conditional rendering:
+```jsx
+{/* Add view mode toggle */}
+<Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
+  <Button
+    variant={viewMode === 'regular' ? 'contained' : 'outlined'}
+    onClick={() => setViewMode('regular')}
+    sx={{ mr: 1 }}
+    size="small"
+  >
+    Regular View
+  </Button>
+  <Button
+    variant={viewMode === 'smart' ? 'contained' : 'outlined'}
+    color="secondary"
+    onClick={() => setViewMode('smart')}
+    size="small"
+    startIcon={<AiIcon />}
+  >
+    AI Shopping List
+  </Button>
+</Box>
+
+{/* Conditionally render based on viewMode */}
+{viewMode === 'regular' ? (
+  <ShoppingList
+    categories={groceryList}
+    selectedStore={selectedStore}
+    onAddToCart={handleAddToCart}
+    onAddToMixedCart={handleAddToMixedCart}
+  />
+) : (
+  <SmartShoppingList
+    groceryData={groceryList}
+    selectedStore={selectedStore}
+    onAddToCart={handleAddToCart}
+  />
+)}
+```
+
+# If the ShoppingList is inside a tab or other container, make sure to add the toggle button
+# before the conditional rendering to ensure it's visible regardless of which view is selected.

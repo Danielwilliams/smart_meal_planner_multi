@@ -15,6 +15,7 @@ import {
 import { BugReport as BugIcon } from '@mui/icons-material';
 import ShoppingList from '../components/ShoppingList';
 import ShoppingListDebug from '../components/ShoppingListDebug';
+import SmartShoppingList from '../components/SmartShoppingList';
 import apiService from '../services/apiService';
 
 // A simplified debugging version of the shopping list page
@@ -25,6 +26,7 @@ function ShoppingListPageDebug() {
   const [error, setError] = useState('');
   const [showDebug, setShowDebug] = useState(false);
   const [rawMenuData, setRawMenuData] = useState(null);
+  const [viewMode, setViewMode] = useState('regular'); // 'regular', 'smart'
 
   // Sample menu ID for debugging - can be updated with your actual menu ID
   const SAMPLE_MENU_ID = '1234';
@@ -293,11 +295,29 @@ function ShoppingListPageDebug() {
         <ShoppingListDebug groceryData={rawMenuData} />
       )}
 
-      <Divider sx={{ my: 3 }}>
+      <Box sx={{ my: 3, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <Typography variant="subtitle1" color="textSecondary">
           Shopping List Display
         </Typography>
-      </Divider>
+        <Box>
+          <Button
+            variant={viewMode === 'regular' ? 'contained' : 'outlined'}
+            onClick={() => setViewMode('regular')}
+            sx={{ mr: 1 }}
+            size="small"
+          >
+            Regular View
+          </Button>
+          <Button
+            variant={viewMode === 'smart' ? 'contained' : 'outlined'}
+            color="secondary"
+            onClick={() => setViewMode('smart')}
+            size="small"
+          >
+            AI Shopping List
+          </Button>
+        </Box>
+      </Box>
 
       {loading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
@@ -307,12 +327,18 @@ function ShoppingListPageDebug() {
         <Alert severity="error" sx={{ mb: 2 }}>
           {error}
         </Alert>
-      ) : (
+      ) : viewMode === 'regular' ? (
         <ShoppingList
           categories={groceryList}
           selectedStore={selectedStore}
           onAddToCart={handleAddToCart}
           onAddToMixedCart={handleAddToMixedCart}
+        />
+      ) : (
+        <SmartShoppingList
+          groceryData={rawMenuData || groceryList}
+          selectedStore={selectedStore}
+          onAddToCart={handleAddToCart}
         />
       )}
     </Container>

@@ -38,6 +38,7 @@ import { useAuth } from '../context/AuthContext';
 import apiService from '../services/apiService';
 import CATEGORY_MAPPING from '../data/categoryMapping';
 import ShoppingList from '../components/ShoppingList';
+import SmartShoppingList from '../components/SmartShoppingList';
 import { 
   AutoAwesome as AiIcon,
   ExpandMore as ExpandMoreIcon,
@@ -70,6 +71,7 @@ function ShoppingListPage() {
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [lastSnackbarTime, setLastSnackbarTime] = useState(0);
+  const [viewMode, setViewMode] = useState('regular'); // 'regular' or 'smart'
 
   // Helper function to show snackbar with debouncing to prevent duplicates
   const showSnackbar = (message) => {
