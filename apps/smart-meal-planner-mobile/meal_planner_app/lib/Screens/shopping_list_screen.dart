@@ -1188,43 +1188,65 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
                                   // Items in this category
                                   ...entry.value.map((item) {
                                     String displayText = item['name'];
-                                    if (item['quantity'] != null) {
-                                      // Check if this is a cheese item with "1 g" quantity
-                                    if ((displayText.toLowerCase().contains('cheese') ||
-                                         displayText.toLowerCase().contains('mozzarella')) &&
-                                        item['quantity'] != null && item['quantity'].toString() == '1' &&
-                                        (item['unit'] == 'g' || item['unit'] == null)) {
+                                    // Process the item name and extract quantity/unit if needed
+                                    if (displayText.contains(': ') && item['quantity'] == null) {
+                                      final parts = displayText.split(': ');
+                                      if (parts.length >= 2) {
+                                        displayText = parts[0];
+                                        final quantityStr = parts[1];
 
-                                      // Apply proper cheese quantities based on type
-                                      if (displayText.toLowerCase().contains('cheddar') ||
-                                          displayText.toLowerCase().contains('mozzarella')) {
-                                        displayText = "$displayText: 8 oz";
-                                      } else if (displayText.toLowerCase().contains('feta') ||
-                                                displayText.toLowerCase().contains('parmesan')) {
-                                        displayText = "$displayText: 1/4 cup";
-                                      } else {
-                                        displayText = "$displayText: 4 oz";
-                                      }
-                                    } else {
-                                      // Standard quantity formatting
-                                      String quantityText = "";
-                                      var qty = item['quantity'];
-                                      if (qty is int) {
-                                        quantityText = qty.toString();
-                                      } else if (qty is double) {
-                                        // Format double to avoid showing decimals for whole numbers
-                                        quantityText = qty == qty.toInt() ? qty.toInt().toString() : qty.toString();
-                                      } else if (qty != null) {
-                                        // Just use the value directly
-                                        quantityText = qty.toString();
-                                      }
+                                        // Try to extract quantity and unit using regex
+                                        final unitRegex = RegExp(r'(\d+(?:\.\d+)?)\s*([a-zA-Z]+)?');
+                                        final unitMatch = unitRegex.firstMatch(quantityStr);
 
-                                      // Only add quantity if it exists
-                                      if (quantityText.isNotEmpty) {
-                                        // Combine with unit and name
-                                        displayText = "$quantityText ${item['unit'] ?? ''} $displayText".trim();
+                                        if (unitMatch != null) {
+                                          item['quantity'] = unitMatch.group(1);
+                                          if (unitMatch.group(2) != null && item['unit'] == null) {
+                                            item['unit'] = unitMatch.group(2);
+                                          }
+                                        } else {
+                                          item['quantity'] = quantityStr;
+                                        }
                                       }
                                     }
+
+                                    if (item['quantity'] != null) {
+                                      // Check if this is a cheese item with "1 g" quantity
+                                      if ((displayText.toLowerCase().contains('cheese') ||
+                                           displayText.toLowerCase().contains('mozzarella')) &&
+                                          item['quantity'] != null && item['quantity'].toString() == '1' &&
+                                          (item['unit'] == 'g' || item['unit'] == null)) {
+
+                                        // Apply proper cheese quantities based on type
+                                        if (displayText.toLowerCase().contains('cheddar') ||
+                                            displayText.toLowerCase().contains('mozzarella')) {
+                                          displayText = "$displayText: 8 oz";
+                                        } else if (displayText.toLowerCase().contains('feta') ||
+                                                  displayText.toLowerCase().contains('parmesan')) {
+                                          displayText = "$displayText: 1/4 cup";
+                                        } else {
+                                          displayText = "$displayText: 4 oz";
+                                        }
+                                      } else {
+                                        // Standard quantity formatting
+                                        String quantityText = "";
+                                        var qty = item['quantity'];
+                                        if (qty is int) {
+                                          quantityText = qty.toString();
+                                        } else if (qty is double) {
+                                          // Format double to avoid showing decimals for whole numbers
+                                          quantityText = qty == qty.toInt() ? qty.toInt().toString() : qty.toString();
+                                        } else if (qty != null) {
+                                          // Just use the value directly
+                                          quantityText = qty.toString();
+                                        }
+
+                                        // Only add quantity if it exists
+                                        if (quantityText.isNotEmpty) {
+                                          // Display name: quantity unit
+                                          displayText = "$displayText: $quantityText${item['unit'] != null ? ' ' + item['unit'] : ''}";
+                                        }
+                                      }
                                     }
                                     if (item['notes'] != null && item['notes'].isNotEmpty) {
                                       displayText += " (${item['notes']})";

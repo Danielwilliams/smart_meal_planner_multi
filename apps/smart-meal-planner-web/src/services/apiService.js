@@ -358,7 +358,7 @@ const apiService = {
                 const name = item.name || "Unknown item";
                 const quantity = item.quantity || "1";
                 const unit = item.unit || "";
-                const display_name = `${name}: ${quantity} ${unit}`.trim();
+                const display_name = `${name}: ${quantity}${unit ? ' ' + unit : ''}`.trim();
 
                 return {
                   ...item,

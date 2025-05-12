@@ -934,13 +934,37 @@ function ShoppingListPage() {
               }
 
               // Ensure name exists
-              const name = item.name || "Unknown item";
+              let name = item.name || "Unknown item";
               // Ensure quantity exists
-              const quantity = item.quantity || "1";
+              let quantity = item.quantity || "1";
               // Ensure unit exists
-              const unit = item.unit || "";
+              let unit = item.unit || "";
+
+              // Check if name contains quantity/unit information
+              if (name.includes(': ') && !quantity) {
+                // Split the name and quantity
+                const parts = name.split(': ');
+                if (parts.length >= 2) {
+                  name = parts[0];
+                  const quantityStr = parts[1];
+
+                  // Try to extract quantity and unit using regex
+                  const unitRegex = /(\d+(?:\.\d+)?)\s*([a-zA-Z]+)?/;
+                  const unitMatch = quantityStr.match(unitRegex);
+
+                  if (unitMatch) {
+                    quantity = unitMatch[1];
+                    if (unitMatch[2] && !unit) {
+                      unit = unitMatch[2];
+                    }
+                  } else {
+                    quantity = quantityStr;
+                  }
+                }
+              }
+
               // Create or update display_name
-              const display_name = `${name}: ${quantity} ${unit}`.trim();
+              const display_name = `${name}: ${quantity}${unit ? ' ' + unit : ''}`.trim();
 
               return {
                 ...item,

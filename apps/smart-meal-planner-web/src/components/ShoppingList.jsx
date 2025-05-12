@@ -1420,11 +1420,23 @@ const ShoppingListItem = ({
         const parts = item.name.split(': ');
         if (parts.length >= 2) {
           const extractedName = parts[0];
-          const extractedQuantity = parts[1];
+          let extractedQuantity = parts[1];
+
+          // Further parse the quantity to extract unit if present
+          const unitRegex = /(\d+(?:\.\d+)?)\s*([a-zA-Z]+)?/;
+          const unitMatch = extractedQuantity.match(unitRegex);
+
+          if (unitMatch) {
+            extractedQuantity = unitMatch[1];
+            if (unitMatch[2] && !item.unit) {
+              item.unit = unitMatch[2];
+            }
+          }
 
           console.log('Extracted from name:', {
             name: extractedName,
-            quantity: extractedQuantity
+            quantity: extractedQuantity,
+            unit: item.unit
           });
 
           // Update the item object to separate name and quantity
@@ -1527,7 +1539,7 @@ const ShoppingListItem = ({
         {/* Display name and quantity separately as they come from backend */}
         {item && typeof item === 'object' && item.name ?
           (item.quantity ?
-            `${item.name}: ${item.quantity}` :
+            `${item.name}: ${item.quantity}${item.unit ? ' ' + item.unit : ''}` :
             item.name
           ) :
           displayName}
