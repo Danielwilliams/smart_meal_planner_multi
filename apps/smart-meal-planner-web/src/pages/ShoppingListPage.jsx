@@ -92,6 +92,23 @@ function ShoppingListPage() {
   const [activeTab, setActiveTab] = useState(0);
   const [aiPreferences, setAiPreferences] = useState('');
   const [usingAiList, setUsingAiList] = useState(false);
+
+  // For entertaining messages while loading
+  const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
+  const loadingMessages = [
+    "AI chef is chopping ingredients into categories...",
+    "Sorting your tomatoes from your potatoes...",
+    "Figuring out what aisle the quinoa is in...",
+    "Counting how many eggs you'll need...",
+    "Calculating the perfect amount of garlic (always more)...",
+    "Organizing your shopping route for maximum efficiency...",
+    "Deciding whether avocados should be in produce or 'temperamental fruits'...",
+    "Making sure you don't forget the salt this time...",
+    "Translating 'a pinch' into actual measurements...",
+    "Checking if you really need more olive oil...",
+    "Determining if ice cream counts as a dairy essential...",
+    "Sorting ingredients by 'foods you'll actually use' vs 'aspirational purchases'..."
+  ];
   
   // Cache management
   const AI_SHOPPING_CACHE_KEY = 'ai_shopping_cache';
@@ -1272,6 +1289,28 @@ function ShoppingListPage() {
   };
 
   // Clean up interval on component mount and unmount with enhanced safety
+  // Effect to rotate loading messages every 3 seconds while polling
+  useEffect(() => {
+    let messageInterval;
+
+    if (aiShoppingLoading && statusPollingInterval) {
+      console.log("Starting loading message rotation");
+      // Start rotating messages
+      messageInterval = setInterval(() => {
+        setLoadingMessageIndex(prevIndex =>
+          prevIndex >= loadingMessages.length - 1 ? 0 : prevIndex + 1
+        );
+      }, 3000);
+    }
+
+    return () => {
+      if (messageInterval) {
+        console.log("Clearing loading message interval");
+        clearInterval(messageInterval);
+      }
+    };
+  }, [aiShoppingLoading, statusPollingInterval, loadingMessages.length]);
+
   useEffect(() => {
     // Cleanup global state on mount to ensure no leftover polling from previous component instances
     clearStatusPolling();
@@ -1436,8 +1475,14 @@ function ShoppingListPage() {
             console.log("Processing status:", hasProcessingStatus);
             console.log("Has placeholder messages:", hasPlaceholderMessages);
 
+            // Set loading state to true to show the entertaining messages
+            setAiShoppingLoading(true);
+
             // Start polling for status updates
             startStatusPolling(menuId);
+
+            // Always switch to the AI tab when processing starts
+            setActiveTab(1);
 
             // Return the initial processing response - but don't treat it as final
             // We'll update with the completed result when polling completes
@@ -1518,7 +1563,14 @@ function ShoppingListPage() {
               // Start polling if status indicates processing
               if (statusResponse.status === "processing" || hasPlaceholderMessages) {
                 console.log("Status endpoint indicates processing - starting polling");
+                // Set loading state to true to show the entertaining messages
+                setAiShoppingLoading(true);
+
+                // Start polling for status updates
                 startStatusPolling(menuId);
+
+                // Always switch to the AI tab when processing starts
+                setActiveTab(1);
                 return statusResponse;
               }
             }
@@ -2460,7 +2512,16 @@ const categorizeItems = (mealPlanData) => {
                   color="primary" 
                   disabled={aiShoppingLoading}
                   startIcon={aiShoppingLoading ? <CircularProgress size={20} /> : <AiIcon />}
-                  onClick={() => loadAiShoppingList(selectedMenuId, true)} // Force refresh
+                  onClick={() => {
+                    // Set loading state immediately for a more responsive feel
+                    setAiShoppingLoading(true);
+                    // Switch to AI tab
+                    setActiveTab(1);
+                    // Reset loading message index to start fresh
+                    setLoadingMessageIndex(0);
+                    // Start the actual loading process
+                    loadAiShoppingList(selectedMenuId, true);
+                  }} // Force refresh
                 >
                   Regenerate AI List
                 </Button>
@@ -2490,16 +2551,44 @@ const categorizeItems = (mealPlanData) => {
                 id="tabpanel-1"
                 aria-labelledby="tab-1"
               >
-                {activeTab === 1 && aiShoppingData && (
+                {activeTab === 1 && (
                   <Box>
+                    {/* Processing indicator with entertaining messages */}
+                    {aiShoppingLoading && (
+                      <Card sx={{ mb: 3, backgroundColor: '#f8f9fa' }}>
+                        <CardContent>
+                          <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" py={3}>
+                            <CircularProgress size={60} sx={{ mb: 3 }} />
+                            <Typography variant="h6" textAlign="center" gutterBottom>
+                              AI Shopping List in Progress
+                            </Typography>
+                            <Typography variant="body1" color="text.secondary" textAlign="center" sx={{ fontStyle: 'italic', mt: 1 }}>
+                              {loadingMessages[loadingMessageIndex]}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary" textAlign="center" sx={{ mt: 2 }}>
+                              This may take up to 60 seconds. We're creating a smart, categorized shopping list for you.
+                            </Typography>
+                          </Box>
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {/* Display AI shopping data when available */}
+                    {aiShoppingData && (
+                    <>
                     {/* Display cache info if applicable */}
                     {aiShoppingData.cached && (
                       <Alert severity="info" sx={{ mb: 2 }}>
-                        Using cached shopping list from {new Date(aiShoppingData.cache_time).toLocaleString()}. 
-                        <Button 
-                          size="small" 
+                        Using cached shopping list from {new Date(aiShoppingData.cache_time).toLocaleString()}.
+                        <Button
+                          size="small"
                           sx={{ ml: 2 }}
-                          onClick={() => loadAiShoppingList(selectedMenuId, true)}
+                          onClick={() => {
+                            setAiShoppingLoading(true);
+                            setActiveTab(1);
+                            setLoadingMessageIndex(0);
+                            loadAiShoppingList(selectedMenuId, true);
+                          }}
                         >
                           Refresh
                         </Button>
@@ -2739,6 +2828,8 @@ const categorizeItems = (mealPlanData) => {
                           </Grid>
                         </AccordionDetails>
                       </Accordion>
+                    )}
+                    </>
                     )}
                   </Box>
                 )}
