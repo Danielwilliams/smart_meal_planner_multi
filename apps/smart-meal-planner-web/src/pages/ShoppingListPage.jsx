@@ -851,30 +851,78 @@ function ShoppingListPage() {
 
   // Function to check the status of an AI shopping list
   const checkAiShoppingListStatus = async (menuId) => {
+    // Safety check - if no active polling interval, exit immediately
+    if (!statusPollingInterval) {
+      console.log("No active polling interval, skipping status check");
+      return;
+    }
+
+    // Track current polling in a global variable to prevent duplicate calls
+    if (window.aiStatusCurrentlyPolling) {
+      console.log("Another status check is already in progress, skipping this one");
+      return;
+    }
+
+    // Set the flag to indicate polling is in progress
+    window.aiStatusCurrentlyPolling = true;
+
     console.log(`Polling AI shopping list status (attempt ${pollCount + 1}/${MAX_POLLS})`);
 
+    // Exit conditions - no menu ID or max polls reached
     if (!menuId || pollCount >= MAX_POLLS) {
       // Stop polling if we've reached the maximum number of polls
       if (pollCount >= MAX_POLLS) {
         console.log(`Maximum polls (${MAX_POLLS}) reached, stopping status checks`);
         showSnackbar("AI processing is taking longer than expected. Please try refreshing the page.");
+      } else {
+        console.log("No menu ID provided, stopping polling");
       }
       clearStatusPolling();
+      window.aiStatusCurrentlyPolling = false;
       return;
     }
 
     try {
+      // Validate that this polling is for the expected menu
+      if (window.currentPollingMenuId !== menuId) {
+        console.log(`Menu ID mismatch: expected ${window.currentPollingMenuId}, got ${menuId}, stopping`);
+        clearStatusPolling();
+        window.aiStatusCurrentlyPolling = false;
+        return;
+      }
+
+      // Fetch status from API
       const statusResponse = await apiService.getAiShoppingListStatus(menuId, aiPreferences);
       console.log("Status response:", statusResponse);
 
-      // Update poll count
+      // Increment poll count
       setPollCount(prevCount => prevCount + 1);
 
-      // Check if processing is complete or if this is cached data
-      if (statusResponse.status === "completed" || statusResponse.cached === true) {
+      // Check comprehensive completion conditions - any of these indicate completed status
+      const isCompleted =
+        // Has explicit completed status
+        statusResponse.status === "completed" ||
+        // Has cache flag set
+        statusResponse.cached === true ||
+        // Has groceryList property with content
+        (statusResponse.groceryList &&
+         Array.isArray(statusResponse.groceryList) &&
+         statusResponse.groceryList.length > 0) ||
+        // Has nutrition tips populated (indicates completion)
+        (statusResponse.nutritionTips &&
+         Array.isArray(statusResponse.nutritionTips) &&
+         statusResponse.nutritionTips.length > 0 &&
+         statusResponse.nutritionTips[0] !== "Please try again") ||
+        // Has recommendations populated (indicates completion)
+        (statusResponse.recommendations &&
+         Array.isArray(statusResponse.recommendations) &&
+         statusResponse.recommendations.length > 0 &&
+         statusResponse.recommendations[0] !== "Error checking status");
+
+      if (isCompleted) {
         console.log("AI shopping list processing completed or using cached data!");
 
-        // Stop the polling
+        // Stop the polling immediately (crucial step)
         clearStatusPolling();
 
         // Process the items with the helper function
@@ -883,6 +931,10 @@ function ShoppingListPage() {
         // Update state with the completed data
         setAiShoppingData(processedResponse);
         setAiShoppingLoading(false);
+
+        // Set a flag to track that this menu's list was successfully loaded
+        window.menuAiShoppingListCompleted = window.menuAiShoppingListCompleted || {};
+        window.menuAiShoppingListCompleted[menuId] = true;
 
         // Cache the results
         setCachedShoppingList(menuId, {
@@ -895,12 +947,24 @@ function ShoppingListPage() {
         if (pollCount > 1) {
           showSnackbar("AI shopping list is ready!");
         }
+
+        // Clear any existing timeout to prevent race conditions
+        if (window.aiStatusPollingTimeout) {
+          clearTimeout(window.aiStatusPollingTimeout);
+          window.aiStatusPollingTimeout = null;
+        }
+
+        // Set polling as no longer in progress
+        window.aiStatusCurrentlyPolling = false;
+
+        return; // Early exit - crucial to prevent further polling
       }
+
       // Handle "error" status
       else if (statusResponse.status === "error") {
         console.log("AI shopping list processing error:", statusResponse.message);
 
-        // Stop the polling
+        // Stop the polling - this is crucial
         clearStatusPolling();
 
         // Show error message
@@ -936,25 +1000,125 @@ function ShoppingListPage() {
         clearStatusPolling();
         showSnackbar("Error checking shopping list status: " + err.message);
       }
+    } finally {
+      // Always clear the polling in progress flag
+      window.aiStatusCurrentlyPolling = false;
     }
   };
 
-  // Helper to clear the polling interval
+  // Helper to clear the polling interval - enhanced for reliability
   const clearStatusPolling = () => {
     console.log("Clearing status polling interval - current interval:", statusPollingInterval);
 
-    // Clear the interval
-    if (statusPollingInterval) {
-      clearInterval(statusPollingInterval);
+    // Track that we're in the process of clearing
+    window.isPollingBeingCleared = true;
+
+    try {
+      // Clear the interval safely with double check
+      if (statusPollingInterval) {
+        try {
+          // First attempt to clear
+          clearInterval(statusPollingInterval);
+          console.log("Successfully cleared interval");
+        } catch (intervalError) {
+          console.error("Error clearing interval:", intervalError);
+        }
+
+        // Force state update to null, regardless of whether clearInterval succeeded
+        setStatusPollingInterval(null);
+      }
+
+      // Clear any pending timeout for immediate check
+      if (window.aiStatusPollingTimeout) {
+        try {
+          clearTimeout(window.aiStatusPollingTimeout);
+          console.log("Successfully cleared timeout");
+        } catch (timeoutError) {
+          console.error("Error clearing timeout:", timeoutError);
+        }
+        window.aiStatusPollingTimeout = null;
+      }
+
+      // Reset all tracking variables
+      window.currentPollingMenuId = null;
+      window.aiStatusCurrentlyPolling = false;
+
+      // Reset poll count
+      setPollCount(0);
+
+      // Set a guard flag to prevent multiple concurrent polling loops
+      // This creates a "cooldown" period before allowing new polling to start
+      window.isPollingCleared = true;
+
+      // Clear any old timeouts for the flag reset
+      if (window.pollingClearedResetTimeout) {
+        clearTimeout(window.pollingClearedResetTimeout);
+      }
+
+      // After a short delay, reset the guard flag to allow new polling to start
+      window.pollingClearedResetTimeout = setTimeout(() => {
+        window.isPollingCleared = false;
+        window.isPollingBeingCleared = false;
+        console.log("Polling guards reset - new polling allowed");
+      }, 1000); // Longer delay for safer operation
+    } catch (error) {
+      console.error("Global error in clearStatusPolling:", error);
+
+      // Force reset of all polling state variables
+      // Even if there was an error above, make sure we reset everything
+      window.statusPollingInterval = null;
+      window.aiStatusPollingTimeout = null;
+      window.currentPollingMenuId = null;
+      window.aiStatusCurrentlyPolling = false;
+
       setStatusPollingInterval(null);
+      setPollCount(0);
+
+      // Reset flags with delay
+      setTimeout(() => {
+        window.isPollingCleared = false;
+        window.isPollingBeingCleared = false;
+      }, 1000);
     }
-    setPollCount(0);
   };
 
-  // Function to start polling for status updates
+  // Function to start polling for status updates - enhanced for reliability
   const startStatusPolling = (menuId) => {
+    // Validate menu ID
+    if (!menuId) {
+      console.warn("Cannot start polling without a valid menu ID");
+      return;
+    }
+
+    // Add additional validation to prevent polling when we already know it's complete
+    // Check if we've already successfully loaded this menu's shopping list
+    if (window.menuAiShoppingListCompleted && window.menuAiShoppingListCompleted[menuId]) {
+      console.log(`Shopping list for menu ${menuId} already completed, not starting polling`);
+      return;
+    }
+
+    // If another poll clear is in progress, wait before starting new polling
+    if (window.isPollingBeingCleared) {
+      console.log("Polling is being cleared, delaying new polling start");
+      setTimeout(() => startStatusPolling(menuId), 1000);
+      return;
+    }
+
+    // If polling cooldown is active, wait before starting
+    if (window.isPollingCleared) {
+      console.log("Polling cooldown active, delaying new polling start");
+      setTimeout(() => startStatusPolling(menuId), 1200);
+      return;
+    }
+
+    // Track the current menu ID being polled for validation
+    window.currentPollingMenuId = menuId;
+
     // Always clear any existing polling first for safety
-    clearStatusPolling();
+    // But only if we don't have an active clearing operation
+    if (!window.isPollingBeingCleared) {
+      clearStatusPolling();
+    }
 
     // Reset poll count
     setPollCount(0);
@@ -962,49 +1126,209 @@ function ShoppingListPage() {
     // Start a new polling interval
     console.log(`Starting status polling for menu ${menuId}`);
 
-    // Create and save the interval ID
-    const intervalId = setInterval(() => {
-      // Check if interval still exists (prevents "No active interval" errors)
-      if (statusPollingInterval) {
-        checkAiShoppingListStatus(menuId);
-      } else {
-        console.log("Interval no longer exists, not checking status");
+    try {
+      // Check for cache before starting polling
+      const cachedData = getCachedShoppingList(menuId);
+      if (cachedData) {
+        console.log(`Found cached shopping list for menu ${menuId}, not starting polling`);
+        // Process cached data
+        const processedCache = processAiShoppingItems({
+          ...cachedData,
+          cached: true,
+          menuId: menuId
+        });
+
+        setAiShoppingData(processedCache);
+        setUsingAiList(true);
+        setAiShoppingLoading(false);
+
+        // Track this menu as completed
+        window.menuAiShoppingListCompleted = window.menuAiShoppingListCompleted || {};
+        window.menuAiShoppingListCompleted[menuId] = true;
+
+        // Show cached notification
+        showSnackbar(`Using cached shopping list for menu ${menuId}`);
+        return;
       }
-    }, POLL_INTERVAL);
 
-    setStatusPollingInterval(intervalId);
+      // Create and save the interval ID with built-in error handling
+      const intervalId = setInterval(() => {
+        try {
+          // Skip if polling is paused or being cleared
+          if (window.isPollingCleared || window.isPollingBeingCleared) {
+            console.log("Polling is paused or being cleared, skipping this polling cycle");
+            return;
+          }
 
-    // Always do an immediate check - critical to start the loading process
-    checkAiShoppingListStatus(menuId);
+          // Validate that we're polling for the current menu
+          if (window.currentPollingMenuId !== menuId) {
+            console.log(`Menu ID changed (was ${menuId}, now ${window.currentPollingMenuId}), stopping polling`);
+            clearStatusPolling();
+            return;
+          }
+
+          // Safety check to make sure polling doesn't continue after the component unmounts
+          if (!statusPollingInterval) {
+            console.log("Interval state variable is null, stopping polling");
+
+            // Force cleanup any actual interval that might still be running
+            if (intervalId) {
+              console.log("Clearing interval ID directly:", intervalId);
+              clearInterval(intervalId);
+            }
+            return;
+          }
+
+          // Check for completed status in a global variable to prevent unnecessary status checks
+          if (window.menuAiShoppingListCompleted && window.menuAiShoppingListCompleted[menuId]) {
+            console.log(`Menu ${menuId} already completed according to global flag, stopping polling`);
+            clearStatusPolling();
+            return;
+          }
+
+          // All checks passed, perform status check
+          checkAiShoppingListStatus(menuId);
+        } catch (intervalError) {
+          console.error("Error in polling interval:", intervalError);
+          clearStatusPolling();
+        }
+      }, POLL_INTERVAL);
+
+      // Save the interval ID in state
+      setStatusPollingInterval(intervalId);
+
+      // Also track it in a global variable as backup
+      window.activeStatusPollingInterval = intervalId;
+
+      // Do an immediate check to start the process quickly - but use a timeout to ensure state updates have settled
+      if (!window.aiStatusPollingTimeout) {
+        window.aiStatusPollingTimeout = setTimeout(() => {
+          if (!window.menuAiShoppingListCompleted || !window.menuAiShoppingListCompleted[menuId]) {
+            console.log("Running immediate status check");
+            checkAiShoppingListStatus(menuId);
+          } else {
+            console.log("Skipping immediate check - menu already completed");
+          }
+        }, 200);
+      }
+    } catch (error) {
+      console.error("Error starting status polling:", error);
+      clearStatusPolling();
+    }
   };
 
-  // Clean up interval on component unmount
+  // Clean up interval on component mount and unmount with enhanced safety
   useEffect(() => {
-    // Clean up on mount too, to ensure no leftover polling
+    // Cleanup global state on mount to ensure no leftover polling from previous component instances
     clearStatusPolling();
 
-    // And clean up on unmount
+    // Clear global tracking variables for completion status (this is a fresh mount)
+    window.menuAiShoppingListCompleted = {};
+    window.activeStatusPollingInterval = null;
+
+    console.log("Component mounted, cleaned up previous polling state");
+
+    // Enhanced cleanup on unmount
     return () => {
-      console.log("Component unmounting, clearing polling interval");
+      console.log("Component unmounting, running comprehensive cleanup");
+
+      // First, try the normal cleanup
       clearStatusPolling();
+
+      // As an extra precaution, directly clear any interval in the React state
+      if (statusPollingInterval) {
+        try {
+          clearInterval(statusPollingInterval);
+          console.log("Cleared statusPollingInterval directly during unmount");
+        } catch (e) {
+          console.error("Error clearing interval during unmount:", e);
+        }
+      }
+
+      // Also clear the backup global interval
+      if (window.activeStatusPollingInterval) {
+        try {
+          clearInterval(window.activeStatusPollingInterval);
+          console.log("Cleared global activeStatusPollingInterval during unmount");
+        } catch (e) {
+          console.error("Error clearing global interval during unmount:", e);
+        }
+        window.activeStatusPollingInterval = null;
+      }
+
+      // Clear all possible timeouts
+      if (window.aiStatusPollingTimeout) {
+        clearTimeout(window.aiStatusPollingTimeout);
+        window.aiStatusPollingTimeout = null;
+      }
+
+      if (window.pollingClearedResetTimeout) {
+        clearTimeout(window.pollingClearedResetTimeout);
+        window.pollingClearedResetTimeout = null;
+      }
+
+      // Reset all flags and tracking variables
+      window.isPollingCleared = false;
+      window.isPollingBeingCleared = false;
+      window.aiStatusCurrentlyPolling = false;
+      window.currentPollingMenuId = null;
+
+      console.log("Component unmount cleanup completed");
     };
   }, []);
 
-  // Function to load AI shopping list with caching
+  // Enhanced function to load AI shopping list with improved caching and error handling
   const loadAiShoppingList = async (menuId, forceRefresh = false) => {
-    if (!menuId) return null;
+    if (!menuId) {
+      console.warn("Cannot load AI shopping list without a valid menu ID");
+      return null;
+    }
 
+    // Set loading state
     setAiShoppingLoading(true);
 
+    // Track that we're actively loading this menu's shopping list
+    window.currentLoadingMenuId = menuId;
+
     try {
+      // If we already know this menu's AI shopping list is completed, use the cached result
+      if (window.menuAiShoppingListCompleted && window.menuAiShoppingListCompleted[menuId] && !forceRefresh) {
+        console.log(`Menu ${menuId} already marked complete, using existing data`);
+
+        // Get the cached data
+        const cachedData = getCachedShoppingList(menuId);
+        if (cachedData) {
+          const processedCache = processAiShoppingItems({
+            ...cachedData,
+            cached: true,
+            menuId: menuId
+          });
+
+          setAiShoppingData(processedCache);
+          setUsingAiList(true);
+          setAiShoppingLoading(false);
+
+          showSnackbar(`Using cached shopping list for menu ${menuId}`);
+          return processedCache;
+        }
+      }
+
       // Check cache first if not forcing refresh
       if (!forceRefresh) {
         const cachedData = getCachedShoppingList(menuId);
         if (cachedData) {
-          console.log("Using cached AI shopping list");
+          console.log("Using cached AI shopping list for menu", menuId);
 
           // Process cached data to ensure all items are properly formatted
-          const processedCache = processAiShoppingItems(cachedData);
+          const processedCache = processAiShoppingItems({
+            ...cachedData,
+            cached: true,
+            menuId: menuId
+          });
+
+          // Mark this menu as completed
+          window.menuAiShoppingListCompleted = window.menuAiShoppingListCompleted || {};
+          window.menuAiShoppingListCompleted[menuId] = true;
 
           setAiShoppingData(processedCache);
           setUsingAiList(true);
@@ -1019,7 +1343,7 @@ function ShoppingListPage() {
 
       // No cache or refresh requested, make API call
       console.log(`Requesting AI shopping list for menu ${menuId}`);
-      const aiResponse = await apiService.generateAiShoppingList(menuId, aiPreferences);
+      const aiResponse = await apiService.generateAiShoppingList(menuId, aiPreferences, !forceRefresh);
       console.log("AI shopping list response:", aiResponse);
 
       // Validate response has required data
@@ -1041,12 +1365,14 @@ function ShoppingListPage() {
         }
       }
 
-      // Add default values for missing fields
+      // Add default values for missing fields to ensure consistent data structure
       const enhancedResponse = {
         ...aiResponse,
+        menuId: menuId,
         recommendations: aiResponse.recommendations || ["Shop by category to save time in the store"],
         nutritionTips: aiResponse.nutritionTips || ["Focus on whole foods for better nutrition"],
-        healthySwaps: aiResponse.healthySwaps || []
+        healthySwaps: aiResponse.healthySwaps || [],
+        pantryStaples: aiResponse.pantryStaples || ["Salt", "Pepper", "Olive Oil"]
       };
 
       // Process the items to ensure proper formatting
@@ -1056,24 +1382,52 @@ function ShoppingListPage() {
       setAiShoppingData(processedResponse);
       setUsingAiList(true);
 
-      // Check if the response indicates processing is still happening
-      if (processedResponse.status === "processing") {
-        console.log("AI shopping list is being processed, starting status polling");
+      // Check for conditions that indicate a completed shopping list
+      const isCompleted =
+        processedResponse.status === "completed" ||
+        processedResponse.cached === true ||
+        (processedResponse.groceryList &&
+         Array.isArray(processedResponse.groceryList) &&
+         processedResponse.groceryList.length > 0) ||
+        // Additional checks for populated fields that indicate completion
+        (processedResponse.nutritionTips &&
+         Array.isArray(processedResponse.nutritionTips) &&
+         processedResponse.nutritionTips.length > 0 &&
+         processedResponse.nutritionTips[0] !== "Please try again");
 
-        // Start polling for processing status
-        startStatusPolling(menuId);
-      } else {
-        // If not processing, we're done
+      // If the response is already complete, no need to poll
+      if (isCompleted) {
+        console.log("AI shopping list response indicates completion, no polling needed");
+
+        // Mark as completed
+        window.menuAiShoppingListCompleted = window.menuAiShoppingListCompleted || {};
+        window.menuAiShoppingListCompleted[menuId] = true;
+
         setAiShoppingLoading(false);
 
-        // Cache the successful response if it's completed and not already cached
-        if (processedResponse.status === "completed" && processedResponse.groceryList && !processedResponse.cached) {
-          // Make sure to include the menu ID in the cached data
-          setCachedShoppingList(menuId, {
-            ...processedResponse,
-            menuId: menuId
-          });
+        // Cache the successful response
+        setCachedShoppingList(menuId, {
+          ...processedResponse,
+          menuId: menuId
+        });
+
+        return processedResponse;
+      }
+      // Check if the response indicates processing is still happening
+      else if (processedResponse.status === "processing" || processedResponse.status === "pending") {
+        console.log("AI shopping list is being processed, starting status polling");
+
+        // Make sure we're not already polling
+        if (!statusPollingInterval) {
+          // Start polling for processing status
+          startStatusPolling(menuId);
+        } else {
+          console.log("Status polling already active, not starting another one");
         }
+      } else {
+        // No explicit status but also not clearly completed - set loading to false
+        console.log("AI shopping list status unclear, using as-is without polling");
+        setAiShoppingLoading(false);
       }
 
       return processedResponse;
@@ -1083,6 +1437,11 @@ function ShoppingListPage() {
       setUsingAiList(false);
       setAiShoppingLoading(false);
       return null;
+    } finally {
+      // Clear the tracking variable
+      if (window.currentLoadingMenuId === menuId) {
+        window.currentLoadingMenuId = null;
+      }
     }
   };
 

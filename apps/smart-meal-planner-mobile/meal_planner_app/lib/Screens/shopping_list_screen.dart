@@ -139,6 +139,39 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
       // Try the AI-enhanced shopping list first
       print("Attempting to fetch AI-enhanced shopping list first for menu ID: $_selectedMenuId");
 
+      // Check for locally cached data first
+      final prefs = await SharedPreferences.getInstance();
+      final String? cachedData = prefs.getString(menuIdKey);
+
+      if (cachedData != null) {
+        try {
+          // Parse cached data
+          final Map<String, dynamic> cachedResult = json.decode(cachedData);
+          // Add a timestamp to the cache to ensure it's not too old
+          final int cachedTimestamp = cachedResult['timestamp'] ?? 0;
+          final int currentTime = DateTime.now().millisecondsSinceEpoch;
+
+          // Check if cache is valid (less than 24 hours old)
+          if (currentTime - cachedTimestamp < 86400000) { // 24 hours in milliseconds
+            print("Using cached AI shopping list data for menu $_selectedMenuId");
+            await _processShoppingListItems(cachedResult['data']);
+            _showSnackbar(
+              'Using cached shopping list for "$_selectedMenuTitle"',
+              duration: Duration(seconds: 2)
+            );
+            setState(() {
+              _isLoading = false;
+            });
+            return;
+          } else {
+            print("Cached data is too old, fetching fresh data");
+          }
+        } catch (cacheError) {
+          print("Error parsing cached data: $cacheError");
+          // Continue with normal fetch if cache fails
+        }
+      }
+
       final aiResult = await ApiService.generateAiShoppingList(
         _selectedMenuId,
         widget.authToken,
@@ -158,33 +191,84 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
             duration: Duration(seconds: 3)
           );
 
-          // Wait a moment and try again
-          await Future.delayed(Duration(seconds: 5));
+          // Track attempts to avoid infinite retries
+          int retryAttempts = 0;
+          const int maxRetries = 3;
+          bool processingComplete = false;
 
-          final retryResult = await ApiService.getAiShoppingListStatus(_selectedMenuId, widget.authToken);
+          while (!processingComplete && retryAttempts < maxRetries) {
+            // Wait a moment and try again
+            await Future.delayed(Duration(seconds: 5));
+            retryAttempts++;
 
-          if (retryResult['status']?.toString()?.toLowerCase() == 'completed' ||
-              retryResult['is_ready'] == true) {
+            final retryResult = await ApiService.getAiShoppingListStatus(_selectedMenuId, widget.authToken);
 
-            // Get the completed list
-            final completedList = await ApiService.generateAiShoppingList(
-              _selectedMenuId,
-              widget.authToken,
-            );
+            // Check if processing is complete
+            if (retryResult['status']?.toString()?.toLowerCase() == 'completed' ||
+                retryResult['is_ready'] == true ||
+                retryResult['cached'] == true ||
+                (retryResult.containsKey('groceryList') && retryResult['groceryList'] is List &&
+                 (retryResult['groceryList'] as List).isNotEmpty)) {
 
-            if (completedList != null &&
-                (completedList.containsKey('groceryList') ||
-                 completedList.containsKey('ingredients') ||
-                 completedList.containsKey('ingredient_list'))) {
-              await _processShoppingListItems(completedList);
+              processingComplete = true;
 
-              // Show success notification using debounced function
-              _showSnackbar(
-                'AI shopping list for "$_selectedMenuTitle" is ready!',
-                duration: Duration(seconds: 3)
+              // Get the completed list
+              final completedList = await ApiService.generateAiShoppingList(
+                _selectedMenuId,
+                widget.authToken,
               );
-              return;
+
+              if (completedList != null &&
+                  (completedList.containsKey('groceryList') ||
+                   completedList.containsKey('ingredients') ||
+                   completedList.containsKey('ingredient_list'))) {
+
+                // Process the final list
+                await _processShoppingListItems(completedList);
+
+                // Cache the result for future use
+                try {
+                  final cacheData = {
+                    'data': completedList,
+                    'timestamp': DateTime.now().millisecondsSinceEpoch,
+                  };
+
+                  await prefs.setString(menuIdKey, json.encode(cacheData));
+                  print("Cached AI shopping list data for menu $_selectedMenuId");
+                } catch (cacheError) {
+                  print("Error caching shopping list data: $cacheError");
+                }
+
+                // Show success notification using debounced function
+                _showSnackbar(
+                  'AI shopping list for "$_selectedMenuTitle" is ready!',
+                  duration: Duration(seconds: 3)
+                );
+
+                setState(() {
+                  _isLoading = false;
+                });
+                return;
+              }
+            } else if (retryResult['status']?.toString()?.toLowerCase() == 'error') {
+              // If there's an explicit error, stop retrying
+              print("AI shopping list error: ${retryResult['message']}");
+              break;
             }
+
+            // Update with progress message
+            _showSnackbar(
+              'AI is still working on your shopping list (attempt ${retryAttempts+1}/${maxRetries+1})...',
+              duration: Duration(seconds: 2)
+            );
+          }
+
+          if (!processingComplete) {
+            print("AI shopping list processing timed out, falling back to regular list");
+            _showSnackbar(
+              'AI shopping list is taking too long, using standard list instead',
+              duration: Duration(seconds: 3)
+            );
           }
         }
 
@@ -195,6 +279,23 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
             (aiResult.containsKey('ingredient_list') && aiResult['ingredient_list'] is List)) {
           print("Processing AI shopping list result");
           await _processShoppingListItems(aiResult);
+
+          // Cache the result for future use
+          try {
+            final cacheData = {
+              'data': aiResult,
+              'timestamp': DateTime.now().millisecondsSinceEpoch,
+            };
+
+            await prefs.setString(menuIdKey, json.encode(cacheData));
+            print("Cached AI shopping list data for menu $_selectedMenuId");
+          } catch (cacheError) {
+            print("Error caching shopping list data: $cacheError");
+          }
+
+          setState(() {
+            _isLoading = false;
+          });
           return; // Success, exit early
         } else {
           print("AI shopping list returned an error, falling back to regular shopping list");
