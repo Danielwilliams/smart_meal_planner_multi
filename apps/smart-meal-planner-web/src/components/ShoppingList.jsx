@@ -901,271 +901,461 @@ const formatDisplayName = (name, quantity, unit, originalItem) => {
 
 // Main function to combine and process items
 const combineItems = (items) => {
-  const groupedItems = {};
+  try {
+    // Validate input
+    if (!items) {
+      console.warn('Null or undefined items passed to combineItems');
+      return [];
+    }
 
-  // First pass: Group items by normalized name
-  items.forEach(item => {
-    if (!item || typeof item !== 'string' || !item.trim()) return;
-    
-    // Clean up the item text first - remove periods and prefixes
-    const cleanItem = item.replace(/^\.\s*/, '').replace(/^[0-9/]+\s+/, '');
-    
-    // Get normalized name and quantities
-    const normalizedName = normalizeItemName(cleanItem);
-    if (!normalizedName) return;
-    
-    // Special handling for specific items that should have consistent names
-    let finalName = normalizedName;
-    
-    // Handle eggs consistently regardless of prefixes
-    if (finalName === 'egg') finalName = 'eggs';
-    
-    // Normalize common items
-    const normalizationMap = {
-      'cucumber': 'cucumber',
-      'apple': 'apple',
-      'avocado': 'avocado',
-      'carrot': 'carrot',
-      'onion': 'onion',
-      'tortilla': 'tortilla',
-      'gluten-free tortilla': 'gluten-free tortilla',
-      'sweet potato': 'sweet potato',
-      'bell pepper': 'bell pepper',
-      'red bell pepper': 'red bell pepper',
-      'broccoli': 'broccoli',
-      'garlic': 'garlic',
-      'ginger': 'ginger',
-      'chicken breast': 'chicken breast',
-      'ground turkey': 'ground turkey',
-      'soy sauce': 'soy sauce',
-      'gluten-free soy sauce': 'gluten-free soy sauce',
-      'olive oil': 'olive oil',
-      'sesame oil': 'sesame oil',
-      'almonds': 'almonds',
-      'berries': 'berries',
-      'mixed greens': 'mixed greens',
-      'cherry tomatoes': 'cherry tomatoes',
-      'green onions': 'green onions',
-      'paprika': 'paprika',
-      'garlic powder': 'garlic powder',
-      'italian seasoning': 'italian seasoning',
-      'fajita seasoning': 'fajita seasoning',
-      'salt': 'salt',
-      'honey': 'honey',
-      'lemon juice': 'lemon juice',
-      'lime juice': 'lime juice',
-      'almond milk': 'almond milk',
-      'gluten-free oats': 'gluten-free oats',
-      'rice vinegar': 'rice vinegar',
-      'salsa': 'salsa',
-      'greek yogurt': 'greek yogurt',
-      'cheddar cheese': 'cheddar cheese',
-      'cheddase': 'cheddar cheese',
-      'corn': 'corn',
-      'mushrooms': 'mushrooms',
-      'red cabbage': 'red cabbage',
-      'sesame seeds': 'sesame seeds',
-      'zucchini': 'zucchini',
-      'granola': 'granola',
-      'almond flour': 'almond flour',
-      'peanut butter': 'peanut butter',
-      'almond butter': 'almond butter'
-    };
-    
-    // Apply name normalization
-    if (normalizationMap[finalName]) {
-      finalName = normalizationMap[finalName];
+    if (!Array.isArray(items)) {
+      console.warn(`Items is not an array: ${typeof items}`);
+      return [];
     }
-    
-    // Consolidate similar berries
-    if (['mixed berrie', 'berrie', 'berry', 'blueberrie', 'blueberry', 'mixed berry'].includes(finalName)) {
-      finalName = 'berries';
-    }
-    
-    // Handle special cases for cooked items
-    if (cleanItem.toLowerCase().includes('cooked')) {
-      if (finalName === 'brown rice' || finalName.includes('brown rice')) {
-        finalName = 'brown rice cooked';
-      } else if (finalName === 'quinoa' || finalName.includes('quinoa')) {
-        finalName = 'quinoa cooked';
-      }
-    }
-    
-    const quantity = getBaseQuantity(cleanItem);
-    const unit = getUnit(cleanItem);
-    
-    // Initialize the group if needed
-    if (!groupedItems[finalName]) {
-      groupedItems[finalName] = {
-        quantities: [],
-        totalGrams: 0,
-        totalQuantity: 0,
-        hasUnit: false,
-        originalItems: [], // Track original items for special handling
-        bestUnit: '' // Track the most appropriate unit
-      };
-    }
-    
-    // Store the original item string for reference
-    groupedItems[finalName].originalItems.push(cleanItem);
-    
-    // Add this item's quantity to the group
-    if (quantity > 0) {
-      groupedItems[finalName].quantities.push({
-        amount: quantity,
-        unit: unit
-      });
-      
-      // Determine the best unit for this ingredient
-      if (!groupedItems[finalName].bestUnit && unit) {
-        groupedItems[finalName].bestUnit = unit;
-      }
-      
-      // If it's in grams, track total grams
-      if (unit === 'g') {
-        groupedItems[finalName].totalGrams += quantity;
-        groupedItems[finalName].hasUnit = true;
-        groupedItems[finalName].bestUnit = 'g';
-      }
-      // For other units, just add to total quantity if units match
-      else if (unit) {
-        groupedItems[finalName].hasUnit = true;
-        
-        // If this unit is the majority unit, add to total
-        const existingUnit = groupedItems[finalName].quantities.length > 1 ? 
-          groupedItems[finalName].quantities[0].unit : '';
-        
-        if (unit === existingUnit || !existingUnit) {
-          groupedItems[finalName].totalQuantity += quantity;
-        }
-        
-        // Update best unit if appropriate
-        if (['cups', 'cup', 'tbsp', 'tsp', 'cloves', 'pieces'].includes(unit)) {
-          groupedItems[finalName].bestUnit = unit;
-        }
-      } 
-      // For count items (no unit)
-      else {
-        groupedItems[finalName].totalQuantity += quantity;
-      }
-    }
-  });
 
-  // Second pass: Format each group for display
-  return Object.entries(groupedItems)
-    .map(([name, data]) => {
-      // Apply special handling for missing quantities
-      if (!data.quantities.length) {
-        // Set default quantities for common items that might be missing quantities
-        if (name === 'cherry tomatoes') return `Cherry Tomatoes: 1 cup`;
-        if (name === 'green onions') return `Green Onions: 1/2 cup`;
-        if (name === 'mushrooms') return `Mushrooms: 1 cup`;
-        if (name === 'gluten-free oats') return `Gluten-Free Oats: 1 cup`;
-        if (name === 'almond flour') return `Almond Flour: 1/4 cup`;
-        if (name === 'baking powder') return `Baking Powder: 1 tsp`;
-        if (name === 'italian seasoning') return `Italian Seasoning: 1 tsp`;
-        if (name === 'paprika') return `Paprika: 1 tsp`;
-        if (name === 'red cabbage') return `Red Cabbage: 1 cup`;
-        if (name === 'almond') return `Almonds: 1/2 cup`;
-        
-        // If we still don't have a quantity, just return the name with proper capitalization
-        return ITEM_DISPLAY_NAMES[name] || 
-          name.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+    // Create a safe working copy of the array
+    const safeItems = items.filter(item => item !== null && item !== undefined);
+
+    // Initialize grouping object with safety checks
+    const groupedItems = {};
+
+    // First pass: Group items by normalized name - with added safety
+    for (let i = 0; i < safeItems.length; i++) {
+      try {
+        const item = safeItems[i];
+
+        // Skip invalid items
+        if (!item || typeof item !== 'string' || !item.trim()) continue;
+
+        // Clean up the item text safely
+        let cleanItem;
+        try {
+          cleanItem = item.replace(/^\.\s*/, '').replace(/^[0-9/]+\s+/, '');
+        } catch (cleanError) {
+          console.error('Error cleaning item:', cleanError);
+          cleanItem = String(item);
+        }
+
+        // Get normalized name safely
+        let normalizedName;
+        try {
+          normalizedName = normalizeItemName(cleanItem);
+        } catch (normalizeError) {
+          console.error('Error normalizing item name:', normalizeError);
+          normalizedName = cleanItem.toLowerCase().trim();
+        }
+
+        if (!normalizedName) continue;
+
+        // Special handling for specific items that should have consistent names
+        let finalName = normalizedName;
+
+        try {
+          // Handle eggs consistently regardless of prefixes
+          if (finalName === 'egg') finalName = 'eggs';
+
+          // Normalize common items
+          const normalizationMap = {
+            'cucumber': 'cucumber',
+            'apple': 'apple',
+            'avocado': 'avocado',
+            'carrot': 'carrot',
+            'onion': 'onion',
+            'tortilla': 'tortilla',
+            'gluten-free tortilla': 'gluten-free tortilla',
+            'sweet potato': 'sweet potato',
+            'bell pepper': 'bell pepper',
+            'red bell pepper': 'red bell pepper',
+            'broccoli': 'broccoli',
+            'garlic': 'garlic',
+            'ginger': 'ginger',
+            'chicken breast': 'chicken breast',
+            'ground turkey': 'ground turkey',
+            'soy sauce': 'soy sauce',
+            'gluten-free soy sauce': 'gluten-free soy sauce',
+            'olive oil': 'olive oil',
+            'sesame oil': 'sesame oil',
+            'almonds': 'almonds',
+            'berries': 'berries',
+            'mixed greens': 'mixed greens',
+            'cherry tomatoes': 'cherry tomatoes',
+            'green onions': 'green onions',
+            'paprika': 'paprika',
+            'garlic powder': 'garlic powder',
+            'italian seasoning': 'italian seasoning',
+            'fajita seasoning': 'fajita seasoning',
+            'salt': 'salt',
+            'honey': 'honey',
+            'lemon juice': 'lemon juice',
+            'lime juice': 'lime juice',
+            'almond milk': 'almond milk',
+            'gluten-free oats': 'gluten-free oats',
+            'rice vinegar': 'rice vinegar',
+            'salsa': 'salsa',
+            'greek yogurt': 'greek yogurt',
+            'cheddar cheese': 'cheddar cheese',
+            'cheddase': 'cheddar cheese',
+            'corn': 'corn',
+            'mushrooms': 'mushrooms',
+            'red cabbage': 'red cabbage',
+            'sesame seeds': 'sesame seeds',
+            'zucchini': 'zucchini',
+            'granola': 'granola',
+            'almond flour': 'almond flour',
+            'peanut butter': 'peanut butter',
+            'almond butter': 'almond butter'
+          };
+
+          // Apply name normalization safely
+          if (normalizationMap[finalName]) {
+            finalName = normalizationMap[finalName];
+          }
+
+          // Consolidate similar berries
+          if (['mixed berrie', 'berrie', 'berry', 'blueberrie', 'blueberry', 'mixed berry'].includes(finalName)) {
+            finalName = 'berries';
+          }
+
+          // Handle special cases for cooked items
+          if (cleanItem.toLowerCase().includes('cooked')) {
+            if (finalName === 'brown rice' || finalName.includes('brown rice')) {
+              finalName = 'brown rice cooked';
+            } else if (finalName === 'quinoa' || finalName.includes('quinoa')) {
+              finalName = 'quinoa cooked';
+            }
+          }
+        } catch (nameError) {
+          console.error('Error normalizing item name:', nameError);
+          // If error, keep original normalized name
+        }
+
+        // Get quantity and unit safely
+        let quantity = 0;
+        let unit = '';
+
+        try {
+          quantity = getBaseQuantity(cleanItem);
+        } catch (quantityError) {
+          console.error('Error getting quantity:', quantityError);
+          quantity = 1; // Default to 1 if we can't extract quantity
+        }
+
+        try {
+          unit = getUnit(cleanItem);
+        } catch (unitError) {
+          console.error('Error getting unit:', unitError);
+          unit = ''; // Default to empty if we can't extract unit
+        }
+
+        // Initialize the group if needed
+        if (!groupedItems[finalName]) {
+          groupedItems[finalName] = {
+            quantities: [],
+            totalGrams: 0,
+            totalQuantity: 0,
+            hasUnit: false,
+            originalItems: [], // Track original items for special handling
+            bestUnit: '' // Track the most appropriate unit
+          };
+        }
+
+        // Store the original item string for reference
+        groupedItems[finalName].originalItems.push(cleanItem);
+
+        // Add this item's quantity to the group
+        if (quantity > 0) {
+          groupedItems[finalName].quantities.push({
+            amount: quantity,
+            unit: unit
+          });
+
+          // Determine the best unit for this ingredient
+          if (!groupedItems[finalName].bestUnit && unit) {
+            groupedItems[finalName].bestUnit = unit;
+          }
+
+          // If it's in grams, track total grams
+          if (unit === 'g') {
+            groupedItems[finalName].totalGrams += quantity;
+            groupedItems[finalName].hasUnit = true;
+            groupedItems[finalName].bestUnit = 'g';
+          }
+          // For other units, just add to total quantity if units match
+          else if (unit) {
+            groupedItems[finalName].hasUnit = true;
+
+            // If this unit is the majority unit, add to total
+            const existingUnit = groupedItems[finalName].quantities.length > 1 ?
+              groupedItems[finalName].quantities[0].unit : '';
+
+            if (unit === existingUnit || !existingUnit) {
+              groupedItems[finalName].totalQuantity += quantity;
+            }
+
+            // Update best unit if appropriate
+            if (['cups', 'cup', 'tbsp', 'tsp', 'cloves', 'pieces'].includes(unit)) {
+              groupedItems[finalName].bestUnit = unit;
+            }
+          }
+          // For count items (no unit)
+          else {
+            groupedItems[finalName].totalQuantity += quantity;
+          }
+        }
+      } catch (itemError) {
+        console.error('Error processing item:', itemError);
+        // Continue to next item
       }
-      
-      // Special handling for eggs - they should always be counted and shown as large
-      if (name === 'eggs') {
-        // Sum up all egg quantities
-        let totalEggs = 0;
-        data.quantities.forEach(q => totalEggs += q.amount);
-        return `Eggs: ${totalEggs} large`;
-      }
-      
-      // Special cases for consistent formatting
-      if (name === 'peanut butter' || name === 'almond butter') {
-        // These should be in tbsp, not cups
+    }
+
+    // Second pass: Format each group for display
+    const resultItems = [];
+
+    // This is the critical change to fix "Cannot access 'a' before initialization"
+    // Use regular for loop instead of Object.entries with arrow function
+    const groupNames = Object.keys(groupedItems);
+    for (let i = 0; i < groupNames.length; i++) {
+      try {
+        const name = groupNames[i];
+        const data = groupedItems[name];
+
+        if (!data) continue;
+
+        // Apply special handling for missing quantities
+        if (!data.quantities || data.quantities.length === 0) {
+          // Set default quantities for common items that might be missing quantities
+          if (name === 'cherry tomatoes') {
+            resultItems.push(`Cherry Tomatoes: 1 cup`);
+            continue;
+          }
+          if (name === 'green onions') {
+            resultItems.push(`Green Onions: 1/2 cup`);
+            continue;
+          }
+          if (name === 'mushrooms') {
+            resultItems.push(`Mushrooms: 1 cup`);
+            continue;
+          }
+          if (name === 'gluten-free oats') {
+            resultItems.push(`Gluten-Free Oats: 1 cup`);
+            continue;
+          }
+          if (name === 'almond flour') {
+            resultItems.push(`Almond Flour: 1/4 cup`);
+            continue;
+          }
+          if (name === 'baking powder') {
+            resultItems.push(`Baking Powder: 1 tsp`);
+            continue;
+          }
+          if (name === 'italian seasoning') {
+            resultItems.push(`Italian Seasoning: 1 tsp`);
+            continue;
+          }
+          if (name === 'paprika') {
+            resultItems.push(`Paprika: 1 tsp`);
+            continue;
+          }
+          if (name === 'red cabbage') {
+            resultItems.push(`Red Cabbage: 1 cup`);
+            continue;
+          }
+          if (name === 'almond') {
+            resultItems.push(`Almonds: 1/2 cup`);
+            continue;
+          }
+
+          // If we still don't have a quantity, just return the name with proper capitalization
+          if (ITEM_DISPLAY_NAMES[name]) {
+            resultItems.push(ITEM_DISPLAY_NAMES[name]);
+          } else {
+            try {
+              const titleCaseName = name.split(' ')
+                .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                .join(' ');
+              resultItems.push(titleCaseName);
+            } catch (titleError) {
+              resultItems.push(name); // Fallback to the original name
+            }
+          }
+          continue;
+        }
+
+        // Special handling for eggs - they should always be counted and shown as large
+        if (name === 'eggs') {
+          try {
+            // Sum up all egg quantities
+            let totalEggs = 0;
+            for (let q of data.quantities) {
+              totalEggs += q.amount || 0;
+            }
+            resultItems.push(`Eggs: ${totalEggs} large`);
+            continue;
+          } catch (eggsError) {
+            console.error('Error handling eggs:', eggsError);
+            resultItems.push(`Eggs: large`);
+            continue;
+          }
+        }
+
+        // Special cases for consistent formatting
+        if (name === 'peanut butter' || name === 'almond butter') {
+          try {
+            // These should be in tbsp, not cups
+            let totalAmount = 0;
+            for (let q of data.quantities) {
+              totalAmount += q.amount || 0;
+            }
+            const displayName = ITEM_DISPLAY_NAMES[name] ||
+              name.charAt(0).toUpperCase() + name.slice(1);
+            resultItems.push(`${displayName}: ${totalAmount} tbsp`);
+            continue;
+          } catch (butterError) {
+            console.error('Error handling nut butter:', butterError);
+            resultItems.push(name.charAt(0).toUpperCase() + name.slice(1));
+            continue;
+          }
+        }
+
+        // Special case for chicken breast with excessive weight
+        if (name === 'chicken breast' && data.totalGrams > 10000) {
+          try {
+            const lbs = (data.totalGrams * 0.00220462).toFixed(1);
+            if (lbs > 20) {
+              resultItems.push(`Chicken Breast: 5 lb`);
+            } else {
+              resultItems.push(`Chicken Breast: ${lbs} lb`);
+            }
+            continue;
+          } catch (chickenError) {
+            console.error('Error handling chicken breast:', chickenError);
+            resultItems.push('Chicken Breast');
+            continue;
+          }
+        }
+
+        // Get the most appropriate unit safely
+        let primaryUnit = data.bestUnit || '';
+        if (!primaryUnit) {
+          try {
+            // Count unit occurrences
+            const unitCounts = {};
+            for (let q of data.quantities) {
+              if (q.unit) {
+                unitCounts[q.unit] = (unitCounts[q.unit] || 0) + 1;
+              }
+            }
+
+            let highestCount = 0;
+            for (let unitEntry of Object.entries(unitCounts)) {
+              const [unit, count] = unitEntry;
+              if (count > highestCount) {
+                highestCount = count;
+                primaryUnit = unit;
+              }
+            }
+          } catch (unitError) {
+            console.error('Error determining primary unit:', unitError);
+          }
+        }
+
+        // Calculate total for the primary unit
         let totalAmount = 0;
-        data.quantities.forEach(q => totalAmount += q.amount);
-        return `${ITEM_DISPLAY_NAMES[name] || name.charAt(0).toUpperCase() + name.slice(1)}: ${totalAmount} tbsp`;
-      }
-      
-      // Special case for chicken breast with excessive weight
-      if (name === 'chicken breast' && data.totalGrams > 10000) {
-        const lbs = (data.totalGrams * 0.00220462).toFixed(1);
-        if (lbs > 20) return `Chicken Breast: 5 lb`;
-        return `Chicken Breast: ${lbs} lb`;
-      }
-      
-      // Get the most appropriate unit
-      let primaryUnit = data.bestUnit || '';
-      if (!primaryUnit) {
-        // Count unit occurrences
-        const unitCounts = {};
-        data.quantities.forEach(q => {
-          if (q.unit) {
-            unitCounts[q.unit] = (unitCounts[q.unit] || 0) + 1;
+        try {
+          for (let q of data.quantities) {
+            if (q.unit === primaryUnit || !primaryUnit) {
+              totalAmount += q.amount || 0;
+            }
           }
-        });
-        
-        let highestCount = 0;
-        Object.entries(unitCounts).forEach(([unit, count]) => {
-          if (count > highestCount) {
-            highestCount = count;
-            primaryUnit = unit;
-          }
-        });
-      }
-      
-      // Calculate total for the primary unit
-      let totalAmount = 0;
-      data.quantities.forEach(q => {
-        if (q.unit === primaryUnit || !primaryUnit) {
-          totalAmount += q.amount;
+        } catch (totalError) {
+          console.error('Error calculating total amount:', totalError);
         }
-      });
-      
-      // If we don't have a primary unit but have items, use the first item's unit
-      if (!primaryUnit && data.quantities.length > 0) {
-        primaryUnit = data.quantities[0].unit || '';
-        totalAmount = data.totalQuantity;
+
+        // If we don't have a primary unit but have items, use the first item's unit
+        if (!primaryUnit && data.quantities.length > 0) {
+          try {
+            primaryUnit = data.quantities[0].unit || '';
+            totalAmount = data.totalQuantity || 0;
+          } catch (unitError) {
+            console.error('Error using first item unit:', unitError);
+          }
+        }
+
+        // For grams, use the total grams
+        if (primaryUnit === 'g') {
+          totalAmount = data.totalGrams || 0;
+        }
+
+        // For count items, use total quantity
+        if (!primaryUnit) {
+          totalAmount = data.totalQuantity || 0;
+        }
+
+        // Get display name safely
+        let displayName;
+        try {
+          displayName = ITEM_DISPLAY_NAMES[name] ||
+            name.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+        } catch (displayNameError) {
+          console.error('Error creating display name:', displayNameError);
+          displayName = name; // Fallback to original
+        }
+
+        // Check for cooked items to display properly
+        try {
+          if ((name.includes('rice') || name.includes('quinoa')) &&
+              data.originalItems.some(item => item.toLowerCase().includes('cooked'))) {
+            // Add "cooked" qualifier
+            resultItems.push(`${displayName}: ${totalAmount} cups cooked`);
+            continue;
+          }
+        } catch (cookedError) {
+          console.error('Error handling cooked items:', cookedError);
+        }
+
+        // Special case for salt to taste only
+        try {
+          if (name === 'salt to taste' ||
+              (name === 'salt' && data.originalItems.some(item => item.toLowerCase().includes('to taste')))) {
+            resultItems.push(`Salt    To taste`);
+            continue;
+          }
+        } catch (saltError) {
+          console.error('Error handling salt to taste:', saltError);
+        }
+
+        // Special case for "salt to taste"
+        if (name === 'salt to taste') {
+          resultItems.push(`Salt    To taste`);
+          continue;
+        }
+
+        // Pass the original item strings for context-aware formatting
+        try {
+          const formattedItem = formatDisplayName(
+            name,
+            totalAmount,
+            primaryUnit,
+            data.originalItems.join(' ')
+          );
+          if (formattedItem) {
+            resultItems.push(formattedItem);
+          }
+        } catch (formatError) {
+          console.error('Error formatting display name:', formatError);
+          // Fallback to basic display
+          resultItems.push(`${displayName}: ${totalAmount || 1} ${primaryUnit || ''}`);
+        }
+      } catch (groupError) {
+        console.error('Error processing group:', groupError);
       }
-      
-      // For grams, use the total grams
-      if (primaryUnit === 'g') {
-        totalAmount = data.totalGrams;
-      }
-      
-      // For count items, use total quantity
-      if (!primaryUnit) {
-        totalAmount = data.totalQuantity;
-      }
-      
-      // Check for cooked items to display properly
-      if ((name.includes('rice') || name.includes('quinoa')) && 
-          data.originalItems.some(item => item.toLowerCase().includes('cooked'))) {
-        // Add "cooked" qualifier
-        return `${displayName}: ${totalAmount} cups cooked`;
-      }
-      
-      // Special case for salt to taste only
-      if (name === 'salt to taste' || 
-          (name === 'salt' && data.originalItems.some(item => item.toLowerCase().includes('to taste')))) {
-        return `Salt    To taste`;
-      }
-      
-      // Default formatting
-      const displayName = ITEM_DISPLAY_NAMES[name] || 
-        name.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
-      
-      // Special case for "salt to taste"
-      if (name === 'salt to taste') {
-        return `Salt    To taste`;
-      }
-      
-      // Pass the original item strings for context-aware formatting
-      return formatDisplayName(name, totalAmount, primaryUnit, data.originalItems.join(' '));
-    })
-    .filter(item => item);
+    }
+
+    return resultItems.filter(item => item);
+  } catch (error) {
+    console.error('Global error in combineItems:', error);
+    return []; // Return empty array as fallback
+  }
 };
 
 const ShoppingListItem = ({ 
@@ -1264,8 +1454,8 @@ const ShoppingListItem = ({
   );
 };
 
-const ShoppingList = ({ 
-  categories, 
+const ShoppingList = ({
+  categories,
   selectedStore,
   onAddToCart,
   onAddToMixedCart
@@ -1273,13 +1463,13 @@ const ShoppingList = ({
   const [showStoreSelector, setShowStoreSelector] = useState(false);
   const [pendingItem, setPendingItem] = useState(null);
   const [error, setError] = useState('');
-  
+
   // Check if we have a configured Kroger store already
   useEffect(() => {
     // Check if we need to refresh the Kroger location from a temp storage
     const tempLocationId = localStorage.getItem('temp_kroger_location_id');
     const savedLocationId = localStorage.getItem('kroger_store_location_id');
-    
+
     if (tempLocationId && (!savedLocationId || tempLocationId !== savedLocationId)) {
       console.log("Found temp Kroger location ID, attempting to save permanently");
       const refreshLocation = async () => {
@@ -1293,11 +1483,56 @@ const ShoppingList = ({
       refreshLocation();
     }
   }, []);
-  
-  const processedCategories = Object.entries(categories).reduce((acc, [category, items]) => {
-    acc[category] = combineItems(items);
-    return acc;
-  }, {});
+
+  // Safely process categories with error handling
+  const processedCategories = React.useMemo(() => {
+    try {
+      // Validate categories is not null or undefined
+      if (!categories) {
+        console.warn('Categories is null or undefined in ShoppingList component');
+        return {};
+      }
+
+      // Ensure categories is an object
+      if (typeof categories !== 'object') {
+        console.warn(`Categories is not an object: ${typeof categories}`);
+        return {};
+      }
+
+      // Safe implementation of Object.entries with error handling
+      const safeEntries = [];
+      try {
+        Object.keys(categories).forEach(key => {
+          safeEntries.push([key, categories[key]]);
+        });
+      } catch (entriesError) {
+        console.error('Error getting category entries:', entriesError);
+      }
+
+      // Safe implementation of reduce with try-catch
+      const processed = {};
+      safeEntries.forEach(([category, items]) => {
+        try {
+          // Validate to prevent errors
+          if (!category || !items) {
+            console.warn(`Invalid category or items: ${category}`);
+            return;
+          }
+
+          // Process the items safely
+          processed[category] = combineItems(Array.isArray(items) ? items : []);
+        } catch (itemError) {
+          console.error(`Error processing category ${category}:`, itemError);
+          processed[category] = []; // Use empty array as fallback
+        }
+      });
+
+      return processed;
+    } catch (error) {
+      console.error('Error processing categories:', error);
+      return {}; // Return empty object on error
+    }
+  }, [categories]);
   
   const handleKrogerNeededSetup = (item) => {
     setPendingItem(item);
@@ -1346,34 +1581,85 @@ const ShoppingList = ({
     }
   };
 
+  // SafeRender function to handle errors at the component level
+  const SafeRender = () => {
+    try {
+      // Check if processedCategories exists and has content
+      if (!processedCategories || Object.keys(processedCategories).length === 0) {
+        return (
+          <Paper elevation={3} sx={{ my: 2, p: 2 }}>
+            <Typography variant="h6">No items found</Typography>
+            <Typography>No shopping list items are available.</Typography>
+          </Paper>
+        );
+      }
+
+      // Get categories using Object.entries safely
+      const categoryEntries = [];
+      try {
+        Object.keys(processedCategories).forEach(category => {
+          categoryEntries.push([category, processedCategories[category]]);
+        });
+      } catch (entriesError) {
+        console.error('Error getting category entries for render:', entriesError);
+      }
+
+      // Return the rendering of categories safely
+      return (
+        <>
+          {categoryEntries.map(([category, items], categoryIndex) => {
+            // Skip invalid categories
+            if (!category || !items || !Array.isArray(items)) return null;
+
+            return (
+              <Paper key={category || `category-${categoryIndex}`} elevation={3} sx={{ my: 2, p: 2 }}>
+                <Typography variant="h6">{category || 'Other Items'}</Typography>
+                <Grid container spacing={2}>
+                  {items.map((item, index) => {
+                    // Skip invalid items
+                    if (!item) return null;
+
+                    return (
+                      <ShoppingListItem
+                        key={`item-${categoryIndex}-${index}`}
+                        item={item}
+                        selectedStore={selectedStore}
+                        onAddToCart={onAddToCart || (() => {})}
+                        onAddToMixedCart={onAddToMixedCart || (() => {})}
+                        onKrogerNeededSetup={handleKrogerNeededSetup}
+                      />
+                    );
+                  })}
+                </Grid>
+              </Paper>
+            );
+          })}
+        </>
+      );
+    } catch (renderError) {
+      console.error('Error rendering shopping list:', renderError);
+      return (
+        <Paper elevation={3} sx={{ my: 2, p: 2 }}>
+          <Typography variant="h6" color="error">Error displaying shopping list</Typography>
+          <Typography>There was a problem displaying the shopping list items. Try refreshing the page.</Typography>
+        </Paper>
+      );
+    }
+  };
+
   return (
     <>
-      {Object.entries(processedCategories).map(([category, items]) => (
-        <Paper key={category} elevation={3} sx={{ my: 2, p: 2 }}>
-          <Typography variant="h6">{category}</Typography>
-          <Grid container spacing={2}>
-            {items.map((item, index) => (
-              <ShoppingListItem 
-                key={index}
-                item={item}
-                selectedStore={selectedStore}
-                onAddToCart={onAddToCart}
-                onAddToMixedCart={onAddToMixedCart}
-                onKrogerNeededSetup={handleKrogerNeededSetup}
-              />
-            ))}
-          </Grid>
-        </Paper>
-      ))}
-      
+      {/* Use safe rendering with error boundaries */}
+      <SafeRender />
+
       {/* Kroger Store Selection Dialog */}
-      <StoreSelector 
+      <StoreSelector
         open={showStoreSelector}
         onClose={handleCloseStoreSelector}
         onStoreSelect={handleStoreSelect}
         storeType="kroger"
       />
-      
+
       {error && (
         <Dialog open={!!error} onClose={() => setError('')}>
           <DialogTitle>Error</DialogTitle>
