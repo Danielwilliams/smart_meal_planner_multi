@@ -1537,10 +1537,13 @@ const ShoppingListItem = ({
     <Grid item xs={12} sm={6}>
       <Typography>
         {/* Display name and quantity separately as they come from backend */}
+        {console.log("ITEM DETAILS:", item)}
         {item && typeof item === 'object' && item.name ?
           (item.quantity ?
             `${item.name}: ${item.quantity}${item.unit ? ' ' + item.unit : ''}` :
-            item.name
+            (typeof item === 'object' && 'ingredients' in item && item.ingredients.length > 0 ?
+              `${item.name}: ${item.ingredients[0].quantity || ''}${item.ingredients[0].unit ? ' ' + item.ingredients[0].unit : ''}` :
+              item.name)
           ) :
           displayName}
       </Typography>

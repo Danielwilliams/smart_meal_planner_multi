@@ -495,6 +495,21 @@ const apiService = {
 
     // Try multiple endpoints in sequence to get the most reliable data
     try {
+      // CLEAR ANY EXISTING CACHE for this menu ID
+      try {
+        const cacheString = localStorage.getItem('AI_SHOPPING_CACHE_KEY');
+        if (cacheString) {
+          const cacheData = JSON.parse(cacheString);
+          if (cacheData && cacheData[menuId]) {
+            console.log("Clearing cached shopping list for menu", menuId);
+            delete cacheData[menuId];
+            localStorage.setItem('AI_SHOPPING_CACHE_KEY', JSON.stringify(cacheData));
+          }
+        }
+      } catch (cacheError) {
+        console.warn("Error clearing cache:", cacheError);
+      }
+
       // First try the direct grocery list endpoint
       console.log(`Attempt 1: Direct grocery list endpoint for menu ${menuId}`);
       try {

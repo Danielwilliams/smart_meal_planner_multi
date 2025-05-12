@@ -130,6 +130,129 @@ function ShoppingListPage() {
       return {}; // Return empty object instead of crashing
     }
 
+    // New check for menu JSON format - extract ingredients directly from menu data
+    if (groceryItems.days && Array.isArray(groceryItems.days)) {
+      console.log('Found menu JSON format - extracting ingredients directly');
+
+      // Initialize categories
+      const extractedCategories = {
+        'Protein': [],
+        'Produce': [],
+        'Dairy': [],
+        'Grains': [],
+        'Pantry': [],
+        'Other': []
+      };
+
+      try {
+        // Process each day in the menu
+        groceryItems.days.forEach(day => {
+          // Process meals
+          if (day.meals && Array.isArray(day.meals)) {
+            day.meals.forEach(meal => {
+              if (meal.ingredients && Array.isArray(meal.ingredients)) {
+                meal.ingredients.forEach(ingredient => {
+                  // Categorize the ingredient
+                  let category = 'Other';
+                  const nameStr = ingredient.name ? ingredient.name.toLowerCase() : '';
+
+                  // Simple categorization
+                  if (nameStr.includes('chicken') || nameStr.includes('beef') ||
+                      nameStr.includes('meat') || nameStr.includes('turkey') ||
+                      nameStr.includes('fish') || nameStr.includes('salmon') ||
+                      nameStr.includes('protein')) {
+                    category = 'Protein';
+                  } else if (nameStr.includes('apple') || nameStr.includes('pepper') ||
+                            nameStr.includes('broccoli') || nameStr.includes('carrot') ||
+                            nameStr.includes('tomato') || nameStr.includes('lettuce') ||
+                            nameStr.includes('veggie') || nameStr.includes('vegetable') ||
+                            nameStr.includes('onion')) {
+                    category = 'Produce';
+                  } else if (nameStr.includes('milk') || nameStr.includes('cheese') ||
+                            nameStr.includes('yogurt') || nameStr.includes('cream') ||
+                            nameStr.includes('butter') || nameStr.includes('egg')) {
+                    category = 'Dairy';
+                  } else if (nameStr.includes('rice') || nameStr.includes('pasta') ||
+                            nameStr.includes('bread') || nameStr.includes('flour') ||
+                            nameStr.includes('oat') || nameStr.includes('quinoa') ||
+                            nameStr.includes('tortilla')) {
+                    category = 'Grains';
+                  } else if (nameStr.includes('oil') || nameStr.includes('sauce') ||
+                            nameStr.includes('vinegar') || nameStr.includes('spice') ||
+                            nameStr.includes('honey') || nameStr.includes('salt') ||
+                            nameStr.includes('pepper') || nameStr.includes('sugar')) {
+                    category = 'Pantry';
+                  }
+
+                  // Add to the appropriate category
+                  extractedCategories[category].push(ingredient);
+                });
+              }
+            });
+          }
+
+          // Process snacks
+          if (day.snacks && Array.isArray(day.snacks)) {
+            day.snacks.forEach(snack => {
+              if (snack.ingredients && Array.isArray(snack.ingredients)) {
+                snack.ingredients.forEach(ingredient => {
+                  // Categorize the ingredient
+                  let category = 'Other';
+                  const nameStr = ingredient.name ? ingredient.name.toLowerCase() : '';
+
+                  // Simple categorization
+                  if (nameStr.includes('chicken') || nameStr.includes('beef') ||
+                      nameStr.includes('meat') || nameStr.includes('turkey') ||
+                      nameStr.includes('fish') || nameStr.includes('salmon') ||
+                      nameStr.includes('protein')) {
+                    category = 'Protein';
+                  } else if (nameStr.includes('apple') || nameStr.includes('pepper') ||
+                            nameStr.includes('broccoli') || nameStr.includes('carrot') ||
+                            nameStr.includes('tomato') || nameStr.includes('lettuce') ||
+                            nameStr.includes('veggie') || nameStr.includes('vegetable') ||
+                            nameStr.includes('onion')) {
+                    category = 'Produce';
+                  } else if (nameStr.includes('milk') || nameStr.includes('cheese') ||
+                            nameStr.includes('yogurt') || nameStr.includes('cream') ||
+                            nameStr.includes('butter') || nameStr.includes('egg')) {
+                    category = 'Dairy';
+                  } else if (nameStr.includes('rice') || nameStr.includes('pasta') ||
+                            nameStr.includes('bread') || nameStr.includes('flour') ||
+                            nameStr.includes('oat') || nameStr.includes('quinoa') ||
+                            nameStr.includes('tortilla')) {
+                    category = 'Grains';
+                  } else if (nameStr.includes('oil') || nameStr.includes('sauce') ||
+                            nameStr.includes('vinegar') || nameStr.includes('spice') ||
+                            nameStr.includes('honey') || nameStr.includes('salt') ||
+                            nameStr.includes('pepper') || nameStr.includes('sugar')) {
+                    category = 'Pantry';
+                  }
+
+                  // Add to the appropriate category
+                  extractedCategories[category].push(ingredient);
+                });
+              }
+            });
+          }
+        });
+
+        // Filter out empty categories and return
+        const finalCategories = {};
+        Object.entries(extractedCategories).forEach(([category, items]) => {
+          if (items.length > 0) {
+            finalCategories[category] = items;
+          }
+        });
+
+        console.log('Extracted categories from menu data:', finalCategories);
+        return finalCategories;
+      } catch (error) {
+        console.error('Error extracting categories from menu data:', error);
+        // Fall back to empty categories
+        return { 'Other': [] };
+      }
+    }
+
     // If already in expected format (object with category keys)
     if (!Array.isArray(groceryItems) && typeof groceryItems === 'object') {
       console.log('Grocery list already in category format:', groceryItems);
@@ -239,19 +362,40 @@ function ShoppingListPage() {
     // If we have a menuId from URL, use that directly
     if (selectedMenuId) {
       console.log(`Using menu ID from URL: ${selectedMenuId}`);
-      
+
+      // TRY DIRECT MENU FIRST - This gives us the ingredient details with quantities
+      try {
+        console.log(`DIRECT APPROACH: Fetching menu details directly for ${selectedMenuId}`);
+        const menuDetails = await apiService.getMenuDetails(selectedMenuId);
+        console.log("DIRECT MENU DETAILS:", menuDetails);
+
+        if (menuDetails && menuDetails.days && Array.isArray(menuDetails.days)) {
+          console.log("SUCCESS: Direct menu details contains full menu data with days");
+
+          // Process and set the grocery list directly from the menu data
+          const categorizedItems = formatCategoriesForDisplay(menuDetails);
+          console.log("Processed categorized items:", categorizedItems);
+
+          setGroceryList(categorizedItems);
+          setLoading(false);
+          return; // Exit early as we have the data
+        }
+      } catch (directMenuErr) {
+        console.error("Failed to get direct menu details:", directMenuErr);
+      }
+
       // Try both endpoints to get the data we need
       let fetchedGroceryList = [];
       let menuDetails = null;
       let success = false;
-      
+
       // Strategy 1: Try direct grocery list API
       try {
         console.log(`Strategy 1: Fetching grocery list for menu ${selectedMenuId}`);
         const groceryListResponse = await apiService.getGroceryListByMenuId(selectedMenuId);
-        
+
         console.log("Raw grocery list response:", groceryListResponse);
-        
+
         if (groceryListResponse && groceryListResponse.groceryList && groceryListResponse.groceryList.length > 0) {
           console.log("Grocery list fetched successfully:", groceryListResponse.groceryList);
           fetchedGroceryList = groceryListResponse.groceryList;
@@ -264,14 +408,14 @@ function ShoppingListPage() {
       } catch (groceryErr) {
         console.log("Strategy 1 failed:", groceryErr.message);
       }
-      
+
       // Strategy 2: If first attempt failed, try client menu endpoint
       if (!success) {
         try {
           console.log(`Strategy 2: Fetching client menu ${selectedMenuId}`);
           menuDetails = await apiService.getClientMenu(selectedMenuId);
           console.log("Client menu fetched successfully:", menuDetails);
-          
+
           // Check if API returned a grocery list directly
           if (menuDetails && menuDetails.groceryList && menuDetails.groceryList.length > 0) {
             fetchedGroceryList = menuDetails.groceryList;
@@ -300,14 +444,14 @@ function ShoppingListPage() {
           console.log("Strategy 2 failed:", clientMenuErr.message);
         }
       }
-      
+
       // Strategy 3: Try regular menu endpoint
       if (!success) {
         try {
           console.log(`Strategy 3: Fetching regular menu ${selectedMenuId}`);
           menuDetails = await apiService.getMenuDetails(selectedMenuId);
           console.log("Regular menu fetched successfully:", menuDetails);
-          
+
           // Extract from menu details
           const categorizedItems = categorizeItems(menuDetails);
           fetchedGroceryList = Object.values(categorizedItems).flat();
