@@ -1423,7 +1423,8 @@ const ShoppingListItem = ({
           let extractedQuantity = parts[1];
 
           // Further parse the quantity to extract unit if present
-          const unitRegex = /(\d+(?:\.\d+)?)\s*([a-zA-Z]+)?/;
+          // Improved regex to handle fractions (1/2) and various unit formats
+          const unitRegex = /([\d\.\/]+)\s*([a-zA-Z]+s?)?/;
           const unitMatch = extractedQuantity.match(unitRegex);
 
           if (unitMatch) {
@@ -1543,11 +1544,20 @@ const ShoppingListItem = ({
          </div>
         }
 
-        {/* Hard-coded conditional to ensure quantities display */}
-        {item && typeof item === 'object' && item.name && item.quantity ?
-          `${item.name}: ${item.quantity}` :
-          (typeof item === 'string' ? item :
-           (displayName || (typeof item === 'object' ? item.name || "Unknown" : "Unknown Item")))}
+        {/* Enhanced display logic to handle all possible formats */}
+        {item && typeof item === 'object' ?
+          (item.display_name ?
+            item.display_name :
+            (item.actual_quantity ?
+              `${item.name}: ${item.actual_quantity}` :
+              (item.quantity && item.quantity !== '1' ?
+                `${item.name}: ${item.quantity}${item.unit ? ' ' + item.unit : ''}` :
+                (typeof item.name === 'string' ?
+                  (item.name.includes(':') ? item.name :
+                    (item.name.match(/^\d/) ? item.name : // If name starts with a number
+                      (item.name.charAt(0).toUpperCase() + item.name.slice(1)))) : // Capitalize first letter
+                  "Unknown Item")))) :
+          (typeof item === 'string' ? item : "Unknown Item")}
       </Typography>
 
       {selectedStore === 'mixed' ? (
@@ -1978,16 +1988,100 @@ const ShoppingList = ({
                   console.log(`RAW ITEM[${index}]:`, JSON.stringify(item));
 
                   if (typeof item === 'object' && item.name) {
-                    // Make sure quantity is shown if it exists
-                    if (item.quantity) {
+                    // SPECIAL FIX: Extract embedded quantity from name field
+                    const nameStr = item.name;
+                    // Regular expression to extract a leading numeric quantity with units
+                    // Expanded to handle more unit formats
+                    const qtyRegex = /^([\d\.\/]+\s*(?:ozs?|pieces?|cups?|tbsps?|tsps?|cloves?|pinch|can|inch|lb|lbs|g|kg))\s+(.+)$/i;
+                    const match = nameStr.match(qtyRegex);
+
+                    if (match) {
+                      // Found embedded quantity in name
+                      const extractedQty = match[1];
+                      const cleanName = match[2];
+
+                      // Capitalize first letter of each word in name
+                      const formattedName = cleanName
+                        .split(' ')
+                        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                        .join(' ');
+
+                      displayItem = {
+                        ...item,
+                        name: formattedName,
+                        actual_quantity: extractedQty,
+                        display_name: `${formattedName}: ${extractedQty}`
+                      };
+                      console.log(`FIXED ITEM[${index}] WITH EXTRACTED QUANTITY:`, displayItem);
+                    }
+                    // Handle case where pieces count is embedded in name
+                    else if (nameStr.includes('pieces')) {
+                      const piecesMatch = nameStr.match(/(\d+)\s+pieces\s+(.+)/i);
+                      if (piecesMatch) {
+                        const numPieces = piecesMatch[1];
+                        const cleanName = piecesMatch[2];
+
+                        // Capitalize first letter of each word in name
+                        const formattedName = cleanName
+                          .split(' ')
+                          .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                          .join(' ');
+
+                        displayItem = {
+                          ...item,
+                          name: formattedName,
+                          actual_quantity: `${numPieces} pieces`,
+                          display_name: `${formattedName}: ${numPieces} pieces`
+                        };
+                      } else {
+                        displayItem = { ...item, display_name: item.name };
+                      }
+                    }
+                    // Standard case - normal quantity field
+                    // Check for "Item: Quantity" format where quantity is in the name after colon
+                    else if (nameStr.includes(':')) {
+                      const colonMatch = nameStr.match(/(.+):\s*([\d\.\/]+\s*(?:[a-zA-Z]+)?)/i);
+                      if (colonMatch) {
+                        const itemName = colonMatch[1].trim();
+                        const quantity = colonMatch[2].trim();
+
+                        // Format the item name with proper capitalization
+                        const formattedName = itemName
+                          .split(' ')
+                          .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                          .join(' ');
+
+                        displayItem = {
+                          ...item,
+                          name: formattedName,
+                          actual_quantity: quantity,
+                          display_name: `${formattedName}: ${quantity}`
+                        };
+                        console.log(`COLON FORMAT ITEM[${index}]:`, displayItem);
+                      } else {
+                        displayItem = { ...item, display_name: item.name };
+                      }
+                    }
+                    // Standard case - use the quantity field if available
+                    else if (item.quantity && item.quantity !== '1') {
                       displayItem = {
                         ...item,
                         display_name: `${item.name}: ${item.quantity}${item.unit ? ' ' + item.unit : ''}`
                       };
-                      console.log(`ENHANCED ITEM[${index}] WITH QUANTITY:`, displayItem);
-                    } else {
-                      // Try to find quantity in raw item
-                      console.log(`ITEM[${index}] HAS NO QUANTITY, KEYS:`, Object.keys(item));
+                      console.log(`STANDARD ITEM[${index}] WITH QUANTITY:`, displayItem);
+                    }
+                    else {
+                      // Default case - just use the name with first letter capitalized
+                      const formattedName = nameStr
+                        .split(' ')
+                        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                        .join(' ');
+
+                      displayItem = {
+                        ...item,
+                        name: formattedName,
+                        display_name: formattedName
+                      };
                     }
                   } else {
                     console.log(`ITEM[${index}] IS NOT AN OBJECT WITH NAME`);
