@@ -1410,14 +1410,32 @@ const ShoppingListItem = ({
     // Use display_name if available
     if (item.display_name) {
       displayName = item.display_name;
-    } 
+    }
     // Otherwise construct from name, quantity and unit
     else if (item.name) {
-      displayName = `${item.name}: ${item.quantity || '1'} ${item.unit || 'piece'}`;
+      // If the name includes a colon and quantity already (like "Chicken Breast: 96 oz")
+      if (item.name.includes(':')) {
+        displayName = item.name;
+      } else {
+        // Clean up any decimal points in the quantity if it's a whole number
+        let cleanQuantity = item.quantity || '1';
+        if (cleanQuantity.includes('.') && cleanQuantity.endsWith('.0')) {
+          cleanQuantity = cleanQuantity.replace('.0', '');
+        }
+        // Remove any extra decimal points like "1.: 1"
+        cleanQuantity = cleanQuantity.replace(/\d+\.: /, '');
+
+        displayName = `${item.name}: ${cleanQuantity} ${item.unit || 'piece'}`;
+      }
     }
-    
+
     // Use the base name (without quantity/unit) for cart operations
-    itemName = item.name || String(item);
+    if (item.name && item.name.includes(':')) {
+      // Extract just the ingredient name if it's a format like "Chicken Breast: 96 oz"
+      itemName = item.name.split(':')[0].trim();
+    } else {
+      itemName = item.name || String(item);
+    }
   }
   
   const handleStoreClick = async (store, itemName) => {

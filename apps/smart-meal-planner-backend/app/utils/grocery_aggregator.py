@@ -695,10 +695,13 @@ def extract_ingredient_quantities_from_menu(menu_data):
                 # Sum the quantities
                 total_qty = sum(o['qty'] for o in occurrences)
 
+                # Format quantity to get rid of decimal if it's a whole number
+                formatted_qty = int(total_qty) if total_qty == int(total_qty) else total_qty
+
                 # Create a special display entry
                 summarized_ingredients.append({
                     "name": ingredient,
-                    "quantity": f"{total_qty} {first_unit}"
+                    "quantity": f"{formatted_qty} {first_unit}"
                 })
 
     # Now add common ingredients from the menu
@@ -728,10 +731,13 @@ def extract_ingredient_quantities_from_menu(menu_data):
                     # Sum quantities for this unit
                     matching_qty = sum(o['qty'] for o in occurrences if (o['unit'] or 'piece') == most_common_unit)
 
+                    # Format quantity to get rid of decimal if it's a whole number
+                    formatted_qty = int(matching_qty) if matching_qty == int(matching_qty) else matching_qty
+
                     # Add to summarized ingredients
                     summarized_ingredients.append({
                         "name": ingredient,
-                        "quantity": f"{matching_qty} {most_common_unit}"
+                        "quantity": f"{formatted_qty} {most_common_unit}"
                     })
 
     return ingredient_quantities, summarized_ingredients
@@ -758,20 +764,28 @@ def aggregate_grocery_list(menu_dict: Dict[str, Any]):
         formatted_list = []
 
         for ingredient in summarized_ingredients:
+            # Clean quantity string - handle any format issues
+            qty_str = ingredient['quantity']
+
+            # First, handle the name - Capitalize properly
+            name = ingredient['name'].strip()
+            cap_name = ' '.join(word.capitalize() for word in name.split())
+
+            # Format properly to avoid decimal point issues
             formatted_list.append({
-                "name": f"{ingredient['name']}: {ingredient['quantity']}",
-                "quantity": ""  # Frontend will extract from the name
+                "name": cap_name,  # Just pass the name part
+                "quantity": qty_str  # Pass quantity separately
             })
 
         # Add default common ingredients if they're not already included
         # This ensures we always have these basic ingredients
-        existing_ingredients = set(item["name"].split(':')[0].lower().strip() for item in formatted_list)
+        existing_ingredients = set(item["name"].lower().strip() for item in formatted_list)
 
         default_common_ingredients = []
         if "salt" not in existing_ingredients:
-            default_common_ingredients.append({"name": "Salt: To taste", "quantity": ""})
+            default_common_ingredients.append({"name": "Salt", "quantity": "To taste"})
         if "black pepper" not in existing_ingredients:
-            default_common_ingredients.append({"name": "Black Pepper: To taste", "quantity": ""})
+            default_common_ingredients.append({"name": "Black Pepper", "quantity": "To taste"})
 
         # Add the default common ingredients
         formatted_list.extend(default_common_ingredients)
