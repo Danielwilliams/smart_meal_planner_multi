@@ -174,12 +174,28 @@ function categorizeIngredient(ingredientName) {
  */
 function processGroceryList(groceryList) {
   console.log('Processing grocery list:', groceryList);
-  
+
   // Handle different input formats
   let items = [];
-  
+
   if (Array.isArray(groceryList)) {
-    items = groceryList;
+    // Direct API response with name property objects
+    if (groceryList.length > 0 && typeof groceryList[0] === 'object' && groceryList[0].name) {
+      console.log("Processing array of objects with name property");
+
+      // Extract the name field from each object
+      items = groceryList.map(item => {
+        if (typeof item === 'object' && item.name) {
+          // The name may already include quantity info like "Chicken Breast: 96 oz"
+          return item.name;
+        } else {
+          return String(item);
+        }
+      });
+    } else {
+      // Regular array of strings or mixed items
+      items = groceryList;
+    }
   } else if (groceryList && groceryList.groceryList && Array.isArray(groceryList.groceryList)) {
     items = groceryList.groceryList;
   } else if (typeof groceryList === 'object') {
@@ -576,8 +592,14 @@ function extractGroceryItems(result) {
 
   // If we couldn't extract from days structure, try other formats
   if (items.length === 0) {
+    // Check if the result itself is an array of ingredients with name/quantity properties
+    // This handles the direct API response format
+    if (Array.isArray(result) && result.length > 0 && typeof result[0] === 'object' && result[0].name) {
+      console.log("Found direct ingredient array with objects");
+      items = result.map(item => item.name || String(item));
+    }
     // Try different properties where items might be found
-    if (result?.ingredient_list && Array.isArray(result.ingredient_list)) {
+    else if (result?.ingredient_list && Array.isArray(result.ingredient_list)) {
       console.log("Using ingredient_list array");
       items = result.ingredient_list;
     } else if (result?.items && Array.isArray(result.items)) {

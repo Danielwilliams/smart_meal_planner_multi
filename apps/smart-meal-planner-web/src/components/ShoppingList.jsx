@@ -1622,6 +1622,39 @@ const ShoppingList = ({
     try {
       // Check if processedCategories exists and has content
       if (!processedCategories || Object.keys(processedCategories).length === 0) {
+        // Check if we have a flat array format from the API
+        if (Array.isArray(categories) && categories.length > 0) {
+          // Create a synthetic category with the items
+          console.log("Found direct array of items:", categories);
+          const items = categories.map(item => {
+            // If the item is already an object with a name, use it
+            if (typeof item === 'object' && item.name) {
+              return item;
+            }
+            // Otherwise convert string to object
+            return { name: item, quantity: '' };
+          });
+
+          return (
+            <Paper elevation={3} sx={{ my: 2, p: 2 }}>
+              <Typography variant="h6">Shopping List</Typography>
+              <Grid container spacing={2}>
+                {items.map((item, index) => (
+                  <ShoppingListItem
+                    key={`item-direct-${index}`}
+                    item={item}
+                    selectedStore={selectedStore}
+                    onAddToCart={onAddToCart || (() => {})}
+                    onAddToMixedCart={onAddToMixedCart || (() => {})}
+                    onKrogerNeededSetup={handleKrogerNeededSetup}
+                  />
+                ))}
+              </Grid>
+            </Paper>
+          );
+        }
+
+        // Standard empty case
         return (
           <Paper elevation={3} sx={{ my: 2, p: 2 }}>
             <Typography variant="h6">No items found</Typography>

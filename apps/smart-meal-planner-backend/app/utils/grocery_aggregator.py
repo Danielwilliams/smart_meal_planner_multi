@@ -681,9 +681,10 @@ def extract_ingredient_quantities_from_menu(menu_data):
                                 })
 
     # Check if we can summarize quantities for specific ingredients
-    special_ingredients = ["chicken breast", "beef sirloin", "chicken thighs"]
+    special_ingredients = ["chicken breast", "beef sirloin", "chicken thighs", "ground beef", "chicken", "beef", "ground turkey"]
     summarized_ingredients = []
 
+    # First process the meat ingredients that need special handling
     for ingredient in special_ingredients:
         if ingredient in ingredient_quantities:
             occurrences = ingredient_quantities[ingredient]
@@ -700,6 +701,39 @@ def extract_ingredient_quantities_from_menu(menu_data):
                     "quantity": f"{total_qty} {first_unit}"
                 })
 
+    # Now add common ingredients from the menu
+    other_important_ingredients = [
+        "bell pepper", "onion", "garlic", "olive oil", "salsa", "broccoli",
+        "rice", "quinoa", "egg", "milk", "avocado", "tomato", "carrot", "black bean",
+        "feta cheese", "cheddar cheese", "parmesan cheese", "beans", "honey", "vanilla"
+    ]
+
+    # Process other important ingredients
+    for ingredient in other_important_ingredients:
+        if ingredient in ingredient_quantities:
+            occurrences = ingredient_quantities[ingredient]
+
+            # Check if we have enough occurrences to process
+            if occurrences:
+                # Get the most common unit
+                unit_count = {}
+                for o in occurrences:
+                    unit = o['unit'] or 'piece'
+                    unit_count[unit] = unit_count.get(unit, 0) + 1
+
+                # Find the most common unit
+                most_common_unit = max(unit_count.items(), key=lambda x: x[1])[0] if unit_count else None
+
+                if most_common_unit:
+                    # Sum quantities for this unit
+                    matching_qty = sum(o['qty'] for o in occurrences if (o['unit'] or 'piece') == most_common_unit)
+
+                    # Add to summarized ingredients
+                    summarized_ingredients.append({
+                        "name": ingredient,
+                        "quantity": f"{matching_qty} {most_common_unit}"
+                    })
+
     return ingredient_quantities, summarized_ingredients
 
 def aggregate_grocery_list(menu_dict: Dict[str, Any]):
@@ -714,10 +748,36 @@ def aggregate_grocery_list(menu_dict: Dict[str, Any]):
     # First, try direct extraction from menu structure if available
     ingredient_quantities, summarized_ingredients = extract_ingredient_quantities_from_menu(menu_dict)
 
-    # If we have direct summarized ingredients, use those
+    # If we have direct summarized ingredients, use those but format them correctly
     if summarized_ingredients:
         logger.info(f"Using directly summarized ingredients: {summarized_ingredients}")
-        return summarized_ingredients
+
+        # Format the ingredients in a way the frontend expects
+        # The frontend expects a list of dictionaries with name and quantity
+        # But also needs the list wrapped in an "All Items" category for proper display
+        formatted_list = []
+
+        for ingredient in summarized_ingredients:
+            formatted_list.append({
+                "name": f"{ingredient['name']}: {ingredient['quantity']}",
+                "quantity": ""  # Frontend will extract from the name
+            })
+
+        # Add default common ingredients if they're not already included
+        # This ensures we always have these basic ingredients
+        existing_ingredients = set(item["name"].split(':')[0].lower().strip() for item in formatted_list)
+
+        default_common_ingredients = []
+        if "salt" not in existing_ingredients:
+            default_common_ingredients.append({"name": "Salt: To taste", "quantity": ""})
+        if "black pepper" not in existing_ingredients:
+            default_common_ingredients.append({"name": "Black Pepper: To taste", "quantity": ""})
+
+        # Add the default common ingredients
+        formatted_list.extend(default_common_ingredients)
+
+        # Return in the format expected by frontend
+        return formatted_list
 
     # Otherwise, use standard aggregation
     aggregated = {}
