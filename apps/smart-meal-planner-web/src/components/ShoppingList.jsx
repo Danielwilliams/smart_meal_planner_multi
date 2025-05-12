@@ -2141,4 +2141,7 @@ const ShoppingList = ({
   );
 };
 
+// Export combineItems function for debugging purposes
+export { combineItems };
+
 export default ShoppingList;

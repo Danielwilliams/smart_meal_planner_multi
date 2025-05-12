@@ -13,6 +13,7 @@ import SignUpPage from './pages/SignUpPage';
 import PreferencesPage from './pages/PreferencesPage';
 import MenuDisplayPage from './pages/MenuDisplayPage';
 import ShoppingListPage from './pages/ShoppingListPage';
+import ShoppingListPageDebug from './pages/ShoppingListPageDebug';
 import CartPage from './pages/CartPage';  // Add this import
 import Home from './pages/Home';
 import LandingPage from './pages/LandingPage';
@@ -144,22 +145,24 @@ function App() {
                   </PrivateRoute>
                 } 
               />
-              <Route 
-                path="/shopping-list/:menuId" 
+              <Route
+                path="/shopping-list/:menuId"
                 element={
                   <PrivateRoute>
                     <ShoppingListPage />
                   </PrivateRoute>
-                } 
+                }
               />
-              <Route 
-                path="/grocery-list/:menuId" 
+              <Route
+                path="/grocery-list/:menuId"
                 element={
                   <PrivateRoute>
                     <ShoppingListPage />
                   </PrivateRoute>
-                } 
+                }
               />
+              {/* Shopping List Debug Route - Public for easy access */}
+              <Route path="/debug/shopping-list" element={<ShoppingListPageDebug />} />
               <Route 
                 path="/cart" 
                 element={
