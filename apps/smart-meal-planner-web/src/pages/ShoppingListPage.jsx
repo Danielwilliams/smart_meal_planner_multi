@@ -39,6 +39,7 @@ import apiService from '../services/apiService';
 import CATEGORY_MAPPING from '../data/categoryMapping';
 import ShoppingList from '../components/ShoppingList';
 import SmartShoppingList from '../components/SmartShoppingList';
+import { adaptShoppingListResponse } from '../utils/aiShoppingListAdapter';
 import { 
   AutoAwesome as AiIcon,
   ExpandMore as ExpandMoreIcon,
@@ -1269,6 +1270,10 @@ function ShoppingListPage() {
       addLog(`Response keys: ${Object.keys(result).join(', ')}`, 'info');
       console.log("DEBUG Response data:", result);
 
+      // Process the result using our adapter to properly handle different formats
+      let processedResult = adaptShoppingListResponse(result, selectedMenuId, addLog);
+      console.log("PROCESSED DATA:", processedResult);
+
       // Log a summary of what was generated
       try {
         // Log categories and counts
@@ -1310,11 +1315,8 @@ function ShoppingListPage() {
       // First clear to force UI refresh
       setAiShoppingData(null);
 
-      // Process the result to ensure it has all expected properties
-      // and handle different response formats
-      let processedResult;
-
-      // Check for different response formats from the backend
+      // Note: We already processed the result using our adapter above
+      // Skip all the format checking since we're using the adapter now
       if (result.ingredient_list && Array.isArray(result.ingredient_list)) {
         // Format 1: ingredient_list array
         addLog(`Found ingredient_list array with ${result.ingredient_list.length} items`, 'info');
