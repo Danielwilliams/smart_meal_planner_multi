@@ -6,7 +6,7 @@ function TestDebugPage() {
     <Container maxWidth="sm" sx={{ mt: 4 }}>
       <Paper sx={{ p: 4, textAlign: 'center' }}>
         <Typography variant="h4" component="h1" gutterBottom>
-          Debug Test Page
+          🚨 UPDATED v2 - Debug Test Page
         </Typography>
         <Typography variant="body1" paragraph>
           If you can see this page, routing is working correctly!

@@ -250,7 +250,7 @@ function ShoppingListPageDebug() {
         <Grid container spacing={2} alignItems="center">
           <Grid item xs>
             <Typography variant="h5" component="h1">
-              Shopping List Debug Tool
+              🔴 UPDATED v2 - Shopping List Debug Tool
             </Typography>
           </Grid>
           <Grid item>

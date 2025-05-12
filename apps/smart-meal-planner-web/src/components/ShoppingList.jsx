@@ -1598,6 +1598,8 @@ const ShoppingList = ({
   onAddToCart,
   onAddToMixedCart
 }) => {
+  // Add debug state
+  const [showDebugData, setShowDebugData] = React.useState(false);
   const [showStoreSelector, setShowStoreSelector] = useState(false);
   const [pendingItem, setPendingItem] = useState(null);
   const [error, setError] = useState('');
@@ -2108,6 +2110,33 @@ const ShoppingList = ({
 
   return (
     <>
+      {/* Debug Button and Data */}
+      <Paper elevation={3} sx={{ my: 2, p: 2, bgcolor: '#f8d7da', color: '#721c24', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Typography variant="subtitle1">
+          🐞 UPDATED v2 - Shopping List Debug
+        </Typography>
+        <Button
+          variant="contained"
+          color="error"
+          size="small"
+          onClick={() => setShowDebugData(!showDebugData)}
+        >
+          {showDebugData ? 'Hide Debug Data' : 'Show Debug Data'}
+        </Button>
+      </Paper>
+
+      {/* Debug Data Display */}
+      {showDebugData && (
+        <Paper elevation={3} sx={{ my: 2, p: 2 }}>
+          <Typography variant="h6" gutterBottom>Raw Data Structure:</Typography>
+          <Box sx={{ bgcolor: '#f5f5f5', p: 2, borderRadius: 1, overflowX: 'auto' }}>
+            <pre style={{ margin: 0 }}>
+              {JSON.stringify(categories, null, 2)}
+            </pre>
+          </Box>
+        </Paper>
+      )}
+
       {/* Check for flat array format first */}
       {Array.isArray(categories) ?
         renderFlatGroceryList() :
