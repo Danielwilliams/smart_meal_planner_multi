@@ -1648,7 +1648,8 @@ const ShoppingList = ({
   const [showStoreSelector, setShowStoreSelector] = useState(false);
   const [pendingItem, setPendingItem] = useState(null);
   const [error, setError] = useState('');
-  const [showHealthyAlternatives, setShowHealthyAlternatives] = useState(false);
+  // Always show healthy alternatives (no toggle needed)
+  const [showHealthyAlternatives] = useState(true);
 
   // Debug: Log the received categories to see their structure
   useEffect(() => {
@@ -2173,14 +2174,7 @@ const ShoppingList = ({
               Regenerate List
             </Button>
           )}
-          <Button
-            variant="outlined"
-            color="secondary"
-            size="small"
-            onClick={() => setShowHealthyAlternatives(!showHealthyAlternatives)}
-          >
-            {showHealthyAlternatives ? 'Hide Alternatives' : 'Show Healthy Alternatives'}
-          </Button>
+          {/* Removed alternatives toggle button - alternatives now always shown */}
           <Button
             variant="outlined"
             color="error"

@@ -106,7 +106,12 @@ def get_grocery_list(
                 # Mark as cached in the response
                 if isinstance(result, dict):
                     result['cached'] = True
-                    result['cache_time'] = datetime.fromtimestamp(cached_data.get('timestamp', 0)).isoformat()
+                    # Ensure valid timestamp and format as ISO string
+                    timestamp = cached_data.get('timestamp', 0)
+                    if timestamp > 0:
+                        result['cache_time'] = datetime.fromtimestamp(timestamp).isoformat()
+                    else:
+                        result['cache_time'] = datetime.now().isoformat()
 
                 # Log what we're returning
                 if 'groceryList' in result:
@@ -474,7 +479,12 @@ async def post_ai_shopping_list(menu_id: int, background_tasks: BackgroundTasks,
             # Mark as cached in response
             if isinstance(result, dict) and "groceryList" in result:
                 result['cached'] = True
-                result['cache_timestamp'] = datetime.fromtimestamp(cached_data.get('timestamp', 0)).isoformat()
+                # Ensure valid timestamp
+                timestamp = cached_data.get('timestamp', 0)
+                if timestamp > 0:
+                    result['cache_timestamp'] = datetime.fromtimestamp(timestamp).isoformat()
+                else:
+                    result['cache_timestamp'] = datetime.now().isoformat()
             return result
         else:
             # Cache expired, remove it
