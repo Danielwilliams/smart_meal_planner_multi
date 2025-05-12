@@ -537,9 +537,15 @@ def combine_amount_and_unit(amount_float: float, unit: str, name: str) -> str:
                     return f"{display_name}: {ounces:.0f} oz"
                 else:
                     return f"{display_name}: {pounds:.1f} lb"
-            # For large quantities with no unit, assume ounces
-            elif not unit and float(amount_float) > 20:
+            # If we already have oz units, keep them as is without multiplying
+            elif (unit == "oz" or unit == "ounce" or unit == "ounces"):
                 return f"{display_name}: {amount_float} oz"
+            # For quantities without units that are likely already in oz (based on ingredient context)
+            elif not unit and float(amount_float) > 20 and any(kw in clean_name for kw in ["chicken", "beef", "meat", "steak"]):
+                return f"{display_name}: {amount_float} oz"
+            # For reasonable pound quantities, simply display as is
+            elif (unit == "lb" or unit == "lbs" or unit == "pound" or unit == "pounds") and float(amount_float) <= 5:
+                return f"{display_name}: {amount_float} lb"
             # For unreasonably large pounds, convert to ounces
             elif (unit == "lb" or unit == "lbs" or unit == "pound" or unit == "pounds") and float(amount_float) > 5:
                 ounces = float(amount_float) * 16
@@ -577,6 +583,125 @@ def combine_amount_and_unit(amount_float: float, unit: str, name: str) -> str:
         return display_name
 
 
+def extract_ingredient_quantities_from_menu(menu_data):
+    """
+    Extract original ingredient quantities directly from menu data, preserving original units
+    """
+    import logging
+    import re
+    logger = logging.getLogger(__name__)
+
+    ingredient_quantities = {}
+
+    # Check if menu_data is a valid object
+    if not isinstance(menu_data, dict):
+        try:
+            # Try parsing if it's a string
+            if isinstance(menu_data, str):
+                import json
+                menu_data = json.loads(menu_data)
+            else:
+                return {}, []
+        except Exception as e:
+            logger.error(f"Failed to parse menu data: {e}")
+            return {}, []
+
+    # Check for days array
+    days = menu_data.get('days', [])
+    if not isinstance(days, list):
+        return {}, []
+
+    # Process each day
+    for day in days:
+        # Process meals
+        meals = day.get('meals', [])
+        if isinstance(meals, list):
+            for meal in meals:
+                # Get ingredients
+                ingredients = meal.get('ingredients', [])
+                if isinstance(ingredients, list):
+                    for ing in ingredients:
+                        if isinstance(ing, dict) and 'name' in ing:
+                            name = ing.get('name', '').lower().strip()
+                            quantity = ing.get('quantity', '')
+
+                            # Extract numeric quantity and unit
+                            qty_value = None
+                            unit = ''
+
+                            if isinstance(quantity, str):
+                                # Simple regex to extract number and unit
+                                qty_match = re.match(r'(\d+(?:\.\d+)?)\s*([a-zA-Z]+)?', quantity)
+                                if qty_match:
+                                    qty_value = float(qty_match.group(1))
+                                    unit = qty_match.group(2) or ''
+
+                            # Track this ingredient
+                            if name and qty_value is not None:
+                                if name not in ingredient_quantities:
+                                    ingredient_quantities[name] = []
+
+                                ingredient_quantities[name].append({
+                                    'qty': qty_value,
+                                    'unit': unit,
+                                    'display': quantity
+                                })
+
+        # Process snacks in a similar way
+        snacks = day.get('snacks', [])
+        if isinstance(snacks, list):
+            for snack in snacks:
+                ingredients = snack.get('ingredients', [])
+                if isinstance(ingredients, list):
+                    for ing in ingredients:
+                        if isinstance(ing, dict) and 'name' in ing:
+                            name = ing.get('name', '').lower().strip()
+                            quantity = ing.get('quantity', '')
+
+                            # Extract numeric quantity and unit
+                            qty_value = None
+                            unit = ''
+
+                            if isinstance(quantity, str):
+                                # Simple regex to extract number and unit
+                                qty_match = re.match(r'(\d+(?:\.\d+)?)\s*([a-zA-Z]+)?', quantity)
+                                if qty_match:
+                                    qty_value = float(qty_match.group(1))
+                                    unit = qty_match.group(2) or ''
+
+                            # Track this ingredient
+                            if name and qty_value is not None:
+                                if name not in ingredient_quantities:
+                                    ingredient_quantities[name] = []
+
+                                ingredient_quantities[name].append({
+                                    'qty': qty_value,
+                                    'unit': unit,
+                                    'display': quantity
+                                })
+
+    # Check if we can summarize quantities for specific ingredients
+    special_ingredients = ["chicken breast", "beef sirloin", "chicken thighs"]
+    summarized_ingredients = []
+
+    for ingredient in special_ingredients:
+        if ingredient in ingredient_quantities:
+            occurrences = ingredient_quantities[ingredient]
+
+            # Check if all occurrences have the same unit
+            first_unit = occurrences[0]['unit'] if occurrences else None
+            if first_unit and all(o['unit'] == first_unit for o in occurrences):
+                # Sum the quantities
+                total_qty = sum(o['qty'] for o in occurrences)
+
+                # Create a special display entry
+                summarized_ingredients.append({
+                    "name": ingredient,
+                    "quantity": f"{total_qty} {first_unit}"
+                })
+
+    return ingredient_quantities, summarized_ingredients
+
 def aggregate_grocery_list(menu_dict: Dict[str, Any]):
     """
     Flexible grocery list aggregation with format detection for all menu types
@@ -585,6 +710,16 @@ def aggregate_grocery_list(menu_dict: Dict[str, Any]):
     logger = logging.getLogger(__name__)
 
     logger.info(f"Aggregating grocery list from input type: {type(menu_dict)}")
+
+    # First, try direct extraction from menu structure if available
+    ingredient_quantities, summarized_ingredients = extract_ingredient_quantities_from_menu(menu_dict)
+
+    # If we have direct summarized ingredients, use those
+    if summarized_ingredients:
+        logger.info(f"Using directly summarized ingredients: {summarized_ingredients}")
+        return summarized_ingredients
+
+    # Otherwise, use standard aggregation
     aggregated = {}
 
     # If null, return empty list

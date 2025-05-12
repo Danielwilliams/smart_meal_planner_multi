@@ -17,33 +17,54 @@ export const standardizeUnits = (quantity, unit, itemName) => {
   // Normalize unit for consistent checks
   const normalizedUnit = (unit || '').toLowerCase().replace(/\.$/, '');
   
-  // Meat products should use oz for larger quantities
-  if (name.includes('chicken') || name.includes('beef') || 
-      name.includes('pork') || name.includes('steak') || 
+  // Meat products with proper handling of units
+  if (name.includes('chicken') || name.includes('beef') ||
+      name.includes('pork') || name.includes('steak') ||
       name.includes('turkey') || name.includes('meat')) {
-    
-    // For large quantities in pounds, convert to ounces for clarity
-    if ((normalizedUnit === 'lb' || normalizedUnit === 'lbs' || 
-         normalizedUnit === 'pound' || normalizedUnit === 'pounds') && 
-        parsedQuantity > 5) {
-      return {
-        quantity: (parsedQuantity * 16).toFixed(0),
-        unit: 'oz'
-      };
-    }
-    
-    // For large quantities with no units, assume ounces
-    if ((!normalizedUnit || normalizedUnit === 'piece' || normalizedUnit === 'pieces') && 
-        parsedQuantity > 20) {
+
+    // Check if quantity is already in oz
+    if (normalizedUnit === 'oz' || normalizedUnit === 'ounce' || normalizedUnit === 'ounces') {
+      // Keep the original oz value, don't modify it
       return {
         quantity: parsedQuantity.toString(),
         unit: 'oz'
       };
     }
-    
-    // For very large gram values, convert to oz
-    if ((normalizedUnit === 'g' || normalizedUnit === 'gram' || normalizedUnit === 'grams') && 
-        parsedQuantity > 500) {
+
+    // For quantities in pounds, convert to ounces for better summation
+    if ((normalizedUnit === 'lb' || normalizedUnit === 'lbs' ||
+         normalizedUnit === 'pound' || normalizedUnit === 'pounds')) {
+      return {
+        quantity: (parsedQuantity * 16).toFixed(0),
+        unit: 'oz'
+      };
+    }
+
+    // For quantities with no units, check quantity size to determine unit
+    if ((!normalizedUnit || normalizedUnit === 'piece' || normalizedUnit === 'pieces')) {
+      // If it's a reasonable number (under 20), it's likely pounds
+      if (parsedQuantity <= 5) {
+        return {
+          quantity: (parsedQuantity * 16).toFixed(0), // Convert to oz
+          unit: 'oz'
+        };
+      } else if (parsedQuantity <= 20) {
+        // Between 5-20, likely already in oz
+        return {
+          quantity: parsedQuantity.toString(),
+          unit: 'oz'
+        };
+      } else {
+        // Over 20, definitely in oz
+        return {
+          quantity: parsedQuantity.toString(),
+          unit: 'oz'
+        };
+      }
+    }
+
+    // For gram values, convert to oz carefully
+    if ((normalizedUnit === 'g' || normalizedUnit === 'gram' || normalizedUnit === 'grams')) {
       // 1g ≈ 0.035oz
       const ozValue = (parsedQuantity * 0.035274).toFixed(0);
       return {
