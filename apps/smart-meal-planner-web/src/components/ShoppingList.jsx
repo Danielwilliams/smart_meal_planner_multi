@@ -1419,13 +1419,21 @@ const ShoppingListItem = ({
       } else {
         // Clean up any decimal points in the quantity if it's a whole number
         let cleanQuantity = item.quantity || '1';
-        if (cleanQuantity.includes('.') && cleanQuantity.endsWith('.0')) {
-          cleanQuantity = cleanQuantity.replace('.0', '');
+        if (typeof cleanQuantity === 'string') {
+          if (cleanQuantity.includes('.') && cleanQuantity.endsWith('.0')) {
+            cleanQuantity = cleanQuantity.replace('.0', '');
+          }
+          // Remove any extra decimal points like "1.: 1"
+          cleanQuantity = cleanQuantity.replace(/\d+\.: /, '');
         }
-        // Remove any extra decimal points like "1.: 1"
-        cleanQuantity = cleanQuantity.replace(/\d+\.: /, '');
 
-        displayName = `${item.name}: ${cleanQuantity} ${item.unit || 'piece'}`;
+        // Handle "To taste" case specially
+        if (cleanQuantity === 'To taste') {
+          displayName = `${item.name}: ${cleanQuantity}`;
+        } else {
+          // Regular case
+          displayName = `${item.name}: ${cleanQuantity}${item.unit ? ' ' + item.unit : ''}`;
+        }
       }
     }
 
