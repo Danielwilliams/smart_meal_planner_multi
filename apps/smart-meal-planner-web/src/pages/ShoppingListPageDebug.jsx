@@ -254,16 +254,20 @@ function ShoppingListPageDebug() {
             </Typography>
           </Grid>
           <Grid item>
-            <FormControlLabel
-              control={
-                <Switch 
-                  checked={showDebug}
-                  onChange={(e) => setShowDebug(e.target.checked)}
-                  color="primary"
-                />
-              }
-              label="Show Debug Tools"
-            />
+            <Button
+              variant="contained"
+              color="error"
+              startIcon={<BugIcon />}
+              onClick={() => setShowDebug(!showDebug)}
+              sx={{
+                mr: 1,
+                fontWeight: 'bold',
+                boxShadow: showDebug ? '0 0 10px rgba(255,0,0,0.5)' : 'none'
+              }}
+              size="large"
+            >
+              {showDebug ? 'Hide Debug Tools' : 'Show Debug Tools'}
+            </Button>
           </Grid>
           <Grid item>
             <Button
