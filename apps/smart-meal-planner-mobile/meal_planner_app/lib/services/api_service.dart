@@ -1188,7 +1188,8 @@ class ApiService {
       // If we get here, both endpoints failed
       return {
         "status": "error",
-        "message": "Could not retrieve shopping list status",
+        "message": "Failed to get AI shopping list status",
+        "groceryList": [],
         "is_ready": false
       };
     } catch (e) {

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import '../services/api_service.dart';
 import '../models/menu_model.dart';
@@ -136,9 +137,6 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
       // Cache validation - create a menu-specific ID key
       final String menuIdKey = 'menu_$_selectedMenuId';
 
-      // Try the AI-enhanced shopping list first
-      print("Attempting to fetch AI-enhanced shopping list first for menu ID: $_selectedMenuId");
-
       // Check for locally cached data first
       final prefs = await SharedPreferences.getInstance();
       final String? cachedData = prefs.getString(menuIdKey);
@@ -172,64 +170,116 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
         }
       }
 
-      final aiResult = await ApiService.generateAiShoppingList(
+      // STEP 1: Make the initial POST request to start the AI shopping list generation
+      print("Making initial POST request to start AI shopping list generation for menu ID: $_selectedMenuId");
+
+      final initialAiResult = await ApiService.generateAiShoppingList(
         _selectedMenuId,
         widget.authToken,
       );
 
-      if (aiResult != null) {
-        print("AI shopping list returned with keys: ${aiResult.keys.toList()}");
+      if (initialAiResult != null) {
+        print("Initial AI request returned with keys: ${initialAiResult.keys.toList()}");
 
-        // Check if the result contains a status that indicates its processing
-        if (aiResult.containsKey('status') &&
-            (aiResult['status'].toString().toLowerCase() == 'processing' ||
-             aiResult['status'].toString().toLowerCase() == 'pending')) {
+        // STEP 2: Check if the result indicates it's processing in the background
+        if (initialAiResult.containsKey('status') &&
+            (initialAiResult['status'].toString().toLowerCase() == 'processing' ||
+             initialAiResult['status'].toString().toLowerCase() == 'pending')) {
 
           // Show a notification that we're waiting using debounced function
           _showSnackbar(
-            'AI is still processing your shopping list for "$_selectedMenuTitle", please wait...',
+            'AI is processing your shopping list for "$_selectedMenuTitle", please wait...',
             duration: Duration(seconds: 3)
           );
 
-          // Track attempts to avoid infinite retries
+          // STEP 3: Start polling for status using a better approach
           int retryAttempts = 0;
-          const int maxRetries = 3;
+          const int maxRetries = 10; // Increased max retries
+          const int initialDelay = 2; // Initial delay in seconds
+          int currentDelay = initialDelay; // Current delay that will increase
           bool processingComplete = false;
 
           while (!processingComplete && retryAttempts < maxRetries) {
-            // Wait a moment and try again
-            await Future.delayed(Duration(seconds: 5));
+            // Use exponential backoff with a maximum delay of 10 seconds
+            await Future.delayed(Duration(seconds: currentDelay));
             retryAttempts++;
 
-            final retryResult = await ApiService.getAiShoppingListStatus(_selectedMenuId, widget.authToken);
+            // Double the delay for next attempt, but cap at 10 seconds
+            currentDelay = (currentDelay * 2).clamp(initialDelay, 10);
 
-            // Check if processing is complete
-            if (retryResult['status']?.toString()?.toLowerCase() == 'completed' ||
-                retryResult['is_ready'] == true ||
-                retryResult['cached'] == true ||
-                (retryResult.containsKey('groceryList') && retryResult['groceryList'] is List &&
-                 (retryResult['groceryList'] as List).isNotEmpty)) {
+            try {
+              print("Polling attempt $retryAttempts: checking AI shopping list status");
 
-              processingComplete = true;
+              // STEP 4: Check the status endpoint
+              final statusResult = await ApiService.getAiShoppingListStatus(_selectedMenuId, widget.authToken);
 
-              // Get the completed list
-              final completedList = await ApiService.generateAiShoppingList(
-                _selectedMenuId,
-                widget.authToken,
-              );
+              if (statusResult == null) {
+                print("Status check returned null, continuing to next attempt");
+                continue;
+              }
 
-              if (completedList != null &&
-                  (completedList.containsKey('groceryList') ||
-                   completedList.containsKey('ingredients') ||
-                   completedList.containsKey('ingredient_list'))) {
+              print("Status response keys: ${statusResult.keys.toList()}");
 
-                // Process the final list
-                await _processShoppingListItems(completedList);
+              // STEP 5: Check if processing is complete with comprehensive conditions
+              final bool isCompleted =
+                // Has explicit completed status
+                statusResult['status']?.toString()?.toLowerCase() == 'completed' ||
+                // Has explicit ready flag
+                statusResult['is_ready'] == true ||
+                // Has cache flag set
+                statusResult['cached'] == true ||
+                // Has groceryList with content
+                (statusResult.containsKey('groceryList') &&
+                 statusResult['groceryList'] is List &&
+                 (statusResult['groceryList'] as List).isNotEmpty) ||
+                // Has ingredient_list with content
+                (statusResult.containsKey('ingredient_list') &&
+                 statusResult['ingredient_list'] is List &&
+                 (statusResult['ingredient_list'] as List).isNotEmpty) ||
+                // Has nutritionTips populated (indicates completion)
+                (statusResult.containsKey('nutritionTips') &&
+                 statusResult['nutritionTips'] is List &&
+                 (statusResult['nutritionTips'] as List).isNotEmpty) ||
+                // Has recommendations populated (indicates completion)
+                (statusResult.containsKey('recommendations') &&
+                 statusResult['recommendations'] is List &&
+                 (statusResult['recommendations'] as List).isNotEmpty);
+
+              if (isCompleted) {
+                processingComplete = true;
+                print("AI shopping list processing complete!");
+
+                // STEP 6: Get the completed list data
+                Map<String, dynamic> completedData;
+
+                // Use the status data if it contains the shopping list
+                if ((statusResult.containsKey('groceryList') && statusResult['groceryList'] is List) ||
+                    (statusResult.containsKey('ingredient_list') && statusResult['ingredient_list'] is List) ||
+                    (statusResult.containsKey('ingredients') && statusResult['ingredients'] is List)) {
+                  print("Using data directly from status response");
+                  completedData = statusResult;
+                } else {
+                  // If status doesn't contain the full list, request it again
+                  print("Requesting full shopping list data after completion");
+                  final completedResult = await ApiService.generateAiShoppingList(
+                    _selectedMenuId,
+                    widget.authToken,
+                  );
+
+                  if (completedResult == null) {
+                    throw Exception("Failed to get completed shopping list");
+                  }
+
+                  completedData = completedResult;
+                }
+
+                // Process the shopping list
+                await _processShoppingListItems(completedData);
 
                 // Cache the result for future use
                 try {
                   final cacheData = {
-                    'data': completedList,
+                    'data': completedData,
                     'timestamp': DateTime.now().millisecondsSinceEpoch,
                   };
 
@@ -239,7 +289,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
                   print("Error caching shopping list data: $cacheError");
                 }
 
-                // Show success notification using debounced function
+                // Show success notification
                 _showSnackbar(
                   'AI shopping list for "$_selectedMenuTitle" is ready!',
                   duration: Duration(seconds: 3)
@@ -249,18 +299,21 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
                   _isLoading = false;
                 });
                 return;
+              } else if (statusResult['status']?.toString()?.toLowerCase() == 'error') {
+                print("AI shopping list error: ${statusResult['message']}");
+                break;
               }
-            } else if (retryResult['status']?.toString()?.toLowerCase() == 'error') {
-              // If there's an explicit error, stop retrying
-              print("AI shopping list error: ${retryResult['message']}");
-              break;
-            }
 
-            // Update with progress message
-            _showSnackbar(
-              'AI is still working on your shopping list (attempt ${retryAttempts+1}/${maxRetries+1})...',
-              duration: Duration(seconds: 2)
-            );
+              // Show progress update with estimated time remaining
+              final int attemptsRemaining = maxRetries - retryAttempts;
+              _showSnackbar(
+                'AI is still working on your shopping list (${retryAttempts}/$maxRetries)...',
+                duration: Duration(seconds: 2)
+              );
+            } catch (statusError) {
+              print("Error checking status: $statusError");
+              // Continue to next attempt on error
+            }
           }
 
           if (!processingComplete) {
@@ -270,20 +323,17 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
               duration: Duration(seconds: 3)
             );
           }
-        }
-
-        // Check if this is a genuine AI result and not an error
-        if (!aiResult.containsKey('error') ||
-            (aiResult.containsKey('groceryList') && aiResult['groceryList'] is List) ||
-            (aiResult.containsKey('ingredients') && aiResult['ingredients'] is List) ||
-            (aiResult.containsKey('ingredient_list') && aiResult['ingredient_list'] is List)) {
-          print("Processing AI shopping list result");
-          await _processShoppingListItems(aiResult);
+        } else if ((initialAiResult.containsKey('groceryList') && initialAiResult['groceryList'] is List) ||
+                 (initialAiResult.containsKey('ingredients') && initialAiResult['ingredients'] is List) ||
+                 (initialAiResult.containsKey('ingredient_list') && initialAiResult['ingredient_list'] is List)) {
+          // We got an immediate result (likely from cache)
+          print("Got immediate AI shopping list result (likely cached)");
+          await _processShoppingListItems(initialAiResult);
 
           // Cache the result for future use
           try {
             final cacheData = {
-              'data': aiResult,
+              'data': initialAiResult,
               'timestamp': DateTime.now().millisecondsSinceEpoch,
             };
 
@@ -297,19 +347,21 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
             _isLoading = false;
           });
           return; // Success, exit early
-        } else {
-          print("AI shopping list returned an error, falling back to regular shopping list");
-
-          // Show notification that we're falling back using debounced function
+        } else if (initialAiResult.containsKey('error')) {
+          print("AI shopping list returned an error: ${initialAiResult['error']}");
           _showSnackbar(
-            'AI shopping list unavailable for "$_selectedMenuTitle", using standard list instead',
+            'AI shopping list error: ${initialAiResult['error']}',
             duration: Duration(seconds: 3)
           );
+        } else {
+          print("AI shopping list returned unexpected response: $initialAiResult");
         }
+      } else {
+        print("AI shopping list initial request returned null");
       }
 
-      // Fallback to regular shopping list
-      print("Fetching regular shopping list");
+      // Fallback to regular shopping list if AI generation fails
+      print("Fetching regular shopping list as fallback");
       final result = await ApiService.getShoppingList(
         widget.userId,
         widget.authToken,
@@ -317,7 +369,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
       );
 
       if (result != null) {
-        print("Shopping list API returned result with keys: ${result.keys.toList()}");
+        print("Regular shopping list API returned result with keys: ${result.keys.toList()}");
 
         if (result.containsKey('ingredient_list')) {
           print("Ingredient list contains ${(result['ingredient_list'] as List).length} items");
