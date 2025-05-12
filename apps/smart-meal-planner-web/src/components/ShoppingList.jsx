@@ -1536,18 +1536,18 @@ const ShoppingListItem = ({
   return (
     <Grid item xs={12} sm={6}>
       <Typography>
-        {/* Display name and quantity separately as they come from backend */}
-        {console.log("ITEM DETAILS FOR DISPLAY:", item)}
-        {item && typeof item === 'object' && item.name ?
-          (item.quantity ?
-            `${item.name}: ${item.quantity}${item.unit ? ' ' + item.unit : ''}` :
-            (typeof item === 'object' && 'ingredients' in item && item.ingredients && item.ingredients.length > 0 ?
-              `${item.name}: ${item.ingredients[0].quantity || ''}${item.ingredients[0].unit ? ' ' + item.ingredients[0].unit : ''}` :
-              item.name)
-          ) :
-          (typeof item === 'string' && item.includes(':') ?
-            item :
-            displayName)}
+        {/* DEBUG OUTPUT - Will display in browser */}
+        {typeof item === 'object' &&
+         <div style={{display: 'none'}}>
+           RAW ITEM: {JSON.stringify(item)}
+         </div>
+        }
+
+        {/* Hard-coded conditional to ensure quantities display */}
+        {item && typeof item === 'object' && item.name && item.quantity ?
+          `${item.name}: ${item.quantity}` :
+          (typeof item === 'string' ? item :
+           (displayName || (typeof item === 'object' ? item.name || "Unknown" : "Unknown Item")))}
       </Typography>
 
       {selectedStore === 'mixed' ? (
@@ -1973,11 +1973,24 @@ const ShoppingList = ({
                 {items.map((item, index) => {
                   // Ensure display includes quantity if available
                   let displayItem = item;
-                  if (typeof item === 'object' && item.name && item.quantity) {
-                    displayItem = {
-                      ...item,
-                      display_name: `${item.name}: ${item.quantity}${item.unit ? ' ' + item.unit : ''}`
-                    };
+
+                  // DEBUG LOGGING FOR WEB CONSOLE
+                  console.log(`RAW ITEM[${index}]:`, JSON.stringify(item));
+
+                  if (typeof item === 'object' && item.name) {
+                    // Make sure quantity is shown if it exists
+                    if (item.quantity) {
+                      displayItem = {
+                        ...item,
+                        display_name: `${item.name}: ${item.quantity}${item.unit ? ' ' + item.unit : ''}`
+                      };
+                      console.log(`ENHANCED ITEM[${index}] WITH QUANTITY:`, displayItem);
+                    } else {
+                      // Try to find quantity in raw item
+                      console.log(`ITEM[${index}] HAS NO QUANTITY, KEYS:`, Object.keys(item));
+                    }
+                  } else {
+                    console.log(`ITEM[${index}] IS NOT AN OBJECT WITH NAME`);
                   }
 
                   return (

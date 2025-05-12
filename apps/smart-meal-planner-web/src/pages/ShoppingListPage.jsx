@@ -414,6 +414,24 @@ function ShoppingListPage() {
         const directResult = await directResponse.json();
         console.log("DIRECT RAW grocery list response:", directResult);
 
+        // Add a global window variable to debug in browser console
+        window.lastGroceryListResponse = directResult;
+        console.log("Available in browser console as 'window.lastGroceryListResponse'");
+
+        // Display first few items directly in the console for debugging
+        if (Array.isArray(directResult) && directResult.length > 0) {
+          console.log("FIRST 5 ITEMS:", directResult.slice(0, 5));
+          directResult.slice(0, 5).forEach((item, i) => {
+            console.log(`ITEM[${i}]:`, item);
+            if (typeof item === 'object') {
+              console.log(`Item keys: ${Object.keys(item)}`);
+              console.log(`name: ${item.name}, quantity: ${item.quantity}`);
+            }
+          });
+        } else if (directResult && directResult.groceryList && Array.isArray(directResult.groceryList)) {
+          console.log("FIRST 5 ITEMS from groceryList:", directResult.groceryList.slice(0, 5));
+        }
+
         // Handle different response structures
         if (directResult && Array.isArray(directResult)) {
           console.log("DIRECT: Using raw array:", directResult);
