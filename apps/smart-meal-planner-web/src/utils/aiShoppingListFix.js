@@ -101,6 +101,40 @@ export function processShoppingListAI(items) {
       "Shop the perimeter of the store first for fresh foods.",
       "Create a meal plan to use ingredients efficiently.",
       "Store produce properly to extend freshness."
+    ],
+    healthyAlternatives: [
+      {
+        "original": "Sour Cream",
+        "alternative": "Non-Fat Plain Greek Yogurt",
+        "benefit": "Higher protein, lower fat"
+      },
+      {
+        "original": "Ground Beef",
+        "alternative": "Ground Turkey",
+        "benefit": "Lower fat content"
+      },
+      {
+        "original": "White Rice",
+        "alternative": "Brown Rice",
+        "benefit": "More fiber and nutrients"
+      },
+      {
+        "original": "Regular Pasta",
+        "alternative": "Whole Grain Pasta",
+        "benefit": "Higher fiber content"
+      },
+      {
+        "original": "Mayonnaise",
+        "alternative": "Mashed Avocado",
+        "benefit": "Heart-healthy fats"
+      }
+    ],
+    shoppingTips: [
+      "Buy in-season produce for better flavor and nutrition",
+      "Check unit prices to find the best value",
+      "Look for sales on staple items you can stock up on",
+      "Choose frozen fruits and vegetables when fresh options are expensive",
+      "Buy whole foods instead of pre-cut to save money"
     ]
   };
   

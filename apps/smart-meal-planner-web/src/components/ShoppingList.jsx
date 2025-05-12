@@ -11,8 +11,17 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Alert
+  Alert,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  Chip
 } from '@mui/material';
+import {
+  TipsAndUpdates as TipsIcon,
+  AutoAwesome
+} from '@mui/icons-material';
 import StoreSelector from './StoreSelector';
 import apiService from '../services/apiService';
 import _ from 'lodash';
@@ -1629,13 +1638,17 @@ const ShoppingList = ({
   categories,
   selectedStore,
   onAddToCart,
-  onAddToMixedCart
+  onAddToMixedCart,
+  healthyAlternatives = [],
+  shoppingTips = [],
+  onRegenerateList
 }) => {
   // Add debug state
   const [showDebugData, setShowDebugData] = React.useState(false);
   const [showStoreSelector, setShowStoreSelector] = useState(false);
   const [pendingItem, setPendingItem] = useState(null);
   const [error, setError] = useState('');
+  const [showHealthyAlternatives, setShowHealthyAlternatives] = useState(false);
 
   // Debug: Log the received categories to see their structure
   useEffect(() => {
@@ -2143,25 +2156,87 @@ const ShoppingList = ({
 
   return (
     <>
-      {/* Debug Button and Data */}
-      <Paper elevation={3} sx={{ my: 2, p: 2, bgcolor: '#f8d7da', color: '#721c24', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Typography variant="subtitle1">
-          🐞 UPDATED v2 - Shopping List Debug
+      {/* Controls and Actions */}
+      <Paper elevation={3} sx={{ my: 2, p: 2, display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', alignItems: 'center' }}>
+        <Typography variant="h6" sx={{ mb: { xs: 2, md: 0 } }}>
+          Shopping List
         </Typography>
-        <Button
-          variant="contained"
-          color="error"
-          size="small"
-          onClick={() => setShowDebugData(!showDebugData)}
-        >
-          {showDebugData ? 'Hide Debug Data' : 'Show Debug Data'}
-        </Button>
+        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+          {onRegenerateList && (
+            <Button
+              variant="contained"
+              color="primary"
+              size="small"
+              onClick={onRegenerateList}
+              startIcon={<AutoAwesome />}
+            >
+              Regenerate List
+            </Button>
+          )}
+          <Button
+            variant="outlined"
+            color="secondary"
+            size="small"
+            onClick={() => setShowHealthyAlternatives(!showHealthyAlternatives)}
+          >
+            {showHealthyAlternatives ? 'Hide Alternatives' : 'Show Healthy Alternatives'}
+          </Button>
+          <Button
+            variant="outlined"
+            color="error"
+            size="small"
+            onClick={() => setShowDebugData(!showDebugData)}
+          >
+            {showDebugData ? 'Hide Debug' : 'Debug'}
+          </Button>
+        </Box>
       </Paper>
+
+      {/* Shopping Tips */}
+      {shoppingTips && shoppingTips.length > 0 && (
+        <Paper elevation={3} sx={{ my: 2, p: 2, bgcolor: '#e8f5e9' }}>
+          <Typography variant="h6" gutterBottom>Shopping Tips</Typography>
+          <List dense>
+            {shoppingTips.map((tip, index) => (
+              <ListItem key={`tip-${index}`}>
+                <ListItemIcon>
+                  <TipsIcon color="success" />
+                </ListItemIcon>
+                <ListItemText primary={tip} />
+              </ListItem>
+            ))}
+          </List>
+        </Paper>
+      )}
+
+      {/* Healthy Alternatives */}
+      {showHealthyAlternatives && healthyAlternatives && healthyAlternatives.length > 0 && (
+        <Paper elevation={3} sx={{ my: 2, p: 2, bgcolor: '#e3f2fd' }}>
+          <Typography variant="h6" gutterBottom>Healthy Alternatives</Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            {healthyAlternatives.map((alt, index) => (
+              <Box key={`alt-${index}`} sx={{ display: 'flex', alignItems: 'center', p: 1, borderRadius: 1, bgcolor: '#fff' }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1 }}>
+                  <Typography variant="body1" sx={{ fontWeight: 'bold' }}>{alt.original}:</Typography>
+                  <Typography variant="body1">{alt.alternative}</Typography>
+                </Box>
+                <Chip
+                  label={alt.benefit}
+                  size="small"
+                  color="primary"
+                  variant="outlined"
+                  sx={{ ml: 1 }}
+                />
+              </Box>
+            ))}
+          </Box>
+        </Paper>
+      )}
 
       {/* Debug Data Display */}
       {showDebugData && (
-        <Paper elevation={3} sx={{ my: 2, p: 2 }}>
-          <Typography variant="h6" gutterBottom>Raw Data Structure:</Typography>
+        <Paper elevation={3} sx={{ my: 2, p: 2, bgcolor: '#f8d7da' }}>
+          <Typography variant="h6" gutterBottom>Debug Data</Typography>
           <Box sx={{ bgcolor: '#f5f5f5', p: 2, borderRadius: 1, overflowX: 'auto' }}>
             <pre style={{ margin: 0 }}>
               {JSON.stringify(categories, null, 2)}

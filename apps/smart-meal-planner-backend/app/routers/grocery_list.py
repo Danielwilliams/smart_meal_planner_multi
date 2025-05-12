@@ -168,7 +168,17 @@ def get_grocery_list(
                     "nutritionTips": ["For a balanced diet, include items from each food group"],
                     "status": "completed",
                     "cached": False,
-                    "fallback": True
+                    "fallback": True,
+                    "healthyAlternatives": [
+                        {"original": "Sour Cream", "alternative": "Non-Fat Plain Greek Yogurt", "benefit": "Higher protein, lower fat"},
+                        {"original": "Ground Beef", "alternative": "Ground Turkey", "benefit": "Lower fat content"},
+                        {"original": "White Rice", "alternative": "Brown Rice", "benefit": "More fiber and nutrients"}
+                    ],
+                    "shoppingTips": [
+                        "Buy in-season produce for better flavor and nutrition",
+                        "Check unit prices to find the best value",
+                        "Look for sales on staple items you can stock up on"
+                    ]
                 }
 
         # If no AI requested, use our categorization function to provide a better experience than flat list
@@ -178,7 +188,17 @@ def get_grocery_list(
         return {
             "groceryList": categorized_list,
             "status": "completed",
-            "ai_enhanced": False
+            "ai_enhanced": False,
+            "healthyAlternatives": [
+                {"original": "Sour Cream", "alternative": "Non-Fat Plain Greek Yogurt", "benefit": "Higher protein, lower fat"},
+                {"original": "Ground Beef", "alternative": "Ground Turkey", "benefit": "Lower fat content"},
+                {"original": "White Rice", "alternative": "Brown Rice", "benefit": "More fiber and nutrients"}
+            ],
+            "shoppingTips": [
+                "Buy in-season produce for better flavor and nutrition",
+                "Check unit prices to find the best value",
+                "Look for sales on staple items you can stock up on"
+            ]
         }
 
     except Exception as e:
@@ -276,6 +296,16 @@ def process_ai_shopping_list_background(menu_id: int, menu_data, grocery_list, a
                     "Fresh produce typically offers better nutrition than processed alternatives"
                 ],
                 "pantryStaples": ["Salt", "Pepper", "Olive Oil", "Flour", "Sugar"],
+                "healthyAlternatives": [
+                    {"original": "Sour Cream", "alternative": "Non-Fat Plain Greek Yogurt", "benefit": "Higher protein, lower fat"},
+                    {"original": "Ground Beef", "alternative": "Ground Turkey", "benefit": "Lower fat content"},
+                    {"original": "White Rice", "alternative": "Brown Rice", "benefit": "More fiber and nutrients"}
+                ],
+                "shoppingTips": [
+                    "Buy in-season produce for better flavor and nutrition",
+                    "Check unit prices to find the best value",
+                    "Look for sales on staple items you can stock up on"
+                ],
                 "healthySwaps": [],
                 "bulkItems": [],
                 "status": "completed",  # Mark as completed so UI doesn't stay in loading state
@@ -304,6 +334,16 @@ def process_ai_shopping_list_background(menu_id: int, menu_data, grocery_list, a
                 "recommendations": ["Error during AI processing, showing basic categorized list"],
                 "nutritionTips": ["Using basic grocery list with categories"],
                 "pantryStaples": ["Salt", "Pepper", "Olive Oil", "Flour", "Sugar"],
+                "healthyAlternatives": [
+                    {"original": "Sour Cream", "alternative": "Non-Fat Plain Greek Yogurt", "benefit": "Higher protein, lower fat"},
+                    {"original": "Ground Beef", "alternative": "Ground Turkey", "benefit": "Lower fat content"},
+                    {"original": "White Rice", "alternative": "Brown Rice", "benefit": "More fiber and nutrients"}
+                ],
+                "shoppingTips": [
+                    "Buy in-season produce for better flavor and nutrition",
+                    "Check unit prices to find the best value",
+                    "Look for sales on staple items you can stock up on"
+                ],
                 "healthySwaps": [],
                 "bulkItems": [],
                 "status": "completed",  # Mark as completed so UI doesn't stay in loading state
@@ -553,6 +593,16 @@ async def get_ai_shopping_list_status(menu_id: int, preferences: Optional[str] =
                             "Fresh produce typically offers better nutrition than processed alternatives"
                         ],
                         "pantryStaples": ["Salt", "Pepper", "Olive Oil", "Flour", "Sugar"],
+                        "healthyAlternatives": [
+                            {"original": "Sour Cream", "alternative": "Non-Fat Plain Greek Yogurt", "benefit": "Higher protein, lower fat"},
+                            {"original": "Ground Beef", "alternative": "Ground Turkey", "benefit": "Lower fat content"},
+                            {"original": "White Rice", "alternative": "Brown Rice", "benefit": "More fiber and nutrients"}
+                        ],
+                        "shoppingTips": [
+                            "Buy in-season produce for better flavor and nutrition",
+                            "Check unit prices to find the best value",
+                            "Look for sales on staple items you can stock up on"
+                        ],
                         "healthySwaps": [],
                         "bulkItems": [],
                         "status": "completed",  # Mark as completed so UI doesn't stay in loading state
@@ -870,41 +920,41 @@ def generate_ai_shopping_list(menu_data, basic_grocery_list, additional_preferen
         prompt = "You are a helpful meal planning assistant. I'll provide you with a shopping list and meal plan information.\n"
         prompt += "Please organize this shopping list in a more efficient way with the following enhancements:\n\n"
         prompt += "1. Categorize items by store section (produce, dairy, meat, etc.)\n"
-        prompt += "2. Suggest brand alternatives or substitutions where appropriate\n"
+        prompt += "2. Suggest healthy alternatives for common ingredients (like using Greek yogurt instead of sour cream)\n"
         prompt += "3. Note which items might already be in a typical pantry\n"
         prompt += "4. Identify items that can be purchased in bulk to save money\n"
         prompt += "5. Highlight any specialty ingredients that might be hard to find\n"
         prompt += "6. Add nutrition information where relevant\n"
-        prompt += "7. Suggest healthy alternatives to ingredients where applicable\n\n"
+        prompt += "7. Include shopping tips for buying better quality ingredients\n\n"
         prompt += "Shopping List:\n" + grocery_text + "\n\n"
 
         if meal_plan_text:
             prompt += meal_plan_text + "\n\n"
-        
+
         if additional_preferences:
             prompt += "Additional Preferences: " + additional_preferences + "\n\n"
-            
-        prompt += "Format your response as a simple JSON object. I need the output in this exact format to process correctly:\n"
+
+        prompt += "Format your response as a simple JSON object. I need the output in this EXACT format with items formatted as 'Item: Quantity-Unit':\n"
         prompt += """
 {
   "groceryList": [
     {
       "category": "Produce",
       "items": [
-        { "name": "Bell Pepper", "quantity": "2", "unit": "medium" },
-        { "name": "Spinach", "quantity": "3", "unit": "cups" }
+        { "name": "Bell Pepper", "quantity": "2", "unit": "medium", "display_name": "Bell Pepper: 2-medium" },
+        { "name": "Spinach", "quantity": "3", "unit": "cups", "display_name": "Spinach: 3-cups" }
       ]
     },
     {
       "category": "Meat and Proteins",
       "items": [
-        { "name": "Chicken Breast", "quantity": "1.5", "unit": "lb" }
+        { "name": "Chicken Breast", "quantity": "1.5", "unit": "lb", "display_name": "Chicken Breast: 1.5-lb" }
       ]
     },
     {
       "category": "Dairy",
       "items": [
-        { "name": "Cheddar Cheese", "quantity": "8", "unit": "oz" }
+        { "name": "Cheddar Cheese", "quantity": "8", "unit": "oz", "display_name": "Cheddar Cheese: 8-oz" }
       ]
     }
   ],
@@ -914,6 +964,16 @@ def generate_ai_shopping_list(menu_data, basic_grocery_list, additional_preferen
   ],
   "nutritionTips": [
     "This meal plan is high in protein and fiber"
+  ],
+  "healthyAlternatives": [
+    {"original": "Sour Cream", "alternative": "Non-Fat Plain Greek Yogurt", "benefit": "Higher protein, lower fat"},
+    {"original": "Ground Beef", "alternative": "Ground Turkey", "benefit": "Lower fat content"},
+    {"original": "White Rice", "alternative": "Brown Rice", "benefit": "More fiber and nutrients"}
+  ],
+  "shoppingTips": [
+    "Buy in-season produce for better flavor and nutrition",
+    "Check unit prices to find the best value",
+    "Look for sales on staple items you can stock up on"
   ]
 }
 """
@@ -922,8 +982,11 @@ def generate_ai_shopping_list(menu_data, basic_grocery_list, additional_preferen
         prompt += "\n1. Keep the name field SIMPLE - just the ingredient name (e.g., \"Chicken Breast\", not \"Chicken Breast: 2 lb\")"
         prompt += "\n2. Use REASONABLE quantities - 1-5 lb for meats, 1-3 cups for grains, 1-3 for produce items"
         prompt += "\n3. Choose APPROPRIATE units - lb for meats, cups/oz for grains, medium/piece for produce, tsp/tbsp for spices"
-        prompt += "\n4. Include THESE CATEGORIES: Produce, Meat and Proteins, Dairy, Grains, Condiments, Spices and Herbs, Baking, Frozen"
-        prompt += "\n5. Format as VALID JSON - the JSON must parse correctly with proper quotes, commas, and brackets"
+        prompt += "\n4. Format the display_name as 'Item: Quantity-Unit' (e.g., \"Chicken Breast: 2-lb\", \"Spinach: 3-cups\")"
+        prompt += "\n5. Include THESE CATEGORIES: Produce, Meat and Proteins, Dairy, Grains, Condiments, Spices and Herbs, Baking, Frozen"
+        prompt += "\n6. ALWAYS include at least 3 healthy alternatives in the healthyAlternatives field"
+        prompt += "\n7. ALWAYS include at least 3 shopping tips in the shoppingTips field"
+        prompt += "\n8. Format as VALID JSON - the JSON must parse correctly with proper quotes, commas, and brackets"
 
         prompt += "\n\nI need to parse your response programmatically, so it MUST be valid JSON. Don't include explanations outside the JSON structure."
         
