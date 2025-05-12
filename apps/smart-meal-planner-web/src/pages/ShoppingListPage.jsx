@@ -1345,88 +1345,111 @@ function ShoppingListPage() {
       console.log(`Requesting AI shopping list for menu ${menuId}`);
 
       try {
-        // First request to the POST endpoint for AI shopping list which starts the process in the background
-        console.log("Initial POST request to start AI shopping list generation");
-        const initialResponse = await apiService.generateAiShoppingList(menuId, aiPreferences, !forceRefresh);
-        console.log("Initial AI shopping list response:", initialResponse);
-
-        if (initialResponse.status === "processing") {
-          console.log("Shopping list is being processed in the background, starting polling");
-
-          // Start polling for status updates
-          startStatusPolling(menuId);
-
-          // Return the initial processing response
-          return initialResponse;
-        }
-
-        // If we got an immediate result (maybe cached), use it directly
-        const aiResponse = initialResponse;
-        console.log("Got immediate AI shopping list response:", aiResponse);
-
-        // Validate response has required data
-        if (!aiResponse) {
-          throw new Error("Empty response from AI shopping list service");
-        }
-
-        // Check for explicit error message
-        if (aiResponse.error) {
-          console.warn("API returned error:", aiResponse.error);
-          showSnackbar(`Error: ${aiResponse.error}. Using standard list.`);
-
-          // If there's no grocery list data, don't switch to AI view
-          if (!aiResponse.groceryList ||
-              (Array.isArray(aiResponse.groceryList) && aiResponse.groceryList.length === 0)) {
-            setUsingAiList(false);
-            setAiShoppingLoading(false);
-            return null;
-          }
-        }
-
-        return aiResponse;
+        // The API call logic has been moved to the handleApiResponse function
+        // Just call the helper function from here
       } catch (apiError) {
         console.error("Error in AI shopping list generation:", apiError);
         showSnackbar(`Error generating AI shopping list: ${apiError.message}. Using standard list.`);
 
-        // Try status endpoint as fallback
-        console.log("Trying status endpoint as fallback");
-        try {
-          const statusResponse = await apiService.getAiShoppingListStatus(menuId, aiPreferences);
-          console.log("Status response:", statusResponse);
-
-          if (statusResponse.status === "completed" ||
-              statusResponse.cached === true ||
-              (statusResponse.groceryList &&
-               Array.isArray(statusResponse.groceryList) &&
-               statusResponse.groceryList.length > 0)) {
-            // We have a completed result via status endpoint
-            return statusResponse;
-          } else {
-            // Start polling if status indicates processing
-            if (statusResponse.status === "processing") {
-              startStatusPolling(menuId);
-              return statusResponse;
-            }
-          }
-        } catch (statusError) {
-          console.error("Status endpoint also failed:", statusError);
-        }
-
-        throw apiError; // Rethrow the original error
+        // Note: The fallback attempt will happen in handleApiResponse
+        // No need to duplicate it here
       }
 
-      // Add default values for missing fields to ensure consistent data structure
-      const enhancedResponse = {
-        ...aiResponse,
-        menuId: menuId,
-        recommendations: aiResponse.recommendations || ["Shop by category to save time in the store"],
-        nutritionTips: aiResponse.nutritionTips || ["Focus on whole foods for better nutrition"],
-        healthySwaps: aiResponse.healthySwaps || [],
-        pantryStaples: aiResponse.pantryStaples || ["Salt", "Pepper", "Olive Oil"]
-      };
+      // Helper function to handle API responses in this function's scope
+      async function handleApiResponse() {
+        try {
+          // First request to the POST endpoint for AI shopping list which starts the process in the background
+          console.log("Initial POST request to start AI shopping list generation");
+          const initialResponse = await apiService.generateAiShoppingList(menuId, aiPreferences, !forceRefresh);
+          console.log("Initial AI shopping list response:", initialResponse);
+
+          if (initialResponse.status === "processing") {
+            console.log("Shopping list is being processed in the background, starting polling");
+
+            // Start polling for status updates
+            startStatusPolling(menuId);
+
+            // Return the initial processing response
+            return initialResponse;
+          }
+
+          // If we got an immediate result (maybe cached), use it directly
+          const aiResponse = initialResponse;
+          console.log("Got immediate AI shopping list response:", aiResponse);
+
+          // Validate response has required data
+          if (!aiResponse) {
+            throw new Error("Empty response from AI shopping list service");
+          }
+
+          // Check for explicit error message
+          if (aiResponse.error) {
+            console.warn("API returned error:", aiResponse.error);
+            showSnackbar(`Error: ${aiResponse.error}. Using standard list.`);
+
+            // If there's no grocery list data, don't switch to AI view
+            if (!aiResponse.groceryList ||
+                (Array.isArray(aiResponse.groceryList) && aiResponse.groceryList.length === 0)) {
+              setUsingAiList(false);
+              setAiShoppingLoading(false);
+              return null;
+            }
+          }
+
+          // Add default values for missing fields to ensure consistent data structure
+          const enhancedResponse = {
+            ...aiResponse,
+            menuId: menuId,
+            recommendations: aiResponse.recommendations || ["Shop by category to save time in the store"],
+            nutritionTips: aiResponse.nutritionTips || ["Focus on whole foods for better nutrition"],
+            healthySwaps: aiResponse.healthySwaps || [],
+            pantryStaples: aiResponse.pantryStaples || ["Salt", "Pepper", "Olive Oil"]
+          };
+
+          return enhancedResponse;
+        } catch (error) {
+          console.error("Error in handleApiResponse:", error);
+
+          // Try status endpoint as fallback
+          console.log("Trying status endpoint as fallback");
+          try {
+            const statusResponse = await apiService.getAiShoppingListStatus(menuId, aiPreferences);
+            console.log("Status response:", statusResponse);
+
+            if (statusResponse.status === "completed" ||
+                statusResponse.cached === true ||
+                (statusResponse.groceryList &&
+                 Array.isArray(statusResponse.groceryList) &&
+                 statusResponse.groceryList.length > 0)) {
+              // We have a completed result via status endpoint
+              return statusResponse;
+            } else {
+              // Start polling if status indicates processing
+              if (statusResponse.status === "processing") {
+                startStatusPolling(menuId);
+                return statusResponse;
+              }
+            }
+          } catch (statusError) {
+            console.error("Status endpoint also failed:", statusError);
+          }
+
+          return null;
+        }
+      }
+
+      // Get the response data
+      const responseData = await handleApiResponse();
+
+      // If we got null or undefined, return early
+      if (!responseData) {
+        console.log("No valid shopping list data received");
+        setAiShoppingLoading(false);
+        return null;
+      }
 
       // Process the items to ensure proper formatting
-      const processedResponse = processAiShoppingItems(enhancedResponse);
+      const processedResponse = processAiShoppingItems(responseData);
 
       // Update state with the response data
       setAiShoppingData(processedResponse);
