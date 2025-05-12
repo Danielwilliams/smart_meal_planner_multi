@@ -44,27 +44,33 @@ def get_menu_details(menu_id: int):
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             # Fetch the full menu details
             cur.execute("""
-                SELECT 
-                    id AS menu_id, 
-                    meal_plan_json, 
-                    user_id, 
-                    created_at, 
+                SELECT
+                    id AS menu_id,
+                    meal_plan_json,
+                    user_id,
+                    created_at,
                     nickname
-                FROM menus 
+                FROM menus
                 WHERE id = %s
             """, (menu_id,))
             menu = cur.fetchone()
-        
+
         if not menu:
             raise HTTPException(status_code=404, detail="Menu not found")
-        
+
         # Ensure meal_plan_json is parsed
         menu['meal_plan'] = json.loads(menu['meal_plan_json']) if isinstance(menu['meal_plan_json'], str) else menu['meal_plan_json']
-        
+
         return menu
     except Exception as e:
         print("Error retrieving menu details:", e)
-        raise HTTPException(status_code=500, detail="Internal server error")
+        # Return a more specific error
+        if "not found" in str(e).lower():
+            raise HTTPException(status_code=404, detail="Menu not found")
+        elif "access" in str(e).lower() or "permission" in str(e).lower():
+            raise HTTPException(status_code=403, detail="Permission error: You don't have access to this menu")
+        else:
+            raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
     finally:
         conn.close()
 
@@ -86,6 +92,8 @@ def get_grocery_list(
     Returns:
         A dictionary containing the grocery list and AI recommendations if requested
     """
+    logger.info(f"Grocery list request for menu {menu_id}: use_ai={use_ai}, use_cache={use_cache}")
+
     # If AI is requested, check cache first if enabled
     if use_ai and use_cache:
         cache_key = f"{menu_id}_no_prefs"  # No preferences for GET requests
@@ -110,14 +118,32 @@ def get_grocery_list(
                 logger.info(f"Cache expired for menu {menu_id}, removing from cache")
                 AI_SHOPPING_LIST_CACHE.pop(cache_key, None)
 
+    # If cache is disabled or invalid, proceed with generating a new shopping list
+    logger.info(f"Generating new shopping list for menu {menu_id}")
+
     conn = get_db_connection()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            # Fetch the meal_plan_json field
-            cur.execute("SELECT meal_plan_json FROM menus WHERE id=%s", (menu_id,))
-            row = cur.fetchone()
+            # First verify the menu exists and user has access
+            cur.execute("""
+                SELECT
+                    id,
+                    user_id,
+                    meal_plan_json
+                FROM menus
+                WHERE id = %s
+            """, (menu_id,))
+            menu_data = cur.fetchone()
+
+            if not menu_data:
+                logger.warning(f"Menu {menu_id} not found")
+                raise HTTPException(status_code=404, detail="Menu not found")
+
+            # Proceed with the data we verified
+            row = menu_data
 
         if not row:
+            logger.warning(f"Menu {menu_id} not found after verification")
             raise HTTPException(status_code=404, detail="Menu not found")
 
         # parse the JSON text into a Python dict
@@ -383,28 +409,28 @@ def process_ai_shopping_list_background(menu_id: int, menu_data, grocery_list, a
 async def post_ai_shopping_list(menu_id: int, background_tasks: BackgroundTasks, request: AiShoppingListRequest = None):
     """
     Generate an AI-enhanced shopping list from a menu.
-    
+
     Args:
         menu_id: The ID of the menu to generate the list from
         background_tasks: FastAPI background tasks for async processing
         request: The request containing the additional preferences
-        
+
     Returns:
         An immediate basic response, with AI enhancements processed asynchronously
     """
     # Log incoming request to debug potential issues
     logger.info(f"AI shopping list request for menu ID: {menu_id}")
-    
+
     # Handle case where request is not provided or AI is not requested
     if request is None:
         logger.info(f"No request body provided, creating default with menu_id={menu_id}")
         request = AiShoppingListRequest(menu_id=menu_id, use_ai=True)
-    
+
     # Ensure the menu_id from path is used
     if request.menu_id != menu_id:
         logger.warning(f"Request menu_id {request.menu_id} doesn't match path menu_id {menu_id}, using path parameter")
         request.menu_id = menu_id
-    
+
     # Validate menu ID is positive
     if menu_id <= 0:
         logger.error(f"Invalid menu ID: {menu_id}")
@@ -415,17 +441,31 @@ async def post_ai_shopping_list(menu_id: int, background_tasks: BackgroundTasks,
             "status": "error",
             "menu_id": menu_id
         }
-    
+
     logger.info(f"Processing request: menu_id={request.menu_id}, use_ai={request.use_ai}, use_cache={request.use_cache}")
-    
+
     if not request.use_ai:
         # If AI is not requested, fall back to standard grocery list
         logger.info("AI not requested, using standard grocery list")
         return get_grocery_list(menu_id, use_ai=False)
-    
-    # Check cache if enabled - this helps avoid timeouts by using cached results
+
+    # Check if we should clear the cache before proceeding
     cache_key = f"{menu_id}_{request.additional_preferences or 'no_prefs'}"
-    if request.use_cache and cache_key in AI_SHOPPING_LIST_CACHE:
+    if not request.use_cache:
+        logger.info(f"Cache usage disabled for this request, clearing any existing cache for menu {menu_id}")
+        # Clear any existing cache data
+        if cache_key in AI_SHOPPING_LIST_CACHE:
+            logger.info(f"Removing cached data for key: {cache_key}")
+            AI_SHOPPING_LIST_CACHE.pop(cache_key, None)
+
+        # Also clear any other cache entries for this menu
+        keys_to_remove = [k for k in AI_SHOPPING_LIST_CACHE.keys() if k.startswith(f"{menu_id}_")]
+        for k in keys_to_remove:
+            logger.info(f"Removing related cached data for key: {k}")
+            AI_SHOPPING_LIST_CACHE.pop(k, None)
+
+    # Check cache if enabled - this helps avoid timeouts by using cached results
+    elif request.use_cache and cache_key in AI_SHOPPING_LIST_CACHE:
         cached_data = AI_SHOPPING_LIST_CACHE[cache_key]
         # Check if cache is still valid
         if time.time() - cached_data.get('timestamp', 0) < CACHE_EXPIRY:
