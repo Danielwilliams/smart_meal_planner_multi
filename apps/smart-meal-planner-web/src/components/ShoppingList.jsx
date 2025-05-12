@@ -168,25 +168,30 @@ const UNIT_PREFERENCES = {
 // Clean up and standardize a unit
 const formatUnit = (unit) => {
   if (!unit) return '';
-  
+
   let normalizedUnit = unit.toLowerCase()
     .replace(/\.+/g, '')
     .replace(/\s+/g, '')
     .trim();
-  
+
+  // FIXED: Handle "ozs" specifically - this was a major issue
+  if (normalizedUnit === 'ozs') {
+    return 'oz';
+  }
+
   // Handle different unit forms
   if (/^(cup|cups|c)$/.test(normalizedUnit)) return 'cups';
   if (/^(piece|pieces|pcs)$/.test(normalizedUnit)) return 'pieces';
   if (/^(tablespoon|tablespoons|tbsp|tbsps|tbs)$/.test(normalizedUnit)) return 'tbsp';
   if (/^(teaspoon|teaspoons|tsp|tsps)$/.test(normalizedUnit)) return 'tsp';
-  if (/^(ounce|ounces|oz|ozs)$/.test(normalizedUnit)) return 'oz';
+  if (/^(ounce|ounces|oz|ozs)$/.test(normalizedUnit)) return 'oz'; // Also added ozs here
   if (/^(pound|pounds|lb|lbs)$/.test(normalizedUnit)) return 'lbs';
   if (/^(gram|grams|g)$/.test(normalizedUnit)) return 'g';
   if (/^(kilogram|kilograms|kg)$/.test(normalizedUnit)) return 'kg';
   if (/^(milliliter|milliliters|ml)$/.test(normalizedUnit)) return 'ml';
   if (/^(liter|liters|l)$/.test(normalizedUnit)) return 'L';
   if (/^(clove|cloves)$/.test(normalizedUnit)) return 'cloves';
-  
+
   return normalizedUnit;
 };
 
@@ -263,9 +268,11 @@ const getBaseQuantity = (item) => {
 const getUnit = (item) => {
   // Clean the item first
   const cleanItem = item.trim().replace(/^\.\s*/, '');
-  
+
+  // FIXED: Added "ozs" to the list of recognized units
+
   // Check for specific format with unit qualifier after the quantity
-  const itemWithUnit = /^(.+):\s*\d+(?:\.\d+)?(?:\/\d+)?\s*(large|medium|small|cloves|leaves|cans|slices|cups?|tbsps?|tsps?|g|oz|lbs?|kg)\b/i;
+  const itemWithUnit = /^(.+):\s*\d+(?:\.\d+)?(?:\/\d+)?\s*(large|medium|small|cloves|leaves|cans|slices|cups?|tbsps?|tsps?|g|oz|ozs|lbs?|kg)\b/i;
   const unitMatch = cleanItem.match(itemWithUnit);
   if (unitMatch) {
     return formatUnit(unitMatch[2]);
@@ -355,7 +362,10 @@ const getUnit = (item) => {
 const normalizeItemName = (item) => {
   // Clean up the item text first - remove periods at the beginning and strange character patterns
   item = item.replace(/^\.\s*/, '');  // Remove leading periods
-  item = item.replace(/^[0-9/]+\s+/, ''); // Remove leading numbers like "1/2 ", "2 ", etc.
+
+  // FIXED: Don't remove leading numbers indiscriminately - this was causing the quantity issue
+  // Instead, save them for later processing
+  // item = item.replace(/^[0-9/]+\s+/, ''); // OLD: Remove leading numbers like "1/2 ", "2 ", etc.
   
   // Check for "Item: 1905" format and extract just the item name
   const colonFormat = item.match(/^(.+):\s*\d{3,4}$/);
@@ -952,13 +962,36 @@ const combineItems = (items) => {
     // Create a safe working copy of the array
     const safeItems = items.filter(item => item !== null && item !== undefined);
 
+    // FIXED: Pre-process items to fix common format issues
+    const processedItems = safeItems.map(item => {
+      if (typeof item === 'string') {
+        // Fix pattern like "96 ozs chicken breast" to "Chicken Breast: 96 oz"
+        const ozsMatch = item.match(/^(\d+)\s+ozs\s+(.+)$/i);
+        if (ozsMatch) {
+          const quantity = ozsMatch[1];
+          const name = ozsMatch[2].charAt(0).toUpperCase() + ozsMatch[2].slice(1);
+          return `${name}: ${quantity} oz`;
+        }
+
+        // Fix other unit patterns similarly
+        const standardUnitMatch = item.match(/^(\d+)\s+(cups?|tbsps?|tsps?|lbs?|g|kg|cloves|pieces|cans)\s+(.+)$/i);
+        if (standardUnitMatch) {
+          const quantity = standardUnitMatch[1];
+          const unit = standardUnitMatch[2];
+          const name = standardUnitMatch[3].charAt(0).toUpperCase() + standardUnitMatch[3].slice(1);
+          return `${name}: ${quantity} ${unit}`;
+        }
+      }
+      return item;
+    });
+
     // Initialize grouping object with safety checks
     const groupedItems = {};
 
     // First pass: Group items by normalized name - with added safety
-    for (let i = 0; i < safeItems.length; i++) {
+    for (let i = 0; i < processedItems.length; i++) {
       try {
-        const item = safeItems[i];
+        const item = processedItems[i];
 
         // Skip invalid items
         if (!item || typeof item !== 'string' || !item.trim()) continue;
