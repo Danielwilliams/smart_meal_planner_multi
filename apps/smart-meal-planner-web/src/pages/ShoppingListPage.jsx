@@ -1265,12 +1265,76 @@ function ShoppingListPage() {
       const result = await response.json();
       addLog('Received response from API', 'success');
 
+      // Log a summary of what was generated
+      try {
+        // Log categories and counts
+        if (result.categories && typeof result.categories === 'object') {
+          const categoryCounts = Object.keys(result.categories).map(category =>
+            `${category}: ${result.categories[category].length} items`
+          );
+          addLog(`Generated categories: ${categoryCounts.join(', ')}`, 'info');
+        }
+
+        // Log healthy alternatives if present
+        if (result.healthyAlternatives && result.healthyAlternatives.length > 0) {
+          addLog(`Found ${result.healthyAlternatives.length} healthy alternatives`, 'info');
+        }
+
+        // Log first few items as a sample of what was generated
+        if (result.categories) {
+          let sampleItems = [];
+          for (const category in result.categories) {
+            if (result.categories[category] && result.categories[category].length > 0) {
+              const items = result.categories[category].slice(0, 2); // Take first 2 items from each category
+              sampleItems = [...sampleItems, ...items];
+              if (sampleItems.length >= 6) break; // Limit to 6 sample items total
+            }
+          }
+          if (sampleItems.length > 0) {
+            addLog(`Sample items: ${sampleItems.join(', ')}`, 'info');
+          }
+        }
+      } catch (logError) {
+        addLog(`Error logging results: ${logError.message}`, 'error');
+      }
+
       // Calculate stats
       const endTime = new Date();
       const durationSeconds = (endTime - startTime) / 1000;
 
-      // Update state
-      setAiShoppingData(result);
+      // Update state - first clear old data then set new data
+      // First clear to force UI refresh
+      setAiShoppingData(null);
+
+      // Add a slight delay to ensure the UI updates
+      setTimeout(() => {
+        // Process the result to ensure it has all expected properties
+        const processedResult = {
+          ...result,
+          cached: false,  // Explicitly mark as not cached
+          timestamp: new Date().toISOString(),
+          menuId: selectedMenuId
+        };
+
+        // Update state with the processed result
+        setAiShoppingData(processedResult);
+        addLog('Updated UI with new shopping list data', 'success');
+
+        // Also update the cache with the fresh data
+        try {
+          localStorage.setItem(
+            `${AI_SHOPPING_CACHE_KEY}_${selectedMenuId}`,
+            JSON.stringify({
+              ...processedResult,
+              cache_time: new Date().toISOString()
+            })
+          );
+          addLog('Updated local cache with new data', 'info');
+        } catch (cacheError) {
+          addLog(`Error updating cache: ${cacheError.message}`, 'warning');
+        }
+      }, 100);
+
       setGenerationStats({
         startTime,
         endTime,
