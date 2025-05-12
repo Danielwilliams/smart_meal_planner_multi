@@ -924,26 +924,49 @@ function ShoppingListPage() {
       // Increment poll count
       setPollCount(prevCount => prevCount + 1);
 
-      // Check comprehensive completion conditions - any of these indicate completed status
-      const isCompleted =
-        // Has explicit completed status
-        statusResponse.status === "completed" ||
-        // Has cache flag set
-        statusResponse.cached === true ||
-        // Has groceryList property with content
-        (statusResponse.groceryList &&
-         Array.isArray(statusResponse.groceryList) &&
-         statusResponse.groceryList.length > 0) ||
-        // Has nutrition tips populated (indicates completion)
+      // Log the full status response for debugging
+      console.log("Status response for menu", menuId, ":", JSON.stringify(statusResponse));
+
+      // Check if nutritionTips or recommendations contain processing placeholders
+      const hasPlaceholderMessages =
         (statusResponse.nutritionTips &&
          Array.isArray(statusResponse.nutritionTips) &&
          statusResponse.nutritionTips.length > 0 &&
-         statusResponse.nutritionTips[0] !== "Please try again") ||
-        // Has recommendations populated (indicates completion)
+         (statusResponse.nutritionTips[0].includes("Check status endpoint") ||
+          statusResponse.nutritionTips[0].includes("still processing"))) ||
         (statusResponse.recommendations &&
          Array.isArray(statusResponse.recommendations) &&
          statusResponse.recommendations.length > 0 &&
-         statusResponse.recommendations[0] !== "Error checking status");
+         (statusResponse.recommendations[0].includes("being processed") ||
+          statusResponse.recommendations[0].includes("still processing")));
+
+      console.log("Status response has placeholder messages:", hasPlaceholderMessages);
+
+      // Check comprehensive completion conditions
+      const isCompleted =
+        // Explicitly marked as completed
+        statusResponse.status === "completed" ||
+        // Explicitly cached
+        statusResponse.cached === true ||
+        // Has groceryList with content AND no placeholder messages
+        (statusResponse.groceryList &&
+         Array.isArray(statusResponse.groceryList) &&
+         statusResponse.groceryList.length > 0 &&
+         !hasPlaceholderMessages) ||
+        // Has nutritionTips with real content (no placeholders)
+        (statusResponse.nutritionTips &&
+         Array.isArray(statusResponse.nutritionTips) &&
+         statusResponse.nutritionTips.length > 0 &&
+         statusResponse.nutritionTips[0] !== "Please try again" &&
+         !statusResponse.nutritionTips[0].includes("Check status endpoint") &&
+         !statusResponse.nutritionTips[0].includes("still processing")) ||
+        // Has recommendations with real content (no placeholders)
+        (statusResponse.recommendations &&
+         Array.isArray(statusResponse.recommendations) &&
+         statusResponse.recommendations.length > 0 &&
+         statusResponse.recommendations[0] !== "Error checking status" &&
+         !statusResponse.recommendations[0].includes("being processed") &&
+         !statusResponse.recommendations[0].includes("still processing"));
 
       if (isCompleted) {
         console.log("AI shopping list processing completed or using cached data!");
@@ -1122,11 +1145,10 @@ function ShoppingListPage() {
       return;
     }
 
-    // Add additional validation to prevent polling when we already know it's complete
-    // Check if we've already successfully loaded this menu's shopping list
+    // Reset the completed flag to make sure we poll properly
     if (window.menuAiShoppingListCompleted && window.menuAiShoppingListCompleted[menuId]) {
-      console.log(`Shopping list for menu ${menuId} already completed, not starting polling`);
-      return;
+      console.log(`Resetting completion flag for menu ${menuId} to ensure proper polling`);
+      window.menuAiShoppingListCompleted[menuId] = false;
     }
 
     // If another poll clear is in progress, wait before starting new polling
@@ -1395,13 +1417,30 @@ function ShoppingListPage() {
           const initialResponse = await apiService.generateAiShoppingList(menuId, aiPreferences, !forceRefresh);
           console.log("Initial AI shopping list response:", initialResponse);
 
-          if (initialResponse.status === "processing") {
+          // Check if response has "processing" status or contains placeholder messages
+          const hasProcessingStatus = initialResponse.status === "processing" || initialResponse.status === "pending";
+          const hasPlaceholderMessages =
+            (initialResponse.nutritionTips &&
+             Array.isArray(initialResponse.nutritionTips) &&
+             initialResponse.nutritionTips.length > 0 &&
+             (initialResponse.nutritionTips[0].includes("Check status endpoint") ||
+              initialResponse.nutritionTips[0].includes("still processing"))) ||
+            (initialResponse.recommendations &&
+             Array.isArray(initialResponse.recommendations) &&
+             initialResponse.recommendations.length > 0 &&
+             (initialResponse.recommendations[0].includes("being processed") ||
+              initialResponse.recommendations[0].includes("still processing")));
+
+          if (hasProcessingStatus || hasPlaceholderMessages) {
             console.log("Shopping list is being processed in the background, starting polling");
+            console.log("Processing status:", hasProcessingStatus);
+            console.log("Has placeholder messages:", hasPlaceholderMessages);
 
             // Start polling for status updates
             startStatusPolling(menuId);
 
-            // Return the initial processing response
+            // Return the initial processing response - but don't treat it as final
+            // We'll update with the completed result when polling completes
             return initialResponse;
           }
 
@@ -1448,16 +1487,37 @@ function ShoppingListPage() {
             const statusResponse = await apiService.getAiShoppingListStatus(menuId, aiPreferences);
             console.log("Status response:", statusResponse);
 
-            if (statusResponse.status === "completed" ||
-                statusResponse.cached === true ||
-                (statusResponse.groceryList &&
-                 Array.isArray(statusResponse.groceryList) &&
-                 statusResponse.groceryList.length > 0)) {
-              // We have a completed result via status endpoint
+            // Check if response contains placeholder messages
+            const hasPlaceholderMessages =
+              (statusResponse.nutritionTips &&
+               Array.isArray(statusResponse.nutritionTips) &&
+               statusResponse.nutritionTips.length > 0 &&
+               (statusResponse.nutritionTips[0].includes("Check status endpoint") ||
+                statusResponse.nutritionTips[0].includes("still processing"))) ||
+              (statusResponse.recommendations &&
+               Array.isArray(statusResponse.recommendations) &&
+               statusResponse.recommendations.length > 0 &&
+               (statusResponse.recommendations[0].includes("being processed") ||
+                statusResponse.recommendations[0].includes("still processing")));
+
+            const isReallyCached =
+              statusResponse.cached === true ||
+              statusResponse.status === "completed";
+
+            const hasRealData =
+              (statusResponse.groceryList &&
+               Array.isArray(statusResponse.groceryList) &&
+               statusResponse.groceryList.length > 0 &&
+               !hasPlaceholderMessages);
+
+            if (isReallyCached || hasRealData) {
+              // We have a truly completed result via status endpoint
+              console.log("Status endpoint returned a completed result");
               return statusResponse;
             } else {
               // Start polling if status indicates processing
-              if (statusResponse.status === "processing") {
+              if (statusResponse.status === "processing" || hasPlaceholderMessages) {
+                console.log("Status endpoint indicates processing - starting polling");
                 startStatusPolling(menuId);
                 return statusResponse;
               }
@@ -1494,24 +1554,45 @@ function ShoppingListPage() {
       // Log the processed response for debugging
       console.log("Processing AI response to check completion:", JSON.stringify(processedResponse));
 
-      const isCompleted =
-        // Explicit status check
-        processedResponse.status === "completed" ||
-        // Cache flag
-        processedResponse.cached === true ||
-        // Has groceryList property with content
-        (processedResponse.groceryList &&
-         Array.isArray(processedResponse.groceryList) &&
-         processedResponse.groceryList.length > 0) ||
-        // Additional checks for populated fields that indicate completion
+      // Check if nutritionTips or recommendations contain processing placeholders
+      const hasPlaceholderMessages =
         (processedResponse.nutritionTips &&
          Array.isArray(processedResponse.nutritionTips) &&
          processedResponse.nutritionTips.length > 0 &&
-         processedResponse.nutritionTips[0] !== "Please try again") ||
-        // Has recommendations populated (indicates completion)
+         (processedResponse.nutritionTips[0].includes("Check status endpoint") ||
+          processedResponse.nutritionTips[0].includes("still processing"))) ||
         (processedResponse.recommendations &&
          Array.isArray(processedResponse.recommendations) &&
-         processedResponse.recommendations.length > 0);
+         processedResponse.recommendations.length > 0 &&
+         (processedResponse.recommendations[0].includes("being processed") ||
+          processedResponse.recommendations[0].includes("still processing")));
+
+      console.log("Response has placeholder messages:", hasPlaceholderMessages);
+
+      // Only consider it completed if status is explicit or there are no placeholder messages
+      const isCompleted =
+        // Explicitly marked as completed
+        processedResponse.status === "completed" ||
+        // Explicitly cached
+        processedResponse.cached === true ||
+        // Has groceryList with content AND no placeholder messages
+        (processedResponse.groceryList &&
+         Array.isArray(processedResponse.groceryList) &&
+         processedResponse.groceryList.length > 0 &&
+         !hasPlaceholderMessages) ||
+        // Has nutritionTips with real content (no placeholders)
+        (processedResponse.nutritionTips &&
+         Array.isArray(processedResponse.nutritionTips) &&
+         processedResponse.nutritionTips.length > 0 &&
+         processedResponse.nutritionTips[0] !== "Please try again" &&
+         !processedResponse.nutritionTips[0].includes("Check status endpoint") &&
+         !processedResponse.nutritionTips[0].includes("still processing")) ||
+        // Has recommendations with real content (no placeholders)
+        (processedResponse.recommendations &&
+         Array.isArray(processedResponse.recommendations) &&
+         processedResponse.recommendations.length > 0 &&
+         !processedResponse.recommendations[0].includes("being processed") &&
+         !processedResponse.recommendations[0].includes("still processing"));
 
       console.log("AI shopping list completion status:", isCompleted);
 
