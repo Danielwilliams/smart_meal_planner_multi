@@ -101,7 +101,7 @@ function ShoppingListPage() {
   // For New AI List button
   const [generationStats, setGenerationStats] = useState(null);
   const [generationLogs, setGenerationLogs] = useState([]);
-  const [showLogs, setShowLogs] = useState(false);
+  const [showLogs, setShowLogs] = useState(true); // Show logs by default
 
   // For entertaining messages while loading
   const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
@@ -1269,6 +1269,9 @@ function ShoppingListPage() {
       // Log the entire response structure to debug
       addLog(`Response keys: ${Object.keys(result).join(', ')}`, 'info');
       console.log("DEBUG Response data:", result);
+
+      // Log the raw data in a more readable format
+      addLog(`Raw data: ${JSON.stringify(result).substring(0, 500)}...`, 'info');
 
       // Process the result using our adapter to properly handle different formats
       let processedResult = adaptShoppingListResponse(result, selectedMenuId, addLog);

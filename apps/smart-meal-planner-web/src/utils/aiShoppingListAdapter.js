@@ -34,6 +34,9 @@ export const adaptShoppingListResponse = (result, menuId, logger = null) => {
   let processedResult;
 
   try {
+    // Log the entire raw data for debugging
+    log(`Full raw JSON: ${JSON.stringify(result)}`, 'debug');
+
     // Format 1: Already in expected format with categories
     if (result.categories && typeof result.categories === 'object') {
       log(`Found categories object with ${Object.keys(result.categories).length} categories`, 'info');
@@ -48,14 +51,59 @@ export const adaptShoppingListResponse = (result, menuId, logger = null) => {
     // Format 2: Standard API format with groceryList, recommendations, nutritionTips
     else if (result.groceryList) {
       log(`Found standard API format with groceryList property`, 'info');
-      
+
       // Handle various groceryList formats
       let categories = {};
-      if (Array.isArray(result.groceryList)) {
+
+      // Special debug for this exact format
+      if (Array.isArray(result.groceryList) && result.groceryList.length > 0) {
+        log(`GroceryList first item: ${JSON.stringify(result.groceryList[0])}`, 'debug');
+      }
+
+      // Special handling for the specific format we're seeing
+      if (Array.isArray(result.groceryList) &&
+          result.groceryList.length === 1 &&
+          result.groceryList[0].category &&
+          result.groceryList[0].items) {
+
+        // This is the format where groceryList[0] has {category, items}
+        log(`Found special format with category and items properties`, 'info');
+
+        // Extract data from the expected format
+        const firstItem = result.groceryList[0];
+        categories[firstItem.category] = firstItem.items;
+
+        // If there are multiple categories in the response, extract them
+        result.groceryList.forEach(categoryObj => {
+          if (categoryObj.category && Array.isArray(categoryObj.items)) {
+            categories[categoryObj.category] = categoryObj.items;
+          }
+        });
+
+        log(`Created categories from special format: ${Object.keys(categories).join(', ')}`, 'info');
+      }
+      else if (Array.isArray(result.groceryList)) {
         // Try to extract categories if the first item is an object
         if (result.groceryList.length > 0 && typeof result.groceryList[0] === 'object' && !Array.isArray(result.groceryList[0])) {
-          categories = result.groceryList[0];
-          log(`Using first groceryList item as categories object: ${Object.keys(categories).join(', ')}`, 'info');
+          // Check if it has a structure like {Produce: [...], Dairy: [...]}
+          const firstItem = result.groceryList[0];
+          let isCategoriesObject = true;
+
+          for (const key in firstItem) {
+            if (!Array.isArray(firstItem[key])) {
+              isCategoriesObject = false;
+              break;
+            }
+          }
+
+          if (isCategoriesObject) {
+            categories = firstItem;
+            log(`Using first groceryList item as categories object: ${Object.keys(categories).join(', ')}`, 'info');
+          } else {
+            // It's not a categories object, treat each item as an item
+            categories = { 'All Items': result.groceryList };
+            log(`First item is an object but not categories, using as items`, 'info');
+          }
         } else {
           // Categorize items if possible
           const categorized = {};
@@ -86,6 +134,35 @@ export const adaptShoppingListResponse = (result, menuId, logger = null) => {
         log(`Unexpected groceryList format: ${typeof result.groceryList}`, 'warning');
       }
       
+      // Check if categories is empty
+      if (Object.keys(categories).length === 0) {
+        log(`No categories extracted, trying to create a simple format`, 'warning');
+        // Create a simple "All Items" category
+        if (Array.isArray(result.groceryList)) {
+          // Flatten the array if needed
+          const allItems = [];
+          const processItem = (item) => {
+            if (typeof item === 'string') {
+              allItems.push(item);
+            } else if (item && item.items && Array.isArray(item.items)) {
+              // It has items array
+              allItems.push(...item.items);
+            } else if (item && item.category && Array.isArray(item.items)) {
+              // Item has category and items
+              allItems.push(`${item.category}: ${item.items.join(', ')}`);
+            } else {
+              // Just add the item as-is
+              allItems.push(JSON.stringify(item));
+            }
+          };
+
+          result.groceryList.forEach(processItem);
+
+          categories = { 'All Items': allItems };
+          log(`Created fallback 'All Items' category with ${allItems.length} items`, 'info');
+        }
+      }
+
       // Map API response to expected format
       processedResult = {
         categories: categories,
