@@ -1,0 +1,51 @@
+// At the top of the file, add this import
+import { enhancedDirectFetch } from '../utils/newDirectFetch';
+
+// Replace all occurrences of directFetchShoppingList with a call to our enhanced function
+// Find this code:
+directFetchShoppingList(selectedMenuId);
+
+// Replace with:
+enhancedDirectFetch(
+  selectedMenuId, 
+  setAiShoppingLoading, 
+  setAiShoppingData, 
+  setActiveTab, 
+  setUsingAiList,
+  setCachedShoppingList,
+  apiService
+);
+
+// For the version with .then/.catch handling:
+// Find this code:
+directFetchShoppingList(selectedMenuId)
+  .then(result => console.log("DEBUGGING: directFetchShoppingList completed with result:", result))
+  .catch(error => console.error("DEBUGGING: directFetchShoppingList error:", error));
+
+// Replace with:
+enhancedDirectFetch(
+  selectedMenuId, 
+  setAiShoppingLoading, 
+  setAiShoppingData, 
+  setActiveTab, 
+  setUsingAiList,
+  setCachedShoppingList,
+  apiService
+)
+  .then(result => console.log("DEBUGGING: enhancedDirectFetch completed with result:", result))
+  .catch(error => console.error("DEBUGGING: enhancedDirectFetch error:", error));
+
+// For the Promise version:
+// Find this code:
+await directFetchShoppingList(selectedMenuId);
+
+// Replace with:
+await enhancedDirectFetch(
+  selectedMenuId, 
+  setAiShoppingLoading, 
+  setAiShoppingData, 
+  setActiveTab, 
+  setUsingAiList,
+  setCachedShoppingList,
+  apiService
+);

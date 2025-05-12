@@ -279,9 +279,133 @@ function processGroceryList(groceryList) {
   return processedItems;
 }
 
+/**
+ * Fixes units for items with unreasonably large quantities (like 96 lbs of chicken)
+ * @param {string} itemName - The name of the grocery item
+ * @returns {string} - The item name with fixed units
+ */
+function fixUnits(itemName) {
+  if (!itemName) return itemName;
+
+  const itemLower = itemName.toLowerCase();
+  let fixedItem = itemName;
+
+  // Check for unreasonably large quantities (like 96 lbs of chicken)
+  const weightRegex = /(\d+)\s*(lb|lbs|pound|pounds)/i;
+  const match = itemLower.match(weightRegex);
+
+  if (match) {
+    const quantity = parseInt(match[1], 10);
+    // If quantity is very large for pounds (like 96 lbs)
+    if (quantity > 10 && (
+        itemLower.includes('chicken') ||
+        itemLower.includes('breast') ||
+        itemLower.includes('beef') ||
+        itemLower.includes('steak') ||
+        itemLower.includes('pork')
+    )) {
+      // Convert to ounces or more reasonable unit
+      console.log(`Converting ${quantity} lbs to oz for ${itemName}`);
+      fixedItem = itemName.replace(weightRegex, `${quantity} oz`);
+    }
+  }
+
+  return fixedItem;
+}
+
+/**
+ * Extracts grocery items from various API response formats
+ * @param {Object|Array} result - The API response
+ * @returns {Array} - Array of grocery items as strings
+ */
+function extractGroceryItems(result) {
+  if (!result) return [];
+
+  let items = [];
+
+  // Try different properties where items might be found
+  if (result?.ingredient_list && Array.isArray(result.ingredient_list)) {
+    console.log("Using ingredient_list array");
+    items = result.ingredient_list;
+  } else if (result?.items && Array.isArray(result.items)) {
+    console.log("Using items array");
+    items = result.items;
+  } else if (result?.groceryList && Array.isArray(result.groceryList)) {
+    console.log("Using groceryList array - flattening categories");
+    // If we got a categorized list, flatten it
+    const allItems = [];
+    result.groceryList.forEach(category => {
+      if (category.items && Array.isArray(category.items)) {
+        category.items.forEach(item => {
+          if (typeof item === 'string') {
+            allItems.push(item);
+          } else if (item && typeof item === 'object') {
+            allItems.push(item.name || item.ingredient || JSON.stringify(item));
+          }
+        });
+      }
+    });
+    items = allItems;
+  } else if (Array.isArray(result)) {
+    console.log("Using root array");
+    items = result;
+  } else if (result?.data && Array.isArray(result.data)) {
+    console.log("Using data array");
+    items = result.data;
+  } else {
+    // Last resort: try to extract from any object structure
+    console.log("Trying deep scan for items");
+    for (const key in result) {
+      if (Array.isArray(result[key])) {
+        console.log(`Found array in '${key}' with ${result[key].length} items`);
+        if (result[key].length > 0) {
+          items = result[key];
+          break;
+        }
+      }
+    }
+  }
+
+  // Normalize items to strings and fix units
+  return items.map(item => {
+    let itemStr;
+    if (typeof item === 'string') {
+      itemStr = item;
+    } else if (item && typeof item === 'object') {
+      itemStr = item.name || item.ingredient || JSON.stringify(item);
+    } else {
+      itemStr = String(item);
+    }
+
+    // Apply unit fixes
+    return fixUnits(itemStr);
+  });
+}
+
+/**
+ * Formats categorized items for AI shopping list display
+ * @param {Object} categorizedItems - Object with categories as keys and arrays of items as values
+ * @returns {Array} - Array of category objects with format { category, items }
+ */
+function formatForAiShopping(categorizedItems) {
+  // Filter out empty categories and format for the AI shopping list component
+  return Object.entries(categorizedItems)
+    .filter(([_, items]) => items && items.length > 0)
+    .map(([category, items]) => ({
+      category,
+      items: items.map(item => ({
+        name: item,
+        display_name: item
+      }))
+    }));
+}
+
 export {
   cleanIngredientName,
   normalizeIngredientName,
   categorizeIngredient,
-  processGroceryList
+  processGroceryList,
+  fixUnits,
+  extractGroceryItems,
+  formatForAiShopping
 };

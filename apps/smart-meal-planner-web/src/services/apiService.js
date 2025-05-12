@@ -489,6 +489,129 @@ const apiService = {
     }
   },
 
+  // Enhanced grocery list fetch with fallbacks
+  async getEnhancedGroceryList(menuId) {
+    console.log(`Fetching enhanced grocery list for menu ID: ${menuId}`);
+
+    // Try multiple endpoints in sequence to get the most reliable data
+    try {
+      // First try the direct grocery list endpoint
+      console.log(`Attempt 1: Direct grocery list endpoint for menu ${menuId}`);
+      try {
+        const resp = await axiosInstance.get(`/menu/${menuId}/grocery-list`);
+        console.log("Direct grocery list fetch succeeded:", resp.data);
+
+        if (resp.data && (
+            (Array.isArray(resp.data) && resp.data.length > 0) ||
+            (resp.data.ingredient_list && Array.isArray(resp.data.ingredient_list) && resp.data.ingredient_list.length > 0) ||
+            (resp.data.items && Array.isArray(resp.data.items) && resp.data.items.length > 0)
+        )) {
+          return resp.data;
+        }
+        console.log("Direct endpoint returned empty or invalid data, trying next endpoint");
+      } catch (err) {
+        console.error("Direct grocery list endpoint failed:", err);
+      }
+
+      // Then try the AI shopping list endpoint
+      console.log(`Attempt 2: AI shopping list endpoint for menu ${menuId}`);
+      try {
+        const resp = await this.generateAiShoppingList(menuId, null, true);
+        console.log("AI shopping list fetch result:", resp);
+
+        if (resp && resp.groceryList && Array.isArray(resp.groceryList) && resp.groceryList.length > 0) {
+          return {
+            groceryList: resp.groceryList,
+            nutritionTips: resp.nutritionTips,
+            recommendations: resp.recommendations
+          };
+        }
+        console.log("AI endpoint returned empty or invalid data, trying next endpoint");
+      } catch (err) {
+        console.error("AI shopping list endpoint failed:", err);
+      }
+
+      // Next try the menu details endpoint and extract ingredients
+      console.log(`Attempt 3: Extract from menu details for ${menuId}`);
+      try {
+        const menuDetails = await this.getMenuDetails(menuId);
+        console.log("Menu details fetch succeeded, extracting grocery list");
+
+        // Extract ingredients from meal_plan_json or meal_plan
+        let ingredients = [];
+        let mealPlanData = null;
+
+        if (menuDetails.meal_plan_json) {
+          try {
+            mealPlanData = typeof menuDetails.meal_plan_json === 'string'
+              ? JSON.parse(menuDetails.meal_plan_json)
+              : menuDetails.meal_plan_json;
+          } catch (e) {
+            console.error("Failed to parse meal_plan_json:", e);
+          }
+        } else if (menuDetails.meal_plan) {
+          try {
+            mealPlanData = typeof menuDetails.meal_plan === 'string'
+              ? JSON.parse(menuDetails.meal_plan)
+              : menuDetails.meal_plan;
+          } catch (e) {
+            console.error("Failed to parse meal_plan:", e);
+          }
+        }
+
+        if (mealPlanData && mealPlanData.days && Array.isArray(mealPlanData.days)) {
+          // Extract ingredients from days/meals/snacks
+          mealPlanData.days.forEach(day => {
+            // Extract from meals
+            if (day.meals && Array.isArray(day.meals)) {
+              day.meals.forEach(meal => {
+                if (meal.ingredients && Array.isArray(meal.ingredients)) {
+                  ingredients = ingredients.concat(meal.ingredients);
+                }
+              });
+            }
+
+            // Extract from snacks
+            if (day.snacks && Array.isArray(day.snacks)) {
+              day.snacks.forEach(snack => {
+                if (snack.ingredients && Array.isArray(snack.ingredients)) {
+                  ingredients = ingredients.concat(snack.ingredients);
+                } else if (snack.title) {
+                  // Simple snack without ingredients array
+                  ingredients.push(snack.title);
+                }
+              });
+            }
+          });
+        }
+
+        if (ingredients.length > 0) {
+          // Convert to standardized format if needed
+          const processedIngredients = ingredients.map(ing => {
+            if (typeof ing === 'string') return ing;
+            return ing.name || ing.ingredient || JSON.stringify(ing);
+          });
+
+          return { ingredient_list: processedIngredients };
+        }
+        console.log("Failed to extract ingredients from menu details");
+      } catch (err) {
+        console.error("Menu details extraction failed:", err);
+      }
+
+      // Last resort: Return an empty list
+      console.log("All grocery list fetch attempts failed, returning empty list");
+      return { ingredient_list: [] };
+
+    } catch (err) {
+      console.error("All grocery list fetch attempts failed with error:", err);
+      return {
+        ingredient_list: [],
+        error: "Failed to fetch grocery list: " + (err.message || "Unknown error")
+      };
+    }
+  },
+
   async generateMenu(menuRequest) {
     // Store the latest menu ID before generation to help with recovery
     let latestMenuIdBeforeGeneration = null;

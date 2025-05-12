@@ -893,9 +893,22 @@ function ShoppingListPage() {
   // Function to check the status of an AI shopping list
   // ENHANCED DIRECT FETCH - with proper categorization and unit conversion
   const directFetchShoppingList = async (menuId) => {
-    console.log("DIRECT FETCH: Attempting direct API call to get shopping list");
+    console.log("DIRECT FETCH: Attempting direct API call to get shopping list for menu ID:", menuId);
     try {
+      if (!menuId) {
+        console.error("DIRECT FETCH ERROR: No menuId provided!");
+        setAiShoppingLoading(false);
+        return null;
+      }
+
       const token = localStorage.getItem('token');
+      if (!token) {
+        console.error("DIRECT FETCH ERROR: No auth token in localStorage!");
+        setAiShoppingLoading(false);
+        return null;
+      }
+
+      console.log("DIRECT FETCH: Making API request to:", `https://smartmealplannermulti-production.up.railway.app/menu/${menuId}/grocery-list`);
       const response = await fetch(`https://smartmealplannermulti-production.up.railway.app/menu/${menuId}/grocery-list`, {
         method: 'GET',
         headers: {
@@ -904,20 +917,78 @@ function ShoppingListPage() {
       });
 
       if (!response.ok) {
-        console.log("DIRECT FETCH: API call failed", response.status);
+        console.error("DIRECT FETCH: API call failed", response.status);
+        setAiShoppingLoading(false);
         return null;
       }
 
       const result = await response.json();
       console.log("DIRECT FETCH: Got shopping list directly:", result);
 
-      // Get the items from the response
-      const items = result?.ingredient_list || result?.items || [];
+      // Add detailed logging to see what we're getting
+      if (result && Array.isArray(result.ingredient_list || result.items)) {
+        console.log("DIRECT FETCH: Found ingredient list with", (result.ingredient_list || result.items).length, "items");
+      } else if (result && result.ingredient_list) {
+        console.log("DIRECT FETCH: Found ingredient_list but it's not an array:", typeof result.ingredient_list);
+      } else if (result && result.items) {
+        console.log("DIRECT FETCH: Found items but it's not an array:", typeof result.items);
+      } else {
+        console.log("DIRECT FETCH: Response structure:", Object.keys(result).join(", "));
+      }
+
+      // Get the items from the response, handling different API response formats
+      let items = [];
+
+      // Try different properties where items might be found
+      if (result?.ingredient_list && Array.isArray(result.ingredient_list)) {
+        console.log("DIRECT FETCH: Using ingredient_list array");
+        items = result.ingredient_list;
+      } else if (result?.items && Array.isArray(result.items)) {
+        console.log("DIRECT FETCH: Using items array");
+        items = result.items;
+      } else if (result?.groceryList && Array.isArray(result.groceryList)) {
+        console.log("DIRECT FETCH: Using groceryList array");
+        items = result.groceryList;
+      } else if (Array.isArray(result)) {
+        console.log("DIRECT FETCH: Using root array");
+        items = result;
+      } else if (result?.data && Array.isArray(result.data)) {
+        console.log("DIRECT FETCH: Using data array");
+        items = result.data;
+      } else {
+        // Last resort: try to extract from any object structure
+        console.log("DIRECT FETCH: Trying deep scan for items");
+        for (const key in result) {
+          if (Array.isArray(result[key])) {
+            console.log(`DIRECT FETCH: Found array in '${key}' with ${result[key].length} items`);
+            if (result[key].length > 0) {
+              items = result[key];
+              break;
+            }
+          }
+        }
+      }
 
       if (!items || items.length === 0) {
-        console.log("DIRECT FETCH: No items found in response");
+        console.error("DIRECT FETCH: No items found in response");
+        setAiShoppingLoading(false);
         return null;
       }
+
+      console.log(`DIRECT FETCH: Processing ${items.length} items`);
+
+      // Handle case where items are complex objects instead of strings
+      items = items.map(item => {
+        if (typeof item === 'string') {
+          return item;
+        } else if (item && typeof item === 'object') {
+          if (item.name) return item.name;
+          if (item.ingredient) return item.ingredient;
+          return JSON.stringify(item);
+        } else {
+          return String(item);
+        }
+      });
 
       // Create category mapping for better organization
       const categories = {
@@ -2779,6 +2850,7 @@ const categorizeItems = (mealPlanData) => {
                   startIcon={aiShoppingLoading ? <CircularProgress size={20} /> : <AiIcon />}
                   onClick={() => {
                     // Set loading state immediately for a more responsive feel
+                    console.log("DEBUGGING: Regenerate AI List button clicked");
                     setAiShoppingLoading(true);
                     // Switch to AI tab
                     setActiveTab(1);
@@ -2786,7 +2858,10 @@ const categorizeItems = (mealPlanData) => {
                     setLoadingMessageIndex(0);
 
                     // TRY THE SIMPLEST APPROACH - just fetch the current shopping list
-                    directFetchShoppingList(selectedMenuId);
+                    console.log("DEBUGGING: Calling directFetchShoppingList with menuId:", selectedMenuId);
+                    directFetchShoppingList(selectedMenuId)
+                      .then(result => console.log("DEBUGGING: directFetchShoppingList completed with result:", result))
+                      .catch(error => console.error("DEBUGGING: directFetchShoppingList error:", error));
                   }} // Force refresh
                 >
                   Regenerate AI List
