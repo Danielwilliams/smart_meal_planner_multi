@@ -743,12 +743,36 @@ function ShoppingListPage() {
       return { groceryList: [], error: "Invalid response data" };
     }
 
+    console.log("Processing AI shopping list items with response keys:", Object.keys(response));
+
     // Make a deep copy to avoid mutating the original response
     try {
       response = JSON.parse(JSON.stringify(response));
     } catch (error) {
       console.error("Error creating deep copy of response:", error);
       // Continue with the original response if copy fails
+    }
+
+    // Check if we have a direct groceryList or need to extract it from a different structure
+    if (!response.groceryList && response.result && response.result.groceryList) {
+      console.log("Found groceryList inside result property - extracting it");
+      response.groceryList = response.result.groceryList;
+
+      // Also extract other properties if they exist
+      if (response.result.nutritionTips) response.nutritionTips = response.result.nutritionTips;
+      if (response.result.recommendations) response.recommendations = response.result.recommendations;
+      if (response.result.healthySwaps) response.healthySwaps = response.result.healthySwaps;
+      if (response.result.pantryStaples) response.pantryStaples = response.result.pantryStaples;
+    }
+
+    // Handle case where groceryList might be a string (JSON)
+    if (response.groceryList && typeof response.groceryList === 'string') {
+      try {
+        console.log("groceryList is a string, attempting to parse as JSON");
+        response.groceryList = JSON.parse(response.groceryList);
+      } catch (parseError) {
+        console.error("Failed to parse groceryList string as JSON:", parseError);
+      }
     }
 
     // Format and normalize all items to ensure quantities are shown
@@ -851,6 +875,8 @@ function ShoppingListPage() {
 
   // Function to check the status of an AI shopping list
   const checkAiShoppingListStatus = async (menuId) => {
+    console.log(`Checking AI shopping list status for menu ${menuId}...`);
+
     // Safety check - if no active polling interval, exit immediately
     if (!statusPollingInterval) {
       console.log("No active polling interval, skipping status check");
@@ -931,6 +957,12 @@ function ShoppingListPage() {
         // Update state with the completed data
         setAiShoppingData(processedResponse);
         setAiShoppingLoading(false);
+
+        // Automatically switch to the AI tab
+        setActiveTab(1);
+        setUsingAiList(true);
+
+        console.log("AI shopping list processed successfully - switching to AI tab");
 
         // Set a flag to track that this menu's list was successfully loaded
         window.menuAiShoppingListCompleted = window.menuAiShoppingListCompleted || {};
@@ -1455,10 +1487,19 @@ function ShoppingListPage() {
       setAiShoppingData(processedResponse);
       setUsingAiList(true);
 
+      // Automatically switch to the AI tab when data is available
+      setActiveTab(1); // Switch to AI tab
+
       // Check for conditions that indicate a completed shopping list
+      // Log the processed response for debugging
+      console.log("Processing AI response to check completion:", JSON.stringify(processedResponse));
+
       const isCompleted =
+        // Explicit status check
         processedResponse.status === "completed" ||
+        // Cache flag
         processedResponse.cached === true ||
+        // Has groceryList property with content
         (processedResponse.groceryList &&
          Array.isArray(processedResponse.groceryList) &&
          processedResponse.groceryList.length > 0) ||
@@ -1466,7 +1507,13 @@ function ShoppingListPage() {
         (processedResponse.nutritionTips &&
          Array.isArray(processedResponse.nutritionTips) &&
          processedResponse.nutritionTips.length > 0 &&
-         processedResponse.nutritionTips[0] !== "Please try again");
+         processedResponse.nutritionTips[0] !== "Please try again") ||
+        // Has recommendations populated (indicates completion)
+        (processedResponse.recommendations &&
+         Array.isArray(processedResponse.recommendations) &&
+         processedResponse.recommendations.length > 0);
+
+      console.log("AI shopping list completion status:", isCompleted);
 
       // If the response is already complete, no need to poll
       if (isCompleted) {
@@ -1845,6 +1892,7 @@ const categorizeItems = (mealPlanData) => {
         console.log("Found groceryList in nested property:", foundList);
         // Filter out null/undefined items for safety
         ingredientsList = foundList.filter(item => item !== null && item !== undefined);
+        console.log("Found groceryList with items:", ingredientsList.length);
       }
     } catch (findErr) {
       console.error("Error finding grocery list:", findErr);
