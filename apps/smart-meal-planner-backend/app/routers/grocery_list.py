@@ -1090,9 +1090,16 @@ def generate_ai_shopping_list(menu_data, basic_grocery_list, additional_preferen
                         def appropriate_unit(name):
                             name_lower = name.lower()
                             
-                            # Meats category
-                            if any(meat in name_lower for meat in ["chicken", "beef", "turkey", "salmon", "pork", "sirloin", "steak", "ground"]):
-                                return "lb"
+                            # Meats category - use appropriate units based on quantity
+                            if any(meat in name_lower for meat in ["chicken", "beef", "turkey", "salmon", "pork", "sirloin", "steak", "ground", "meat"]):
+                                # Look at the potential quantity if any
+                                qty_match = re.search(r'\d+', name)
+                                if qty_match:
+                                    qty = int(qty_match.group(0))
+                                    if qty > 20:  # Large quantity suggests this should be in ounces
+                                        return "oz"
+
+                                return "lb"  # Default to pounds for small quantities
                             
                             # Cheese and dairy
                             elif "cheese" in name_lower:
@@ -1295,12 +1302,49 @@ def generate_ai_shopping_list(menu_data, basic_grocery_list, additional_preferen
                                     
                                     # Apply category-specific constraints
                                     
-                                    # Meats - typically in pounds, not more than 5lb for a recipe
-                                    if any(meat in name_lower for meat in ["chicken", "beef", "turkey", "salmon", "pork", "sirloin", "steak", "ground"]):
-                                        if number > 5:
-                                            return "3"  # Cap at 3 pounds - more realistic for a recipe
-                                        elif number < 0.25:  # Too small
-                                            return "1"  # Minimum 1 lb
+                                    # Meats - use appropriate units based on size
+                                    if any(meat in name_lower for meat in ["chicken", "beef", "turkey", "salmon", "pork", "sirloin", "steak", "ground", "meat"]):
+                                        # Get the unit if we have one
+                                        unit_match = re.search(r'(lb|lbs|oz|ounce|pound|g|gram)', qty_str)
+                                        unit = unit_match.group(1).lower() if unit_match else ""
+
+                                        # For ounces
+                                        if unit in ["oz", "ounce", "ounces"]:
+                                            if number > 96:  # Unreasonably large ounce quantity
+                                                return "24"  # More reasonable ounce quantity
+                                            elif number < 3:  # Too small for meat
+                                                return "8"  # Reasonable minimum
+                                            else:
+                                                return str(number)  # Keep as is if reasonable
+
+                                        # For pounds - convert to ounces if large
+                                        elif unit in ["lb", "lbs", "pound", "pounds"]:
+                                            if number > 5:  # More than 5 pounds is a lot for a recipe
+                                                ounces = int(number * 16)
+                                                return str(ounces)  # Return as ounces instead
+                                            elif number < 0.25:  # Too small
+                                                return "1"  # Minimum 1 lb
+                                            else:
+                                                return str(number)  # Keep as is if reasonable
+
+                                        # For grams
+                                        elif unit in ["g", "gram", "grams"]:
+                                            if number > 2000:  # More than 2kg is a lot
+                                                ounces = int(number * 0.035274)
+                                                return str(ounces)  # Convert to ounces for large quantities
+                                            else:
+                                                return str(number)  # Keep as is if reasonable
+
+                                        # No unit specified
+                                        else:
+                                            if number > 20:  # Large numbers likely represent ounces
+                                                return str(number) + " oz"
+                                            elif number > 5:  # Medium numbers might be pounds
+                                                return "3"  # Cap at 3 pounds
+                                            elif number < 0.25:  # Too small
+                                                return "1"  # Minimum 1 lb
+                                            else:
+                                                return str(number)  # Keep as is
                                     
                                     # Cheese - typically in ounces or cups
                                     elif "cheese" in name_lower:

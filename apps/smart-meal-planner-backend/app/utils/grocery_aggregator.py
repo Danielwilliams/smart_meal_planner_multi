@@ -527,11 +527,23 @@ def combine_amount_and_unit(amount_float: float, unit: str, name: str) -> str:
                 return f"{display_name}: {quantity_str} cans"
                 
         # Handle common meats with proper unit display
-        if any(meat in clean_name for meat in ["chicken", "beef", "pork", "turkey", "fish"]):
-            # Convert to pounds for large quantities
+        if any(meat in clean_name for meat in ["chicken", "beef", "pork", "turkey", "fish", "steak", "meat"]):
+            # Convert to appropriate units for meats
             if (unit == "g" or unit == "grams") and float(amount_float) > 500:
                 pounds = float(amount_float) * 0.00220462
-                return f"{display_name}: {pounds:.1f} lb"
+                # If more than 5 pounds, use ounces for more reasonable representation
+                if pounds > 5:
+                    ounces = pounds * 16
+                    return f"{display_name}: {ounces:.0f} oz"
+                else:
+                    return f"{display_name}: {pounds:.1f} lb"
+            # For large quantities with no unit, assume ounces
+            elif not unit and float(amount_float) > 20:
+                return f"{display_name}: {amount_float} oz"
+            # For unreasonably large pounds, convert to ounces
+            elif (unit == "lb" or unit == "lbs" or unit == "pound" or unit == "pounds") and float(amount_float) > 5:
+                ounces = float(amount_float) * 16
+                return f"{display_name}: {ounces:.0f} oz"
                 
         # Special handling for egg quantities
         if clean_name == "egg" or clean_name == "eggs":

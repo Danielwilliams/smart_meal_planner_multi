@@ -1,5 +1,6 @@
 // src/utils/shoppingListUtils.js
 import CATEGORY_MAPPING from '../data/categoryMapping';
+import { standardizeUnits, formatUnitDisplay } from './unitStandardization';
 
 /**
  * Regular expressions for normalizing ingredients
@@ -269,8 +270,20 @@ function processGroceryList(groceryList) {
       processedItems[category] = [];
     }
     
-    // Format as "quantity name"
-    const formattedItem = `${item.displayQuantity} ${item.name}`.trim();
+    // Standardize units before formatting
+    const { quantity, unit } = standardizeUnits(item.displayQuantity, '', item.name);
+
+    // Apply unit fixes
+    let formattedItem;
+    if (unit) {
+      formattedItem = `${quantity} ${unit} ${item.name}`.trim();
+    } else {
+      formattedItem = `${quantity} ${item.name}`.trim();
+    }
+
+    // Apply final item fix
+    formattedItem = fixUnits(formattedItem);
+
     processedItems[category].push(formattedItem);
   });
   
@@ -281,6 +294,7 @@ function processGroceryList(groceryList) {
 
 /**
  * Fixes units for items with unreasonably large quantities (like 96 lbs of chicken)
+ * or adds missing units to meat products
  * @param {string} itemName - The name of the grocery item
  * @returns {string} - The item name with fixed units
  */
@@ -302,11 +316,35 @@ function fixUnits(itemName) {
         itemLower.includes('breast') ||
         itemLower.includes('beef') ||
         itemLower.includes('steak') ||
-        itemLower.includes('pork')
+        itemLower.includes('pork') ||
+        itemLower.includes('turkey') ||
+        itemLower.includes('meat')
     )) {
-      // Convert to ounces or more reasonable unit
+      // Convert to ounces for more reasonable unit
       console.log(`Converting ${quantity} lbs to oz for ${itemName}`);
       fixedItem = itemName.replace(weightRegex, `${quantity} oz`);
+    }
+  }
+
+  // Also check for large numeric quantities without units that should be ounces
+  const numberRegex = /(\d+)\s+(?!(oz|ounce|lb|pound|g|gram))/i;
+  const numberMatch = itemLower.match(numberRegex);
+
+  if (numberMatch && !match) { // If we have a number without a unit
+    const quantity = parseInt(numberMatch[1], 10);
+    // For large quantities with meat products, assume they should be oz
+    if (quantity > 20 && (
+        itemLower.includes('chicken') ||
+        itemLower.includes('breast') ||
+        itemLower.includes('beef') ||
+        itemLower.includes('steak') ||
+        itemLower.includes('pork') ||
+        itemLower.includes('turkey') ||
+        itemLower.includes('meat')
+    )) {
+      // Add oz unit
+      console.log(`Adding oz unit to ${quantity} for ${itemName}`);
+      fixedItem = itemName.replace(numberRegex[0], `${quantity} oz `);
     }
   }
 
