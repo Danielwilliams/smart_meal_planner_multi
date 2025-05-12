@@ -1622,16 +1622,148 @@ function ShoppingListPage() {
         );
       }, 3000);
 
-      // Safety timeout - after 20 seconds, try the direct fetch as a fallback
+      // Safety timeout - after 15 seconds, try the direct fetch as a fallback
       loadingTimeout = setTimeout(() => {
-        console.log("Loading timeout reached (20s) - trying direct fetch as fallback");
+        console.log("Loading timeout reached (15s) - trying emergency fetch as fallback");
 
         // Show message to user
         showSnackbar("AI processing is taking longer than expected. Trying a faster approach...");
 
-        // Try the direct fetch approach as a fallback
-        directFetchShoppingList(selectedMenuId);
-      }, 20000); // 20 seconds is plenty of time for the standard approach
+        // Use our simplified emergency fetch as a fallback
+        try {
+          // Get the token
+          const token = localStorage.getItem('token');
+
+          // Make a direct API call
+          fetch(`https://smartmealplannermulti-production.up.railway.app/menu/${selectedMenuId}/grocery-list`, {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          })
+          .then(response => {
+            if (!response.ok) {
+              throw new Error(`API error: ${response.status}`);
+            }
+            return response.json();
+          })
+          .then(result => {
+            console.log("TIMEOUT FALLBACK: Got shopping list:", result);
+
+            // Basic item extraction
+            let items = [];
+            if (result.ingredient_list && Array.isArray(result.ingredient_list)) {
+              items = result.ingredient_list;
+            } else if (result.items && Array.isArray(result.items)) {
+              items = result.items;
+            } else if (Array.isArray(result)) {
+              items = result;
+            } else {
+              // Try to find any array
+              for (const key in result) {
+                if (Array.isArray(result[key]) && result[key].length > 0) {
+                  items = result[key];
+                  break;
+                }
+              }
+            }
+
+            // Simple categorization
+            const categories = {
+              "Produce": [],
+              "Protein": [],
+              "Dairy": [],
+              "Grains": [],
+              "Other": []
+            };
+
+            // Process each item
+            items.forEach(item => {
+              const itemStr = typeof item === 'string' ? item :
+                            (item && item.name ? item.name : String(item));
+
+              const lowerItem = itemStr.toLowerCase();
+              if (lowerItem.includes('chicken') || lowerItem.includes('beef') ||
+                  lowerItem.includes('meat') || lowerItem.includes('fish')) {
+                categories["Protein"].push(itemStr);
+              } else if (lowerItem.includes('milk') || lowerItem.includes('cheese') ||
+                        lowerItem.includes('egg') || lowerItem.includes('yogurt')) {
+                categories["Dairy"].push(itemStr);
+              } else if (lowerItem.includes('apple') || lowerItem.includes('banana') ||
+                        lowerItem.includes('vegetable') || lowerItem.includes('tomato') ||
+                        lowerItem.includes('lettuce') || lowerItem.includes('onion')) {
+                categories["Produce"].push(itemStr);
+              } else if (lowerItem.includes('bread') || lowerItem.includes('rice') ||
+                        lowerItem.includes('pasta') || lowerItem.includes('cereal')) {
+                categories["Grains"].push(itemStr);
+              } else {
+                categories["Other"].push(itemStr);
+              }
+            });
+
+            // Format for display
+            const formattedCategories = Object.entries(categories)
+              .filter(([_, items]) => items.length > 0)
+              .map(([category, items]) => ({
+                category,
+                items: items.map(item => ({
+                  name: item,
+                  display_name: item
+                }))
+              }));
+
+            // Fallback for empty categories
+            if (formattedCategories.length === 0 && items.length > 0) {
+              formattedCategories.push({
+                category: "All Items",
+                items: items.map(item => ({
+                  name: typeof item === 'string' ? item : (item.name || String(item)),
+                  display_name: typeof item === 'string' ? item : (item.name || String(item))
+                }))
+              });
+            }
+
+            // Update state
+            setAiShoppingLoading(false);
+            setAiShoppingData({
+              groceryList: formattedCategories,
+              menuId: selectedMenuId,
+              status: "completed",
+              cached: true,
+              nutritionTips: [
+                "Try to prioritize whole foods over processed options.",
+                "Choose lean proteins for healthier meal options."
+              ],
+              recommendations: [
+                "Shop the perimeter of the store first for fresh foods.",
+                "Check your pantry before shopping to avoid duplicates."
+              ]
+            });
+            setActiveTab(1);
+            setUsingAiList(true);
+          })
+          .catch(error => {
+            console.error("TIMEOUT FALLBACK: Error fetching shopping list:", error);
+            setAiShoppingLoading(false);
+
+            // Show error data
+            setAiShoppingData({
+              groceryList: [{
+                category: "All Items",
+                items: [{ name: "Error fetching items", display_name: "Please try again" }]
+              }],
+              menuId: selectedMenuId,
+              status: "error",
+              cached: false,
+              nutritionTips: ["Error fetching shopping list."],
+              recommendations: ["Please try refreshing the page."]
+            });
+          });
+        } catch (error) {
+          console.error("TIMEOUT FALLBACK: Critical error:", error);
+          setAiShoppingLoading(false);
+        }
+      }, 15000); // 15 seconds timeout
     }
 
     return () => {
@@ -2038,9 +2170,141 @@ function ShoppingListPage() {
     setShowAiShoppingPrompt(false);
 
     if (useAi) {
-      // User chose AI shopping list - use our direct fetch approach
+      // User chose AI shopping list - use our simplified approach
       setAiShoppingLoading(true);
-      await directFetchShoppingList(selectedMenuId);
+
+      // Use the same emergency function to fetch directly
+      try {
+        // Get the token
+        const token = localStorage.getItem('token');
+
+        // Direct API call with minimal processing
+        const response = await fetch(`https://smartmealplannermulti-production.up.railway.app/menu/${selectedMenuId}/grocery-list`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+
+        // Basic error handling
+        if (!response.ok) {
+          throw new Error(`API error: ${response.status}`);
+        }
+
+        // Parse the response
+        const result = await response.json();
+        console.log("AI PROMPT: Got shopping list:", result);
+
+        // Very basic item extraction - get anything we can find
+        let items = [];
+        if (result.ingredient_list && Array.isArray(result.ingredient_list)) {
+          items = result.ingredient_list;
+        } else if (result.items && Array.isArray(result.items)) {
+          items = result.items;
+        } else if (Array.isArray(result)) {
+          items = result;
+        } else {
+          // Last attempt - get any array from the response
+          for (const key in result) {
+            if (Array.isArray(result[key]) && result[key].length > 0) {
+              items = result[key];
+              break;
+            }
+          }
+        }
+
+        // Create very simple categories
+        const categories = {
+          "Produce": [],
+          "Protein": [],
+          "Dairy": [],
+          "Grains": [],
+          "Other": []
+        };
+
+        // Process each item minimally
+        items.forEach(item => {
+          // Get the item as a string
+          const itemStr = typeof item === 'string' ? item :
+                        (item && item.name ? item.name : String(item));
+
+          // Very basic categorization
+          const lowerItem = itemStr.toLowerCase();
+          if (lowerItem.includes('chicken') || lowerItem.includes('beef') ||
+              lowerItem.includes('meat') || lowerItem.includes('fish')) {
+            categories["Protein"].push(itemStr);
+          } else if (lowerItem.includes('milk') || lowerItem.includes('cheese') ||
+                    lowerItem.includes('egg') || lowerItem.includes('yogurt')) {
+            categories["Dairy"].push(itemStr);
+          } else if (lowerItem.includes('apple') || lowerItem.includes('banana') ||
+                    lowerItem.includes('vegetable') || lowerItem.includes('tomato') ||
+                    lowerItem.includes('lettuce') || lowerItem.includes('onion')) {
+            categories["Produce"].push(itemStr);
+          } else if (lowerItem.includes('bread') || lowerItem.includes('rice') ||
+                    lowerItem.includes('pasta') || lowerItem.includes('cereal')) {
+            categories["Grains"].push(itemStr);
+          } else {
+            categories["Other"].push(itemStr);
+          }
+        });
+
+        // Format for the UI
+        const formattedCategories = Object.entries(categories)
+          .filter(([_, items]) => items.length > 0)
+          .map(([category, items]) => ({
+            category,
+            items: items.map(item => ({
+              name: item,
+              display_name: item
+            }))
+          }));
+
+        // If we got nothing, create a single category with all items
+        if (formattedCategories.length === 0 && items.length > 0) {
+          formattedCategories.push({
+            category: "All Items",
+            items: items.map(item => ({
+              name: typeof item === 'string' ? item : (item.name || String(item)),
+              display_name: typeof item === 'string' ? item : (item.name || String(item))
+            }))
+          });
+        }
+
+        // Update state with our simple data
+        setAiShoppingLoading(false);
+        setAiShoppingData({
+          groceryList: formattedCategories,
+          menuId: selectedMenuId,
+          status: "completed",
+          cached: true,
+          nutritionTips: [
+            "Try to prioritize whole foods over processed options.",
+            "Choose lean proteins for healthier meal options."
+          ],
+          recommendations: [
+            "Shop the perimeter of the store first for fresh foods.",
+            "Check your pantry before shopping to avoid duplicates."
+          ]
+        });
+        setActiveTab(1);
+        setUsingAiList(true);
+      } catch (error) {
+        console.error("AI PROMPT: Error fetching shopping list:", error);
+        setAiShoppingLoading(false);
+
+        // Even if we fail, provide some data to show something
+        setAiShoppingData({
+          groceryList: [{
+            category: "All Items",
+            items: [{ name: "Error fetching items", display_name: "Please try again" }]
+          }],
+          menuId: selectedMenuId,
+          status: "error",
+          cached: false,
+          nutritionTips: ["Error fetching shopping list."],
+          recommendations: ["Please try refreshing the page."]
+        });
+      }
     } else {
       // User chose standard shopping list
       setUsingAiList(false);
@@ -2850,18 +3114,153 @@ const categorizeItems = (mealPlanData) => {
                   startIcon={aiShoppingLoading ? <CircularProgress size={20} /> : <AiIcon />}
                   onClick={() => {
                     // Set loading state immediately for a more responsive feel
-                    console.log("DEBUGGING: Regenerate AI List button clicked");
+                    console.log("SIMPLE EMERGENCY FIX: Regenerate AI List button clicked");
                     setAiShoppingLoading(true);
                     // Switch to AI tab
                     setActiveTab(1);
                     // Reset loading message index to start fresh
                     setLoadingMessageIndex(0);
 
-                    // TRY THE SIMPLEST APPROACH - just fetch the current shopping list
-                    console.log("DEBUGGING: Calling directFetchShoppingList with menuId:", selectedMenuId);
-                    directFetchShoppingList(selectedMenuId)
-                      .then(result => console.log("DEBUGGING: directFetchShoppingList completed with result:", result))
-                      .catch(error => console.error("DEBUGGING: directFetchShoppingList error:", error));
+                    // EMERGENCY DIRECT FIX - Using simplest possible approach
+                    console.log("SIMPLE EMERGENCY FIX: Getting shopping list with menuId:", selectedMenuId);
+
+                    const emergencyFetchList = async () => {
+                      try {
+                        // Get the token
+                        const token = localStorage.getItem('token');
+
+                        // Direct API call with minimal processing
+                        const response = await fetch(`https://smartmealplannermulti-production.up.railway.app/menu/${selectedMenuId}/grocery-list`, {
+                          method: 'GET',
+                          headers: {
+                            'Authorization': `Bearer ${token}`
+                          }
+                        });
+
+                        // Basic error handling
+                        if (!response.ok) {
+                          throw new Error(`API error: ${response.status}`);
+                        }
+
+                        // Parse the response
+                        const result = await response.json();
+                        console.log("SIMPLE EMERGENCY FIX: Got shopping list:", result);
+
+                        // Very basic item extraction - get anything we can find
+                        let items = [];
+                        if (result.ingredient_list && Array.isArray(result.ingredient_list)) {
+                          items = result.ingredient_list;
+                        } else if (result.items && Array.isArray(result.items)) {
+                          items = result.items;
+                        } else if (Array.isArray(result)) {
+                          items = result;
+                        } else {
+                          // Last attempt - get any array from the response
+                          for (const key in result) {
+                            if (Array.isArray(result[key]) && result[key].length > 0) {
+                              items = result[key];
+                              break;
+                            }
+                          }
+                        }
+
+                        // Create very simple categories
+                        const categories = {
+                          "Produce": [],
+                          "Protein": [],
+                          "Dairy": [],
+                          "Grains": [],
+                          "Other": []
+                        };
+
+                        // Process each item minimally
+                        items.forEach(item => {
+                          // Get the item as a string
+                          const itemStr = typeof item === 'string' ? item :
+                                        (item && item.name ? item.name : String(item));
+
+                          // Very basic categorization
+                          const lowerItem = itemStr.toLowerCase();
+                          if (lowerItem.includes('chicken') || lowerItem.includes('beef') ||
+                              lowerItem.includes('meat') || lowerItem.includes('fish')) {
+                            categories["Protein"].push(itemStr);
+                          } else if (lowerItem.includes('milk') || lowerItem.includes('cheese') ||
+                                    lowerItem.includes('egg') || lowerItem.includes('yogurt')) {
+                            categories["Dairy"].push(itemStr);
+                          } else if (lowerItem.includes('apple') || lowerItem.includes('banana') ||
+                                    lowerItem.includes('vegetable') || lowerItem.includes('tomato') ||
+                                    lowerItem.includes('lettuce') || lowerItem.includes('onion')) {
+                            categories["Produce"].push(itemStr);
+                          } else if (lowerItem.includes('bread') || lowerItem.includes('rice') ||
+                                    lowerItem.includes('pasta') || lowerItem.includes('cereal')) {
+                            categories["Grains"].push(itemStr);
+                          } else {
+                            categories["Other"].push(itemStr);
+                          }
+                        });
+
+                        // Format for the UI
+                        const formattedCategories = Object.entries(categories)
+                          .filter(([_, items]) => items.length > 0)
+                          .map(([category, items]) => ({
+                            category,
+                            items: items.map(item => ({
+                              name: item,
+                              display_name: item
+                            }))
+                          }));
+
+                        // If we got nothing, create a single category with all items
+                        if (formattedCategories.length === 0 && items.length > 0) {
+                          formattedCategories.push({
+                            category: "All Items",
+                            items: items.map(item => ({
+                              name: typeof item === 'string' ? item : (item.name || String(item)),
+                              display_name: typeof item === 'string' ? item : (item.name || String(item))
+                            }))
+                          });
+                        }
+
+                        // Update state with our simple data
+                        setAiShoppingLoading(false);
+                        setAiShoppingData({
+                          groceryList: formattedCategories,
+                          menuId: selectedMenuId,
+                          status: "completed",
+                          cached: true,
+                          nutritionTips: [
+                            "Try to prioritize whole foods over processed options.",
+                            "Choose lean proteins for healthier meal options."
+                          ],
+                          recommendations: [
+                            "Shop the perimeter of the store first for fresh foods.",
+                            "Check your pantry before shopping to avoid duplicates."
+                          ]
+                        });
+                        setActiveTab(1);
+                        setUsingAiList(true);
+
+                      } catch (error) {
+                        console.error("SIMPLE EMERGENCY FIX: Error:", error);
+                        setAiShoppingLoading(false);
+
+                        // Even if we fail, provide some data to show something
+                        setAiShoppingData({
+                          groceryList: [{
+                            category: "All Items",
+                            items: [{ name: "Error fetching items", display_name: "Please try again" }]
+                          }],
+                          menuId: selectedMenuId,
+                          status: "error",
+                          cached: false,
+                          nutritionTips: ["Error fetching shopping list."],
+                          recommendations: ["Please try refreshing the page."]
+                        });
+                      }
+                    };
+
+                    // Run our emergency fix
+                    emergencyFetchList();
                   }} // Force refresh
                 >
                   Regenerate AI List
