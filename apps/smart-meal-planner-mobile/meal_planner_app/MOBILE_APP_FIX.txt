@@ -1,0 +1,11 @@
+For the mobile app, please add the following code to the _processShoppingListItems function in lib/Screens/shopping_list_screen.dart:
+
+// Fix unrealistic quantities
+if (ingredient.toLowerCase().contains('chicken') && 
+    ingredient.toLowerCase().contains('lb') && 
+    quantity \!= null && quantity > 5) {
+  print('Converting  lbs to oz for ');
+  // Convert to oz instead
+  unit = 'oz';
+}
+// Add at line 580 after extracting ingredient name
