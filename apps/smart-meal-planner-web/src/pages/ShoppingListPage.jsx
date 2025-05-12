@@ -891,7 +891,7 @@ function ShoppingListPage() {
   };
 
   // Function to check the status of an AI shopping list
-  // SIMPLE DIRECT FETCH - bypass all the complexity
+  // ENHANCED DIRECT FETCH - with proper categorization and unit conversion
   const directFetchShoppingList = async (menuId) => {
     console.log("DIRECT FETCH: Attempting direct API call to get shopping list");
     try {
@@ -911,26 +911,207 @@ function ShoppingListPage() {
       const result = await response.json();
       console.log("DIRECT FETCH: Got shopping list directly:", result);
 
-      // Even if there's an error, we'll use what we got
-      if (result) {
-        setAiShoppingLoading(false);
-        setAiShoppingData({
-          groceryList: [
-            {
-              category: "All Items",
-              items: result?.ingredient_list || result?.items || []
-            }
-          ],
-          menuId: menuId,
-          status: "completed",
-          cached: true
-        });
-        setActiveTab(1);
-        setUsingAiList(true);
-        return true;
+      // Get the items from the response
+      const items = result?.ingredient_list || result?.items || [];
+
+      if (!items || items.length === 0) {
+        console.log("DIRECT FETCH: No items found in response");
+        return null;
       }
+
+      // Create category mapping for better organization
+      const categories = {
+        "Produce": [],
+        "Protein": [],
+        "Dairy": [],
+        "Grains": [],
+        "Pantry": [],
+        "Other": []
+      };
+
+      // Helper function to categorize items
+      const categorizeItem = (item) => {
+        if (!item) return null;
+
+        // Convert to string if not already
+        const itemStr = typeof item === 'string' ? item : (item.name || String(item));
+        if (!itemStr.trim()) return null;
+
+        const itemLower = itemStr.toLowerCase();
+
+        // Fix quantity units (especially for chicken breasts)
+        let fixedItem = itemStr;
+
+        // Check for unreasonably large quantities (like 96 lbs of chicken)
+        const weightRegex = /(\d+)\s*(lb|lbs|pound|pounds)/i;
+        const match = itemLower.match(weightRegex);
+
+        if (match) {
+          const quantity = parseInt(match[1], 10);
+          // If quantity is very large for pounds (like 96 lbs)
+          if (quantity > 10 && (
+              itemLower.includes('chicken') ||
+              itemLower.includes('breast') ||
+              itemLower.includes('beef') ||
+              itemLower.includes('steak') ||
+              itemLower.includes('pork')
+          )) {
+            // Convert to ounces or more reasonable unit
+            console.log(`Converting ${quantity} lbs to oz for ${itemStr}`);
+            fixedItem = itemStr.replace(weightRegex, `${quantity} oz`);
+          }
+        }
+
+        // Categorize based on keywords
+        if (
+          itemLower.includes('lettuce') ||
+          itemLower.includes('spinach') ||
+          itemLower.includes('carrot') ||
+          itemLower.includes('broccoli') ||
+          itemLower.includes('onion') ||
+          itemLower.includes('garlic') ||
+          itemLower.includes('pepper') ||
+          itemLower.includes('cucumber') ||
+          itemLower.includes('tomato') ||
+          itemLower.includes('apple') ||
+          itemLower.includes('banana') ||
+          itemLower.includes('orange') ||
+          itemLower.includes('berry') ||
+          itemLower.includes('grape') ||
+          itemLower.includes('fruit') ||
+          itemLower.includes('vegetable')
+        ) {
+          categories["Produce"].push(fixedItem);
+        }
+        else if (
+          itemLower.includes('chicken') ||
+          itemLower.includes('beef') ||
+          itemLower.includes('pork') ||
+          itemLower.includes('fish') ||
+          itemLower.includes('shrimp') ||
+          itemLower.includes('salmon') ||
+          itemLower.includes('meat') ||
+          itemLower.includes('protein') ||
+          itemLower.includes('steak') ||
+          itemLower.includes('turkey') ||
+          itemLower.includes('breast')
+        ) {
+          categories["Protein"].push(fixedItem);
+        }
+        else if (
+          itemLower.includes('milk') ||
+          itemLower.includes('cheese') ||
+          itemLower.includes('yogurt') ||
+          itemLower.includes('cream') ||
+          itemLower.includes('butter') ||
+          itemLower.includes('egg')
+        ) {
+          categories["Dairy"].push(fixedItem);
+        }
+        else if (
+          itemLower.includes('bread') ||
+          itemLower.includes('tortilla') ||
+          itemLower.includes('pasta') ||
+          itemLower.includes('rice') ||
+          itemLower.includes('oat') ||
+          itemLower.includes('quinoa') ||
+          itemLower.includes('wheat') ||
+          itemLower.includes('flour') ||
+          itemLower.includes('cereal')
+        ) {
+          categories["Grains"].push(fixedItem);
+        }
+        else if (
+          itemLower.includes('sugar') ||
+          itemLower.includes('salt') ||
+          itemLower.includes('spice') ||
+          itemLower.includes('oil') ||
+          itemLower.includes('sauce') ||
+          itemLower.includes('condiment') ||
+          itemLower.includes('vinegar') ||
+          itemLower.includes('ketchup') ||
+          itemLower.includes('mustard') ||
+          itemLower.includes('syrup') ||
+          itemLower.includes('baking') ||
+          itemLower.includes('stock') ||
+          itemLower.includes('broth')
+        ) {
+          categories["Pantry"].push(fixedItem);
+        }
+        else {
+          categories["Other"].push(fixedItem);
+        }
+
+        return fixedItem;
+      };
+
+      // Process all items
+      items.forEach(item => categorizeItem(item));
+
+      // Filter out empty categories
+      const filteredCategories = Object.entries(categories)
+        .filter(([_, items]) => items.length > 0)
+        .map(([category, items]) => ({
+          category,
+          items: items.map(item => ({
+            name: item,
+            display_name: item
+          }))
+        }));
+
+      // If we somehow have no categories with items, just put everything in "Other"
+      if (filteredCategories.length === 0 && items.length > 0) {
+        filteredCategories.push({
+          category: "All Items",
+          items: items.map(item => ({
+            name: typeof item === 'string' ? item : (item.name || String(item)),
+            display_name: typeof item === 'string' ? item : (item.name || String(item))
+          }))
+        });
+      }
+
+      // Update state with categorized data
+      setAiShoppingLoading(false);
+      setAiShoppingData({
+        groceryList: filteredCategories,
+        menuId: menuId,
+        status: "completed",
+        cached: true,
+        nutritionTips: [
+          "Try to prioritize whole foods over processed options.",
+          "Choose lean proteins for healthier meal options.",
+          "Look for whole grain alternatives to refined grains."
+        ],
+        recommendations: [
+          "Shop the perimeter of the store first for fresh foods.",
+          "Check your pantry before shopping to avoid duplicates.",
+          "Consider buying in-season produce for better flavor and value."
+        ]
+      });
+      setActiveTab(1);
+      setUsingAiList(true);
+
+      // Cache the results
+      setCachedShoppingList(menuId, {
+        groceryList: filteredCategories,
+        menuId: menuId,
+        status: "completed",
+        nutritionTips: [
+          "Try to prioritize whole foods over processed options.",
+          "Choose lean proteins for healthier meal options.",
+          "Look for whole grain alternatives to refined grains."
+        ],
+        recommendations: [
+          "Shop the perimeter of the store first for fresh foods.",
+          "Check your pantry before shopping to avoid duplicates.",
+          "Consider buying in-season produce for better flavor and value."
+        ]
+      });
+
+      return true;
     } catch (error) {
       console.log("DIRECT FETCH: Error fetching shopping list:", error);
+      setAiShoppingLoading(false);
     }
     return null;
   };

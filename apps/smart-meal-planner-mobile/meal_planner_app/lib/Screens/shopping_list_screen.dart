@@ -555,15 +555,40 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
       }
     }
 
-    // Define common categories
+    // Define common categories with expanded keywords
     final categories = {
-      'Produce': ['fruit', 'vegetable', 'fresh', 'produce'],
-      'Meat & Seafood': ['meat', 'seafood', 'beef', 'chicken', 'fish', 'pork', 'turkey'],
-      'Dairy & Eggs': ['dairy', 'milk', 'cheese', 'yogurt', 'egg', 'butter', 'cream'],
-      'Bakery': ['bread', 'bakery', 'pastry', 'dough'],
-      'Pantry': ['pasta', 'rice', 'grain', 'cereal', 'flour', 'sugar', 'oil', 'spice'],
-      'Canned Goods': ['canned', 'can', 'soup', 'bean'],
-      'Frozen': ['frozen', 'ice cream'],
+      'Produce': [
+        'fruit', 'vegetable', 'fresh', 'produce', 'lettuce', 'spinach', 'carrot',
+        'broccoli', 'onion', 'garlic', 'pepper', 'cucumber', 'tomato', 'apple',
+        'banana', 'orange', 'berry', 'grape', 'pineapple', 'mango', 'avocado',
+        'potato', 'celery', 'cilantro', 'parsley', 'herb', 'lemon', 'lime'
+      ],
+      'Protein': [
+        'meat', 'seafood', 'beef', 'chicken', 'fish', 'pork', 'turkey', 'lamb',
+        'shrimp', 'salmon', 'tuna', 'steak', 'breast', 'thigh', 'ground', 'bacon',
+        'sausage', 'ham', 'tofu', 'tempeh', 'protein'
+      ],
+      'Dairy': [
+        'dairy', 'milk', 'cheese', 'yogurt', 'egg', 'butter', 'cream', 'sour cream',
+        'whipping cream', 'half and half', 'mozzarella', 'cheddar', 'feta', 'parmesan',
+        'cottage cheese', 'ricotta', 'ice cream'
+      ],
+      'Grains': [
+        'bread', 'bakery', 'pastry', 'dough', 'pasta', 'rice', 'grain', 'cereal',
+        'flour', 'tortilla', 'oat', 'quinoa', 'wheat', 'barley', 'couscous', 'noodle',
+        'pita', 'bun', 'roll'
+      ],
+      'Pantry': [
+        'sugar', 'salt', 'spice', 'oil', 'sauce', 'condiment', 'vinegar', 'ketchup',
+        'mustard', 'syrup', 'baking', 'stock', 'broth', 'canned', 'can', 'soup',
+        'bean', 'lentil', 'chickpea', 'soy sauce', 'honey', 'maple', 'peanut butter',
+        'jelly', 'jam', 'nuts', 'seed', 'dried', 'pasta sauce', 'tomato sauce',
+        'coconut milk', 'curry paste'
+      ],
+      'Frozen': [
+        'frozen', 'ice cream', 'frozen vegetables', 'frozen fruit', 'freezer',
+        'frozen pizza', 'frozen meal'
+      ],
       'Other': [], // Default category
     };
 
@@ -617,11 +642,36 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
         // Improved regex to better extract quantity, unit, and ingredient name
         final regex = RegExp(r'^(\d+(?:\.\d+)?)\s*([a-zA-Z]{1,4})?\s+(.+)$|^(.+)$');
         final match = regex.firstMatch(ingredient);
-        
+
         if (match != null) {
           quantity = double.tryParse(match.group(1) ?? '');
           unit = match.group(2);
           ingredient = match.group(3) ?? ingredient;
+        }
+
+        // Also check for common format "X lbs of Y" or "X pounds of Y"
+        final weightRegex = RegExp(r'(\d+)\s*(lb|lbs|pound|pounds)\s+(?:of\s+)?(.+)', caseSensitive: false);
+        final weightMatch = weightRegex.firstMatch(ingredient);
+
+        if (weightMatch != null) {
+          int? weightValue = int.tryParse(weightMatch.group(1)!);
+          String? itemName = weightMatch.group(3);
+
+          if (weightValue != null && itemName != null) {
+            // Check for unreasonably large quantities (like 96 lbs of chicken)
+            if (weightValue > 10 && (
+                itemName.toLowerCase().contains('chicken') ||
+                itemName.toLowerCase().contains('breast') ||
+                itemName.toLowerCase().contains('beef') ||
+                itemName.toLowerCase().contains('steak') ||
+                itemName.toLowerCase().contains('pork'))) {
+              // Convert to ounces instead
+              print("Converting $weightValue lbs to oz for $itemName");
+              ingredient = itemName;
+              quantity = weightValue.toDouble();
+              unit = "oz"; // Change unit to oz instead of lb
+            }
+          }
         }
       } else if (item is Map<String, dynamic>) {
         // Extract ingredient name
@@ -655,6 +705,23 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
 
         unit = item['unit']?.toString();
         notes = item['notes']?.toString() ?? '';
+
+        // Check for unreasonably large quantities in meat items
+        if (quantity != null && unit != null &&
+            (unit.toLowerCase() == 'lb' || unit.toLowerCase() == 'lbs' ||
+             unit.toLowerCase() == 'pound' || unit.toLowerCase() == 'pounds')) {
+
+          if (quantity > 10 && (
+              ingredient.toLowerCase().contains('chicken') ||
+              ingredient.toLowerCase().contains('breast') ||
+              ingredient.toLowerCase().contains('beef') ||
+              ingredient.toLowerCase().contains('steak') ||
+              ingredient.toLowerCase().contains('pork'))) {
+            // Convert to ounces instead
+            print("Converting $quantity lbs to oz for $ingredient");
+            unit = "oz"; // Change unit to oz instead of lb
+          }
+        }
 
         print("Processed item: name=$ingredient, quantity=$quantity, unit=$unit");
       }
