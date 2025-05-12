@@ -1394,31 +1394,28 @@ const combineItems = (items) => {
   }
 };
 
-const ShoppingListItem = ({ 
-  item, 
-  selectedStore, 
-  onAddToCart, 
+const ShoppingListItem = ({
+  item,
+  selectedStore,
+  onAddToCart,
   onAddToMixedCart,
   onKrogerNeededSetup
 }) => {
   // Parse the display data and item data from the item object if available
   let displayName = item;
   let itemName = item;
-  
+
   // Handle different item formats
   if (typeof item === 'object' && item !== null) {
-    // Use display_name if available
-    if (item.display_name) {
-      displayName = item.display_name;
-    }
-    // Otherwise construct from name, quantity and unit
-    else if (item.name) {
-      // If the name includes a colon and quantity already (like "Chicken Breast: 96 oz")
-      if (item.name.includes(':')) {
-        displayName = item.name;
-      } else {
-        // Clean up any decimal points in the quantity if it's a whole number
-        let cleanQuantity = item.quantity || '1';
+    // First check for a direct name and quantity - this is what we use now
+    if (item.name) {
+      // Clean up any decimal points in the quantity if it's a whole number
+      let cleanQuantity = '';
+
+      if (item.quantity) {
+        cleanQuantity = item.quantity;
+
+        // Clean up the quantity format
         if (typeof cleanQuantity === 'string') {
           if (cleanQuantity.includes('.') && cleanQuantity.endsWith('.0')) {
             cleanQuantity = cleanQuantity.replace('.0', '');
@@ -1426,15 +1423,22 @@ const ShoppingListItem = ({
           // Remove any extra decimal points like "1.: 1"
           cleanQuantity = cleanQuantity.replace(/\d+\.: /, '');
         }
+      }
 
-        // Handle "To taste" case specially
+      // Set display name directly using the name and quantity properties
+      if (cleanQuantity) {
         if (cleanQuantity === 'To taste') {
           displayName = `${item.name}: ${cleanQuantity}`;
         } else {
-          // Regular case
           displayName = `${item.name}: ${cleanQuantity}${item.unit ? ' ' + item.unit : ''}`;
         }
+      } else {
+        displayName = item.name;
       }
+    }
+    // Legacy format - use display_name if available
+    else if (item.display_name) {
+      displayName = item.display_name;
     }
 
     // Use the base name (without quantity/unit) for cart operations
@@ -1482,7 +1486,10 @@ const ShoppingListItem = ({
   
   return (
     <Grid item xs={12} sm={6}>
-      <Typography>{typeof item === 'object' && item.name && !item.quantity ? item.name : displayName}</Typography>
+      <Typography>
+        {/* Use the displayName we've carefully constructed above */}
+        {displayName}
+      </Typography>
 
       {selectedStore === 'mixed' ? (
         <Box sx={{ mt: 1 }}>
