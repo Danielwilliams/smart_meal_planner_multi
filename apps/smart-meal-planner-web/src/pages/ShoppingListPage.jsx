@@ -1217,11 +1217,18 @@ function ShoppingListPage() {
       // Step 1: Clear the cache
       addLog('Clearing shopping list cache...');
       try {
-        const clearResponse = await fetch(`https://smartmealplannermulti-production.up.railway.app/menu/${selectedMenuId}/ai-shopping-cache`, {
-          method: 'DELETE',
+        // Use POST with a specific flag instead of DELETE to avoid 405 errors
+        const clearResponse = await fetch(`https://smartmealplannermulti-production.up.railway.app/menu/${selectedMenuId}/ai-shopping-list`, {
+          method: 'POST',
           headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          }
+            'Authorization': `Bearer ${localStorage.getItem('token')}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            menu_id: parseInt(selectedMenuId),
+            clear_cache: true,  // Special flag to clear cache
+            use_ai: false       // Don't generate yet, just clear
+          })
         });
 
         if (clearResponse.ok) {
