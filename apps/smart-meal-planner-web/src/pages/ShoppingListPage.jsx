@@ -46,7 +46,9 @@ import {
   TipsAndUpdates as TipsIcon,
   LocalOffer as OfferIcon,
   Kitchen as KitchenIcon,
-  Category as CategoryIcon
+  Category as CategoryIcon,
+  AutoAwesome,
+  ExpandMore
 } from '@mui/icons-material';
 
 function ShoppingListPage() {
@@ -94,6 +96,11 @@ function ShoppingListPage() {
   const [activeTab, setActiveTab] = useState(0);
   const [aiPreferences, setAiPreferences] = useState('');
   const [usingAiList, setUsingAiList] = useState(false);
+
+  // For New AI List button
+  const [generationStats, setGenerationStats] = useState(null);
+  const [generationLogs, setGenerationLogs] = useState([]);
+  const [showLogs, setShowLogs] = useState(false);
 
   // For entertaining messages while loading
   const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
@@ -1189,6 +1196,104 @@ function ShoppingListPage() {
 
   // Function to check the status of an AI shopping list
   // ENHANCED DIRECT FETCH - with proper categorization and unit conversion
+  // Generate a brand new AI shopping list from scratch
+  const generateNewAiList = async () => {
+    // Reset state
+    setGenerationLogs([]);
+    setGenerationStats(null);
+    setAiShoppingLoading(true);
+    const startTime = new Date();
+
+    // Helper to add logs with timestamps
+    const addLog = (message, type = 'info') => {
+      const timestamp = new Date().toLocaleTimeString();
+      console.log(`[AI List] ${timestamp} - ${message}`);
+      setGenerationLogs(prev => [...prev, { timestamp, message, type }]);
+    };
+
+    try {
+      addLog(`Starting new AI shopping list generation for menu ID: ${selectedMenuId}`);
+
+      // Step 1: Clear the cache
+      addLog('Clearing shopping list cache...');
+      try {
+        const clearResponse = await fetch(`https://smartmealplannermulti-production.up.railway.app/menu/${selectedMenuId}/ai-shopping-cache`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+
+        if (clearResponse.ok) {
+          addLog('Cache cleared successfully', 'success');
+        } else {
+          addLog(`Cache clearing returned status: ${clearResponse.status}`, 'warning');
+        }
+      } catch (cacheError) {
+        addLog(`Cache clearing error: ${cacheError.message}`, 'error');
+        // Continue anyway
+      }
+
+      // Step 2: Generate a new shopping list using POST
+      addLog('Generating new AI shopping list...');
+      const response = await fetch(`https://smartmealplannermulti-production.up.railway.app/menu/${selectedMenuId}/ai-shopping-list`, {
+        method: 'POST',  // Using POST to avoid Method Not Allowed error
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          menu_id: parseInt(selectedMenuId),
+          use_ai: true,
+          use_cache: false  // Force fresh generation
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        addLog(`API error: ${response.status} - ${errorText}`, 'error');
+        throw new Error(`API error ${response.status}: ${errorText}`);
+      }
+
+      const result = await response.json();
+      addLog('Received response from API', 'success');
+
+      // Calculate stats
+      const endTime = new Date();
+      const durationSeconds = (endTime - startTime) / 1000;
+
+      // Update state
+      setAiShoppingData(result);
+      setGenerationStats({
+        startTime,
+        endTime,
+        duration: durationSeconds,
+        success: true,
+        responseSize: JSON.stringify(result).length
+      });
+
+      addLog(`Generation completed in ${durationSeconds.toFixed(2)} seconds`, 'success');
+      showSnackbar('New AI shopping list generated successfully');
+
+    } catch (error) {
+      addLog(`Error: ${error.message}`, 'error');
+
+      // Update stats with error
+      const endTime = new Date();
+      setGenerationStats({
+        startTime,
+        endTime,
+        duration: (endTime - startTime) / 1000,
+        success: false,
+        error: error.message
+      });
+
+      showSnackbar(`Error: ${error.message}`);
+    } finally {
+      setAiShoppingLoading(false);
+    }
+  };
+
   const directFetchShoppingList = async (menuId) => {
     console.log("DIRECT FETCH: Attempting direct API call to get shopping list for menu ID:", menuId);
     try {
@@ -3610,6 +3715,43 @@ const categorizeItems = (mealPlanData) => {
                       </Card>
                     )}
 
+                    {/* No AI shopping data yet, but we can show the generate button */}
+                    {!aiShoppingData && !aiShoppingLoading && (
+                      <Box sx={{ my: 3, p: 3, border: '1px dashed #e0e0e0', borderRadius: 2, bgcolor: '#fafafa', textAlign: 'center' }}>
+                        <Typography variant="h6" gutterBottom>
+                          AI Shopping List
+                        </Typography>
+                        <Typography variant="body1" color="text.secondary" paragraph>
+                          Get a smart, categorized shopping list with healthy alternatives and shopping tips.
+                        </Typography>
+                        <Button
+                          variant="contained"
+                          color="primary"
+                          startIcon={<AutoAwesome />}
+                          onClick={generateNewAiList}
+                          disabled={!selectedMenuId}
+                          size="large"
+                          sx={{ mt: 2 }}
+                        >
+                          Generate AI List
+                        </Button>
+
+                        {generationStats && (
+                          <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
+                            <Chip
+                              icon={generationStats.success ? <TipsIcon /> : <OfferIcon />}
+                              label={generationStats.success ?
+                                `Generated in ${generationStats.duration.toFixed(1)}s` :
+                                'Failed to generate'}
+                              color={generationStats.success ? "success" : "error"}
+                              variant="outlined"
+                              size="small"
+                            />
+                          </Box>
+                        )}
+                      </Box>
+                    )}
+
                     {/* Display AI shopping data when available */}
                     {aiShoppingData && (
                     <>
@@ -3633,7 +3775,72 @@ const categorizeItems = (mealPlanData) => {
                         </Button>
                       </Alert>
                     )}
-                    
+
+                    {/* New AI List Generation Button */}
+                    <Box sx={{ my: 2, p: 2, border: '1px solid #e0e0e0', borderRadius: 1, bgcolor: '#f9f9f9' }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                        <Button
+                          variant="contained"
+                          color="primary"
+                          startIcon={aiShoppingLoading ? <CircularProgress size={20} /> : <AutoAwesome />}
+                          onClick={generateNewAiList}
+                          disabled={aiShoppingLoading || !selectedMenuId}
+                        >
+                          New AI List
+                        </Button>
+
+                        {generationStats && (
+                          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                            <Chip
+                              icon={generationStats.success ? <TipsIcon /> : <OfferIcon />}
+                              label={generationStats.success ?
+                                `Generated in ${generationStats.duration.toFixed(1)}s` :
+                                'Failed to generate'}
+                              color={generationStats.success ? "success" : "error"}
+                              variant="outlined"
+                              size="small"
+                            />
+                          </Box>
+                        )}
+                      </Box>
+
+                      {/* Logs Display */}
+                      <Accordion
+                        expanded={showLogs}
+                        onChange={() => setShowLogs(!showLogs)}
+                        sx={{ boxShadow: 'none', border: '1px solid #e0e0e0' }}
+                      >
+                        <AccordionSummary expandIcon={<ExpandMore />}>
+                          <Typography variant="subtitle2">
+                            Generation Logs {generationLogs.length > 0 ? `(${generationLogs.length})` : ''}
+                          </Typography>
+                        </AccordionSummary>
+                        <AccordionDetails>
+                          {generationLogs.length > 0 ? (
+                            <List dense sx={{ maxHeight: '200px', overflow: 'auto' }}>
+                              {generationLogs.map((log, index) => (
+                                <ListItem key={index} sx={{
+                                  py: 0.5,
+                                  color: log.type === 'error' ? 'error.main' :
+                                         log.type === 'success' ? 'success.main' :
+                                         log.type === 'warning' ? 'warning.main' : 'text.primary'
+                                }}>
+                                  <ListItemText
+                                    primary={`${log.timestamp}: ${log.message}`}
+                                    primaryTypographyProps={{ fontSize: '0.85rem' }}
+                                  />
+                                </ListItem>
+                              ))}
+                            </List>
+                          ) : (
+                            <Typography variant="body2" color="text.secondary">
+                              No generation logs available.
+                            </Typography>
+                          )}
+                        </AccordionDetails>
+                      </Accordion>
+                    </Box>
+
                     {/* AI Tips and Recommendations */}
                     {aiShoppingData.nutritionTips && Array.isArray(aiShoppingData.nutritionTips) && aiShoppingData.nutritionTips.length > 0 && (
                       <Card sx={{ mb: 3 }}>
@@ -3940,13 +4147,24 @@ const categorizeItems = (mealPlanData) => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => handleAiPromptResponse(false)}>No, Just Regular List</Button>
-          <Button 
-            onClick={() => handleAiPromptResponse(true)} 
-            variant="contained" 
+          <Button
+            onClick={() => handleAiPromptResponse(true)}
             startIcon={<AiIcon />}
             color="primary"
           >
-            Yes, Use AI
+            Use AI (Cached)
+          </Button>
+          <Button
+            onClick={() => {
+              setShowAiShoppingPrompt(false);
+              setActiveTab(1);
+              generateNewAiList();
+            }}
+            variant="contained"
+            startIcon={<AutoAwesome />}
+            color="secondary"
+          >
+            New AI List
           </Button>
         </DialogActions>
       </Dialog>
