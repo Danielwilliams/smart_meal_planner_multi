@@ -69,6 +69,21 @@ function ShoppingListPage() {
   const [storeSearchResults, setStoreSearchResults] = useState({});
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [lastSnackbarTime, setLastSnackbarTime] = useState(0);
+
+  // Helper function to show snackbar with debouncing to prevent duplicates
+  const showSnackbar = (message) => {
+    const now = Date.now();
+    // Only show a new snackbar if it's been at least 2 seconds since the last one
+    // or if the message is different
+    if (now - lastSnackbarTime > 2000 || message !== snackbarMessage) {
+      setSnackbarMessage(message);
+      setSnackbarOpen(true);
+      setLastSnackbarTime(now);
+    } else {
+      console.log(`Suppressing duplicate snackbar: ${message}`);
+    }
+  };
   
   // AI shopping list state
   const [showAiShoppingPrompt, setShowAiShoppingPrompt] = useState(false);
@@ -533,11 +548,45 @@ function ShoppingListPage() {
   // Menu selection handler
   const handleMenuSelect = async (menuId) => {
     try {
+      // Clear current data and stop any active polling
+      clearStatusPolling();
       setLoading(true);
-      const groceryListResponse = await apiService.getGroceryListByMenuId(menuId);
-      
-      setGroceryList(groceryListResponse.groceryList);
+      setAiShoppingData(null);
+      setUsingAiList(false);
+
+      console.log(`Manually selecting menu ID: ${menuId}`);
+
+      // Set the new menu ID first - this will trigger useEffect to fetch data
       setSelectedMenuId(menuId);
+
+      // Fetch grocery list directly for immediate display
+      const groceryListResponse = await apiService.getGroceryListByMenuId(menuId);
+
+      // Update grocery list with the new data
+      if (groceryListResponse && groceryListResponse.groceryList) {
+        setGroceryList(groceryListResponse.groceryList);
+      }
+
+      // Check if we have a cached AI list for this menu
+      const cachedData = getCachedShoppingList(menuId);
+      if (cachedData) {
+        // Process and use cached data
+        const processedCache = processAiShoppingItems({
+          ...cachedData,
+          cached: true,
+          menuId: menuId
+        });
+
+        setAiShoppingData(processedCache);
+        setUsingAiList(true);
+        setActiveTab(1); // Switch to AI tab
+
+        // Show notification
+        showSnackbar(`Using cached shopping list for menu ${menuId}`);
+      } else {
+        // Show AI prompt for the new menu
+        setShowAiShoppingPrompt(true);
+      }
     } catch (err) {
       console.error('Error selecting menu:', err);
       setError('Failed to load grocery list');
@@ -549,50 +598,79 @@ function ShoppingListPage() {
   // Cache management functions
   const getCachedShoppingList = (menuId) => {
     try {
+      if (!menuId) {
+        console.log("No menu ID provided for cache lookup");
+        return null;
+      }
+
+      // Convert menuId to string to ensure consistent key usage
+      const menuIdStr = menuId.toString();
+
       const cacheString = localStorage.getItem(AI_SHOPPING_CACHE_KEY);
       if (!cacheString) return null;
-      
+
       const cacheData = JSON.parse(cacheString);
-      
+
       // Check if we have cached data for this menu
-      if (!cacheData[menuId]) return null;
-      
-      const menuCache = cacheData[menuId];
-      
+      if (!cacheData[menuIdStr]) {
+        console.log(`No cache found for menu ID: ${menuIdStr}`);
+        return null;
+      }
+
+      const menuCache = cacheData[menuIdStr];
+
       // Check if cache has expired
       const now = Date.now();
       if (now - menuCache.timestamp > CACHE_EXPIRY_MS) {
-        console.log("Shopping list cache expired for menu", menuId);
+        console.log(`Shopping list cache expired for menu ${menuIdStr}`);
         // Remove expired cache
-        delete cacheData[menuId];
+        delete cacheData[menuIdStr];
         localStorage.setItem(AI_SHOPPING_CACHE_KEY, JSON.stringify(cacheData));
         return null;
       }
-      
-      console.log("Found valid cached shopping list for menu", menuId);
+
+      // Verify cached data is for the right menu
+      if (menuCache.menuId && menuCache.menuId.toString() !== menuIdStr) {
+        console.log(`Cache mismatch: found data for menu ${menuCache.menuId} but requested ${menuIdStr}`);
+        return null;
+      }
+
+      console.log(`Found valid cached shopping list for menu ${menuIdStr}`);
       return menuCache.data;
     } catch (error) {
       console.error("Error reading cache:", error);
       return null;
     }
   };
-  
+
   const setCachedShoppingList = (menuId, data) => {
     try {
+      if (!menuId) {
+        console.log("No menu ID provided for caching");
+        return;
+      }
+
+      // Convert menuId to string for consistent key usage
+      const menuIdStr = menuId.toString();
+
       // Get existing cache
       const cacheString = localStorage.getItem(AI_SHOPPING_CACHE_KEY);
       const cacheData = cacheString ? JSON.parse(cacheString) : {};
-      
+
       // Update cache with new data and timestamp
-      cacheData[menuId] = {
-        data,
+      cacheData[menuIdStr] = {
+        data: {
+          ...data,
+          menuId: menuId, // Store the menu ID in the data to verify later
+        },
+        menuId: menuIdStr, // Store in the cache entry too
         timestamp: Date.now(),
         preferences: aiPreferences || null
       };
-      
+
       // Save updated cache
       localStorage.setItem(AI_SHOPPING_CACHE_KEY, JSON.stringify(cacheData));
-      console.log("Cached shopping list for menu", menuId);
+      console.log(`Cached shopping list for menu ${menuIdStr}`);
     } catch (error) {
       console.error("Error writing cache:", error);
     }
@@ -657,8 +735,7 @@ function ShoppingListPage() {
       // Stop polling if we've reached the maximum number of polls
       if (pollCount >= MAX_POLLS) {
         console.log(`Maximum polls (${MAX_POLLS}) reached, stopping status checks`);
-        setSnackbarMessage("AI processing is taking longer than expected. Please try refreshing the page.");
-        setSnackbarOpen(true);
+        showSnackbar("AI processing is taking longer than expected. Please try refreshing the page.");
       }
       clearStatusPolling();
       return;
@@ -686,11 +763,16 @@ function ShoppingListPage() {
         setAiShoppingLoading(false);
 
         // Cache the results
-        setCachedShoppingList(menuId, processedResponse);
+        setCachedShoppingList(menuId, {
+          ...processedResponse,
+          menuId: menuId
+        });
 
-        // Show completion message
-        setSnackbarMessage("AI shopping list is ready!");
-        setSnackbarOpen(true);
+        // Only show completion message if we were actually polling for a while
+        // This prevents multiple notifications when polling completes quickly
+        if (pollCount > 1) {
+          showSnackbar("AI shopping list is ready!");
+        }
       }
       // Handle "error" status
       else if (statusResponse.status === "error") {
@@ -700,8 +782,7 @@ function ShoppingListPage() {
         clearStatusPolling();
 
         // Show error message
-        setSnackbarMessage(`AI processing error: ${statusResponse.message || "Unknown error"}`);
-        setSnackbarOpen(true);
+        showSnackbar(`AI processing error: ${statusResponse.message || "Unknown error"}`);
 
         // Still update the data with what we got (might contain fallback data)
         const processedResponse = processAiShoppingItems(statusResponse);
@@ -716,8 +797,7 @@ function ShoppingListPage() {
         clearStatusPolling();
 
         // Notify user
-        setSnackbarMessage("AI processing not found. Please try again.");
-        setSnackbarOpen(true);
+        showSnackbar("AI processing not found. Please try again.");
         setAiShoppingLoading(false);
       }
       // For "processing" status, we continue polling until completion or max attempts
@@ -732,8 +812,7 @@ function ShoppingListPage() {
       if (err.message && (err.message.includes("Network Error") || pollCount > 3)) {
         console.log("Network error or too many consecutive failures, stopping polling");
         clearStatusPolling();
-        setSnackbarMessage("Error checking shopping list status: " + err.message);
-        setSnackbarOpen(true);
+        showSnackbar("Error checking shopping list status: " + err.message);
       }
     }
   };
@@ -810,8 +889,7 @@ function ShoppingListPage() {
           setAiShoppingLoading(false);
 
           // Show snackbar to indicate cached data is being used
-          setSnackbarMessage("Using cached shopping list");
-          setSnackbarOpen(true);
+          showSnackbar(`Using cached shopping list for menu ${menuId}`);
 
           return processedCache;
         }
@@ -830,8 +908,7 @@ function ShoppingListPage() {
       // Check for explicit error message
       if (aiResponse.error) {
         console.warn("API returned error:", aiResponse.error);
-        setSnackbarMessage(`Error: ${aiResponse.error}. Using standard list.`);
-        setSnackbarOpen(true);
+        showSnackbar(`Error: ${aiResponse.error}. Using standard list.`);
 
         // If there's no grocery list data, don't switch to AI view
         if (!aiResponse.groceryList ||
@@ -869,15 +946,18 @@ function ShoppingListPage() {
 
         // Cache the successful response if it's completed and not already cached
         if (processedResponse.status === "completed" && processedResponse.groceryList && !processedResponse.cached) {
-          setCachedShoppingList(menuId, processedResponse);
+          // Make sure to include the menu ID in the cached data
+          setCachedShoppingList(menuId, {
+            ...processedResponse,
+            menuId: menuId
+          });
         }
       }
 
       return processedResponse;
     } catch (err) {
       console.error("Error generating AI shopping list:", err);
-      setSnackbarMessage("Error generating AI shopping list. Using standard list instead.");
-      setSnackbarOpen(true);
+      showSnackbar("Error generating AI shopping list. Using standard list instead.");
       setUsingAiList(false);
       setAiShoppingLoading(false);
       return null;
@@ -899,28 +979,53 @@ function ShoppingListPage() {
 
   // Initial data fetch
   useEffect(() => {
+    console.log(`Selected menu changed to: ${selectedMenuId}`);
+
+    // Reset AI data when menu changes to avoid showing previous menu's items
+    if (selectedMenuId) {
+      // Clear previous AI data and loading state
+      setAiShoppingData(null);
+      setUsingAiList(false);
+      setAiShoppingLoading(false);
+
+      // Clear any existing polling when menu changes
+      clearStatusPolling();
+    }
+
+    // Fetch new shopping list data for the selected menu
     fetchShoppingListData();
-    
+
     // Check if we have a cached AI shopping list for this menu
     if (selectedMenuId) {
       const cachedData = getCachedShoppingList(selectedMenuId);
-      
+
       if (cachedData) {
-        // Use cached data
-        console.log("Using cached shopping list data on initial load");
-        // Make sure cached data has cached flag set
-        if (cachedData) {
-          cachedData.cached = true;
+        // Validate that the cached data matches this menu ID
+        if (cachedData.menuId && cachedData.menuId.toString() === selectedMenuId.toString()) {
+          console.log(`Using cached shopping list data for menu ${selectedMenuId}`);
+
+          // Make sure cached data has cached flag set
+          const processedCache = processAiShoppingItems({
+            ...cachedData,
+            cached: true,
+            menuId: selectedMenuId
+          });
+
+          setAiShoppingData(processedCache);
+          setUsingAiList(true);
+          setActiveTab(1); // Switch to AI tab if we have cached data
+          setAiShoppingLoading(false); // Ensure loading is turned off
+
+          // Show a toast notification that we're using cached data
+          showSnackbar(`Using cached shopping list for menu ${selectedMenuId}`);
+        } else {
+          console.log(`Cached data available but menu ID mismatch. Cache: ${cachedData.menuId}, Selected: ${selectedMenuId}`);
+          // Wrong menu data in cache, don't use it
+          setAiShoppingData(null);
+          if (!showAiShoppingPrompt) {
+            setShowAiShoppingPrompt(true);
+          }
         }
-
-        setAiShoppingData(cachedData);
-        setUsingAiList(true);
-        setActiveTab(1); // Switch to AI tab if we have cached data
-        setAiShoppingLoading(false); // Ensure loading is turned off
-
-        // Show a toast notification that we're using cached data
-        setSnackbarMessage("Using cached AI shopping list");
-        setSnackbarOpen(true);
       } else if (!showAiShoppingPrompt && !aiShoppingData) {
         // No cache, show AI prompt
         setShowAiShoppingPrompt(true);
@@ -1253,8 +1358,7 @@ const categorizeItems = (mealPlanData) => {
         store: selectedStore
       });
 
-      setSnackbarMessage(`Items added to ${selectedStore} cart`);
-      setSnackbarOpen(true);
+      showSnackbar(`Items added to ${selectedStore} cart`);
     } catch (err) {
       console.error(`Error processing ${selectedStore} items:`, err);
       
@@ -1265,10 +1369,9 @@ const categorizeItems = (mealPlanData) => {
         setShowKrogerStoreSelector(true);
         return;
       }
-      
+
       setError(`Failed to process items in ${selectedStore}`);
-      setSnackbarMessage(`Error: ${err.message}`);
-      setSnackbarOpen(true);
+      showSnackbar(`Error: ${err.message}`);
     }
   };
   
@@ -1299,26 +1402,22 @@ const categorizeItems = (mealPlanData) => {
               store: 'kroger'
             });
             
-            setSnackbarMessage(`Items added to Kroger cart`);
-            setSnackbarOpen(true);
+            showSnackbar(`Items added to Kroger cart`);
           } catch (cartErr) {
             console.error("Error adding items to Kroger cart:", cartErr);
-            setSnackbarMessage(`Error adding items to Kroger cart: ${cartErr.message}`);
-            setSnackbarOpen(true);
+            showSnackbar(`Error adding items to Kroger cart: ${cartErr.message}`);
           }
           
           setPendingAllItems(false);
         }
       } else {
         setError(result.message || "Failed to set store location");
-        setSnackbarMessage(`Error: ${result.message}`);
-        setSnackbarOpen(true);
+        showSnackbar(`Error: ${result.message}`);
       }
     } catch (err) {
       console.error("Error setting store location:", err);
       setError(err.message || "An error occurred setting the store location");
-      setSnackbarMessage(`Error: ${err.message}`);
-      setSnackbarOpen(true);
+      showSnackbar(`Error: ${err.message}`);
     }
   };
 
