@@ -1401,6 +1401,9 @@ const ShoppingListItem = ({
   onAddToMixedCart,
   onKrogerNeededSetup
 }) => {
+  // Debug: Log the item to see its structure
+  console.log('ShoppingListItem received:', typeof item, item);
+
   // Parse the display data and item data from the item object if available
   let displayName = item;
   let itemName = item;
@@ -1409,6 +1412,29 @@ const ShoppingListItem = ({
   if (typeof item === 'object' && item !== null) {
     // First check for a direct name and quantity - this is what we use now
     if (item.name) {
+      // IMPORTANT: Check if the name contains ": " which may indicate quantity is embedded
+      if (item.name.includes(': ') && !item.quantity) {
+        console.log('Found item with embedded quantity:', item.name);
+
+        // Split the name and quantity
+        const parts = item.name.split(': ');
+        if (parts.length >= 2) {
+          const extractedName = parts[0];
+          const extractedQuantity = parts[1];
+
+          console.log('Extracted from name:', {
+            name: extractedName,
+            quantity: extractedQuantity
+          });
+
+          // Update the item object to separate name and quantity
+          item.name = extractedName;
+          if (!item.quantity) {
+            item.quantity = extractedQuantity;
+          }
+        }
+      }
+
       // Clean up any decimal points in the quantity if it's a whole number
       let cleanQuantity = '';
 
@@ -1425,6 +1451,14 @@ const ShoppingListItem = ({
         }
       }
 
+      // Debug: log the cleaned quantity
+      console.log(`Cleaned quantity for ${item.name}:`, {
+        original: item.quantity,
+        cleaned: cleanQuantity,
+        hasUnit: !!item.unit,
+        unit: item.unit
+      });
+
       // Set display name directly using the name and quantity properties
       if (cleanQuantity) {
         if (cleanQuantity === 'To taste') {
@@ -1435,6 +1469,9 @@ const ShoppingListItem = ({
       } else {
         displayName = item.name;
       }
+
+      // Debug: log final display name
+      console.log(`Final display name for ${item.name}:`, displayName);
     }
     // Legacy format - use display_name if available
     else if (item.display_name) {
@@ -1487,8 +1524,8 @@ const ShoppingListItem = ({
   return (
     <Grid item xs={12} sm={6}>
       <Typography>
-        {/* Use the displayName we've carefully constructed above */}
-        {displayName}
+        {/* Item name contains both name and quantity, directly use it */}
+        {item && typeof item === 'object' && item.name ? item.name : displayName}
       </Typography>
 
       {selectedStore === 'mixed' ? (
@@ -1532,6 +1569,29 @@ const ShoppingList = ({
   const [showStoreSelector, setShowStoreSelector] = useState(false);
   const [pendingItem, setPendingItem] = useState(null);
   const [error, setError] = useState('');
+
+  // Debug: Log the received categories to see their structure
+  useEffect(() => {
+    if (categories) {
+      console.log('ShoppingList received categories:', categories);
+
+      // Check if we have any categories with items
+      if (typeof categories === 'object') {
+        const keys = Object.keys(categories);
+        if (keys.length > 0) {
+          const firstCategory = categories[keys[0]];
+          if (Array.isArray(firstCategory) && firstCategory.length > 0) {
+            console.log('First category sample items:', firstCategory.slice(0, 3));
+          }
+        }
+      } else if (Array.isArray(categories)) {
+        console.log('Categories is an array with', categories.length, 'items');
+        if (categories.length > 0) {
+          console.log('Sample items:', categories.slice(0, 3));
+        }
+      }
+    }
+  }, [categories]);
 
   // Check if we have a configured Kroger store already
   useEffect(() => {
