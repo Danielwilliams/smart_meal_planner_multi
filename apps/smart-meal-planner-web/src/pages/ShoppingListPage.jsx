@@ -1162,6 +1162,18 @@ function ShoppingListPage() {
       return;
     }
 
+    // Store the menuId in state for tracking (not just in window)
+    if (selectedMenuId !== menuId) {
+      console.log(`Updating selectedMenuId to ${menuId} to ensure proper polling`);
+      setSelectedMenuId(menuId);
+    }
+
+    // IMPORTANT: Set this global variable to track which menu we're polling
+    window.currentPollingMenuId = menuId;
+
+    // Log for debugging
+    console.log(`Setting current polling menu ID to: ${menuId}`);
+
     // Reset the completed flag to make sure we poll properly
     if (window.menuAiShoppingListCompleted && window.menuAiShoppingListCompleted[menuId]) {
       console.log(`Resetting completion flag for menu ${menuId} to ensure proper polling`);
@@ -1233,9 +1245,20 @@ function ShoppingListPage() {
 
           // Validate that we're polling for the current menu
           if (window.currentPollingMenuId !== menuId) {
-            console.log(`Menu ID changed (was ${menuId}, now ${window.currentPollingMenuId}), stopping polling`);
-            clearStatusPolling();
-            return;
+            console.log(`Menu ID mismatch detected (polling: ${menuId}, global: ${window.currentPollingMenuId})`);
+
+            // Instead of stopping, update the global to match what we're currently polling
+            if (menuId) {
+              console.log(`Fixing by updating global polling ID to: ${menuId}`);
+              window.currentPollingMenuId = menuId;
+            } else if (window.currentPollingMenuId) {
+              console.log(`Fixing by continuing to poll for ${window.currentPollingMenuId}`);
+              // No need to stop - we'll continue with the globally tracked ID
+            } else {
+              console.log("No valid menu ID found for polling, stopping");
+              clearStatusPolling();
+              return;
+            }
           }
 
           // Safety check to make sure polling doesn't continue after the component unmounts
@@ -1289,11 +1312,12 @@ function ShoppingListPage() {
   };
 
   // Clean up interval on component mount and unmount with enhanced safety
-  // Effect to rotate loading messages every 3 seconds while polling
+  // Effect to rotate loading messages and handle timeout
   useEffect(() => {
     let messageInterval;
+    let loadingTimeout;
 
-    if (aiShoppingLoading && statusPollingInterval) {
+    if (aiShoppingLoading) {
       console.log("Starting loading message rotation");
       // Start rotating messages
       messageInterval = setInterval(() => {
@@ -1301,6 +1325,21 @@ function ShoppingListPage() {
           prevIndex >= loadingMessages.length - 1 ? 0 : prevIndex + 1
         );
       }, 3000);
+
+      // Safety timeout - after 60 seconds, stop the loading state even if we didn't get a response
+      loadingTimeout = setTimeout(() => {
+        console.log("Loading timeout reached (60s) - stopping loading state");
+        setAiShoppingLoading(false);
+
+        // Show message to user
+        showSnackbar("AI processing is taking longer than expected. The list may still be processing in the background.");
+
+        // We'll keep the partial list visible
+        if (!aiShoppingData) {
+          console.log("No shopping list data available - switching to standard list");
+          setActiveTab(0); // Switch back to standard tab if no data
+        }
+      }, 60000); // 60 seconds max loading time
     }
 
     return () => {
@@ -1308,8 +1347,12 @@ function ShoppingListPage() {
         console.log("Clearing loading message interval");
         clearInterval(messageInterval);
       }
+      if (loadingTimeout) {
+        console.log("Clearing loading timeout");
+        clearTimeout(loadingTimeout);
+      }
     };
-  }, [aiShoppingLoading, statusPollingInterval, loadingMessages.length]);
+  }, [aiShoppingLoading, loadingMessages.length, aiShoppingData, showSnackbar]);
 
   useEffect(() => {
     // Cleanup global state on mount to ensure no leftover polling from previous component instances
@@ -2519,8 +2562,37 @@ const categorizeItems = (mealPlanData) => {
                     setActiveTab(1);
                     // Reset loading message index to start fresh
                     setLoadingMessageIndex(0);
-                    // Start the actual loading process
-                    loadAiShoppingList(selectedMenuId, true);
+
+                    // ENSURE we're requesting fresh data by setting a timestamp
+                    // This will bypass any server-side caching
+                    const forceRefreshTimestamp = new Date().getTime();
+
+                    // Make a direct call to the server to force regeneration
+                    try {
+                      fetch(`https://smartmealplannermulti-production.up.railway.app/menu/${selectedMenuId}/ai-shopping-list/regenerate?ts=${forceRefreshTimestamp}`, {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                          'Authorization': `Bearer ${localStorage.getItem('token')}`
+                        },
+                        body: JSON.stringify({ force_refresh: true })
+                      }).then(response => {
+                        console.log("Force refresh response status:", response.status);
+                        if (response.status !== 200) {
+                          console.log("Using regular loading as fallback");
+                        }
+                      }).catch(error => {
+                        console.log("Force refresh error:", error);
+                      });
+                    } catch (error) {
+                      console.log("Error with force refresh:", error);
+                    }
+
+                    // Wait a brief moment to allow the regenerate endpoint to process
+                    setTimeout(() => {
+                      // Start the actual loading process
+                      loadAiShoppingList(selectedMenuId, true);
+                    }, 1000);
                   }} // Force refresh
                 >
                   Regenerate AI List
@@ -2587,7 +2659,30 @@ const categorizeItems = (mealPlanData) => {
                             setAiShoppingLoading(true);
                             setActiveTab(1);
                             setLoadingMessageIndex(0);
-                            loadAiShoppingList(selectedMenuId, true);
+
+                            // ENSURE we're requesting fresh data by setting a timestamp
+                            const forceRefreshTimestamp = new Date().getTime();
+
+                            // Make a direct call to the server to force regeneration
+                            try {
+                              fetch(`https://smartmealplannermulti-production.up.railway.app/menu/${selectedMenuId}/ai-shopping-list/regenerate?ts=${forceRefreshTimestamp}`, {
+                                method: 'POST',
+                                headers: {
+                                  'Content-Type': 'application/json',
+                                  'Authorization': `Bearer ${localStorage.getItem('token')}`
+                                },
+                                body: JSON.stringify({ force_refresh: true })
+                              }).catch(error => {
+                                console.log("Force refresh error:", error);
+                              });
+                            } catch (error) {
+                              console.log("Error with force refresh:", error);
+                            }
+
+                            // Start the loading process after a short delay
+                            setTimeout(() => {
+                              loadAiShoppingList(selectedMenuId, true);
+                            }, 1000);
                           }}
                         >
                           Refresh
