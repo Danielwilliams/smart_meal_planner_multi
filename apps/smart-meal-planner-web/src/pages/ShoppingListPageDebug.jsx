@@ -1,15 +1,16 @@
 import React, { useEffect, useState } from 'react';
-import { 
-  Container, 
-  Typography, 
-  Box, 
-  Paper, 
+import {
+  Container,
+  Typography,
+  Box,
+  Paper,
   Grid,
   Button,
   CircularProgress,
   Divider,
   Switch,
-  FormControlLabel
+  FormControlLabel,
+  Alert
 } from '@mui/material';
 import { BugReport as BugIcon } from '@mui/icons-material';
 import ShoppingList from '../components/ShoppingList';
