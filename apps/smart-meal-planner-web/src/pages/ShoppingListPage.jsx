@@ -123,25 +123,28 @@ function ShoppingListPage() {
     
     // Process the flat list into categories
     const categorized = {};
-    
+
     groceryItems.forEach(item => {
+      // Skip null or undefined items
+      if (item === null || item === undefined) return;
+
       // Get the item name (handle both string and object formats)
-      const itemName = typeof item === 'string' ? item : item.name || '';
+      const itemName = typeof item === 'string' ? item : (item.name || '');
       if (!itemName) return;
-      
+
       // Determine category based on keywords
       const normalizedName = itemName.toLowerCase();
-      const category = Object.keys(CATEGORY_MAPPING).find(cat => 
-        CATEGORY_MAPPING[cat].some(keyword => 
+      const category = Object.keys(CATEGORY_MAPPING).find(cat =>
+        CATEGORY_MAPPING[cat].some(keyword =>
           normalizedName.includes(keyword.toLowerCase())
         )
       ) || 'Other';
-      
+
       // Create category array if it doesn't exist
       if (!categorized[category]) {
         categorized[category] = [];
       }
-      
+
       // Add the item to its category
       categorized[category].push(itemName);
     });

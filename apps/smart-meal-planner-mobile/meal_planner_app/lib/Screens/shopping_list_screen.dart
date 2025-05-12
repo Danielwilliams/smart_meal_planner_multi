@@ -32,6 +32,10 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
   int _selectedMenuId = 0;
   String _selectedMenuTitle = '';
 
+  // Debounce timer for snackbar notifications
+  DateTime _lastSnackbarTime = DateTime.now().subtract(Duration(seconds: 10));
+  String _lastSnackbarMessage = '';
+
   @override
   void initState() {
     super.initState();
@@ -39,6 +43,24 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
     _selectedMenuTitle = widget.menuTitle;
     _fetchAvailableMenus();
     _fetchShoppingList();
+  }
+
+  // Helper function to show snackbar with debouncing to prevent duplicates
+  void _showSnackbar(String message, {Duration duration = const Duration(seconds: 2)}) {
+    final now = DateTime.now();
+    // Only show if it's been at least 2 seconds or the message is different
+    if (now.difference(_lastSnackbarTime).inSeconds > 2 || message != _lastSnackbarMessage) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          duration: duration,
+        )
+      );
+      _lastSnackbarTime = now;
+      _lastSnackbarMessage = message;
+    } else {
+      print("Suppressing duplicate snackbar: $message");
+    }
   }
   
   // Fetch available menus for selection
@@ -108,16 +130,14 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
     });
 
     try {
-      // Show a message for AI generation
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Generating AI-enhanced shopping list...'),
-          duration: Duration(seconds: 2),
-        )
-      );
+      // Show a message for AI generation using debounced function
+      _showSnackbar('Generating AI-enhanced shopping list...');
+
+      // Cache validation - create a menu-specific ID key
+      final String menuIdKey = 'menu_$_selectedMenuId';
 
       // Try the AI-enhanced shopping list first
-      print("Attempting to fetch AI-enhanced shopping list first");
+      print("Attempting to fetch AI-enhanced shopping list first for menu ID: $_selectedMenuId");
 
       final aiResult = await ApiService.generateAiShoppingList(
         _selectedMenuId,
@@ -132,12 +152,10 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
             (aiResult['status'].toString().toLowerCase() == 'processing' ||
              aiResult['status'].toString().toLowerCase() == 'pending')) {
 
-          // Show a notification that we're waiting
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('AI is still processing your shopping list, please wait...'),
-              duration: Duration(seconds: 3),
-            )
+          // Show a notification that we're waiting using debounced function
+          _showSnackbar(
+            'AI is still processing your shopping list for "$_selectedMenuTitle", please wait...',
+            duration: Duration(seconds: 3)
           );
 
           // Wait a moment and try again
@@ -159,6 +177,12 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
                  completedList.containsKey('ingredients') ||
                  completedList.containsKey('ingredient_list'))) {
               await _processShoppingListItems(completedList);
+
+              // Show success notification using debounced function
+              _showSnackbar(
+                'AI shopping list for "$_selectedMenuTitle" is ready!',
+                duration: Duration(seconds: 3)
+              );
               return;
             }
           }
@@ -175,12 +199,10 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
         } else {
           print("AI shopping list returned an error, falling back to regular shopping list");
 
-          // Show notification that we're falling back
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('AI shopping list unavailable, using standard list instead'),
-              duration: Duration(seconds: 3),
-            )
+          // Show notification that we're falling back using debounced function
+          _showSnackbar(
+            'AI shopping list unavailable for "$_selectedMenuTitle", using standard list instead',
+            duration: Duration(seconds: 3)
           );
         }
       }
@@ -231,6 +253,12 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
   }
 
   Future<void> _processShoppingListItems(Map<String, dynamic> data) async {
+    // Safety check for null data
+    if (data == null) {
+      print("WARNING: Null data passed to _processShoppingListItems");
+      return;
+    }
+
     // Initialize empty categories map
     Map<String, List<Map<String, dynamic>>> categorizedItems = {};
 
@@ -417,11 +445,17 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
 
     // Process each ingredient
     for (var item in ingredients) {
+      // Skip null items
+      if (item == null) {
+        print("WARNING: Null item in ingredients list");
+        continue;
+      }
+
       String ingredient = '';
       double? quantity;
       String? unit;
       String notes = '';
-      
+
       // Handle different formats of ingredient data
       if (item is String) {
         ingredient = item;
@@ -481,6 +515,12 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
       if (normalizedName.isEmpty) {
         normalizedName = ingredient.toLowerCase().trim();
       }
+
+      // Skip extremely short normalized names (likely not valid ingredients)
+      if (normalizedName.length < 2) {
+        print("Skipping very short ingredient name: '$normalizedName'");
+        continue;
+      }
       
       // Create a unique key combining the normalized name and unit (if present)
       String key = unit != null ? '$normalizedName-$unit' : normalizedName;
@@ -489,7 +529,24 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
       if (normalizedItems.containsKey(key)) {
         // Combine quantities if both have quantities
         if (quantity != null && normalizedItems[key]!['quantity'] != null) {
-          normalizedItems[key]!['quantity'] = (normalizedItems[key]!['quantity'] as double) + quantity;
+          try {
+            // Safely add quantities with null checks and type conversions
+            var existingQty = normalizedItems[key]!['quantity'];
+            double existingDouble = 0;
+
+            if (existingQty is double) {
+              existingDouble = existingQty;
+            } else if (existingQty is int) {
+              existingDouble = existingQty.toDouble();
+            } else if (existingQty is String) {
+              existingDouble = double.tryParse(existingQty) ?? 0;
+            }
+
+            normalizedItems[key]!['quantity'] = existingDouble + quantity;
+          } catch (e) {
+            print("Error combining quantities: $e");
+            // On error, just keep the existing quantity
+          }
         }
         
         // Append unique notes
@@ -522,26 +579,44 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
       
       // Determine category
       String category = 'Other';
-      for (var catEntry in categories.entries) {
-        bool matchFound = false;
-        for (var keyword in catEntry.value) {
-          if (ingredient.contains(keyword)) {
-            category = catEntry.key;
-            matchFound = true;
-            break;
+      try {
+        for (var catEntry in categories.entries) {
+          bool matchFound = false;
+          for (var keyword in catEntry.value) {
+            if (ingredient.contains(keyword)) {
+              category = catEntry.key;
+              matchFound = true;
+              break;
+            }
           }
+          if (matchFound) break;
         }
-        if (matchFound) break;
+      } catch (e) {
+        print("Error determining category: $e");
+        // On error, use Other category
+        category = 'Other';
       }
-      
+
       // Add to categorized map
       if (!categorizedItems.containsKey(category)) {
         categorizedItems[category] = [];
       }
-      
-      // Remove the normalized_name field before adding to the final list
-      item.remove('normalized_name');
-      categorizedItems[category]!.add(Map<String, dynamic>.from(item));
+
+      try {
+        // Remove the normalized_name field before adding to the final list
+        item.remove('normalized_name');
+        categorizedItems[category]!.add(Map<String, dynamic>.from(item));
+      } catch (e) {
+        print("Error adding item to category: $e");
+        // Try to add a basic version of the item if conversion fails
+        categorizedItems[category]!.add({
+          'name': ingredient,
+          'quantity': quantity,
+          'unit': unit,
+          'notes': notes,
+          'checked': false
+        });
+      }
     }
     
     // Sort items within each category alphabetically
@@ -571,20 +646,21 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
 
   // Handle menu selection change
   void _onMenuSelected(int menuId, String menuTitle) {
+    // Skip if same menu is selected
+    if (menuId == _selectedMenuId) {
+      print("Same menu selected, not reloading");
+      return;
+    }
+
     setState(() {
       _selectedMenuId = menuId;
       _selectedMenuTitle = menuTitle;
       _categorizedItems = {}; // Clear current list
     });
-    
-    // Show loading message
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Loading shopping list for "$menuTitle"...'),
-        duration: Duration(seconds: 1),
-      )
-    );
-    
+
+    // Show loading message using debounced function
+    _showSnackbar('Loading shopping list for "$menuTitle"...', duration: Duration(seconds: 1));
+
     // Fetch shopping list for selected menu
     _fetchShoppingList();
   }
@@ -606,9 +682,36 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
       for (var category in _categorizedItems.values) {
         for (var item in category) {
           // Format each ingredient with quantity and unit
-          String displayText = item['name'];
+          String displayText = item['name'] ?? 'Unknown item';
 
           if (item['quantity'] != null) {
+            // Handle malformed property names like "car carbs" instead of "carbs"
+            // by checking all keys for partial matches
+            if (item.keys.any((key) => key.toString().contains('carb'))) {
+              var carbsKeys = item.keys.where((key) => key.toString().contains('carb')).toList();
+              print("Found carbs-like keys: $carbsKeys");
+              // If there's a malformed carbs key, fix it
+              if (carbsKeys.isNotEmpty && !item.containsKey('carbs')) {
+                item['carbs'] = item[carbsKeys.first];
+              }
+            }
+
+            // Similarly fix protein key if malformed
+            if (item.keys.any((key) => key.toString().contains('protein'))) {
+              var proteinKeys = item.keys.where((key) => key.toString().contains('protein')).toList();
+              if (proteinKeys.isNotEmpty && !item.containsKey('protein')) {
+                item['protein'] = item[proteinKeys.first];
+              }
+            }
+
+            // Similarly fix fat key if malformed
+            if (item.keys.any((key) => key.toString().contains('fat'))) {
+              var fatKeys = item.keys.where((key) => key.toString().contains('fat')).toList();
+              if (fatKeys.isNotEmpty && !item.containsKey('fat')) {
+                item['fat'] = item[fatKeys.first];
+              }
+            }
+
             // Check if this is a cheese item with "1 g" quantity
             if ((displayText.toLowerCase().contains('cheese') ||
                  displayText.toLowerCase().contains('mozzarella')) &&
@@ -686,16 +789,9 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
         }
       );
       
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Added ${cartItems.length} items to Kroger cart"),
-          duration: Duration(seconds: 2),
-        )
-      );
+      _showSnackbar("Added ${cartItems.length} items to Kroger cart", duration: Duration(seconds: 2));
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error: $e"))
-      );
+      _showSnackbar("Error: $e");
     } finally {
       setState(() {
         _isLoading = false;
@@ -985,9 +1081,14 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
                                                           cartState.printCartState();
                                                           
                                                           // Show success message
+                                                          _showSnackbar("Added ${item['name'] ?? 'item'} to Kroger cart",
+                                                            duration: Duration(seconds: 3),
+                                                          );
+
+                                                          // Use SnackBar action for view cart
                                                           ScaffoldMessenger.of(context).showSnackBar(
                                                             SnackBar(
-                                                              content: Text("Added ${item['name']} to Kroger cart"),
+                                                              content: Text("Item added to cart"),
                                                               action: SnackBarAction(
                                                                 label: 'VIEW CART',
                                                                 onPressed: () {
@@ -1007,9 +1108,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
                                                             )
                                                           );
                                                         } catch (e) {
-                                                          ScaffoldMessenger.of(context).showSnackBar(
-                                                            SnackBar(content: Text("Error: $e"))
-                                                          );
+                                                          _showSnackbar("Error: $e");
                                                         } finally {
                                                           setState(() {
                                                             _isLoading = false;
