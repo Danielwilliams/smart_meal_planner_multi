@@ -1537,15 +1537,17 @@ const ShoppingListItem = ({
     <Grid item xs={12} sm={6}>
       <Typography>
         {/* Display name and quantity separately as they come from backend */}
-        {console.log("ITEM DETAILS:", item)}
+        {console.log("ITEM DETAILS FOR DISPLAY:", item)}
         {item && typeof item === 'object' && item.name ?
           (item.quantity ?
             `${item.name}: ${item.quantity}${item.unit ? ' ' + item.unit : ''}` :
-            (typeof item === 'object' && 'ingredients' in item && item.ingredients.length > 0 ?
+            (typeof item === 'object' && 'ingredients' in item && item.ingredients && item.ingredients.length > 0 ?
               `${item.name}: ${item.ingredients[0].quantity || ''}${item.ingredients[0].unit ? ' ' + item.ingredients[0].unit : ''}` :
               item.name)
           ) :
-          displayName}
+          (typeof item === 'string' && item.includes(':') ?
+            item :
+            displayName)}
       </Typography>
 
       {selectedStore === 'mixed' ? (
@@ -1636,13 +1638,73 @@ const ShoppingList = ({
   // Safely process categories with error handling
   const processedCategories = React.useMemo(() => {
     try {
+      console.log("PROCESSING CATEGORIES:", categories);
+
       // Validate categories is not null or undefined
       if (!categories) {
         console.warn('Categories is null or undefined in ShoppingList component');
         return {};
       }
 
-      // Ensure categories is an object
+      // SPECIAL HANDLING FOR FLAT ARRAY FORMAT
+      if (Array.isArray(categories)) {
+        console.log("FLAT ARRAY FORMAT DETECTED:", categories);
+
+        // Simple categorization for flat arrays
+        const categorized = {
+          'Protein': [],
+          'Produce': [],
+          'Dairy': [],
+          'Grains': [],
+          'Pantry': [],
+          'Other': []
+        };
+
+        categories.forEach(item => {
+          // Skip null items
+          if (!item) return;
+
+          // Get the item name
+          const nameStr = item.name ? item.name.toLowerCase() : '';
+          let category = 'Other';
+
+          // Simple categorization
+          if (nameStr.includes('chicken') || nameStr.includes('beef') ||
+              nameStr.includes('meat') || nameStr.includes('turkey') ||
+              nameStr.includes('fish') || nameStr.includes('salmon')) {
+            category = 'Protein';
+          } else if (nameStr.includes('pepper') || nameStr.includes('broccoli') ||
+                    nameStr.includes('carrot') || nameStr.includes('tomato') ||
+                    nameStr.includes('onion') || nameStr.includes('garlic') ||
+                    nameStr.includes('avocado')) {
+            category = 'Produce';
+          } else if (nameStr.includes('cheese') || nameStr.includes('milk') ||
+                    nameStr.includes('egg')) {
+            category = 'Dairy';
+          } else if (nameStr.includes('quinoa') || nameStr.includes('rice')) {
+            category = 'Grains';
+          } else if (nameStr.includes('oil') || nameStr.includes('salt') ||
+                    nameStr.includes('pepper')) {
+            category = 'Pantry';
+          }
+
+          // Add to appropriate category - directly use the item object
+          categorized[category].push(item);
+        });
+
+        // Filter out empty categories
+        const result = {};
+        Object.entries(categorized).forEach(([category, items]) => {
+          if (items.length > 0) {
+            result[category] = items;
+          }
+        });
+
+        console.log("PROCESSED CATEGORIZED ITEMS:", result);
+        return result;
+      }
+
+      // Ensure categories is an object for the regular case
       if (typeof categories !== 'object') {
         console.warn(`Categories is not an object: ${typeof categories}`);
         return {};
@@ -1668,8 +1730,13 @@ const ShoppingList = ({
             return;
           }
 
-          // Process the items safely
-          processed[category] = combineItems(Array.isArray(items) ? items : []);
+          // Process the items safely - pass directly for array of objects
+          if (Array.isArray(items) && items.length > 0 && typeof items[0] === 'object' && items[0].name && items[0].quantity) {
+            console.log("DIRECT ITEM OBJECTS DETECTED - no need for combineItems");
+            processed[category] = items;
+          } else {
+            processed[category] = combineItems(Array.isArray(items) ? items : []);
+          }
         } catch (itemError) {
           console.error(`Error processing category ${category}:`, itemError);
           processed[category] = []; // Use empty array as fallback
@@ -1752,16 +1819,31 @@ const ShoppingList = ({
             <Paper elevation={3} sx={{ my: 2, p: 2 }}>
               <Typography variant="h6">Shopping List</Typography>
               <Grid container spacing={2}>
-                {items.map((item, index) => (
-                  <ShoppingListItem
-                    key={`item-direct-${index}`}
-                    item={item}
-                    selectedStore={selectedStore}
-                    onAddToCart={onAddToCart || (() => {})}
-                    onAddToMixedCart={onAddToMixedCart || (() => {})}
-                    onKrogerNeededSetup={handleKrogerNeededSetup}
-                  />
-                ))}
+                {items.map((item, index) => {
+                  // Debug the raw item
+                  console.log(`RENDER ITEM ${index}:`, item);
+
+                  // Make sure we have proper quantity display
+                  let displayItem = item;
+                  if (typeof item === 'object' && item.name && item.quantity && !item.display_name) {
+                    displayItem = {
+                      ...item,
+                      display_name: `${item.name}: ${item.quantity}${item.unit ? ' ' + item.unit : ''}`
+                    };
+                    console.log("ENHANCED ITEM:", displayItem);
+                  }
+
+                  return (
+                    <ShoppingListItem
+                      key={`item-direct-${index}`}
+                      item={displayItem}
+                      selectedStore={selectedStore}
+                      onAddToCart={onAddToCart || (() => {})}
+                      onAddToMixedCart={onAddToMixedCart || (() => {})}
+                      onKrogerNeededSetup={handleKrogerNeededSetup}
+                    />
+                  );
+                })}
               </Grid>
             </Paper>
           );
@@ -1829,10 +1911,101 @@ const ShoppingList = ({
     }
   };
 
+  // Add direct array handler for flat format
+  const renderFlatGroceryList = () => {
+    if (!Array.isArray(categories)) return null;
+
+    console.log("RENDERING FLAT GROCERY LIST:", categories);
+
+    // Simple categorization for display
+    const categorized = {
+      'Protein': [],
+      'Produce': [],
+      'Dairy': [],
+      'Grains': [],
+      'Pantry': [],
+      'Other': []
+    };
+
+    // Categorize items
+    categories.forEach(item => {
+      if (!item) return;
+
+      const nameStr = typeof item === 'object' ?
+                    (item.name || '').toLowerCase() :
+                    (typeof item === 'string' ? item.toLowerCase() : '');
+
+      let category = 'Other';
+
+      // Simple categorization
+      if (nameStr.includes('chicken') || nameStr.includes('beef') ||
+          nameStr.includes('meat') || nameStr.includes('turkey') ||
+          nameStr.includes('fish') || nameStr.includes('salmon')) {
+        category = 'Protein';
+      } else if (nameStr.includes('pepper') || nameStr.includes('broccoli') ||
+                nameStr.includes('carrot') || nameStr.includes('tomato') ||
+                nameStr.includes('onion') || nameStr.includes('garlic') ||
+                nameStr.includes('avocado')) {
+        category = 'Produce';
+      } else if (nameStr.includes('cheese') || nameStr.includes('milk') ||
+                nameStr.includes('egg')) {
+        category = 'Dairy';
+      } else if (nameStr.includes('quinoa') || nameStr.includes('rice')) {
+        category = 'Grains';
+      } else if (nameStr.includes('oil') || nameStr.includes('salt') ||
+                nameStr.includes('pepper')) {
+        category = 'Pantry';
+      }
+
+      categorized[category].push(item);
+    });
+
+    // Render each category with items
+    return (
+      <>
+        {Object.entries(categorized).map(([category, items]) => {
+          if (items.length === 0) return null;
+
+          return (
+            <Paper key={category} elevation={3} sx={{ my: 2, p: 2 }}>
+              <Typography variant="h6">{category}</Typography>
+              <Grid container spacing={2}>
+                {items.map((item, index) => {
+                  // Ensure display includes quantity if available
+                  let displayItem = item;
+                  if (typeof item === 'object' && item.name && item.quantity) {
+                    displayItem = {
+                      ...item,
+                      display_name: `${item.name}: ${item.quantity}${item.unit ? ' ' + item.unit : ''}`
+                    };
+                  }
+
+                  return (
+                    <ShoppingListItem
+                      key={`${category}-${index}`}
+                      item={displayItem}
+                      selectedStore={selectedStore}
+                      onAddToCart={onAddToCart || (() => {})}
+                      onAddToMixedCart={onAddToMixedCart || (() => {})}
+                      onKrogerNeededSetup={handleKrogerNeededSetup}
+                    />
+                  );
+                })}
+              </Grid>
+            </Paper>
+          );
+        })}
+      </>
+    );
+  };
+
   return (
     <>
-      {/* Use safe rendering with error boundaries */}
-      <SafeRender />
+      {/* Check for flat array format first */}
+      {Array.isArray(categories) ?
+        renderFlatGroceryList() :
+        <SafeRender />
+      }
 
       {/* Kroger Store Selection Dialog */}
       <StoreSelector

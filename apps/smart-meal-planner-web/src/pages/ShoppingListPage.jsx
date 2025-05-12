@@ -389,12 +389,47 @@ function ShoppingListPage() {
       let menuDetails = null;
       let success = false;
 
-      // Strategy 1: Try direct grocery list API
+      // Try DIRECT access to API using fetch instead of apiService
       try {
-        console.log(`Strategy 1: Fetching grocery list for menu ${selectedMenuId}`);
-        const groceryListResponse = await apiService.getGroceryListByMenuId(selectedMenuId);
+        console.log(`Strategy 1: Directly fetching grocery list for menu ${selectedMenuId}`);
 
-        console.log("Raw grocery list response:", groceryListResponse);
+        const token = localStorage.getItem('token');
+        if (!token) {
+          console.error('No auth token in localStorage!');
+          throw new Error('No auth token found');
+        }
+
+        // Direct fetch to the API - bypass apiService
+        const directResponse = await fetch(`https://smartmealplannermulti-production.up.railway.app/menu/${selectedMenuId}/grocery-list`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+
+        if (!directResponse.ok) {
+          throw new Error(`API error: ${directResponse.status}`);
+        }
+
+        const directResult = await directResponse.json();
+        console.log("DIRECT RAW grocery list response:", directResult);
+
+        // Handle different response structures
+        if (directResult && Array.isArray(directResult)) {
+          console.log("DIRECT: Using raw array:", directResult);
+          setGroceryList(directResult);
+          setLoading(false);
+          return; // Exit early since we have the data
+        } else if (directResult && directResult.groceryList && Array.isArray(directResult.groceryList)) {
+          console.log("DIRECT: Using groceryList array:", directResult.groceryList);
+          setGroceryList(directResult.groceryList);
+          setLoading(false);
+          return; // Exit early since we have the data
+        }
+
+        // Fall back to regular approach if direct fetch didn't produce a usable array
+        const groceryListResponse = await apiService.getGroceryListByMenuId(selectedMenuId);
+        console.log("Raw grocery list response from apiService:", groceryListResponse);
 
         if (groceryListResponse && groceryListResponse.groceryList && groceryListResponse.groceryList.length > 0) {
           console.log("Grocery list fetched successfully:", groceryListResponse.groceryList);
