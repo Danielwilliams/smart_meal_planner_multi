@@ -1265,6 +1265,10 @@ function ShoppingListPage() {
       const result = await response.json();
       addLog('Received response from API', 'success');
 
+      // Log the entire response structure to debug
+      addLog(`Response keys: ${Object.keys(result).join(', ')}`, 'info');
+      console.log("DEBUG Response data:", result);
+
       // Log a summary of what was generated
       try {
         // Log categories and counts
@@ -1306,17 +1310,101 @@ function ShoppingListPage() {
       // First clear to force UI refresh
       setAiShoppingData(null);
 
-      // Add a slight delay to ensure the UI updates
-      setTimeout(() => {
-        // Process the result to ensure it has all expected properties
-        const processedResult = {
-          ...result,
-          cached: false,  // Explicitly mark as not cached
+      // Process the result to ensure it has all expected properties
+      // and handle different response formats
+      let processedResult;
+
+      // Check for different response formats from the backend
+      if (result.ingredient_list && Array.isArray(result.ingredient_list)) {
+        // Format 1: ingredient_list array
+        addLog(`Found ingredient_list array with ${result.ingredient_list.length} items`, 'info');
+
+        // Convert to expected format with categories
+        const categorized = {};
+
+        // Try to categorize based on item properties if available
+        result.ingredient_list.forEach(item => {
+          const category = item.category || 'Other';
+          if (!categorized[category]) {
+            categorized[category] = [];
+          }
+          categorized[category].push(item.name || item);
+        });
+
+        processedResult = {
+          categories: categorized,
+          healthyAlternatives: result.healthyAlternatives || [],
+          shoppingTips: result.shoppingTips || [],
+          cached: false,
           timestamp: new Date().toISOString(),
           menuId: selectedMenuId
         };
+      }
+      else if (result.categories && typeof result.categories === 'object') {
+        // Format 2: Already has categories object
+        addLog(`Found categories object with ${Object.keys(result.categories).length} categories`, 'info');
+
+        processedResult = {
+          ...result,
+          cached: false,
+          timestamp: new Date().toISOString(),
+          menuId: selectedMenuId
+        };
+      }
+      else if (result.data && result.data.categories) {
+        // Format 3: Data wrapped in data property
+        addLog(`Found categories in data property`, 'info');
+
+        processedResult = {
+          ...result.data,
+          cached: false,
+          timestamp: new Date().toISOString(),
+          menuId: selectedMenuId
+        };
+      }
+      else if (Array.isArray(result)) {
+        // Format 4: Direct array of items
+        addLog(`Found direct array with ${result.length} items`, 'info');
+
+        // Create a single category with all items
+        processedResult = {
+          categories: { 'All Items': result },
+          healthyAlternatives: [],
+          shoppingTips: [],
+          cached: false,
+          timestamp: new Date().toISOString(),
+          menuId: selectedMenuId
+        };
+      }
+      else {
+        // Unknown format - log details and create a minimal valid structure
+        addLog(`Unrecognized format - creating minimal structure`, 'warning');
+        console.log('Unknown result format:', result);
+
+        // Try extracting any arrays found in the result
+        const allItems = [];
+        Object.keys(result).forEach(key => {
+          if (Array.isArray(result[key])) {
+            addLog(`Found array in property "${key}" with ${result[key].length} items`, 'info');
+            allItems.push(...result[key]);
+          }
+        });
+
+        processedResult = {
+          categories: { 'All Items': allItems.length > 0 ? allItems : ['No items found'] },
+          healthyAlternatives: [],
+          shoppingTips: [],
+          cached: false,
+          timestamp: new Date().toISOString(),
+          menuId: selectedMenuId
+        };
+      }
+
+      // Add a slight delay to ensure the UI updates
+      setTimeout(() => {
 
         // Update state with the processed result
+        console.log('FINAL DATA BEING SET IN UI:', processedResult);
         setAiShoppingData(processedResult);
         addLog('Updated UI with new shopping list data', 'success');
 
