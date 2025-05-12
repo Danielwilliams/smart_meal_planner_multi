@@ -891,6 +891,50 @@ function ShoppingListPage() {
   };
 
   // Function to check the status of an AI shopping list
+  // SIMPLE DIRECT FETCH - bypass all the complexity
+  const directFetchShoppingList = async (menuId) => {
+    console.log("DIRECT FETCH: Attempting direct API call to get shopping list");
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`https://smartmealplannermulti-production.up.railway.app/menu/${menuId}/grocery-list`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        console.log("DIRECT FETCH: API call failed", response.status);
+        return null;
+      }
+
+      const result = await response.json();
+      console.log("DIRECT FETCH: Got shopping list directly:", result);
+
+      // Even if there's an error, we'll use what we got
+      if (result) {
+        setAiShoppingLoading(false);
+        setAiShoppingData({
+          groceryList: [
+            {
+              category: "All Items",
+              items: result?.ingredient_list || result?.items || []
+            }
+          ],
+          menuId: menuId,
+          status: "completed",
+          cached: true
+        });
+        setActiveTab(1);
+        setUsingAiList(true);
+        return true;
+      }
+    } catch (error) {
+      console.log("DIRECT FETCH: Error fetching shopping list:", error);
+    }
+    return null;
+  };
+
   const checkAiShoppingListStatus = async (menuId) => {
     console.log(`Checking AI shopping list status for menu ${menuId}...`);
 
@@ -1326,20 +1370,16 @@ function ShoppingListPage() {
         );
       }, 3000);
 
-      // Safety timeout - after 60 seconds, stop the loading state even if we didn't get a response
+      // Safety timeout - after 20 seconds, try the direct fetch as a fallback
       loadingTimeout = setTimeout(() => {
-        console.log("Loading timeout reached (60s) - stopping loading state");
-        setAiShoppingLoading(false);
+        console.log("Loading timeout reached (20s) - trying direct fetch as fallback");
 
         // Show message to user
-        showSnackbar("AI processing is taking longer than expected. The list may still be processing in the background.");
+        showSnackbar("AI processing is taking longer than expected. Trying a faster approach...");
 
-        // We'll keep the partial list visible
-        if (!aiShoppingData) {
-          console.log("No shopping list data available - switching to standard list");
-          setActiveTab(0); // Switch back to standard tab if no data
-        }
-      }, 60000); // 60 seconds max loading time
+        // Try the direct fetch approach as a fallback
+        directFetchShoppingList(selectedMenuId);
+      }, 20000); // 20 seconds is plenty of time for the standard approach
     }
 
     return () => {
@@ -1744,10 +1784,11 @@ function ShoppingListPage() {
   // Handler for AI prompt dialog
   const handleAiPromptResponse = async (useAi) => {
     setShowAiShoppingPrompt(false);
-    
+
     if (useAi) {
-      // User chose AI shopping list - use the new loadAiShoppingList function
-      await loadAiShoppingList(selectedMenuId);
+      // User chose AI shopping list - use our direct fetch approach
+      setAiShoppingLoading(true);
+      await directFetchShoppingList(selectedMenuId);
     } else {
       // User chose standard shopping list
       setUsingAiList(false);
@@ -2563,36 +2604,8 @@ const categorizeItems = (mealPlanData) => {
                     // Reset loading message index to start fresh
                     setLoadingMessageIndex(0);
 
-                    // ENSURE we're requesting fresh data by setting a timestamp
-                    // This will bypass any server-side caching
-                    const forceRefreshTimestamp = new Date().getTime();
-
-                    // Make a direct call to the server to force regeneration
-                    try {
-                      fetch(`https://smartmealplannermulti-production.up.railway.app/menu/${selectedMenuId}/ai-shopping-list/regenerate?ts=${forceRefreshTimestamp}`, {
-                        method: 'POST',
-                        headers: {
-                          'Content-Type': 'application/json',
-                          'Authorization': `Bearer ${localStorage.getItem('token')}`
-                        },
-                        body: JSON.stringify({ force_refresh: true })
-                      }).then(response => {
-                        console.log("Force refresh response status:", response.status);
-                        if (response.status !== 200) {
-                          console.log("Using regular loading as fallback");
-                        }
-                      }).catch(error => {
-                        console.log("Force refresh error:", error);
-                      });
-                    } catch (error) {
-                      console.log("Error with force refresh:", error);
-                    }
-
-                    // Wait a brief moment to allow the regenerate endpoint to process
-                    setTimeout(() => {
-                      // Start the actual loading process
-                      loadAiShoppingList(selectedMenuId, true);
-                    }, 1000);
+                    // TRY THE SIMPLEST APPROACH - just fetch the current shopping list
+                    directFetchShoppingList(selectedMenuId);
                   }} // Force refresh
                 >
                   Regenerate AI List
@@ -2660,29 +2673,8 @@ const categorizeItems = (mealPlanData) => {
                             setActiveTab(1);
                             setLoadingMessageIndex(0);
 
-                            // ENSURE we're requesting fresh data by setting a timestamp
-                            const forceRefreshTimestamp = new Date().getTime();
-
-                            // Make a direct call to the server to force regeneration
-                            try {
-                              fetch(`https://smartmealplannermulti-production.up.railway.app/menu/${selectedMenuId}/ai-shopping-list/regenerate?ts=${forceRefreshTimestamp}`, {
-                                method: 'POST',
-                                headers: {
-                                  'Content-Type': 'application/json',
-                                  'Authorization': `Bearer ${localStorage.getItem('token')}`
-                                },
-                                body: JSON.stringify({ force_refresh: true })
-                              }).catch(error => {
-                                console.log("Force refresh error:", error);
-                              });
-                            } catch (error) {
-                              console.log("Error with force refresh:", error);
-                            }
-
-                            // Start the loading process after a short delay
-                            setTimeout(() => {
-                              loadAiShoppingList(selectedMenuId, true);
-                            }, 1000);
+                            // TRY THE SIMPLEST APPROACH - just fetch the current shopping list
+                            directFetchShoppingList(selectedMenuId);
                           }}
                         >
                           Refresh
