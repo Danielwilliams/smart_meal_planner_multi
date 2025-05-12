@@ -108,8 +108,17 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
     });
 
     try {
+      // Show a message for AI generation
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Generating AI-enhanced shopping list...'),
+          duration: Duration(seconds: 2),
+        )
+      );
+
       // Try the AI-enhanced shopping list first
       print("Attempting to fetch AI-enhanced shopping list first");
+
       final aiResult = await ApiService.generateAiShoppingList(
         _selectedMenuId,
         widget.authToken,
@@ -118,14 +127,61 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
       if (aiResult != null) {
         print("AI shopping list returned with keys: ${aiResult.keys.toList()}");
 
+        // Check if the result contains a status that indicates its processing
+        if (aiResult.containsKey('status') &&
+            (aiResult['status'].toString().toLowerCase() == 'processing' ||
+             aiResult['status'].toString().toLowerCase() == 'pending')) {
+
+          // Show a notification that we're waiting
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('AI is still processing your shopping list, please wait...'),
+              duration: Duration(seconds: 3),
+            )
+          );
+
+          // Wait a moment and try again
+          await Future.delayed(Duration(seconds: 5));
+
+          final retryResult = await ApiService.getAiShoppingListStatus(_selectedMenuId, widget.authToken);
+
+          if (retryResult['status']?.toString()?.toLowerCase() == 'completed' ||
+              retryResult['is_ready'] == true) {
+
+            // Get the completed list
+            final completedList = await ApiService.generateAiShoppingList(
+              _selectedMenuId,
+              widget.authToken,
+            );
+
+            if (completedList != null &&
+                (completedList.containsKey('groceryList') ||
+                 completedList.containsKey('ingredients') ||
+                 completedList.containsKey('ingredient_list'))) {
+              await _processShoppingListItems(completedList);
+              return;
+            }
+          }
+        }
+
         // Check if this is a genuine AI result and not an error
         if (!aiResult.containsKey('error') ||
-            (aiResult.containsKey('groceryList') && aiResult['groceryList'] is List)) {
+            (aiResult.containsKey('groceryList') && aiResult['groceryList'] is List) ||
+            (aiResult.containsKey('ingredients') && aiResult['ingredients'] is List) ||
+            (aiResult.containsKey('ingredient_list') && aiResult['ingredient_list'] is List)) {
           print("Processing AI shopping list result");
           await _processShoppingListItems(aiResult);
           return; // Success, exit early
         } else {
           print("AI shopping list returned an error, falling back to regular shopping list");
+
+          // Show notification that we're falling back
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('AI shopping list unavailable, using standard list instead'),
+              duration: Duration(seconds: 3),
+            )
+          );
         }
       }
 

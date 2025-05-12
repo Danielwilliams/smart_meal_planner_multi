@@ -604,19 +604,60 @@ function ShoppingListPage() {
   const MAX_POLLS = 60; // Maximum number of status checks (5 minutes at 5-second intervals)
   const POLL_INTERVAL = 5000; // Poll every 5 seconds
 
+  // Process AI shopping list items function (moved outside to be reusable)
+  const processAiShoppingItems = (response) => {
+    // Format and normalize all items to ensure quantities are shown
+    if (response.groceryList && Array.isArray(response.groceryList)) {
+      console.log(`Processing ${response.groceryList.length} AI shopping list categories`);
+      response.groceryList.forEach(category => {
+        if (category.items && Array.isArray(category.items)) {
+          console.log(`Processing ${category.items.length} items in category ${category.category || 'unknown'}`);
+          category.items = category.items.map(item => {
+            // If item is just a string, convert to object with name
+            if (typeof item === "string") {
+              return {
+                name: item,
+                quantity: "1",
+                unit: "",
+                display_name: `${item}: 1`
+              };
+            }
+            // If item is object but missing quantity/unit, add them
+            else if (typeof item === "object") {
+              // Ensure name exists
+              const name = item.name || "Unknown item";
+              // Ensure quantity exists
+              const quantity = item.quantity || "1";
+              // Ensure unit exists
+              const unit = item.unit || "";
+              // Create or update display_name
+              const display_name = `${name}: ${quantity} ${unit}`.trim();
+
+              return {
+                ...item,
+                name,
+                quantity,
+                unit,
+                display_name
+              };
+            }
+            return item;
+          });
+        }
+      });
+    }
+    return response;
+  };
+
   // Function to check the status of an AI shopping list
   const checkAiShoppingListStatus = async (menuId) => {
-    // Check if there's no interval (don't check isPollingEnabled anymore)
-    if (!statusPollingInterval) {
-      console.log("No active interval found, stopping check");
-      return;
-    }
+    console.log(`Polling AI shopping list status (attempt ${pollCount + 1}/${MAX_POLLS})`);
 
     if (!menuId || pollCount >= MAX_POLLS) {
       // Stop polling if we've reached the maximum number of polls
       if (pollCount >= MAX_POLLS) {
         console.log(`Maximum polls (${MAX_POLLS}) reached, stopping status checks`);
-        setSnackbarMessage("AI processing is taking longer than expected. Stopping status checks.");
+        setSnackbarMessage("AI processing is taking longer than expected. Please try refreshing the page.");
         setSnackbarOpen(true);
       }
       clearStatusPolling();
@@ -624,88 +665,32 @@ function ShoppingListPage() {
     }
 
     try {
-      console.log(`Polling AI shopping list status (attempt ${pollCount + 1}/${MAX_POLLS})`);
       const statusResponse = await apiService.getAiShoppingListStatus(menuId, aiPreferences);
       console.log("Status response:", statusResponse);
 
       // Update poll count
       setPollCount(prevCount => prevCount + 1);
 
-      // ALWAYS check for polling activity first
-      if (!statusPollingInterval) {
-        console.log("No active polling interval, aborting status check");
-        return;
-      }
-
       // Check if processing is complete or if this is cached data
       if (statusResponse.status === "completed" || statusResponse.cached === true) {
         console.log("AI shopping list processing completed or using cached data!");
 
-        // No need to use isPollingEnabled flag anymore
+        // Stop the polling
+        clearStatusPolling();
 
-        // Stop the polling - must explicitly clear interval first to be safe
-        if (statusPollingInterval) {
-          clearInterval(statusPollingInterval);
-        }
-        setStatusPollingInterval(null);
-        setPollCount(0);
-
-        // Process the items through our helper function
-        processAiShoppingItems(statusResponse);
-
-        // Define the processAiShoppingItems function to handle formatting
-        function processAiShoppingItems(response) {
-          // Format and normalize all items to ensure quantities are shown
-          if (response.groceryList && Array.isArray(response.groceryList)) {
-            console.log(`Processing ${response.groceryList.length} AI shopping list categories`);
-            response.groceryList.forEach(category => {
-              if (category.items && Array.isArray(category.items)) {
-                console.log(`Processing ${category.items.length} items in category ${category.category || 'unknown'}`);
-                category.items = category.items.map(item => {
-                  // If item is just a string, convert to object with name
-                  if (typeof item === "string") {
-                    return {
-                      name: item,
-                      quantity: "1",
-                      unit: "",
-                      display_name: `${item}: 1`
-                    };
-                  }
-                  // If item is object but missing quantity/unit, add them
-                  else if (typeof item === "object") {
-                    // Ensure name exists
-                    const name = item.name || "Unknown item";
-                    // Ensure quantity exists
-                    const quantity = item.quantity || "1";
-                    // Ensure unit exists
-                    const unit = item.unit || "";
-                    // Create or update display_name
-                    const display_name = `${name}: ${quantity} ${unit}`.trim();
-
-                    return {
-                      ...item,
-                      name,
-                      quantity,
-                      unit,
-                      display_name
-                    };
-                  }
-                  return item;
-                });
-              }
-            });
-          }
-        }
+        // Process the items with the helper function
+        const processedResponse = processAiShoppingItems(statusResponse);
 
         // Update state with the completed data
-        setAiShoppingData(statusResponse);
+        setAiShoppingData(processedResponse);
         setAiShoppingLoading(false);
 
-        // Don't show notification for AI shopping list ready
-        // This was causing repeating snackbar issues
-
         // Cache the results
-        setCachedShoppingList(menuId, statusResponse);
+        setCachedShoppingList(menuId, processedResponse);
+
+        // Show completion message
+        setSnackbarMessage("AI shopping list is ready!");
+        setSnackbarOpen(true);
       }
       // Handle "error" status
       else if (statusResponse.status === "error") {
@@ -719,7 +704,8 @@ function ShoppingListPage() {
         setSnackbarOpen(true);
 
         // Still update the data with what we got (might contain fallback data)
-        setAiShoppingData(statusResponse);
+        const processedResponse = processAiShoppingItems(statusResponse);
+        setAiShoppingData(processedResponse);
         setAiShoppingLoading(false);
       }
       // Handle "not found" status (processing hasn't started or cache expired)
@@ -735,11 +721,20 @@ function ShoppingListPage() {
         setAiShoppingLoading(false);
       }
       // For "processing" status, we continue polling until completion or max attempts
+      else {
+        console.log("AI shopping list still processing, continuing to poll...");
+      }
     } catch (err) {
       console.error("Error checking AI shopping list status:", err);
 
-      // Don't stop polling on error, just log it and continue
-      // This makes the polling more resilient to temporary network issues
+      // Don't stop polling on most errors, just log it and continue
+      // But if we fail 3 consecutive times, stop polling
+      if (err.message && (err.message.includes("Network Error") || pollCount > 3)) {
+        console.log("Network error or too many consecutive failures, stopping polling");
+        clearStatusPolling();
+        setSnackbarMessage("Error checking shopping list status: " + err.message);
+        setSnackbarOpen(true);
+      }
     }
   };
 
@@ -765,7 +760,17 @@ function ShoppingListPage() {
 
     // Start a new polling interval
     console.log(`Starting status polling for menu ${menuId}`);
-    const intervalId = setInterval(() => checkAiShoppingListStatus(menuId), POLL_INTERVAL);
+
+    // Create and save the interval ID
+    const intervalId = setInterval(() => {
+      // Check if interval still exists (prevents "No active interval" errors)
+      if (statusPollingInterval) {
+        checkAiShoppingListStatus(menuId);
+      } else {
+        console.log("Interval no longer exists, not checking status");
+      }
+    }, POLL_INTERVAL);
+
     setStatusPollingInterval(intervalId);
 
     // Always do an immediate check - critical to start the loading process
@@ -796,7 +801,11 @@ function ShoppingListPage() {
         const cachedData = getCachedShoppingList(menuId);
         if (cachedData) {
           console.log("Using cached AI shopping list");
-          setAiShoppingData(cachedData);
+
+          // Process cached data to ensure all items are properly formatted
+          const processedCache = processAiShoppingItems(cachedData);
+
+          setAiShoppingData(processedCache);
           setUsingAiList(true);
           setAiShoppingLoading(false);
 
@@ -804,7 +813,7 @@ function ShoppingListPage() {
           setSnackbarMessage("Using cached shopping list");
           setSnackbarOpen(true);
 
-          return cachedData;
+          return processedCache;
         }
       }
 
@@ -833,49 +842,38 @@ function ShoppingListPage() {
         }
       }
 
-      // Even with errors, if we have some data, display it
-      setAiShoppingData(aiResponse);
+      // Add default values for missing fields
+      const enhancedResponse = {
+        ...aiResponse,
+        recommendations: aiResponse.recommendations || ["Shop by category to save time in the store"],
+        nutritionTips: aiResponse.nutritionTips || ["Focus on whole foods for better nutrition"],
+        healthySwaps: aiResponse.healthySwaps || []
+      };
+
+      // Process the items to ensure proper formatting
+      const processedResponse = processAiShoppingItems(enhancedResponse);
+
+      // Update state with the response data
+      setAiShoppingData(processedResponse);
       setUsingAiList(true);
 
-      // If we have partial data with missing fields, add default values
-      if (!aiResponse.recommendations || !Array.isArray(aiResponse.recommendations)) {
-        console.log("Adding default recommendations");
-        aiResponse.recommendations = ["Shop by category to save time in the store"];
-      }
-
-      if (!aiResponse.nutritionTips || !Array.isArray(aiResponse.nutritionTips)) {
-        console.log("Adding default nutrition tips");
-        aiResponse.nutritionTips = ["Focus on whole foods for better nutrition"];
-      }
-
-      if (!aiResponse.healthySwaps || !Array.isArray(aiResponse.healthySwaps)) {
-        console.log("Adding default healthy swaps list");
-        aiResponse.healthySwaps = [];
-      }
-
       // Check if the response indicates processing is still happening
-      if (aiResponse.status === "processing") {
+      if (processedResponse.status === "processing") {
         console.log("AI shopping list is being processed, starting status polling");
 
-        // Always start polling for processing responses, even if cached
+        // Start polling for processing status
         startStatusPolling(menuId);
       } else {
         // If not processing, we're done
         setAiShoppingLoading(false);
 
         // Cache the successful response if it's completed and not already cached
-        if (aiResponse.status === "completed" && aiResponse.groceryList && !aiResponse.cached) {
-          setCachedShoppingList(menuId, aiResponse);
-        }
-
-        // Make sure to process items even for completed responses
-        if (aiResponse.groceryList && Array.isArray(aiResponse.groceryList)) {
-          console.log("Processing completed AI shopping list");
-          processAiShoppingItems(aiResponse);
+        if (processedResponse.status === "completed" && processedResponse.groceryList && !processedResponse.cached) {
+          setCachedShoppingList(menuId, processedResponse);
         }
       }
 
-      return aiResponse;
+      return processedResponse;
     } catch (err) {
       console.error("Error generating AI shopping list:", err);
       setSnackbarMessage("Error generating AI shopping list. Using standard list instead.");

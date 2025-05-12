@@ -1160,53 +1160,175 @@ class ApiService {
     }
   }
   
+  // Check AI shopping list generation status
+  static Future<Map<String, dynamic>> getAiShoppingListStatus(
+    int menuId,
+    String authToken
+  ) async {
+    try {
+      print("Checking AI shopping list status for menu ID: $menuId");
+
+      final result = await _get("/menu/$menuId/ai-shopping-list/status", authToken);
+
+      if (result != null && result is Map) {
+        final statusResult = _toStringDynamicMap(result);
+        print("AI shopping list status: ${statusResult['status']}");
+        return statusResult;
+      }
+
+      // Try alternative endpoint if the first fails
+      final altResult = await _get("/menu/$menuId/shopping-list/status", authToken);
+
+      if (altResult != null && altResult is Map) {
+        final statusResult = _toStringDynamicMap(altResult);
+        print("AI shopping list status (alt endpoint): ${statusResult['status']}");
+        return statusResult;
+      }
+
+      // If we get here, both endpoints failed
+      return {
+        "status": "error",
+        "message": "Could not retrieve shopping list status",
+        "is_ready": false
+      };
+    } catch (e) {
+      print("Error checking AI shopping list status: $e");
+      return {
+        "status": "error",
+        "message": "Error: ${e.toString()}",
+        "is_ready": false
+      };
+    }
+  }
+
   // Generate AI-enhanced shopping list
   static Future<Map<String, dynamic>> generateAiShoppingList(
-    int menuId, 
-    String authToken, 
+    int menuId,
+    String authToken,
     {String? additionalPreferences}
   ) async {
     try {
       print("Generating AI shopping list for menu ID: $menuId");
-      
+
       final Map<String, dynamic> payload = {
         "menu_id": menuId,
         "use_ai": true
       };
-      
+
       if (additionalPreferences != null && additionalPreferences.isNotEmpty) {
         payload["additional_preferences"] = additionalPreferences;
       }
-      
+
       final result = await _post("/menu/$menuId/ai-shopping-list", payload, authToken);
-      
+
       if (result != null && result is Map) {
-        return _toStringDynamicMap(result);
+        final Map<String, dynamic> safeResult = _toStringDynamicMap(result);
+        print("AI shopping list generation initiated with result keys: ${safeResult.keys.toList()}");
+
+        // Check if this is a direct result or a status that requires polling
+        if (safeResult.containsKey('status')) {
+          String status = safeResult['status'].toString().toLowerCase();
+
+          if (status == 'processing' || status == 'pending') {
+            print("AI shopping list is processing, polling for status");
+
+            // Start polling for status to get the completed list
+            int maxRetries = 15; // Try for about 30 seconds (15 * 2 second intervals)
+            int retryCount = 0;
+
+            while (retryCount < maxRetries) {
+              print("Polling attempt ${retryCount + 1} of $maxRetries");
+              await Future.delayed(Duration(seconds: 2)); // Wait before checking again
+
+              final statusResult = await getAiShoppingListStatus(menuId, authToken);
+
+              if (statusResult['status']?.toString()?.toLowerCase() == 'completed' ||
+                  statusResult['is_ready'] == true) {
+                print("✅ AI shopping list is ready");
+
+                // Now fetch the complete list
+                final completeResult = await _get("/menu/$menuId/ai-shopping-list", authToken);
+                if (completeResult != null && completeResult is Map) {
+                  print("Successfully fetched completed AI shopping list");
+                  return _toStringDynamicMap(completeResult);
+                } else {
+                  // If we can't get the complete list, return the status with a groceryList field
+                  return {
+                    ...statusResult,
+                    "groceryList": [],
+                    "message": "Shopping list is ready but couldn't be retrieved"
+                  };
+                }
+              } else if (statusResult['status']?.toString()?.toLowerCase() == 'error') {
+                print("❌ AI shopping list generation failed");
+                break;
+              }
+
+              retryCount++;
+            }
+
+            if (retryCount >= maxRetries) {
+              print("❌ Timed out waiting for AI shopping list");
+              return {
+                "status": "error",
+                "message": "Timed out waiting for AI shopping list",
+                "groceryList": []
+              };
+            }
+          } else if (status == 'completed' || safeResult['is_ready'] == true) {
+            print("✅ AI shopping list is already complete");
+
+            // If groceryList is in the result, return it directly
+            if (safeResult.containsKey('groceryList')) {
+              return safeResult;
+            }
+
+            // Otherwise fetch the complete list
+            final completeResult = await _get("/menu/$menuId/ai-shopping-list", authToken);
+            if (completeResult != null && completeResult is Map) {
+              return _toStringDynamicMap(completeResult);
+            } else {
+              // If we can't get the complete list, use the current result
+              return safeResult;
+            }
+          }
+        } else if (safeResult.containsKey('groceryList') ||
+                 safeResult.containsKey('ingredients') ||
+                 safeResult.containsKey('ingredient_list')) {
+          // Direct result with shopping list data
+          print("✅ AI shopping list data received directly");
+          return safeResult;
+        }
+
+        // If we got here, we didn't have a clear status or data
+        return safeResult;
       }
-      
+
       // If POST request fails, try using a GET request with parameters
       print("POST failed, trying GET with parameters");
       String queryParams = "use_ai=true";
       if (additionalPreferences != null && additionalPreferences.isNotEmpty) {
         queryParams += "&additional_preferences=${Uri.encodeComponent(additionalPreferences)}";
       }
-      
+
       final getResult = await _get("/menu/$menuId/grocery-list?$queryParams", authToken);
-      
+
       if (getResult != null && getResult is Map) {
         return _toStringDynamicMap(getResult);
       }
-      
+
       // If all attempts fail, return error
       return {
         "error": "Failed to generate AI shopping list",
-        "groceryList": []
+        "groceryList": [],
+        "status": "error"
       };
     } catch (e) {
       print("Error generating AI shopping list: $e");
       return {
         "error": "Error: ${e.toString()}",
-        "groceryList": []
+        "groceryList": [],
+        "status": "error"
       };
     }
   }
