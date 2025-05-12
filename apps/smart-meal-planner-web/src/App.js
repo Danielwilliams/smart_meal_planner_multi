@@ -14,6 +14,7 @@ import PreferencesPage from './pages/PreferencesPage';
 import MenuDisplayPage from './pages/MenuDisplayPage';
 import ShoppingListPage from './pages/ShoppingListPage';
 import ShoppingListPageDebug from './pages/ShoppingListPageDebug';
+import TestDebugPage from './pages/TestDebugPage';
 import CartPage from './pages/CartPage';  // Add this import
 import Home from './pages/Home';
 import LandingPage from './pages/LandingPage';
@@ -161,8 +162,9 @@ function App() {
                   </PrivateRoute>
                 }
               />
-              {/* Shopping List Debug Route - Public for easy access */}
+              {/* Debug Routes - Public for easy access */}
               <Route path="/debug/shopping-list" element={<ShoppingListPageDebug />} />
+              <Route path="/debug/test" element={<TestDebugPage />} />
               <Route 
                 path="/cart" 
                 element={
