@@ -107,48 +107,98 @@ function ShoppingListPage() {
   
   // Helper function to format categories for display
   const formatCategoriesForDisplay = (groceryItems) => {
+    // Safety check for null input
+    if (!groceryItems) {
+      console.warn('Null grocery items passed to formatCategoriesForDisplay');
+      return {}; // Return empty object instead of crashing
+    }
+
     // If already in expected format (object with category keys)
     if (!Array.isArray(groceryItems) && typeof groceryItems === 'object') {
       console.log('Grocery list already in category format:', groceryItems);
-      return groceryItems;
+
+      // Verify the object actually has proper categories
+      if (Object.keys(groceryItems).length === 0) {
+        console.warn('Grocery list object has no categories');
+        return { 'Other': [] };
+      }
+
+      // Do a quick scan for null/undefined items in each category
+      const cleanedCategories = {};
+
+      Object.entries(groceryItems).forEach(([category, items]) => {
+        // Skip null categories or items
+        if (!category || !items) return;
+
+        // Create a valid category if needed
+        cleanedCategories[category] = [];
+
+        // If items is not an array, try to convert it
+        if (!Array.isArray(items)) {
+          if (typeof items === 'object') {
+            console.log(`Category ${category} has non-array items, trying to extract values`);
+            const extractedItems = Object.values(items).filter(item => item !== null && item !== undefined);
+            cleanedCategories[category] = extractedItems;
+          } else {
+            console.log(`Category ${category} has invalid items type: ${typeof items}`);
+            cleanedCategories[category] = [];
+          }
+        } else {
+          // Normal case: items is an array, filter out null/undefined
+          cleanedCategories[category] = items.filter(item => item !== null && item !== undefined);
+        }
+      });
+
+      return cleanedCategories;
     }
-    
+
     // If empty or invalid
     if (!groceryItems || !Array.isArray(groceryItems) || groceryItems.length === 0) {
       console.log('Empty or invalid grocery items:', groceryItems);
       return {};
     }
-    
+
     console.log('Formatting grocery items for display:', groceryItems);
-    
+
     // Process the flat list into categories
     const categorized = {};
 
-    groceryItems.forEach(item => {
-      // Skip null or undefined items
-      if (item === null || item === undefined) return;
+    // First filter out null/undefined items
+    const validItems = groceryItems.filter(item => item !== null && item !== undefined);
 
-      // Get the item name (handle both string and object formats)
-      const itemName = typeof item === 'string' ? item : (item.name || '');
-      if (!itemName) return;
+    validItems.forEach(item => {
+      try {
+        // Get the item name (handle both string and object formats)
+        const itemName = typeof item === 'string' ? item : (item.name || '');
+        if (!itemName) return;
 
-      // Determine category based on keywords
-      const normalizedName = itemName.toLowerCase();
-      const category = Object.keys(CATEGORY_MAPPING).find(cat =>
-        CATEGORY_MAPPING[cat].some(keyword =>
-          normalizedName.includes(keyword.toLowerCase())
-        )
-      ) || 'Other';
+        // Determine category based on keywords
+        const normalizedName = itemName.toLowerCase();
+        const category = Object.keys(CATEGORY_MAPPING).find(cat =>
+          CATEGORY_MAPPING[cat].some(keyword =>
+            normalizedName.includes(keyword.toLowerCase())
+          )
+        ) || 'Other';
 
-      // Create category array if it doesn't exist
-      if (!categorized[category]) {
-        categorized[category] = [];
+        // Create category array if it doesn't exist
+        if (!categorized[category]) {
+          categorized[category] = [];
+        }
+
+        // Add the item to its category
+        categorized[category].push(itemName);
+      } catch (error) {
+        console.error(`Error processing grocery item: ${error}`, item);
+        // Continue to next item instead of crashing
       }
-
-      // Add the item to its category
-      categorized[category].push(itemName);
     });
-    
+
+    // If we processed items but ended up with no categories, create a default "Other" category
+    if (Object.keys(categorized).length === 0 && validItems.length > 0) {
+      console.warn('Failed to categorize any items, using default category');
+      categorized['Other'] = validItems.map(item => typeof item === 'string' ? item : (item.name || String(item)));
+    }
+
     console.log('Categorized items for display:', categorized);
     return categorized;
   };
@@ -687,12 +737,55 @@ function ShoppingListPage() {
 
   // Process AI shopping list items function (moved outside to be reusable)
   const processAiShoppingItems = (response) => {
+    // Safety check for null response
+    if (!response) {
+      console.error("Null response passed to processAiShoppingItems");
+      return { groceryList: [], error: "Invalid response data" };
+    }
+
+    // Make a deep copy to avoid mutating the original response
+    try {
+      response = JSON.parse(JSON.stringify(response));
+    } catch (error) {
+      console.error("Error creating deep copy of response:", error);
+      // Continue with the original response if copy fails
+    }
+
     // Format and normalize all items to ensure quantities are shown
     if (response.groceryList && Array.isArray(response.groceryList)) {
       console.log(`Processing ${response.groceryList.length} AI shopping list categories`);
+
       response.groceryList.forEach(category => {
+        // Skip null categories
+        if (!category) return;
+
+        // Handle malformed property names in categories
+        // Check for properties like "car carbs" instead of "carbs"
+        if (category) {
+          Object.keys(category).forEach(key => {
+            if (key.includes('carb') && key !== 'carbs') {
+              console.log(`Found malformed carbs key: ${key}, fixing`);
+              category.carbs = category[key];
+            }
+
+            if (key.includes('protein') && key !== 'protein') {
+              console.log(`Found malformed protein key: ${key}, fixing`);
+              category.protein = category[key];
+            }
+
+            if (key.includes('fat') && key !== 'fat') {
+              console.log(`Found malformed fat key: ${key}, fixing`);
+              category.fat = category[key];
+            }
+          });
+        }
+
         if (category.items && Array.isArray(category.items)) {
           console.log(`Processing ${category.items.length} items in category ${category.category || 'unknown'}`);
+
+          // Filter out null or undefined items first
+          category.items = category.items.filter(item => item !== null && item !== undefined);
+
           category.items = category.items.map(item => {
             // If item is just a string, convert to object with name
             if (typeof item === "string") {
@@ -704,7 +797,27 @@ function ShoppingListPage() {
               };
             }
             // If item is object but missing quantity/unit, add them
-            else if (typeof item === "object") {
+            else if (item && typeof item === "object") {
+              // Check for malformed property names in the item
+              if (item) {
+                Object.keys(item).forEach(key => {
+                  if (key.includes('carb') && key !== 'carbs') {
+                    console.log(`Found malformed carbs key in item: ${key}, fixing`);
+                    item.carbs = item[key];
+                  }
+
+                  if (key.includes('protein') && key !== 'protein') {
+                    console.log(`Found malformed protein key in item: ${key}, fixing`);
+                    item.protein = item[key];
+                  }
+
+                  if (key.includes('fat') && key !== 'fat') {
+                    console.log(`Found malformed fat key in item: ${key}, fixing`);
+                    item.fat = item[key];
+                  }
+                });
+              }
+
               // Ensure name exists
               const name = item.name || "Unknown item";
               // Ensure quantity exists
@@ -722,7 +835,13 @@ function ShoppingListPage() {
                 display_name
               };
             }
-            return item;
+            // Safety fallback if item is unexpected type
+            return {
+              name: String(item),
+              quantity: "1",
+              unit: "",
+              display_name: `${String(item)}: 1`
+            };
           });
         }
       });
@@ -1037,34 +1156,43 @@ function ShoppingListPage() {
   }, [user, selectedMenuId]);
 
 const categorizeItems = (mealPlanData) => {
+  // Safety check for null input
+  if (!mealPlanData) {
+    console.warn("Null meal plan data passed to categorizeItems");
+    return { "No Items Found": [] };
+  }
+
   let ingredientsList = [];
   console.log("Categorizing items from data:", mealPlanData);
 
   // Handle case where we get a groceryList array directly
   if (mealPlanData && mealPlanData.groceryList && Array.isArray(mealPlanData.groceryList)) {
     console.log("Using groceryList property directly:", mealPlanData.groceryList);
-    return { "All Items": mealPlanData.groceryList };
+    // Filter out null/undefined items for safety
+    const validItems = mealPlanData.groceryList.filter(item => item !== null && item !== undefined);
+    return { "All Items": validItems };
   }
 
   // First, determine the structure of the input data
   if (Array.isArray(mealPlanData)) {
     // If it's already a direct list of ingredients
     console.log("Data is an array, using directly");
-    ingredientsList = mealPlanData;
+    // Filter out null/undefined items for safety
+    ingredientsList = mealPlanData.filter(item => item !== null && item !== undefined);
   } else if (mealPlanData && (mealPlanData.meal_plan || mealPlanData.meal_plan_json)) {
     // If it's a structured meal plan object
     console.log("Found meal_plan or meal_plan_json property, processing structured data");
-    
+
     let mealPlan;
     try {
       // Try meal_plan first, then meal_plan_json
       if (mealPlanData.meal_plan) {
-        mealPlan = typeof mealPlanData.meal_plan === 'string' 
-          ? JSON.parse(mealPlanData.meal_plan) 
+        mealPlan = typeof mealPlanData.meal_plan === 'string'
+          ? JSON.parse(mealPlanData.meal_plan)
           : mealPlanData.meal_plan;
       } else if (mealPlanData.meal_plan_json) {
-        mealPlan = typeof mealPlanData.meal_plan_json === 'string' 
-          ? JSON.parse(mealPlanData.meal_plan_json) 
+        mealPlan = typeof mealPlanData.meal_plan_json === 'string'
+          ? JSON.parse(mealPlanData.meal_plan_json)
           : mealPlanData.meal_plan_json;
       }
       console.log("Parsed meal plan data:", mealPlan);
@@ -1076,78 +1204,221 @@ const categorizeItems = (mealPlanData) => {
     // Extract ingredients from days, meals, and snacks
     if (mealPlan && mealPlan.days && Array.isArray(mealPlan.days)) {
       console.log(`Processing ${mealPlan.days.length} days of meals`);
-      
-      mealPlan.days.forEach(day => {
-        // Process meals
-        if (day.meals && Array.isArray(day.meals)) {
-          day.meals.forEach(meal => {
-            if (meal.ingredients && Array.isArray(meal.ingredients)) {
-              console.log(`Found ${meal.ingredients.length} ingredients in meal: ${meal.title || 'Unnamed'}`);
-              
-              const processedIngredients = meal.ingredients.map(ing => {
-                if (typeof ing === 'string') return ing.trim();
-                return `${ing.quantity || ''} ${ing.name || ''}`.trim();
-              }).filter(ing => ing.length > 0);
-              
-              ingredientsList.push(...processedIngredients);
-            }
-          });
-        }
 
-        // Process snacks
-        if (day.snacks && Array.isArray(day.snacks)) {
-          day.snacks.forEach(snack => {
-            // Handle both snack formats (object with ingredients or simple object)
-            if (snack.ingredients && Array.isArray(snack.ingredients)) {
-              console.log(`Found ${snack.ingredients.length} ingredients in snack: ${snack.title || 'Unnamed'}`);
-              
-              const processedIngredients = snack.ingredients.map(ing => {
-                if (typeof ing === 'string') return ing.trim();
-                return `${ing.quantity || ''} ${ing.name || ''}`.trim();
-              }).filter(ing => ing.length > 0);
-              
-              ingredientsList.push(...processedIngredients);
-            } else if (snack.title && snack.quantity) {
-              // This is for snacks in the format { title, quantity, ... } without ingredients array
-              console.log(`Found simple snack: ${snack.title}`);
-              const snackItem = `${snack.quantity || ''} ${snack.title || ''}`.trim();
-              if (snackItem.length > 0) {
-                ingredientsList.push(snackItem);
+      // Filter out null/undefined days for safety
+      const validDays = mealPlan.days.filter(day => day !== null && day !== undefined);
+
+      validDays.forEach(day => {
+        try {
+          // Fixing property names in day objects
+          if (day) {
+            // Fix malformed macro property names
+            Object.keys(day).forEach(key => {
+              if (key.includes('carb') && key !== 'carbs') {
+                console.log(`Found malformed carbs key in day: ${key}, fixing`);
+                day.carbs = day[key];
               }
-            }
-          });
+              if (key.includes('protein') && key !== 'protein') {
+                console.log(`Found malformed protein key in day: ${key}, fixing`);
+                day.protein = day[key];
+              }
+              if (key.includes('fat') && key !== 'fat') {
+                console.log(`Found malformed fat key in day: ${key}, fixing`);
+                day.fat = day[key];
+              }
+            });
+          }
+
+          // Process meals
+          if (day.meals && Array.isArray(day.meals)) {
+            // Filter out null/undefined meals for safety
+            const validMeals = day.meals.filter(meal => meal !== null && meal !== undefined);
+
+            validMeals.forEach(meal => {
+              try {
+                // Fix malformed property names in meal objects
+                if (meal) {
+                  Object.keys(meal).forEach(key => {
+                    if (key.includes('carb') && key !== 'carbs') {
+                      console.log(`Found malformed carbs key in meal: ${key}, fixing`);
+                      meal.carbs = meal[key];
+                    }
+                    if (key.includes('protein') && key !== 'protein') {
+                      console.log(`Found malformed protein key in meal: ${key}, fixing`);
+                      meal.protein = meal[key];
+                    }
+                    if (key.includes('fat') && key !== 'fat') {
+                      console.log(`Found malformed fat key in meal: ${key}, fixing`);
+                      meal.fat = meal[key];
+                    }
+                  });
+                }
+
+                if (meal.ingredients && Array.isArray(meal.ingredients)) {
+                  console.log(`Found ${meal.ingredients.length} ingredients in meal: ${meal.title || 'Unnamed'}`);
+
+                  // Filter out null/undefined ingredients for safety
+                  const validIngredients = meal.ingredients.filter(ing => ing !== null && ing !== undefined);
+
+                  try {
+                    const processedIngredients = validIngredients.map(ing => {
+                      try {
+                        if (typeof ing === 'string') return ing.trim();
+
+                        // Handle ingredient objects with malformed property names
+                        if (ing && typeof ing === 'object') {
+                          Object.keys(ing).forEach(key => {
+                            if (key.includes('carb') && key !== 'carbs') {
+                              console.log(`Found malformed carbs key in ingredient: ${key}, fixing`);
+                              ing.carbs = ing[key];
+                            }
+                            if (key.includes('protein') && key !== 'protein') {
+                              console.log(`Found malformed protein key in ingredient: ${key}, fixing`);
+                              ing.protein = ing[key];
+                            }
+                            if (key.includes('fat') && key !== 'fat') {
+                              console.log(`Found malformed fat key in ingredient: ${key}, fixing`);
+                              ing.fat = ing[key];
+                            }
+                          });
+                        }
+
+                        return `${ing.quantity || ''} ${ing.name || ''}`.trim();
+                      } catch (itemErr) {
+                        console.error("Error processing ingredient item:", itemErr);
+                        return "";
+                      }
+                    }).filter(ing => ing && ing.length > 0);
+
+                    ingredientsList.push(...processedIngredients);
+                  } catch (mapErr) {
+                    console.error("Error mapping ingredients:", mapErr);
+                  }
+                }
+              } catch (mealErr) {
+                console.error("Error processing meal:", mealErr);
+              }
+            });
+          }
+
+          // Process snacks
+          if (day.snacks && Array.isArray(day.snacks)) {
+            // Filter out null/undefined snacks for safety
+            const validSnacks = day.snacks.filter(snack => snack !== null && snack !== undefined);
+
+            validSnacks.forEach(snack => {
+              try {
+                // Fix malformed property names in snack objects
+                if (snack) {
+                  Object.keys(snack).forEach(key => {
+                    if (key.includes('carb') && key !== 'carbs') {
+                      console.log(`Found malformed carbs key in snack: ${key}, fixing`);
+                      snack.carbs = snack[key];
+                    }
+                    if (key.includes('protein') && key !== 'protein') {
+                      console.log(`Found malformed protein key in snack: ${key}, fixing`);
+                      snack.protein = snack[key];
+                    }
+                    if (key.includes('fat') && key !== 'fat') {
+                      console.log(`Found malformed fat key in snack: ${key}, fixing`);
+                      snack.fat = snack[key];
+                    }
+                  });
+                }
+
+                // Handle both snack formats (object with ingredients or simple object)
+                if (snack.ingredients && Array.isArray(snack.ingredients)) {
+                  console.log(`Found ${snack.ingredients.length} ingredients in snack: ${snack.title || 'Unnamed'}`);
+
+                  // Filter out null/undefined ingredients for safety
+                  const validIngredients = snack.ingredients.filter(ing => ing !== null && ing !== undefined);
+
+                  try {
+                    const processedIngredients = validIngredients.map(ing => {
+                      try {
+                        if (typeof ing === 'string') return ing.trim();
+
+                        // Handle ingredient objects with malformed property names
+                        if (ing && typeof ing === 'object') {
+                          Object.keys(ing).forEach(key => {
+                            if (key.includes('carb') && key !== 'carbs') {
+                              console.log(`Found malformed carbs key in ingredient: ${key}, fixing`);
+                              ing.carbs = ing[key];
+                            }
+                            if (key.includes('protein') && key !== 'protein') {
+                              console.log(`Found malformed protein key in ingredient: ${key}, fixing`);
+                              ing.protein = ing[key];
+                            }
+                            if (key.includes('fat') && key !== 'fat') {
+                              console.log(`Found malformed fat key in ingredient: ${key}, fixing`);
+                              ing.fat = ing[key];
+                            }
+                          });
+                        }
+
+                        return `${ing.quantity || ''} ${ing.name || ''}`.trim();
+                      } catch (itemErr) {
+                        console.error("Error processing ingredient item:", itemErr);
+                        return "";
+                      }
+                    }).filter(ing => ing && ing.length > 0);
+
+                    ingredientsList.push(...processedIngredients);
+                  } catch (mapErr) {
+                    console.error("Error mapping ingredients:", mapErr);
+                  }
+                } else if (snack.title && snack.quantity) {
+                  // This is for snacks in the format { title, quantity, ... } without ingredients array
+                  console.log(`Found simple snack: ${snack.title}`);
+                  const snackItem = `${snack.quantity || ''} ${snack.title || ''}`.trim();
+                  if (snackItem.length > 0) {
+                    ingredientsList.push(snackItem);
+                  }
+                }
+              } catch (snackErr) {
+                console.error("Error processing snack:", snackErr);
+              }
+            });
+          }
+        } catch (dayErr) {
+          console.error("Error processing day:", dayErr);
         }
       });
     }
   }
-  
+
   // If ingredientsList is still empty but we have a groceryList somewhere in the data
   if (ingredientsList.length === 0 && typeof mealPlanData === 'object') {
     // Try to find a groceryList in a nested property
     const findGroceryList = (obj, depth = 0) => {
-      if (depth > 3) return null; // Limit depth to avoid infinite recursion
-      
+      if (!obj || depth > 3) return null; // Limit depth to avoid infinite recursion
+
       if (obj && obj.groceryList && Array.isArray(obj.groceryList)) {
         return obj.groceryList;
       }
-      
+
       for (const key in obj) {
-        if (typeof obj[key] === 'object' && obj[key] !== null) {
+        if (obj[key] && typeof obj[key] === 'object') {
           const result = findGroceryList(obj[key], depth + 1);
           if (result) return result;
         }
       }
-      
+
       return null;
     };
-    
-    const foundList = findGroceryList(mealPlanData);
-    if (foundList) {
-      console.log("Found groceryList in nested property:", foundList);
-      ingredientsList = foundList;
+
+    try {
+      const foundList = findGroceryList(mealPlanData);
+      if (foundList) {
+        console.log("Found groceryList in nested property:", foundList);
+        // Filter out null/undefined items for safety
+        ingredientsList = foundList.filter(item => item !== null && item !== undefined);
+      }
+    } catch (findErr) {
+      console.error("Error finding grocery list:", findErr);
     }
   }
-  
+
   console.log(`Final ingredients list has ${ingredientsList.length} items`);
   if (ingredientsList.length === 0) {
     // Return a default empty category to prevent errors
@@ -1161,169 +1432,239 @@ const categorizeItems = (mealPlanData) => {
   // Helper function to parse quantity
   const parseQuantity = (quantityStr) => {
     if (!quantityStr) return 1;
-    
-    const parts = quantityStr.split(/\s+/);
-    let total = 0;
 
-    parts.forEach(part => {
-      if (part.includes('/')) {
-        const [num, denom] = part.split('/');
-        total += parseFloat(num) / parseFloat(denom);
-      } else {
-        const num = parseFloat(part);
-        if (!isNaN(num)) {
-          total += num;
+    try {
+      const parts = quantityStr.split(/\s+/);
+      let total = 0;
+
+      parts.forEach(part => {
+        if (part.includes('/')) {
+          const fractionParts = part.split('/');
+          if (fractionParts.length === 2) {
+            const num = parseFloat(fractionParts[0]);
+            const denom = parseFloat(fractionParts[1]);
+            if (!isNaN(num) && !isNaN(denom) && denom !== 0) {
+              total += num / denom;
+            }
+          }
+        } else {
+          const num = parseFloat(part);
+          if (!isNaN(num)) {
+            total += num;
+          }
         }
-      }
-    });
+      });
 
-    return total || 1;
+      return total || 1;
+    } catch (error) {
+      console.error("Error parsing quantity:", error);
+      return 1;
+    }
   };
 
   // Helper function to combine multiple quantities
   const combineQuantities = (quantityStr) => {
-    const parts = quantityStr.split(/\s+/);
-    let totalQuantity = 0;
-    let lastUnit = '';
+    try {
+      if (!quantityStr) {
+        return { quantity: 1, unit: '' };
+      }
 
-    for (let i = 0; i < parts.length; i++) {
-      const num = parseFloat(parts[i]);
-      if (!isNaN(num)) {
-        const nextPart = parts[i + 1];
-        const unitConversions = {
-          'tablespoon': 1/16,
-          'tbsp': 1/16,
-          'teaspoon': 1/48,
-          'tsp': 1/48
-        };
+      const parts = quantityStr.split(/\s+/);
+      let totalQuantity = 0;
+      let lastUnit = '';
 
-        if (nextPart && unitConversions[nextPart.toLowerCase()]) {
-          totalQuantity += num * unitConversions[nextPart.toLowerCase()];
-          lastUnit = 'cup';
-          i++;
-        } else {
-          totalQuantity += num;
-          lastUnit = '';
+      for (let i = 0; i < parts.length; i++) {
+        const num = parseFloat(parts[i]);
+        if (!isNaN(num)) {
+          // Make sure we don't go out of bounds
+          const nextPart = i + 1 < parts.length ? parts[i + 1] : null;
+          const unitConversions = {
+            'tablespoon': 1/16,
+            'tbsp': 1/16,
+            'teaspoon': 1/48,
+            'tsp': 1/48
+          };
+
+          if (nextPart && unitConversions[nextPart.toLowerCase()]) {
+            totalQuantity += num * unitConversions[nextPart.toLowerCase()];
+            lastUnit = 'cup';
+            i++;
+          } else {
+            totalQuantity += num;
+            lastUnit = '';
+          }
         }
       }
-    }
 
-    return { quantity: totalQuantity, unit: lastUnit };
+      return { quantity: totalQuantity || 1, unit: lastUnit };
+    } catch (error) {
+      console.error("Error combining quantities:", error);
+      return { quantity: 1, unit: '' };
+    }
   };
 
   // Helper function to guess the most appropriate unit
   const guessAppropriateUnit = (itemName, currentUnit) => {
-    const unitMappings = {
-      'quinoa': 'cup',
-      'rice vinegar': 'tbsp',
-      'tortilla': 'piece',
-      'black bean': 'cup',
-      'edamame': 'cup',
-      'almond': 'tbsp',
-      'basil': 'cup',
-      'berrie': 'cup',
-      'chickpea': 'can',
-      'olive': 'cup',
-      'hummu': 'cup',
-      'seed': 'tbsp',
-      'avocado': 'piece',
-      'jalapeno': 'piece',
-      'tomato': 'piece',
-      'cucumber': 'piece',
-      'bell pepper': 'piece',
-      'onion': 'piece',
-      'garlic': 'clove',
-      'egg': 'piece',
-      'cheese': 'cup'
-    };
+    try {
+      if (!itemName) return '';
 
-    // If current unit is already valid, keep it
-    const STANDARD_UNITS = {
-      volume: ['cup', 'tbsp', 'tsp', 'ml', 'l'],
-      weight: ['oz', 'lb', 'g', 'kg'],
-      count: ['slice', 'piece', 'can', 'scoop', 'clove', 'egg'],
-      special: ['leaves', 'kernel', 'seed']
-    };
+      const unitMappings = {
+        'quinoa': 'cup',
+        'rice vinegar': 'tbsp',
+        'tortilla': 'piece',
+        'black bean': 'cup',
+        'edamame': 'cup',
+        'almond': 'tbsp',
+        'basil': 'cup',
+        'berrie': 'cup',
+        'chickpea': 'can',
+        'olive': 'cup',
+        'hummu': 'cup',
+        'seed': 'tbsp',
+        'avocado': 'piece',
+        'jalapeno': 'piece',
+        'tomato': 'piece',
+        'cucumber': 'piece',
+        'bell pepper': 'piece',
+        'onion': 'piece',
+        'garlic': 'clove',
+        'egg': 'piece',
+        'cheese': 'cup'
+      };
 
-    if (STANDARD_UNITS.volume.includes(currentUnit) ||
-        STANDARD_UNITS.weight.includes(currentUnit) ||
-        STANDARD_UNITS.count.includes(currentUnit) ||
-        STANDARD_UNITS.special.includes(currentUnit)) {
-      return currentUnit;
-    }
+      // If current unit is already valid, keep it
+      const STANDARD_UNITS = {
+        volume: ['cup', 'tbsp', 'tsp', 'ml', 'l'],
+        weight: ['oz', 'lb', 'g', 'kg'],
+        count: ['slice', 'piece', 'can', 'scoop', 'clove', 'egg'],
+        special: ['leaves', 'kernel', 'seed']
+      };
 
-    // Find the most appropriate unit based on the ingredient name
-    for (const [ingredient, unit] of Object.entries(unitMappings)) {
-      if (itemName.toLowerCase().includes(ingredient)) {
-        return unit;
+      if (currentUnit && (
+          STANDARD_UNITS.volume.includes(currentUnit) ||
+          STANDARD_UNITS.weight.includes(currentUnit) ||
+          STANDARD_UNITS.count.includes(currentUnit) ||
+          STANDARD_UNITS.special.includes(currentUnit))) {
+        return currentUnit;
       }
-    }
 
-    // Default to no unit if no other unit is found
-    return '';
+      // Find the most appropriate unit based on the ingredient name
+      for (const [ingredient, unit] of Object.entries(unitMappings)) {
+        if (itemName.toLowerCase().includes(ingredient)) {
+          return unit;
+        }
+      }
+
+      // Default to no unit if no other unit is found
+      return '';
+    } catch (error) {
+      console.error("Error guessing appropriate unit:", error);
+      return '';
+    }
   };
 
   // Process and combine ingredients
   ingredientsList.forEach(item => {
-    let fullItemName = item.trim().toLowerCase();
+    try {
+      if (!item) return;
 
-    // First, try to combine complex quantities
-    const combinedQuantity = combineQuantities(fullItemName);
-    let quantity = combinedQuantity.quantity;
-    let unit = combinedQuantity.unit;
+      // Convert to string if it's not already
+      const itemStr = typeof item === 'string' ? item : String(item);
+      let fullItemName = itemStr.trim().toLowerCase();
+      if (!fullItemName) return;
 
-    // Extract quantity and unit if not already parsed
-    const quantityRegex = /^((?:\d+\s*)*(?:\d*\/?\d+)?)\s*(cup|tbsp|tsp|oz|lb|can|slice|clove|piece|scoop)s?\s*(.*)/i;
-    const match = fullItemName.match(quantityRegex);
+      // First, try to combine complex quantities
+      const combinedQuantity = combineQuantities(fullItemName);
+      let quantity = combinedQuantity.quantity;
+      let unit = combinedQuantity.unit;
 
-    if (match) {
-      quantity = parseQuantity(match[1]);
-      unit = match[2] || '';
-      fullItemName = match[3].trim();
-    }
+      // Extract quantity and unit if not already parsed
+      const quantityRegex = /^((?:\d+\s*)*(?:\d*\/?\d+)?)\s*(cup|tbsp|tsp|oz|lb|can|slice|clove|piece|scoop)s?\s*(.*)/i;
+      const match = fullItemName.match(quantityRegex);
 
-    // Skip if item is now empty
-    if (!fullItemName) return;
+      if (match) {
+        quantity = parseQuantity(match[1]);
+        unit = match[2] || '';
+        fullItemName = match[3].trim();
+      }
 
-    // Guess appropriate unit if needed
-    unit = guessAppropriateUnit(fullItemName, unit);
+      // Skip if item is now empty
+      if (!fullItemName) return;
 
-    // Normalize item name (remove plurals)
-    const normalizedItemName = fullItemName.replace(/s$/, '');
+      // Guess appropriate unit if needed
+      unit = guessAppropriateUnit(fullItemName, unit);
 
-    // Combine total quantity for similar items
-    if (!ingredientTotals[normalizedItemName]) {
-      ingredientTotals[normalizedItemName] = { 
-        quantity: quantity, 
-        unit: unit 
-      };
-    } else {
-      ingredientTotals[normalizedItemName].quantity += quantity;
+      // Normalize item name (remove plurals)
+      const normalizedItemName = fullItemName.replace(/s$/, '') || fullItemName;
+      if (!normalizedItemName) return;
+
+      // Combine total quantity for similar items
+      if (!ingredientTotals[normalizedItemName]) {
+        ingredientTotals[normalizedItemName] = {
+          quantity: quantity,
+          unit: unit
+        };
+      } else {
+        ingredientTotals[normalizedItemName].quantity += quantity;
+      }
+    } catch (itemError) {
+      console.error("Error processing ingredient item:", itemError, item);
     }
   });
 
   // Categorize normalized items
   Object.entries(ingredientTotals).forEach(([itemName, details]) => {
-    const category = Object.keys(CATEGORY_MAPPING).find(cat => 
-      CATEGORY_MAPPING[cat].some(keyword => 
-        itemName.toLowerCase().includes(keyword.toLowerCase())
-      )
-    ) || 'Other';
-    
-    if (!categorizedItems[category]) {
-      categorizedItems[category] = [];
-    }
-    
-    // Improved formatting logic
-    const formattedItem = details.quantity > 1 
-      ? `${details.quantity} ${details.unit ? details.unit + 's' : ''} ${itemName}`.trim()
-      : details.unit 
-        ? `${details.unit} ${itemName}`.trim()
-        : `${details.quantity} ${itemName}`.trim();
+    try {
+      // Determine category based on keywords
+      let category = 'Other';
 
-    categorizedItems[category].push(formattedItem);
+      // Safely iterate through category mappings
+      for (const cat in CATEGORY_MAPPING) {
+        if (CATEGORY_MAPPING[cat]) {
+          const keywords = CATEGORY_MAPPING[cat];
+          for (const keyword of keywords) {
+            if (itemName.toLowerCase().includes(keyword.toLowerCase())) {
+              category = cat;
+              break;
+            }
+          }
+          if (category !== 'Other') break;
+        }
+      }
+
+      // Create category array if it doesn't exist
+      if (!categorizedItems[category]) {
+        categorizedItems[category] = [];
+      }
+
+      // Improved formatting logic with added safety
+      let formattedItem;
+      try {
+        if (details.quantity > 1) {
+          formattedItem = `${details.quantity} ${details.unit ? details.unit + 's' : ''} ${itemName}`.trim();
+        } else if (details.unit) {
+          formattedItem = `${details.unit} ${itemName}`.trim();
+        } else {
+          formattedItem = `${details.quantity} ${itemName}`.trim();
+        }
+      } catch (formatError) {
+        console.error("Error formatting item:", formatError);
+        formattedItem = itemName; // Use just the name as fallback
+      }
+
+      categorizedItems[category].push(formattedItem);
+    } catch (categoryError) {
+      console.error("Error categorizing item:", categoryError, itemName);
+    }
   });
-  
+
+  // If we somehow ended up with no categories, create a default
+  if (Object.keys(categorizedItems).length === 0) {
+    console.warn("No categories were created, using default category");
+    categorizedItems['Other'] = ingredientsList.filter(item => item !== null && item !== undefined)
+                                       .map(item => typeof item === 'string' ? item : String(item));
+  }
+
   return categorizedItems;
 };
   
