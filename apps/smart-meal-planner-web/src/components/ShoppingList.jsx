@@ -1524,8 +1524,13 @@ const ShoppingListItem = ({
   return (
     <Grid item xs={12} sm={6}>
       <Typography>
-        {/* Item name contains both name and quantity, directly use it */}
-        {item && typeof item === 'object' && item.name ? item.name : displayName}
+        {/* Display name and quantity separately as they come from backend */}
+        {item && typeof item === 'object' && item.name ?
+          (item.quantity ?
+            `${item.name}: ${item.quantity}` :
+            item.name
+          ) :
+          displayName}
       </Typography>
 
       {selectedStore === 'mixed' ? (

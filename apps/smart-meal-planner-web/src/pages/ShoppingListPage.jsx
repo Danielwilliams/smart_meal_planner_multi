@@ -563,7 +563,33 @@ function ShoppingListPage() {
       // If we got data from any strategy, use it
       if (success && fetchedGroceryList.length > 0) {
         console.log("Final grocery list:", fetchedGroceryList);
-        setGroceryList(fetchedGroceryList);
+
+        // Make sure we're using the proper format expected by ShoppingList component
+        // Check if the data is in the expected format (with name and quantity properties)
+        const formattedList = fetchedGroceryList.map(item => {
+          // If it's already an object with name property, use it
+          if (typeof item === 'object' && item !== null && item.name) {
+            // Ensure quantity is defined
+            if (!item.quantity) {
+              item.quantity = '1';
+            }
+            return item;
+          }
+
+          // If it's a string with a colon (like "Chicken Breast: 2 lb"), parse it
+          if (typeof item === 'string' && item.includes(':')) {
+            const parts = item.split(':');
+            const name = parts[0].trim();
+            const quantity = parts.length > 1 ? parts[1].trim() : '1';
+            return { name, quantity };
+          }
+
+          // Otherwise just use the string as name
+          return { name: String(item), quantity: '1' };
+        });
+
+        console.log("Formatted grocery list:", formattedList);
+        setGroceryList(formattedList);
       } else {
         console.error("All strategies failed or returned empty data");
         setError(`No grocery items found for menu ${selectedMenuId}. The menu might not have any ingredients.`);
@@ -588,7 +614,31 @@ function ShoppingListPage() {
         console.log("🔎 Grocery List:", groceryList);
 
         if (groceryList.length > 0) {
-          setGroceryList(groceryList);
+          // Format grocery list items to ensure they have proper name and quantity properties
+          const formattedList = groceryList.map(item => {
+            // If it's already an object with name property, use it
+            if (typeof item === 'object' && item !== null && item.name) {
+              // Ensure quantity is defined
+              if (!item.quantity) {
+                item.quantity = '1';
+              }
+              return item;
+            }
+
+            // If it's a string with a colon (like "Chicken Breast: 2 lb"), parse it
+            if (typeof item === 'string' && item.includes(':')) {
+              const parts = item.split(':');
+              const name = parts[0].trim();
+              const quantity = parts.length > 1 ? parts[1].trim() : '1';
+              return { name, quantity };
+            }
+
+            // Otherwise just use the string as name
+            return { name: String(item), quantity: '1' };
+          });
+
+          console.log("Formatted grocery list from menu history:", formattedList);
+          setGroceryList(formattedList);
           setSelectedMenuId(latestMenuId);
         } else {
           setError('No grocery items found in this menu. Try generating a new menu with recipes.');
@@ -634,7 +684,31 @@ function ShoppingListPage() {
 
       // Update grocery list with the new data
       if (groceryListResponse && groceryListResponse.groceryList) {
-        setGroceryList(groceryListResponse.groceryList);
+        // Ensure proper format with name and quantity properties
+        const formattedList = groceryListResponse.groceryList.map(item => {
+          // If it's already an object with name property, use it
+          if (typeof item === 'object' && item !== null && item.name) {
+            // Ensure quantity is defined
+            if (!item.quantity) {
+              item.quantity = '1';
+            }
+            return item;
+          }
+
+          // If it's a string with a colon (like "Chicken Breast: 2 lb"), parse it
+          if (typeof item === 'string' && item.includes(':')) {
+            const parts = item.split(':');
+            const name = parts[0].trim();
+            const quantity = parts.length > 1 ? parts[1].trim() : '1';
+            return { name, quantity };
+          }
+
+          // Otherwise just use the string as name
+          return { name: String(item), quantity: '1' };
+        });
+
+        console.log("Formatted grocery list after menu selection:", formattedList);
+        setGroceryList(formattedList);
       }
 
       // Check if we have a cached AI list for this menu
