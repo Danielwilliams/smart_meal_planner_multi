@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
-import { generateSimpleShoppingList } from '../utils/simpleShoppingList';
 import { 
   Container, 
   Typography, 
