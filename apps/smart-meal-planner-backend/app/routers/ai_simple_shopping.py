@@ -5,7 +5,7 @@ from pydantic import BaseModel
 import json
 import os
 import openai
-from app.utils.auth_middleware import get_current_user
+from app.utils.auth_utils import get_user_from_token
 from app.models.user import User
 
 # Create router
@@ -33,7 +33,7 @@ class ShoppingListResponse(BaseModel):
 @router.post("/ai/simple-shopping-list", response_model=ShoppingListResponse)
 async def generate_shopping_list(
     request: ShoppingListRequest,
-    current_user: User = Depends(get_current_user)
+    current_user = Depends(get_user_from_token)
 ):
     """
     Generate a categorized shopping list from menu text using OpenAI.
@@ -71,18 +71,30 @@ async def generate_shopping_list(
             {"role": "user", "content": request.menu_text}
         ]
 
-        # Call OpenAI API
-        response = openai.ChatCompletion.create(
-            model=request.model,
-            messages=messages,
-            temperature=0.1,  # Low temperature for consistency
-            max_tokens=4000,
-            n=1,
-            stop=None,
-        )
-
-        # Extract response content
-        response_content = response.choices[0].message.content.strip()
+        # Call OpenAI API - handle both older and newer client versions
+        try:
+            # Try newer OpenAI API
+            client = openai.OpenAI(api_key=openai.api_key)
+            response = client.chat.completions.create(
+                model=request.model,
+                messages=messages,
+                temperature=0.1,  # Low temperature for consistency
+                max_tokens=4000,
+                n=1,
+                stop=None,
+            )
+            response_content = response.choices[0].message.content.strip()
+        except (AttributeError, TypeError):
+            # Fall back to older API
+            response = openai.ChatCompletion.create(
+                model=request.model,
+                messages=messages,
+                temperature=0.1,  # Low temperature for consistency
+                max_tokens=4000,
+                n=1,
+                stop=None,
+            )
+            response_content = response.choices[0].message.content.strip()
         
         # Parse JSON from response
         try:
