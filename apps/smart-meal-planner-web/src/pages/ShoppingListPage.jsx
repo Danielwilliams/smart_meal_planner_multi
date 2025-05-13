@@ -1201,13 +1201,16 @@ function ShoppingListPage() {
   // ENHANCED DIRECT FETCH - with proper categorization and unit conversion
   // Generate a brand new AI shopping list from scratch
   const generateNewAiList = async () => {
-    // Reset state and show loading indicator
+    // Reset state
     setGenerationLogs([]);
     setGenerationStats(null);
     setAiShoppingLoading(true);
     const startTime = new Date();
 
-    // Simple logging helper
+    // Define result variable to fix reference errors
+    let result;
+
+    // Helper to add logs with timestamps
     const addLog = (message, type = 'info') => {
       const timestamp = new Date().toLocaleTimeString();
       console.log(`[AI List] ${timestamp} - ${message}`);
@@ -1215,92 +1218,302 @@ function ShoppingListPage() {
     };
 
     try {
-      // Log start
-      addLog(`Starting simple AI shopping list generation for menu ID: ${selectedMenuId}`);
-      
-      // Get menu data to send to our simplified generator
-      if (!selectedMenuId) {
-        throw new Error("No menu selected");
-      }
-      
-      // Use the menu data we already have in state if available
-      let menuData = groceryList;
-      
-      // If needed, fetch the menu data first
-      if (!menuData || Object.keys(menuData).length === 0) {
-        addLog('No menu data in state, fetching from API', 'info');
-        
-        try {
-          const response = await fetch(`https://smartmealplannermulti-production.up.railway.app/menu/${selectedMenuId}`, {
-            method: 'GET',
-            headers: {
-              'Authorization': `Bearer ${localStorage.getItem('token')}`
-            }
-          });
-          
-          if (!response.ok) {
-            throw new Error(`Error fetching menu: ${response.status}`);
-          }
-          
-          menuData = await response.json();
-          addLog('Menu data fetched successfully', 'success');
-        } catch (error) {
-          addLog(`Error fetching menu: ${error.message}`, 'error');
-          // Continue with what data we have
+      addLog(`Starting new AI shopping list generation for menu ID: ${selectedMenuId}`);
+
+      // Step 1: Clear the cache
+      addLog('Clearing shopping list cache...');
+      try {
+        // Use POST with a specific flag instead of DELETE to avoid 405 errors
+        const clearResponse = await fetch(`https://smartmealplannermulti-production.up.railway.app/menu/${selectedMenuId}/ai-shopping-list`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            menu_id: parseInt(selectedMenuId),
+            use_cache: false,  // Force fresh generation
+            use_ai: false      // Just clear cache, don't generate
+          })
+        });
+
+        if (clearResponse.ok) {
+          addLog('Cache cleared successfully', 'success');
+        } else {
+          addLog(`Cache clearing returned status: ${clearResponse.status}`, 'warning');
         }
+      } catch (cacheError) {
+        addLog(`Cache clearing error: ${cacheError.message}`, 'error');
+        // Continue anyway
       }
-      
-      // Generate the shopping list using our new simple implementation
-      addLog('Generating simplified shopping list...', 'info');
-      const result = await generateSimpleShoppingList(menuData);
-      
-      // Update UI with the result
-      addLog('Shopping list generated successfully', 'success');
-      
+
+      // Step 2: Generate a new shopping list using POST with enhanced OpenAI prompt
+      addLog('Generating new AI shopping list...');
+      addLog('Requesting AI categorization for better organization', 'info');
+
+      const response = await fetch(`https://smartmealplannermulti-production.up.railway.app/menu/${selectedMenuId}/ai-shopping-list`, {
+        method: 'POST',  // Using POST to avoid Method Not Allowed error
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          menu_id: parseInt(selectedMenuId),
+          use_ai: true,
+          use_cache: false,  // Force fresh generation
+          additional_preferences: `
+Please format each item as "Item: Quantity-Unit" and categorize into store sections.
+Include healthy alternatives (e.g., "substitute Sour Cream for Non Fat Plain Greek Yogurt").
+Group items into distinct categories like PRODUCE, MEAT/PROTEIN, DAIRY, BAKERY, GRAINS, CANNED GOODS, FROZEN, etc.
+For each item, suggest the best aisle or section in a typical grocery store.
+Also include helpful shopping tips.
+`
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        addLog(`API error: ${response.status} - ${errorText}`, 'error');
+        throw new Error(`API error ${response.status}: ${errorText}`);
+      }
+
+      const initialResult = await response.json();
+      // Assign to result to fix reference errors
+      result = initialResult;
+      addLog('Received initial response from API', 'success');
+
+      // Log the entire response structure to debug
+      addLog(`Response keys: ${Object.keys(initialResult).join(', ')}`, 'info');
+      console.log("DEBUG Initial Response:", initialResult);
+
+      // Log the raw data in a more readable format
+      addLog(`Raw data: ${JSON.stringify(initialResult).substring(0, 500)}...`, 'info');
+
+      // Check if we need to poll for the final result
+      if (initialResult.status === 'processing') {
+        addLog('AI processing in progress - starting to poll for results', 'info');
+
+        // Begin polling for the completed AI result
+        let pollCount = 0;
+        const maxPolls = 20; // Maximum number of polling attempts
+        const pollInterval = 2000; // Poll every 2 seconds
+
+        // Function to poll for status
+        const pollForResult = async () => {
+          if (pollCount >= maxPolls) {
+            addLog('Reached maximum polling attempts - giving up', 'warning');
+            return initialResult;
+          }
+
+          pollCount++;
+          addLog(`Polling for results (attempt ${pollCount}/${maxPolls})...`, 'info');
+
+          try {
+            const pollResponse = await fetch(`https://smartmealplannermulti-production.up.railway.app/menu/${selectedMenuId}/ai-shopping-list`, {
+              method: 'GET',  // Use GET for status check
+              headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+              }
+            });
+
+            if (!pollResponse.ok) {
+              addLog(`Polling error: ${pollResponse.status}`, 'error');
+              return null;
+            }
+
+            const pollResult = await pollResponse.json();
+
+            // Check if processing is complete
+            if (pollResult.status === 'completed' || pollResult.status === 'error' ||
+                (pollResult.groceryList && pollResult.groceryList.length > 0)) {
+              addLog('Processing complete! Final results received', 'success');
+              return pollResult;
+            } else {
+              // Still processing, continue polling
+              addLog(`Still processing: ${pollResult.status || 'unknown status'}`, 'info');
+              return new Promise(resolve => {
+                setTimeout(async () => {
+                  const result = await pollForResult();
+                  resolve(result);
+                }, pollInterval);
+              });
+            }
+          } catch (pollError) {
+            addLog(`Polling error: ${pollError.message}`, 'error');
+            return null;
+          }
+        };
+
+        // Start polling and wait for the final result
+        const finalResult = await pollForResult() || initialResult;
+        // Update result variable with finalResult to fix reference errors
+        result = finalResult;
+        addLog('Final response received', 'success');
+        addLog(`Final data structure: ${Object.keys(finalResult).join(', ')}`, 'info');
+
+        // Process the final result
+        var processedResult = adaptShoppingListResponse(finalResult, selectedMenuId, addLog);
+        console.log("PROCESSED DATA:", processedResult);
+      } else {
+        // We already have the final result
+        addLog('Processing already complete - no polling needed', 'success');
+        // Use initialResult as the final result
+        result = initialResult;
+        var processedResult = adaptShoppingListResponse(initialResult, selectedMenuId, addLog);
+        console.log("PROCESSED DATA:", processedResult);
+      }
+
+      // Log a summary of what was generated
+      try {
+        // Log categories and counts
+        if (result.categories && typeof result.categories === 'object') {
+          const categoryCounts = Object.keys(result.categories).map(category =>
+            `${category}: ${result.categories[category].length} items`
+          );
+          addLog(`Generated categories: ${categoryCounts.join(', ')}`, 'info');
+        }
+
+        // Log healthy alternatives if present
+        if (result.healthyAlternatives && result.healthyAlternatives.length > 0) {
+          addLog(`Found ${result.healthyAlternatives.length} healthy alternatives`, 'info');
+        }
+
+        // Log first few items as a sample of what was generated
+        if (result.categories) {
+          let sampleItems = [];
+          for (const category in result.categories) {
+            if (result.categories[category] && result.categories[category].length > 0) {
+              const items = result.categories[category].slice(0, 2); // Take first 2 items from each category
+              sampleItems = [...sampleItems, ...items];
+              if (sampleItems.length >= 6) break; // Limit to 6 sample items total
+            }
+          }
+          if (sampleItems.length > 0) {
+            addLog(`Sample items: ${sampleItems.join(', ')}`, 'info');
+          }
+        }
+      } catch (logError) {
+        addLog(`Error logging results: ${logError.message}`, 'error');
+      }
+
       // Calculate stats
       const endTime = new Date();
       const durationSeconds = (endTime - startTime) / 1000;
-      
-      // Log some stats about what we got back
-      if (result.groceryList) {
-        addLog(`Generated ${result.groceryList.length} categories`, 'info');
-        
-        // Log some sample items
-        const totalItems = result.groceryList.reduce((count, category) => 
-          count + category.items.length, 0);
-        addLog(`Total items: ${totalItems}`, 'info');
-        
-        // Get a sample of items
-        const sampleItems = [];
-        for (let i = 0; i < Math.min(3, result.groceryList.length); i++) {
-          const category = result.groceryList[i];
-          if (category.items?.length > 0) {
-            sampleItems.push(`${category.items[0].name}`);
+
+      // Update state - first clear old data then set new data
+      // First clear to force UI refresh
+      setAiShoppingData(null);
+
+      // Note: We already processed the result using our adapter above
+      // Skip all the format checking since we're using the adapter now
+      if (result.ingredient_list && Array.isArray(result.ingredient_list)) {
+        // Format 1: ingredient_list array
+        addLog(`Found ingredient_list array with ${result.ingredient_list.length} items`, 'info');
+
+        // Convert to expected format with categories
+        const categorized = {};
+
+        // Try to categorize based on item properties if available
+        result.ingredient_list.forEach(item => {
+          const category = item.category || 'Other';
+          if (!categorized[category]) {
+            categorized[category] = [];
           }
-        }
-        if (sampleItems.length > 0) {
-          addLog(`Sample items: ${sampleItems.join(', ')}`, 'info');
-        }
+          categorized[category].push(item.name || item);
+        });
+
+        processedResult = {
+          categories: categorized,
+          healthyAlternatives: result.healthyAlternatives || [],
+          shoppingTips: result.shoppingTips || [],
+          cached: false,
+          timestamp: new Date().toISOString(),
+          menuId: selectedMenuId
+        };
       }
-      
-      // Update state with the result
-      setAiShoppingData(result);
-      
-      // Cache the result
-      try {
-        localStorage.setItem(
-          `${AI_SHOPPING_CACHE_KEY}_${selectedMenuId}`,
-          JSON.stringify({
-            ...result,
-            cache_time: new Date().toISOString()
-          })
-        );
-        addLog('Updated local cache with new data', 'info');
-      } catch (cacheError) {
-        addLog(`Error updating cache: ${cacheError.message}`, 'warning');
+      else if (result.categories && typeof result.categories === 'object') {
+        // Format 2: Already has categories object
+        addLog(`Found categories object with ${Object.keys(result.categories).length} categories`, 'info');
+
+        processedResult = {
+          ...result,
+          cached: false,
+          timestamp: new Date().toISOString(),
+          menuId: selectedMenuId
+        };
       }
-      
-      // Update stats
+      else if (result.data && result.data.categories) {
+        // Format 3: Data wrapped in data property
+        addLog(`Found categories in data property`, 'info');
+
+        processedResult = {
+          ...result.data,
+          cached: false,
+          timestamp: new Date().toISOString(),
+          menuId: selectedMenuId
+        };
+      }
+      else if (Array.isArray(result)) {
+        // Format 4: Direct array of items
+        addLog(`Found direct array with ${result.length} items`, 'info');
+
+        // Create a single category with all items
+        processedResult = {
+          categories: { 'All Items': result },
+          healthyAlternatives: [],
+          shoppingTips: [],
+          cached: false,
+          timestamp: new Date().toISOString(),
+          menuId: selectedMenuId
+        };
+      }
+      else {
+        // Unknown format - log details and create a minimal valid structure
+        addLog(`Unrecognized format - creating minimal structure`, 'warning');
+        console.log('Unknown result format:', result);
+
+        // Try extracting any arrays found in the result
+        const allItems = [];
+        Object.keys(result).forEach(key => {
+          if (Array.isArray(result[key])) {
+            addLog(`Found array in property "${key}" with ${result[key].length} items`, 'info');
+            allItems.push(...result[key]);
+          }
+        });
+
+        processedResult = {
+          categories: { 'All Items': allItems.length > 0 ? allItems : ['No items found'] },
+          healthyAlternatives: [],
+          shoppingTips: [],
+          cached: false,
+          timestamp: new Date().toISOString(),
+          menuId: selectedMenuId
+        };
+      }
+
+      // Add a slight delay to ensure the UI updates
+      setTimeout(() => {
+
+        // Update state with the processed result
+        console.log('FINAL DATA BEING SET IN UI:', processedResult);
+        setAiShoppingData(processedResult);
+        addLog('Updated UI with new shopping list data', 'success');
+
+        // Also update the cache with the fresh data
+        try {
+          localStorage.setItem(
+            `${AI_SHOPPING_CACHE_KEY}_${selectedMenuId}`,
+            JSON.stringify({
+              ...processedResult,
+              cache_time: new Date().toISOString()
+            })
+          );
+          addLog('Updated local cache with new data', 'info');
+        } catch (cacheError) {
+          addLog(`Error updating cache: ${cacheError.message}`, 'warning');
+        }
+      }, 100);
+
       setGenerationStats({
         startTime,
         endTime,
@@ -1308,13 +1521,13 @@ function ShoppingListPage() {
         success: true,
         responseSize: JSON.stringify(result).length
       });
-      
+
       addLog(`Generation completed in ${durationSeconds.toFixed(2)} seconds`, 'success');
       showSnackbar('New AI shopping list generated successfully');
-      
+
     } catch (error) {
       addLog(`Error: ${error.message}`, 'error');
-      
+
       // Update stats with error
       const endTime = new Date();
       setGenerationStats({
@@ -1324,12 +1537,12 @@ function ShoppingListPage() {
         success: false,
         error: error.message
       });
-      
+
       showSnackbar(`Error: ${error.message}`);
     } finally {
       setAiShoppingLoading(false);
     }
-  };;
+  };
 
   const directFetchShoppingList = async (menuId) => {
     console.log("DIRECT FETCH: Attempting direct API call to get shopping list for menu ID:", menuId);
@@ -1492,7 +1705,8 @@ function ShoppingListPage() {
           itemLower.includes('vegetable')
         ) {
           categories["Produce"].push(fixedItem);
-        } else if (
+        }
+        else if (
           itemLower.includes('chicken') ||
           itemLower.includes('beef') ||
           itemLower.includes('pork') ||
@@ -1506,7 +1720,8 @@ function ShoppingListPage() {
           itemLower.includes('breast')
         ) {
           categories["Protein"].push(fixedItem);
-        } else if (
+        }
+        else if (
           itemLower.includes('milk') ||
           itemLower.includes('cheese') ||
           itemLower.includes('yogurt') ||
@@ -1515,7 +1730,8 @@ function ShoppingListPage() {
           itemLower.includes('egg')
         ) {
           categories["Dairy"].push(fixedItem);
-        } else if (
+        }
+        else if (
           itemLower.includes('bread') ||
           itemLower.includes('tortilla') ||
           itemLower.includes('pasta') ||
@@ -1527,7 +1743,8 @@ function ShoppingListPage() {
           itemLower.includes('cereal')
         ) {
           categories["Grains"].push(fixedItem);
-        } else if (
+        }
+        else if (
           itemLower.includes('sugar') ||
           itemLower.includes('salt') ||
           itemLower.includes('spice') ||
