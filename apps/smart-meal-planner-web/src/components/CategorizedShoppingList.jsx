@@ -107,7 +107,16 @@ const CategorizedShoppingList = ({ groceryData, selectedStore, onAddToCart }) =>
 
         if (Array.isArray(catItem.items)) {
           catItem.items.forEach(item => {
-            categorized[category].push(formatItemDisplay(item));
+            // When using nested category objects, preserve the full item object
+            if (typeof item === 'object' && item.name) {
+              if (!categorized[category]) {
+                categorized[category] = [];
+              }
+              categorized[category].push(item);
+            } else {
+              // Legacy format - just format as string
+              categorized[category].push(formatItemDisplay(item));
+            }
           });
         }
       });
@@ -405,13 +414,25 @@ const CategorizedShoppingList = ({ groceryData, selectedStore, onAddToCart }) =>
                             size="small"
                             startIcon={<AddIcon />}
                             variant="outlined"
-                            onClick={() => onAddToCart && onAddToCart(item.split(':')[0].trim(), selectedStore)}
+                            onClick={() => {
+                              // Handle both string and object formats
+                              const itemName = typeof item === 'string'
+                                ? item.split(':')[0].trim()
+                                : (item.name || '').trim();
+                              onAddToCart && onAddToCart(itemName, selectedStore);
+                            }}
                           >
                             Add
                           </Button>
                         }
                       >
-                        <ListItemText primary={item} />
+                        {typeof item === 'object' && item.name ? (
+                          <ListItemText
+                            primary={`${item.name}: ${item.quantity || ''} ${item.unitOfMeasure || item.unit || ''}`}
+                          />
+                        ) : (
+                          <ListItemText primary={item} />
+                        )}
                       </ListItem>
                     </React.Fragment>
                   ))}

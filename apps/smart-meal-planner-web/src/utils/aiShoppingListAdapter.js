@@ -130,13 +130,12 @@ export const adaptShoppingListResponse = (result, menuId, logger = null) => {
           }
 
           // Convert the categorized items format to the expected categories format
+          // But KEEP the original item objects so we preserve quantity and unitOfMeasure
           const formattedCategories = {};
           Object.entries(categorizedItems).forEach(([category, items]) => {
             formattedCategories[category] = items.map(item => {
-              if (item.name && item.quantity) {
-                return `${item.name}: ${item.quantity}`;
-              }
-              return item.name || String(item);
+              // Important: return the full item object instead of just a string
+              return item;
             });
           });
 

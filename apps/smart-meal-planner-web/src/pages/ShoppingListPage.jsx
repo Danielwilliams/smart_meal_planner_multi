@@ -92,14 +92,15 @@ function ShoppingListPage() {
   };
   
   // AI shopping list state
+  // No longer needed - we auto-generate the AI list
   const [showAiShoppingPrompt, setShowAiShoppingPrompt] = useState(false);
   const [aiShoppingLoading, setAiShoppingLoading] = useState(false);
   const [aiShoppingData, setAiShoppingData] = useState(null);
-  const [activeTab, setActiveTab] = useState(0);
+  const [activeTab, setActiveTab] = useState(1); // Default to AI Enhanced tab
   const [aiPreferences, setAiPreferences] = useState('');
   const [usingAiList, setUsingAiList] = useState(false);
 
-  // For New AI List button
+  // For New AI List button - ensure these are still accessible
   const [generationStats, setGenerationStats] = useState(null);
   const [generationLogs, setGenerationLogs] = useState([]);
   const [showLogs, setShowLogs] = useState(true); // Show logs by default
@@ -936,8 +937,8 @@ function ShoppingListPage() {
         // Show notification
         showSnackbar(`Using cached shopping list for menu ${menuId}`);
       } else {
-        // Show AI prompt for the new menu
-        setShowAiShoppingPrompt(true);
+        // No longer showing prompt - auto-generate
+        // setShowAiShoppingPrompt(true);
       }
     } catch (err) {
       console.error('Error selecting menu:', err);
@@ -1473,6 +1474,21 @@ Combine duplicate ingredients, adding up quantities when appropriate.
       // Handle standard response formats
       else if (result.groceryList && Array.isArray(result.groceryList)) {
         addLog(`Found groceryList array with ${result.groceryList.length} categories`, 'info');
+
+        // Check if we need to preserve the internal item objects
+        if (result.groceryList.length > 0 &&
+            result.groceryList[0].items &&
+            Array.isArray(result.groceryList[0].items) &&
+            result.groceryList[0].items.length > 0 &&
+            typeof result.groceryList[0].items[0] === 'object' &&
+            result.groceryList[0].items[0].unitOfMeasure) {
+
+          addLog('Detected nested item objects with unitOfMeasure - preserving full object data', 'info');
+          // Just pass through the full structure with nested objects
+        } else {
+          addLog('Standard groceryList format detected', 'info');
+        }
+
         processedResult = {
           groceryList: result.groceryList,
           shoppingTips: result.shoppingTips || [],
@@ -3079,6 +3095,16 @@ Combine duplicate ingredients, adding up quantities when appropriate.
       setUsingAiList(false);
       setAiShoppingLoading(false);
 
+      // Automatically generate AI shopping list when menu changes
+      // Add a slight delay to allow the standard list to load first
+      setTimeout(() => {
+        console.log('Automatically generating AI shopping list...');
+        generateNewAiList(); // This will be shown in the AI tab by default
+      }, 500);
+
+      // Make sure the showLogs state is set to true to display generation logs
+      setShowLogs(true);
+
       // Clear any existing polling when menu changes
       clearStatusPolling();
     }
@@ -3113,13 +3139,15 @@ Combine duplicate ingredients, adding up quantities when appropriate.
           console.log(`Cached data available but menu ID mismatch. Cache: ${cachedData.menuId}, Selected: ${selectedMenuId}`);
           // Wrong menu data in cache, don't use it
           setAiShoppingData(null);
-          if (!showAiShoppingPrompt) {
-            setShowAiShoppingPrompt(true);
-          }
+          // No longer showing prompt - auto-generate
+          // if (!showAiShoppingPrompt) {
+          //   setShowAiShoppingPrompt(true);
+          // }
         }
-      } else if (!showAiShoppingPrompt && !aiShoppingData) {
-        // No cache, show AI prompt
-        setShowAiShoppingPrompt(true);
+      } else if (!aiShoppingData) {
+        // No cache or AI data - generateNewAiList will be triggered elsewhere
+        // No longer showing prompt - auto-generate
+        // setShowAiShoppingPrompt(true);
       }
     }
   }, [user, selectedMenuId]);

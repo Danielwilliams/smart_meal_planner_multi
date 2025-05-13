@@ -1096,9 +1096,10 @@ def generate_ai_shopping_list(menu_data, basic_grocery_list, additional_preferen
 }
 """
         # Simple, direct instructions for exactly what we want
+        prompt += "\n\nIMPORTANT: Please extract the exact quantities from the original shopping list. Don't reduce or change the quantities - preserve the actual amounts listed."
         prompt += "\n\nPlease return a JSON array where each item has these fields:"
         prompt += "\n1. name: The ingredient name"
-        prompt += "\n2. quantity: The numeric amount"
+        prompt += "\n2. quantity: The EXACT numeric amount from the original list (e.g., '96' for 96 oz of chicken, not reduced to '6')"
         prompt += "\n3. unitOfMeasure: The standardized unit"
         prompt += "\n4. category: The department category"
 
@@ -1107,8 +1108,8 @@ def generate_ai_shopping_list(menu_data, basic_grocery_list, additional_preferen
 [
   {
     "name": "Chicken Breast",
-    "quantity": "2",
-    "unitOfMeasure": "lb",
+    "quantity": "96",
+    "unitOfMeasure": "oz",
     "category": "Meat & Seafood"
   },
   {
@@ -1121,8 +1122,8 @@ def generate_ai_shopping_list(menu_data, basic_grocery_list, additional_preferen
 """
         prompt += "\n\nUse these categories: Produce, Meat & Seafood, Dairy & Eggs, Bakery & Bread, Dry Goods & Pasta, Canned Goods, Frozen Foods, Condiments & Spices, Snacks, Beverages, Baking, Other."
         prompt += "\n\nMake sure quantities and units make sense for each item (e.g. '3 eggs' not '3 lb eggs')."
-        prompt += "\n\nStandardize units of measure to common kitchen units (cups, tbsp, tsp, oz, lb, etc.)."
-        prompt += "\n\nCombine duplicate ingredients, adding up quantities when appropriate."
+        prompt += "\n\nDO NOT convert between units or change quantities. If the original says '96 oz' keep it as '96 oz', don't convert to '6 lb'."
+        prompt += "\n\nCombine duplicate ingredients, adding up quantities when appropriate, but preserve the original units."
 
         prompt += "\n\nRETURN ONLY THE JSON ARRAY - no wrapper object or other text."
 
