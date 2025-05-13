@@ -1327,11 +1327,18 @@ Combine duplicate ingredients, adding up quantities when appropriate.
           addLog(`Polling for results (attempt ${pollCount}/${maxPolls})...`, 'info');
 
           try {
+            // Use POST instead of GET since the endpoint doesn't support GET
             const pollResponse = await fetch(`https://smartmealplannermulti-production.up.railway.app/menu/${selectedMenuId}/ai-shopping-list`, {
-              method: 'GET',  // Use GET for status check
+              method: 'POST',  // Changed from GET to POST to avoid 405 error
               headers: {
-                'Authorization': `Bearer ${localStorage.getItem('token')}`
-              }
+                'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                menu_id: parseInt(selectedMenuId),
+                use_ai: true,
+                use_cache: true  // Try to use cache for polling
+              })
             });
 
             if (!pollResponse.ok) {
