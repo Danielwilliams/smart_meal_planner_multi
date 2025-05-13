@@ -38,8 +38,66 @@ import apiService from '../services/apiService';
 import { useNavigate } from 'react-router-dom';
 import KrogerResults from '../components/KrogerResults';
 import WalmartResults from '../components/WalmartResults';
+import InstacartResults from '../components/InstacartResults';
 import { StoreSelector } from '../components/StoreSelector';
 import krogerAuthService from '../services/krogerAuthService';
+import instacartService from '../services/instacartService';
+
+// Wrapper component to adapt InstacartResults to the interface expected by renderStoreSection
+const InstacartResultsWrapper = ({ results, onAddToCart }) => {
+  // Get retailerId from localStorage - default to null if not found
+  const retailerId = localStorage.getItem('instacart_retailer_id');
+
+  // Log the props received for debugging
+  console.log("InstacartResultsWrapper props:", { results, retailerId });
+
+  // Convert results array to groceryItems format expected by InstacartResults
+  let groceryItems = [];
+
+  // Safely handle different formats of results with null checking
+  if (results && Array.isArray(results)) {
+    groceryItems = results
+      .filter(item => item) // Filter out null/undefined items
+      .map(item => {
+        if (typeof item === 'string') return item;
+        return (item && (item.name || item.description || item.title)) || "Unknown Item";
+      });
+  }
+
+  // In case results come in as an object instead of array
+  if (results && typeof results === 'object' && !Array.isArray(results)) {
+    Object.values(results).forEach(item => {
+      if (item && typeof item === 'object' && item.name) {
+        groceryItems.push(item.name);
+      }
+    });
+  }
+
+  console.log("Converted groceryItems:", groceryItems);
+
+  // If no retailerId is stored, use a default value
+  const defaultRetailerId = "5"; // Default retailer ID
+
+  if (!retailerId) {
+    console.warn("No Instacart retailer ID found in localStorage, using default");
+  }
+
+  return (
+    <InstacartResults
+      groceryItems={groceryItems}
+      retailerId={retailerId || defaultRetailerId}
+      onSuccess={(cart) => {
+        console.log("Instacart cart created:", cart);
+        if (onAddToCart && typeof onAddToCart === 'function') {
+          onAddToCart(groceryItems);
+        }
+      }}
+      onError={(err) => {
+        console.error("Instacart error:", err);
+      }}
+    />
+  );
+};
 
 function CartPage() {
   const { user } = useAuth();
@@ -51,19 +109,22 @@ function CartPage() {
   const [internalCart, setInternalCart] = useState({
     walmart: [],
     kroger: [],
+    instacart: [],
     unassigned: []
   });
-  
+
   const [searchResults, setSearchResults] = useState({
     walmart: [],
-    kroger: []
+    kroger: [],
+    instacart: []
   });
   
   const [loading, setLoading] = useState({
     cart: false,
     search: false,
     kroger: false,
-    walmart: false
+    walmart: false,
+    instacart: false
   });
 
   const [error, setError] = useState(null);
@@ -1049,11 +1110,91 @@ const handleAddToCart = async (items, store) => {
     }
   };
   
+  // Helper function to extract grocery items for Instacart
+  const extractGroceryItems = () => {
+    // Check if we have a flat or categorized grocery list
+    if (internalCart && internalCart.instacart && Array.isArray(internalCart.instacart)) {
+      // If it's a flat array, extract names
+      return internalCart.instacart
+        .filter(item => item) // Filter out null/undefined items
+        .map(item =>
+          typeof item === 'string' ? item : ((item && item.name) || '')
+        )
+        .filter(name => name && name.trim() !== '');
+    }
+
+    // Default to empty array if we couldn't extract items
+    return [];
+  };
+
+  const handleInstacartSearch = async () => {
+    try {
+      // Get the items from the instacart store
+      if (!internalCart?.instacart || !Array.isArray(internalCart.instacart)) {
+        setError('No items assigned to instacart or invalid data format');
+        return;
+      }
+
+      const storeItems = internalCart.instacart
+        .filter(item => item && typeof item === 'object')
+        .map(item => item.name || '')
+        .filter(name => name.trim() !== '');
+
+      setLastSearchedItems(storeItems);
+
+      if (storeItems.length === 0) {
+        setError('No items assigned to instacart');
+        return;
+      }
+
+      setLoading(prev => ({ ...prev, search: true, instacart: true }));
+      setError(null);
+
+      // Get Instacart retailers
+      const retailers = await instacartService.getRetailers();
+
+      if (!retailers || retailers.length === 0) {
+        setError('No Instacart retailers available');
+        setLoading(prev => ({ ...prev, search: false, instacart: false }));
+        return;
+      }
+
+      // Use the first retailer for now
+      const retailerId = retailers[0].id;
+      localStorage.setItem('instacart_retailer_id', retailerId);
+
+      // Search for each item
+      const results = [];
+      for (const item of storeItems) {
+        try {
+          const productResults = await instacartService.searchProducts(retailerId, item, 3);
+          if (productResults && productResults.length > 0) {
+            results.push(...productResults);
+          }
+        } catch (err) {
+          console.error(`Error searching for "${item}":`, err);
+        }
+      }
+
+      // Update search results
+      setSearchResults(prev => ({
+        ...prev,
+        instacart: results
+      }));
+
+      setLoading(prev => ({ ...prev, search: false, instacart: false }));
+    } catch (err) {
+      console.error('Error searching Instacart items:', err);
+      setError('Failed to search Instacart items: ' + (err.message || 'Unknown error'));
+      setLoading(prev => ({ ...prev, search: false, instacart: false }));
+    }
+  };
+
   const clearSearchResults = (store) => {
     if (store) {
       setSearchResults(prev => ({ ...prev, [store]: [] }));
     } else {
-      setSearchResults({ walmart: [], kroger: [] });
+      setSearchResults({ walmart: [], kroger: [], instacart: [] });
     }
   };
 
@@ -1252,6 +1393,7 @@ const handleAddToCart = async (items, store) => {
                       >
                         <MenuItem value="walmart">Walmart</MenuItem>
                         <MenuItem value="kroger">Kroger</MenuItem>
+                        <MenuItem value="instacart">Instacart</MenuItem>
                       </Select>
                     </FormControl>
                     <IconButton
@@ -1272,6 +1414,7 @@ const handleAddToCart = async (items, store) => {
       {/* Store Sections */}
       {renderStoreSection('kroger', internalCart.kroger, () => handleStoreSearch('kroger'), KrogerResults)}
       {renderStoreSection('walmart', internalCart.walmart, () => handleStoreSearch('walmart'), WalmartResults)}
+      {renderStoreSection('instacart', internalCart.instacart, () => handleInstacartSearch(), InstacartResultsWrapper)}
 
       {/* Error Display */}
       {error && (
