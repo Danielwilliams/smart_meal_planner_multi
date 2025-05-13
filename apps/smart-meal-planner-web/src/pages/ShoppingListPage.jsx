@@ -41,6 +41,7 @@ import ShoppingList from '../components/ShoppingList';
 import SmartShoppingList from '../components/SmartShoppingList';
 import CategorizedShoppingList from '../components/CategorizedShoppingList';
 import { adaptShoppingListResponse } from '../utils/aiShoppingListAdapter';
+import { captureOriginalQuantities, fixQuantities, resetQuantities } from '../utils/directFix';
 import { 
   AutoAwesome as AiIcon,
   ExpandMore as ExpandMoreIcon,
@@ -1209,6 +1210,7 @@ function ShoppingListPage() {
     setGenerationLogs([]);
     setGenerationStats(null);
     setAiShoppingLoading(true);
+    resetQuantities(); // Reset stored quantities
     const startTime = new Date();
 
     // Define result variable to fix reference errors
@@ -1304,6 +1306,10 @@ Combine duplicate ingredients, adding up quantities when appropriate.
       // Assign to result to fix reference errors
       result = initialResult;
       addLog('Received initial response from API', 'success');
+
+      // Capture original quantities for later use
+      captureOriginalQuantities(initialResult);
+      addLog('Captured original quantities from response', 'info');
 
       // Log the entire response structure to debug
       addLog(`Response keys: ${Object.keys(initialResult).join(', ')}`, 'info');
@@ -1437,40 +1443,8 @@ Combine duplicate ingredients, adding up quantities when appropriate.
         addLog(`Final data structure: ${Object.keys(finalResult).join(', ')}`, 'info');
 
         // Apply original quantities to final result before processing
-        if (Object.keys(initialGroceryItems).length > 0 &&
-            finalResult.groceryList &&
-            Array.isArray(finalResult.groceryList)) {
-
-          addLog('Applying original quantities to categorized items', 'info');
-          let fixedCount = 0;
-
-          // Go through each category
-          finalResult.groceryList.forEach(category => {
-            if (category && category.items && Array.isArray(category.items)) {
-              // Fix each item with original quantities
-              category.items.forEach(item => {
-                if (item && item.name) {
-                  const originalItem = initialGroceryItems[item.name.toLowerCase()];
-                  if (originalItem) {
-                    // Apply original quantity
-                    item.quantity = originalItem.quantity;
-                    // Apply unit if available
-                    if (originalItem.unit) {
-                      item.unitOfMeasure = originalItem.unit;
-                      item.unit = originalItem.unit;
-                    }
-                    fixedCount++;
-                    console.log(`Applied original quantity to ${item.name}: ${item.quantity} ${item.unitOfMeasure || ''}`);
-                  }
-                }
-              });
-            }
-          });
-
-          addLog(`Fixed ${fixedCount} items with original quantities`, 'success');
-        } else {
-          addLog('No original quantities available to apply', 'warning');
-        }
+        finalResult = fixQuantities(finalResult);
+        addLog('Applied original quantities to categorized items', 'info');
 
         // Process the final result
         var processedResult = adaptShoppingListResponse(finalResult, selectedMenuId, addLog);

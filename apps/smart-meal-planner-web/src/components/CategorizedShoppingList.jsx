@@ -470,38 +470,8 @@ const CategorizedShoppingList = ({ groceryData, selectedStore, onAddToCart }) =>
                                     border: '1px solid #ccd6ff'
                                   }}
                                 >
-                                  {typeof item.quantity === 'string' && item.quantity.toLowerCase().includes('taste')
-                                    ? 'To taste'  // Special handling for "To taste" quantities
-                                    : (
-                                      <>
-                                        {/* First determine the quantity part */}
-                                        {typeof item.quantity === 'string' && item.quantity.includes(' ')
-                                          ? item.quantity.split(' ')[0]  // Just show the number part for embedded units
-                                          : item.quantity}
-
-                                        {/* Spacer */}
-                                        {' '}
-
-                                        {/* Then explicitly determine the unit part with fallbacks */}
-                                        <Box component="span" sx={{ color: '#555', fontWeight: 'normal' }}>
-                                          {(() => {
-                                            // Try to get unit from quantity field (like "96 oz")
-                                            if (typeof item.quantity === 'string' && item.quantity.includes(' ')) {
-                                              return item.quantity.split(' ').slice(1).join(' ');
-                                            }
-                                            // Try to get unit from unit-specific fields
-                                            else if (item.unitOfMeasure) {
-                                              return item.unitOfMeasure;
-                                            }
-                                            else if (item.unit) {
-                                              return item.unit;
-                                            }
-                                            // Default empty string
-                                            return '';
-                                          })()}
-                                        </Box>
-                                      </>
-                                    )}
+                                  {/* SIMPLIFIED DISPLAY - just show the raw quantity string */}
+                                  {item.quantity} {item.unitOfMeasure || item.unit || ''}
                                 </Typography>
                               </Box>
                             }
