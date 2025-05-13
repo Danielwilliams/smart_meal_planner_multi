@@ -5,7 +5,7 @@
  * in our backend, which in turn communicates with the Instacart API.
  */
 
-import apiService from './apiService';
+import apiService, { axiosInstance } from './apiService';
 
 /**
  * Get a list of available retailers on Instacart
@@ -13,8 +13,7 @@ import apiService from './apiService';
  */
 export const getRetailers = async () => {
   try {
-    // Make sure to use the correct API call method from apiService
-    const response = await apiService.makeRequest('GET', '/instacart/retailers');
+    const response = await axiosInstance.get('/instacart/retailers');
     return response.data;
   } catch (error) {
     console.error('Error fetching Instacart retailers:', error);
@@ -31,10 +30,9 @@ export const getRetailers = async () => {
  */
 export const searchProducts = async (retailerId, query, limit = 10) => {
   try {
-    const response = await apiService.makeRequest(
-      'GET',
+    const response = await axiosInstance.get(
       `/instacart/retailers/${retailerId}/products/search`,
-      { query, limit }
+      { params: { query, limit } }
     );
     return response.data;
   } catch (error) {
@@ -51,7 +49,7 @@ export const searchProducts = async (retailerId, query, limit = 10) => {
  */
 export const createCart = async (retailerId, items) => {
   try {
-    const response = await apiService.makeRequest('POST', '/instacart/carts', null, {
+    const response = await axiosInstance.post('/instacart/carts', {
       retailer_id: retailerId,
       items
     });
@@ -71,7 +69,7 @@ export const createCart = async (retailerId, items) => {
  */
 export const addItemToCart = async (cartId, productId, quantity = 1) => {
   try {
-    const response = await apiService.makeRequest('POST', `/instacart/carts/${cartId}/items`, null, {
+    const response = await axiosInstance.post(`/instacart/carts/${cartId}/items`, {
       product_id: productId,
       quantity
     });
@@ -89,7 +87,7 @@ export const addItemToCart = async (cartId, productId, quantity = 1) => {
  */
 export const getCart = async (cartId) => {
   try {
-    const response = await apiService.makeRequest('GET', `/instacart/carts/${cartId}`);
+    const response = await axiosInstance.get(`/instacart/carts/${cartId}`);
     return response.data;
   } catch (error) {
     console.error('Error getting Instacart cart:', error);
@@ -105,8 +103,8 @@ export const getCart = async (cartId) => {
  */
 export const matchGroceryList = async (retailerId, menuId) => {
   try {
-    const response = await apiService.makeRequest('GET', `/instacart/match/${retailerId}`, {
-      menu_id: menuId
+    const response = await axiosInstance.get(`/instacart/match/${retailerId}`, {
+      params: { menu_id: menuId }
     });
     return response.data;
   } catch (error) {

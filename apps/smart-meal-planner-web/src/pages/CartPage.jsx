@@ -45,16 +45,45 @@ const InstacartResultsWrapper = ({ results, onAddToCart }) => {
   // Get retailerId from localStorage
   const retailerId = localStorage.getItem('instacart_retailer_id');
 
+  // Log the props received for debugging
+  console.log("InstacartResultsWrapper props:", { results, retailerId });
+
   // Convert results array to groceryItems format expected by InstacartResults
-  const groceryItems = results.map(item => item.name || item.description || "Unknown Item");
+  let groceryItems = [];
+
+  // Handle different formats of results
+  if (Array.isArray(results)) {
+    groceryItems = results
+      .filter(item => item) // Filter out null/undefined items
+      .map(item => {
+        if (typeof item === 'string') return item;
+        return item.name || item.description || item.title || "Unknown Item";
+      });
+  }
+
+  // In case results come in as an object instead of array
+  if (results && typeof results === 'object' && !Array.isArray(results)) {
+    Object.values(results).forEach(item => {
+      if (item && typeof item === 'object' && item.name) {
+        groceryItems.push(item.name);
+      }
+    });
+  }
+
+  console.log("Converted groceryItems:", groceryItems);
+
+  // If no retailerId is stored, use a default value
+  if (!retailerId) {
+    console.warn("No Instacart retailer ID found in localStorage, using default");
+  }
 
   return (
     <InstacartResults
       groceryItems={groceryItems}
-      retailerId={retailerId}
+      retailerId={retailerId || "5"}
       onSuccess={(cart) => {
         console.log("Instacart cart created:", cart);
-        onAddToCart(groceryItems);
+        if (onAddToCart) onAddToCart(groceryItems);
       }}
       onError={(err) => {
         console.error("Instacart error:", err);
