@@ -39,6 +39,9 @@ import { useNavigate } from 'react-router-dom';
 import KrogerResults from '../components/KrogerResults';
 import WalmartResults from '../components/WalmartResults';
 import InstacartResults from '../components/InstacartResults';
+import { StoreSelector } from '../components/StoreSelector';
+import krogerAuthService from '../services/krogerAuthService';
+import instacartService from '../services/instacartService';
 
 // Wrapper component to adapt InstacartResults to the interface expected by renderStoreSection
 const InstacartResultsWrapper = ({ results, onAddToCart }) => {
@@ -91,9 +94,6 @@ const InstacartResultsWrapper = ({ results, onAddToCart }) => {
     />
   );
 };
-import { StoreSelector } from '../components/StoreSelector';
-import krogerAuthService from '../services/krogerAuthService';
-import instacartService from '../services/instacartService';
 
 function CartPage() {
   const { user } = useAuth();
