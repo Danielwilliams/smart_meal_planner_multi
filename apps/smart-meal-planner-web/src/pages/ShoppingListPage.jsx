@@ -1261,11 +1261,29 @@ function ShoppingListPage() {
           use_ai: true,
           use_cache: false,  // Force fresh generation
           additional_preferences: `
-Please format each item as "Item: Quantity-Unit" and categorize into store sections.
-Include healthy alternatives (e.g., "substitute Sour Cream for Non Fat Plain Greek Yogurt").
-Group items into distinct categories like PRODUCE, MEAT/PROTEIN, DAIRY, BAKERY, GRAINS, CANNED GOODS, FROZEN, etc.
-For each item, suggest the best aisle or section in a typical grocery store.
-Also include helpful shopping tips.
+Please return a JSON array where each item has "name", "quantity", "unitOfMeasure", and "category" fields.
+
+For example:
+[
+  {
+    "name": "Chicken Breast",
+    "quantity": "2",
+    "unitOfMeasure": "lb",
+    "category": "Meat & Seafood"
+  },
+  {
+    "name": "Spinach",
+    "quantity": "1",
+    "unitOfMeasure": "bag",
+    "category": "Produce"
+  }
+]
+
+Use these categories: Produce, Meat & Seafood, Dairy & Eggs, Bakery & Bread, Dry Goods & Pasta, Canned Goods, Frozen Foods, Condiments & Spices, Snacks, Beverages, Baking, Other.
+
+Make sure quantities and units make sense for each item (e.g. "3 eggs" not "3 lb eggs").
+Standardize units of measure to common kitchen units (cups, tbsp, tsp, oz, lb, etc.).
+Combine duplicate ingredients, adding up quantities when appropriate.
 `
         })
       });
@@ -1403,91 +1421,32 @@ Also include helpful shopping tips.
       // First clear to force UI refresh
       setAiShoppingData(null);
 
-      // Note: We already processed the result using our adapter above
-      // Skip all the format checking since we're using the adapter now
-      if (result.ingredient_list && Array.isArray(result.ingredient_list)) {
-        // Format 1: ingredient_list array
+      // Handle JSON array response (directly from OpenAI)
+      if (Array.isArray(result) && result.length > 0 && result[0] && result[0].name && result[0].category) {
+        // Direct JSON array from OpenAI with the format we requested
+        addLog(`Found direct JSON array with ${result.length} items`, 'success');
+
+        // Pass the array directly to the component
+        processedResult = result;
+      }
+      // Handle ingredient_list array
+      else if (result.ingredient_list && Array.isArray(result.ingredient_list)) {
         addLog(`Found ingredient_list array with ${result.ingredient_list.length} items`, 'info');
-
-        // Convert to expected format with categories
-        const categorized = {};
-
-        // Try to categorize based on item properties if available
-        result.ingredient_list.forEach(item => {
-          const category = item.category || 'Other';
-          if (!categorized[category]) {
-            categorized[category] = [];
-          }
-          categorized[category].push(item.name || item);
-        });
-
+        processedResult = result.ingredient_list;
+      }
+      // Handle standard response formats
+      else if (result.groceryList && Array.isArray(result.groceryList)) {
+        addLog(`Found groceryList array with ${result.groceryList.length} categories`, 'info');
         processedResult = {
-          categories: categorized,
-          healthyAlternatives: result.healthyAlternatives || [],
+          groceryList: result.groceryList,
           shoppingTips: result.shoppingTips || [],
-          cached: false,
-          timestamp: new Date().toISOString(),
-          menuId: selectedMenuId
+          cached: false
         };
       }
-      else if (result.categories && typeof result.categories === 'object') {
-        // Format 2: Already has categories object
-        addLog(`Found categories object with ${Object.keys(result.categories).length} categories`, 'info');
-
-        processedResult = {
-          ...result,
-          cached: false,
-          timestamp: new Date().toISOString(),
-          menuId: selectedMenuId
-        };
-      }
-      else if (result.data && result.data.categories) {
-        // Format 3: Data wrapped in data property
-        addLog(`Found categories in data property`, 'info');
-
-        processedResult = {
-          ...result.data,
-          cached: false,
-          timestamp: new Date().toISOString(),
-          menuId: selectedMenuId
-        };
-      }
-      else if (Array.isArray(result)) {
-        // Format 4: Direct array of items
-        addLog(`Found direct array with ${result.length} items`, 'info');
-
-        // Create a single category with all items
-        processedResult = {
-          categories: { 'All Items': result },
-          healthyAlternatives: [],
-          shoppingTips: [],
-          cached: false,
-          timestamp: new Date().toISOString(),
-          menuId: selectedMenuId
-        };
-      }
+      // Use adapter as a fallback for other formats
       else {
-        // Unknown format - log details and create a minimal valid structure
-        addLog(`Unrecognized format - creating minimal structure`, 'warning');
-        console.log('Unknown result format:', result);
-
-        // Try extracting any arrays found in the result
-        const allItems = [];
-        Object.keys(result).forEach(key => {
-          if (Array.isArray(result[key])) {
-            addLog(`Found array in property "${key}" with ${result[key].length} items`, 'info');
-            allItems.push(...result[key]);
-          }
-        });
-
-        processedResult = {
-          categories: { 'All Items': allItems.length > 0 ? allItems : ['No items found'] },
-          healthyAlternatives: [],
-          shoppingTips: [],
-          cached: false,
-          timestamp: new Date().toISOString(),
-          menuId: selectedMenuId
-        };
+        addLog(`Using adapter for non-standard response format`, 'info');
+        processedResult = adaptShoppingListResponse(result, selectedMenuId, addLog);
       }
 
       // Add a slight delay to ensure the UI updates
@@ -4526,26 +4485,13 @@ const categorizeItems = (mealPlanData) => {
             onClick={() => {
               setShowAiShoppingPrompt(false);
               setActiveTab(1);
-              generateCategorizedShoppingList();
-            }}
-            variant="contained"
-            startIcon={<CategoryIcon />}
-            color="secondary"
-            sx={{ mr: 1 }}
-          >
-            Categorized List
-          </Button>
-          <Button
-            onClick={() => {
-              setShowAiShoppingPrompt(false);
-              setActiveTab(1);
               generateNewAiList();
             }}
             variant="contained"
             startIcon={<AutoAwesome />}
             color="secondary"
           >
-            New AI List
+            Generate AI List
           </Button>
         </DialogActions>
       </Dialog>

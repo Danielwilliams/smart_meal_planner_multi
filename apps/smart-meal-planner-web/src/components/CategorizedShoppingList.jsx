@@ -65,6 +65,32 @@ const CategorizedShoppingList = ({ groceryData, selectedStore, onAddToCart }) =>
       });
       return categorized;
     }
+    // Handle ingredient_list format
+    else if (groceryData && groceryData.ingredient_list && Array.isArray(groceryData.ingredient_list)) {
+      const categorized = {};
+      groceryData.ingredient_list.forEach(item => {
+        const category = item.category || 'Other';
+        if (!categorized[category]) {
+          categorized[category] = [];
+        }
+        categorized[category].push(`${item.name}: ${item.quantity || ''} ${item.unitOfMeasure || ''}`);
+      });
+      return categorized;
+    }
+    // Handle direct array format (from OpenAI response)
+    else if (Array.isArray(groceryData)) {
+      const categorized = {};
+      groceryData.forEach(item => {
+        if (item && typeof item === 'object') {
+          const category = item.category || 'Other';
+          if (!categorized[category]) {
+            categorized[category] = [];
+          }
+          categorized[category].push(`${item.name}: ${item.quantity || ''} ${item.unitOfMeasure || item.unit || ''}`);
+        }
+      });
+      return categorized;
+    }
 
     return {}; // Default empty object if no recognized format
   };
