@@ -554,13 +554,13 @@ function CartPage() {
   // Helper function to extract grocery items for Instacart
   const extractGroceryItems = () => {
     // Check if we have a flat or categorized grocery list
-    if (Array.isArray(internalCart.instacart)) {
+    if (internalCart && internalCart.instacart && Array.isArray(internalCart.instacart)) {
       // If it's a flat array, extract names
-      return internalCart.instacart.map(item => 
-        typeof item === 'string' ? item : (item.name || '')
-      ).filter(name => name.trim() !== '');
+      return internalCart.instacart.map(item =>
+        typeof item === 'string' ? item : ((item && item.name) || '')
+      ).filter(name => name && name.trim() !== '');
     }
-    
+
     // Default to empty array if we couldn't extract items
     return [];
   };
@@ -568,7 +568,16 @@ function CartPage() {
   const handleInstacartSearch = async () => {
     try {
       // Get the items from the instacart store
-      const storeItems = internalCart.instacart.map(item => item.name);
+      if (!internalCart?.instacart || !Array.isArray(internalCart.instacart)) {
+        setError('No items assigned to instacart or invalid data format');
+        return;
+      }
+
+      const storeItems = internalCart.instacart
+        .filter(item => item && typeof item === 'object')
+        .map(item => item.name || '')
+        .filter(name => name.trim() !== '');
+
       setLastSearchedItems(storeItems);
       
       if (storeItems.length === 0) {
@@ -1326,9 +1335,10 @@ const handleAddToCart = async (items, store) => {
     }
     
     // Safely get store name with capitalization
-    const storeName = typeof store === 'string' ? 
-      `${store.charAt(0).toUpperCase()}${store.slice(1)}` : 
-      'Unknown Store';
+    let storeName = 'Unknown Store';
+    if (store && typeof store === 'string') {
+      storeName = `${store.charAt(0).toUpperCase()}${store.slice(1)}`;
+    }
     
     return (
     <Card sx={{ mb: 4 }}>
@@ -1430,7 +1440,7 @@ const handleAddToCart = async (items, store) => {
             Unassigned Items
           </Typography>
           
-          {internalCart.unassigned.length === 0 ? (
+          {!internalCart?.unassigned || internalCart.unassigned.length === 0 ? (
             <Typography color="text.secondary">No unassigned items</Typography>
           ) : (
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -1487,9 +1497,9 @@ const handleAddToCart = async (items, store) => {
       </Card>
 
       {/* Store Sections */}
-      {renderStoreSection('kroger', internalCart.kroger, () => handleStoreSearch('kroger'), KrogerResults)}
-      {renderStoreSection('walmart', internalCart.walmart, () => handleStoreSearch('walmart'), WalmartResults)}
-      {renderStoreSection('instacart', internalCart.instacart, () => handleInstacartSearch(), InstacartResultsWrapper)}
+      {renderStoreSection('kroger', internalCart?.kroger || [], () => handleStoreSearch('kroger'), KrogerResults)}
+      {renderStoreSection('walmart', internalCart?.walmart || [], () => handleStoreSearch('walmart'), WalmartResults)}
+      {renderStoreSection('instacart', internalCart?.instacart || [], () => handleInstacartSearch(), InstacartResultsWrapper)}
 
       {/* Error Display */}
       {error && (
