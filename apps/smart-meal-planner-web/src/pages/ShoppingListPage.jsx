@@ -1227,8 +1227,8 @@ function ShoppingListPage() {
           },
           body: JSON.stringify({
             menu_id: parseInt(selectedMenuId),
-            clear_cache: true,  // Special flag to clear cache
-            use_ai: false       // Don't generate yet, just clear
+            use_cache: false,  // Force fresh generation
+            use_ai: false      // Just clear cache, don't generate
           })
         });
 
@@ -1242,8 +1242,10 @@ function ShoppingListPage() {
         // Continue anyway
       }
 
-      // Step 2: Generate a new shopping list using POST
+      // Step 2: Generate a new shopping list using POST with enhanced OpenAI prompt
       addLog('Generating new AI shopping list...');
+      addLog('Requesting AI categorization for better organization', 'info');
+
       const response = await fetch(`https://smartmealplannermulti-production.up.railway.app/menu/${selectedMenuId}/ai-shopping-list`, {
         method: 'POST',  // Using POST to avoid Method Not Allowed error
         headers: {
@@ -1253,7 +1255,14 @@ function ShoppingListPage() {
         body: JSON.stringify({
           menu_id: parseInt(selectedMenuId),
           use_ai: true,
-          use_cache: false  // Force fresh generation
+          use_cache: false,  // Force fresh generation
+          additional_preferences: `
+Please format each item as "Item: Quantity-Unit" and categorize into store sections.
+Include healthy alternatives (e.g., "substitute Sour Cream for Non Fat Plain Greek Yogurt").
+Group items into distinct categories like PRODUCE, MEAT/PROTEIN, DAIRY, BAKERY, GRAINS, CANNED GOODS, FROZEN, etc.
+For each item, suggest the best aisle or section in a typical grocery store.
+Also include helpful shopping tips.
+`
         })
       });
 
@@ -1263,19 +1272,85 @@ function ShoppingListPage() {
         throw new Error(`API error ${response.status}: ${errorText}`);
       }
 
-      const result = await response.json();
-      addLog('Received response from API', 'success');
+      const initialResult = await response.json();
+      addLog('Received initial response from API', 'success');
 
       // Log the entire response structure to debug
-      addLog(`Response keys: ${Object.keys(result).join(', ')}`, 'info');
-      console.log("DEBUG Response data:", result);
+      addLog(`Response keys: ${Object.keys(initialResult).join(', ')}`, 'info');
+      console.log("DEBUG Initial Response:", initialResult);
 
       // Log the raw data in a more readable format
-      addLog(`Raw data: ${JSON.stringify(result).substring(0, 500)}...`, 'info');
+      addLog(`Raw data: ${JSON.stringify(initialResult).substring(0, 500)}...`, 'info');
 
-      // Process the result using our adapter to properly handle different formats
-      let processedResult = adaptShoppingListResponse(result, selectedMenuId, addLog);
-      console.log("PROCESSED DATA:", processedResult);
+      // Check if we need to poll for the final result
+      if (initialResult.status === 'processing') {
+        addLog('AI processing in progress - starting to poll for results', 'info');
+
+        // Begin polling for the completed AI result
+        let pollCount = 0;
+        const maxPolls = 20; // Maximum number of polling attempts
+        const pollInterval = 2000; // Poll every 2 seconds
+
+        // Function to poll for status
+        const pollForResult = async () => {
+          if (pollCount >= maxPolls) {
+            addLog('Reached maximum polling attempts - giving up', 'warning');
+            return initialResult;
+          }
+
+          pollCount++;
+          addLog(`Polling for results (attempt ${pollCount}/${maxPolls})...`, 'info');
+
+          try {
+            const pollResponse = await fetch(`https://smartmealplannermulti-production.up.railway.app/menu/${selectedMenuId}/ai-shopping-list`, {
+              method: 'GET',  // Use GET for status check
+              headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+              }
+            });
+
+            if (!pollResponse.ok) {
+              addLog(`Polling error: ${pollResponse.status}`, 'error');
+              return null;
+            }
+
+            const pollResult = await pollResponse.json();
+
+            // Check if processing is complete
+            if (pollResult.status === 'completed' || pollResult.status === 'error' ||
+                (pollResult.groceryList && pollResult.groceryList.length > 0)) {
+              addLog('Processing complete! Final results received', 'success');
+              return pollResult;
+            } else {
+              // Still processing, continue polling
+              addLog(`Still processing: ${pollResult.status || 'unknown status'}`, 'info');
+              return new Promise(resolve => {
+                setTimeout(async () => {
+                  const result = await pollForResult();
+                  resolve(result);
+                }, pollInterval);
+              });
+            }
+          } catch (pollError) {
+            addLog(`Polling error: ${pollError.message}`, 'error');
+            return null;
+          }
+        };
+
+        // Start polling and wait for the final result
+        const finalResult = await pollForResult() || initialResult;
+        addLog('Final response received', 'success');
+        addLog(`Final data structure: ${Object.keys(finalResult).join(', ')}`, 'info');
+
+        // Process the final result
+        var processedResult = adaptShoppingListResponse(finalResult, selectedMenuId, addLog);
+        console.log("PROCESSED DATA:", processedResult);
+      } else {
+        // We already have the final result
+        addLog('Processing already complete - no polling needed', 'success');
+        var processedResult = adaptShoppingListResponse(initialResult, selectedMenuId, addLog);
+        console.log("PROCESSED DATA:", processedResult);
+      }
 
       // Log a summary of what was generated
       try {

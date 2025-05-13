@@ -71,16 +71,78 @@ export const adaptShoppingListResponse = (result, menuId, logger = null) => {
 
         // Extract data from the expected format
         const firstItem = result.groceryList[0];
-        categories[firstItem.category] = firstItem.items;
 
-        // If there are multiple categories in the response, extract them
-        result.groceryList.forEach(categoryObj => {
-          if (categoryObj.category && Array.isArray(categoryObj.items)) {
-            categories[categoryObj.category] = categoryObj.items;
+        // Check if it's just "All Items" - if so, we should categorize the items ourselves
+        if (firstItem.category === "All Items" && Array.isArray(firstItem.items)) {
+          log(`Found "All Items" category - categorizing items automatically`, 'info');
+
+          // Define standard categories
+          const categorizedItems = {
+            "Protein": [],
+            "Produce": [],
+            "Dairy": [],
+            "Grains": [],
+            "Pantry": [],
+            "Condiments": [],
+            "Other": []
+          };
+
+          // Keywords for categorization
+          const categoryKeywords = {
+            "Protein": ["chicken", "beef", "turkey", "salmon", "fish", "pork", "tofu", "sausage", "bacon", "shrimp", "meat", "protein"],
+            "Produce": ["pepper", "onion", "garlic", "broccoli", "carrot", "lettuce", "tomato", "spinach", "cucumber", "avocado", "potato", "berr", "lime", "ginger", "vegetable", "fruit"],
+            "Dairy": ["cheese", "yogurt", "milk", "cream", "butter", "egg", "parmesan", "cheddar", "mozzarella"],
+            "Grains": ["rice", "pasta", "quinoa", "oat", "bread", "tortilla", "flour", "gluten-free"],
+            "Pantry": ["oil", "spice", "salt", "pepper", "sugar", "honey", "cornstarch", "vinegar", "sauce", "canned", "can", "broth", "stock"],
+            "Condiments": ["salsa", "sauce", "soy sauce", "lime juice"]
+          };
+
+          // Helper function to categorize an item
+          const categorizeItem = (item) => {
+            if (!item || !item.name) return "Other";
+
+            const itemName = item.name.toLowerCase();
+
+            // Check each category's keywords
+            for (const [category, keywords] of Object.entries(categoryKeywords)) {
+              for (const keyword of keywords) {
+                if (itemName.includes(keyword)) {
+                  return category;
+                }
+              }
+            }
+
+            return "Other";
+          };
+
+          // Categorize each item
+          firstItem.items.forEach(item => {
+            const category = categorizeItem(item);
+            categorizedItems[category].push(item);
+          });
+
+          // Remove empty categories
+          for (const category in categorizedItems) {
+            if (categorizedItems[category].length === 0) {
+              delete categorizedItems[category];
+            }
           }
-        });
 
-        log(`Created categories from special format: ${Object.keys(categories).join(', ')}`, 'info');
+          categories = categorizedItems;
+          log(`Auto-categorized items into ${Object.keys(categories).length} categories: ${Object.keys(categories).join(', ')}`, 'info');
+        } else {
+          // Use the categories as-is
+          categories[firstItem.category] = firstItem.items;
+
+          // If there are multiple categories in the response, extract them
+          result.groceryList.forEach(categoryObj => {
+            if (categoryObj.category && Array.isArray(categoryObj.items)) {
+              categories[categoryObj.category] = categoryObj.items;
+            }
+          });
+
+          log(`Created categories from special format: ${Object.keys(categories).join(', ')}`, 'info');
+        }
       }
       else if (Array.isArray(result.groceryList)) {
         // Try to extract categories if the first item is an object
