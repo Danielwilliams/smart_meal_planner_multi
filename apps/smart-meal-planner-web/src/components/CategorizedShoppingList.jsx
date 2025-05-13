@@ -32,32 +32,66 @@ const CategorizedShoppingList = ({ groceryData, selectedStore, onAddToCart }) =>
 
   // Group items by category
   const getItemsByCategory = () => {
-    if (!groceryData || !groceryData.groceryList || !Array.isArray(groceryData.groceryList)) {
-      return {};
+    // Handle traditional format
+    if (groceryData && groceryData.groceryList && Array.isArray(groceryData.groceryList)) {
+      // Old format - with groceryList array of category objects
+      const categorized = {};
+      groceryData.groceryList.forEach(catItem => {
+        const category = catItem.category || 'Other';
+        if (!categorized[category]) {
+          categorized[category] = [];
+        }
+
+        if (Array.isArray(catItem.items)) {
+          catItem.items.forEach(item => {
+            categorized[category].push(typeof item === 'string'
+              ? item
+              : `${item.name}: ${item.quantity || ''} ${item.unit || ''}`);
+          });
+        }
+      });
+      return categorized;
+    }
+    // Handle new direct format with items array and categories
+    else if (groceryData && groceryData.items && Array.isArray(groceryData.items)) {
+      // New format - with direct items array containing category field
+      const categorized = {};
+      groceryData.items.forEach(item => {
+        const category = item.category || 'Other';
+        if (!categorized[category]) {
+          categorized[category] = [];
+        }
+        categorized[category].push(`${item.name}: ${item.quantity || ''} ${item.unit || ''}`);
+      });
+      return categorized;
     }
 
-    // Group items by their category
-    const categorized = {};
-    groceryData.groceryList.forEach(item => {
-      const category = item.category || 'Other';
-      if (!categorized[category]) {
-        categorized[category] = [];
-      }
-      categorized[category].push(`${item.name}: ${item.quantity}`);
-    });
-
-    return categorized;
+    return {}; // Default empty object if no recognized format
   };
 
   // Get color for category
   const getCategoryColor = (category) => {
     const colors = {
+      // Original colors
       'Protein': '#F44336', // Red
       'Produce': '#4CAF50', // Green
       'Dairy': '#2196F3',   // Blue
       'Grains': '#FF9800',  // Orange
       'Pantry': '#795548',  // Brown
       'Condiments': '#9C27B0', // Purple
+
+      // New standard categories
+      'Meat & Seafood': '#F44336', // Red
+      'Dairy & Eggs': '#2196F3',   // Blue
+      'Bakery & Bread': '#FF9800', // Orange
+      'Dry Goods & Pasta': '#FF9800', // Orange
+      'Canned Goods': '#795548', // Brown
+      'Frozen Foods': '#00BCD4', // Cyan
+      'Condiments & Spices': '#9C27B0', // Purple
+      'Snacks': '#FF4081', // Pink
+      'Beverages': '#3F51B5', // Indigo
+      'Baking': '#795548', // Brown
+
       'Other': '#9E9E9E'    // Grey
     };
     return colors[category] || colors['Other'];

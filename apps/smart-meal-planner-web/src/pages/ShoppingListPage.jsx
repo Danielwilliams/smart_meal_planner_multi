@@ -1543,6 +1543,117 @@ Also include helpful shopping tips.
     }
   };
 
+  // Generate categorized shopping list with new API endpoint
+  const generateCategorizedShoppingList = async () => {
+    // Reset state and show loading
+    setGenerationLogs([]);
+    setGenerationStats(null);
+    setAiShoppingLoading(true);
+    const startTime = new Date();
+
+    // Helper to add logs
+    const addLog = (message, type = 'info') => {
+      const timestamp = new Date().toLocaleTimeString();
+      console.log(`[AI List] ${timestamp} - ${message}`);
+      setGenerationLogs(prev => [...prev, { timestamp, message, type }]);
+    };
+
+    try {
+      addLog(`Generating categorized shopping list for menu ${selectedMenuId}`);
+
+      // Clear cache first
+      try {
+        const clearCacheResponse = await fetch(`https://smartmealplannermulti-production.up.railway.app/menu/${selectedMenuId}/ai-shopping-cache`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+        if (clearCacheResponse.ok) {
+          addLog('Cache cleared successfully', 'success');
+        }
+      } catch (e) {
+        addLog(`Cache clearing error: ${e.message}`, 'warning');
+        // Continue anyway
+      }
+
+      // Make request to categorized shopping list API
+      const response = await fetch(`https://smartmealplannermulti-production.up.railway.app/menu/${selectedMenuId}/categorized-shopping-list`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          menu_id: parseInt(selectedMenuId),
+          use_cache: false
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        addLog(`API error: ${response.status} - ${errorText}`, 'error');
+        throw new Error(`API error: ${errorText}`);
+      }
+
+      // Parse response
+      const result = await response.json();
+      addLog('Received categorized shopping list', 'success');
+      console.log("Categorized shopping list result:", result);
+
+      // Update state with categorized data
+      setAiShoppingData(result);
+
+      // Log stats about the result
+      if (result.items && Array.isArray(result.items)) {
+        addLog(`Generated ${result.items.length} items in ${result.categories ? result.categories.length : 0} categories`, 'info');
+      }
+
+      // Cache the result
+      try {
+        localStorage.setItem(
+          `${AI_SHOPPING_CACHE_KEY}_${selectedMenuId}`,
+          JSON.stringify({
+            ...result,
+            cache_time: new Date().toISOString()
+          })
+        );
+        addLog('Shopping list cached successfully', 'success');
+      } catch (e) {
+        addLog(`Error caching shopping list: ${e.message}`, 'warning');
+      }
+
+      // Update stats
+      const endTime = new Date();
+      const durationSeconds = (endTime - startTime) / 1000;
+      setGenerationStats({
+        startTime,
+        endTime,
+        duration: durationSeconds,
+        success: true,
+        responseSize: JSON.stringify(result).length
+      });
+
+      addLog(`Generation completed in ${durationSeconds.toFixed(2)} seconds`, 'success');
+      showSnackbar('Categorized shopping list generated successfully');
+
+    } catch (error) {
+      // Handle error
+      const endTime = new Date();
+      setGenerationStats({
+        startTime,
+        endTime,
+        duration: (endTime - startTime) / 1000,
+        success: false,
+        error: error.message
+      });
+      addLog(`Error: ${error.message}`, 'error');
+      showSnackbar(`Error: ${error.message}`);
+    } finally {
+      setAiShoppingLoading(false);
+    }
+  };
+
   const directFetchShoppingList = async (menuId) => {
     console.log("DIRECT FETCH: Attempting direct API call to get shopping list for menu ID:", menuId);
     try {
@@ -4410,6 +4521,19 @@ const categorizeItems = (mealPlanData) => {
             color="primary"
           >
             Use AI (Cached)
+          </Button>
+          <Button
+            onClick={() => {
+              setShowAiShoppingPrompt(false);
+              setActiveTab(1);
+              generateCategorizedShoppingList();
+            }}
+            variant="contained"
+            startIcon={<CategoryIcon />}
+            color="secondary"
+            sx={{ mr: 1 }}
+          >
+            Categorized List
           </Button>
           <Button
             onClick={() => {
