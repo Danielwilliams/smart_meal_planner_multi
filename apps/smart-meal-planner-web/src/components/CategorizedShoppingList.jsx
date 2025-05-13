@@ -31,6 +31,17 @@ const CategorizedShoppingList = ({ groceryData, selectedStore, onAddToCart }) =>
   };
 
   // Group items by category
+  // Helper to format an item string nicely
+  const formatItemDisplay = (item) => {
+    if (typeof item === 'string') return item;
+
+    const name = item.name || '';
+    const quantity = item.quantity || '';
+    const unit = item.unitOfMeasure || item.unit || '';
+
+    return `${name}: ${quantity} ${unit}`.trim();
+  };
+
   const getItemsByCategory = () => {
     // Handle traditional format
     if (groceryData && groceryData.groceryList && Array.isArray(groceryData.groceryList)) {
@@ -81,9 +92,7 @@ const CategorizedShoppingList = ({ groceryData, selectedStore, onAddToCart }) =>
             categorized[category] = [];
           }
 
-          categorized[category].push(typeof item === 'string'
-            ? item
-            : `${item.name}: ${item.quantity || ''} ${item.unit || ''}`);
+          categorized[category].push(formatItemDisplay(item));
         });
 
         return categorized;
@@ -98,9 +107,7 @@ const CategorizedShoppingList = ({ groceryData, selectedStore, onAddToCart }) =>
 
         if (Array.isArray(catItem.items)) {
           catItem.items.forEach(item => {
-            categorized[category].push(typeof item === 'string'
-              ? item
-              : `${item.name}: ${item.quantity || ''} ${item.unit || ''}`);
+            categorized[category].push(formatItemDisplay(item));
           });
         }
       });
@@ -115,7 +122,7 @@ const CategorizedShoppingList = ({ groceryData, selectedStore, onAddToCart }) =>
         if (!categorized[category]) {
           categorized[category] = [];
         }
-        categorized[category].push(`${item.name}: ${item.quantity || ''} ${item.unit || ''}`);
+        categorized[category].push(formatItemDisplay(item));
       });
       return categorized;
     }
@@ -127,7 +134,7 @@ const CategorizedShoppingList = ({ groceryData, selectedStore, onAddToCart }) =>
         if (!categorized[category]) {
           categorized[category] = [];
         }
-        categorized[category].push(`${item.name}: ${item.quantity || ''} ${item.unitOfMeasure || ''}`);
+        categorized[category].push(formatItemDisplay(item));
       });
       return categorized;
     }
@@ -140,10 +147,105 @@ const CategorizedShoppingList = ({ groceryData, selectedStore, onAddToCart }) =>
           if (!categorized[category]) {
             categorized[category] = [];
           }
-          categorized[category].push(`${item.name}: ${item.quantity || ''} ${item.unitOfMeasure || item.unit || ''}`);
+          categorized[category].push(formatItemDisplay(item));
         }
       });
       return categorized;
+    }
+
+    // As a last resort, try to directly categorize items from the data
+    if (groceryData && typeof groceryData === 'object') {
+      console.log("Trying direct categorization of unknown format:", groceryData);
+      const categorized = {};
+
+      // Function to process raw items
+      const processRawItems = (items) => {
+        if (!Array.isArray(items)) return;
+
+        items.forEach(item => {
+          if (!item) return;
+
+          // For object items
+          if (typeof item === 'object') {
+            const name = item.name || '';
+            if (!name) return;
+
+            const itemName = name.toLowerCase();
+            let category = 'Other';
+
+            // Determine category based on name - same logic as above
+            if (/chicken|beef|pork|fish|seafood|meat|protein|turkey|steak|sausage|bacon/.test(itemName)) {
+              category = 'Meat & Seafood';
+            } else if (/spinach|lettuce|tomato|onion|potato|garlic|pepper|vegetable|carrot|cucumber|produce|fruit|apple|banana|avocado|ginger/.test(itemName)) {
+              category = 'Produce';
+            } else if (/milk|cheese|yogurt|cream|egg|butter|dairy/.test(itemName)) {
+              category = 'Dairy & Eggs';
+            } else if (/bread|roll|tortilla|bagel|bakery/.test(itemName)) {
+              category = 'Bakery & Bread';
+            } else if (/pasta|rice|quinoa|cereal|grain|flour/.test(itemName)) {
+              category = 'Dry Goods & Pasta';
+            } else if (/frozen|ice cream/.test(itemName)) {
+              category = 'Frozen Foods';
+            } else if (/oil|vinegar|sauce|dressing|condiment|ketchup|mustard/.test(itemName)) {
+              category = 'Condiments & Spices';
+            } else if (/salt|pepper|spice|herb|seasoning/.test(itemName)) {
+              category = 'Condiments & Spices';
+            } else if (/cookie|chip|candy|snack/.test(itemName)) {
+              category = 'Snacks';
+            } else if (/water|juice|soda|beverage|drink|coffee|tea/.test(itemName)) {
+              category = 'Beverages';
+            } else if (/sugar|baking powder|baking soda|vanilla|chocolate/.test(itemName)) {
+              category = 'Baking';
+            }
+
+            // Add to category
+            if (!categorized[category]) {
+              categorized[category] = [];
+            }
+
+            categorized[category].push(formatItemDisplay(item));
+          }
+          // For string items
+          else if (typeof item === 'string') {
+            const itemName = item.toLowerCase();
+            let category = 'Other';
+
+            // Simple category determination
+            if (/chicken|beef|pork|fish|meat/.test(itemName)) {
+              category = 'Meat & Seafood';
+            } else if (/vegetable|fruit|produce/.test(itemName)) {
+              category = 'Produce';
+            } else if (/dairy|milk|cheese|yogurt|egg/.test(itemName)) {
+              category = 'Dairy & Eggs';
+            }
+
+            // Add to category
+            if (!categorized[category]) {
+              categorized[category] = [];
+            }
+
+            categorized[category].push(item);
+          }
+        });
+      };
+
+      // Try to find items in various places
+      if (Array.isArray(groceryData)) {
+        processRawItems(groceryData);
+      } else {
+        // Look for arrays in the object
+        Object.values(groceryData).forEach(value => {
+          if (Array.isArray(value)) {
+            processRawItems(value);
+          }
+        });
+      }
+
+      // If we found any categories, return them
+      if (Object.keys(categorized).length > 0) {
+        console.log("Successfully categorized raw items into:", Object.keys(categorized));
+        return categorized;
+      }
     }
 
     return {}; // Default empty object if no recognized format

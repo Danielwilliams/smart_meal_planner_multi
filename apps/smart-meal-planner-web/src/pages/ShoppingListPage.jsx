@@ -1218,6 +1218,7 @@ function ShoppingListPage() {
 
     try {
       addLog(`Starting new AI shopping list generation for menu ID: ${selectedMenuId}`);
+      console.log("Menu data for AI processing:", groceryList);
 
       // Step 1: Clear the cache
       addLog('Clearing shopping list cache...');
