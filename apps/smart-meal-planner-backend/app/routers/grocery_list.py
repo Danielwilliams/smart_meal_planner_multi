@@ -1095,12 +1095,14 @@ def generate_ai_shopping_list(menu_data, basic_grocery_list, additional_preferen
   ]
 }
 """
-        # Simple, direct instructions for exactly what we want
-        prompt += "\n\nIMPORTANT: Please extract the exact quantities from the original shopping list. Don't reduce or change the quantities - preserve the actual amounts listed."
+        # Extremely direct and strict instructions for quantity preservation
+        prompt += "\n\nCRITICAL IMPORTANCE: You MUST preserve the EXACT original quantities from the shopping list. This is the HIGHEST priority requirement."
+        prompt += "\n\nDO NOT standardize quantities in ANY way. If an item says '96 oz' of chicken, the quantity MUST be '96' and the unitOfMeasure MUST be 'oz'. DO NOT convert to pounds or any other unit."
+        prompt += "\n\nDO NOT round quantities or simplify them. Keep all decimal places and exact numeric values as provided in the original list."
         prompt += "\n\nPlease return a JSON array where each item has these fields:"
-        prompt += "\n1. name: The ingredient name"
-        prompt += "\n2. quantity: The EXACT numeric amount from the original list (e.g., '96' for 96 oz of chicken, not reduced to '6')"
-        prompt += "\n3. unitOfMeasure: The standardized unit"
+        prompt += "\n1. name: The ingredient name WITHOUT quantities in the name"
+        prompt += "\n2. quantity: The EXACT original numeric amount from the input list (e.g., '96' for chicken, not '1')"
+        prompt += "\n3. unitOfMeasure: The EXACT original unit from the input (e.g., 'oz', 'piece', etc.)"
         prompt += "\n4. category: The department category"
 
         prompt += "\n\nExample format:"

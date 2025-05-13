@@ -428,7 +428,25 @@ const CategorizedShoppingList = ({ groceryData, selectedStore, onAddToCart }) =>
                       >
                         {typeof item === 'object' && item.name ? (
                           <ListItemText
-                            primary={`${item.name}: ${item.quantity || ''} ${item.unitOfMeasure || item.unit || ''}`}
+                            primary={
+                              <Box component="span" sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <span>{item.name}</span>
+                                <Typography
+                                  component="span"
+                                  variant="body2"
+                                  sx={{
+                                    fontWeight: 'bold',
+                                    ml: 2,
+                                    backgroundColor: '#f5f5f5',
+                                    px: 1,
+                                    py: 0.5,
+                                    borderRadius: 1
+                                  }}
+                                >
+                                  {item.quantity} {item.unitOfMeasure || item.unit || ''}
+                                </Typography>
+                              </Box>
+                            }
                           />
                         ) : (
                           <ListItemText primary={item} />

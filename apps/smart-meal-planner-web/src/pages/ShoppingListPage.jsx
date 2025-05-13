@@ -1490,16 +1490,73 @@ Combine duplicate ingredients, adding up quantities when appropriate.
       else if (result.groceryList && Array.isArray(result.groceryList)) {
         addLog(`Found groceryList array with ${result.groceryList.length} categories`, 'info');
 
+        // Save the initial raw grocery data to use for quantity repair later
+        if (!window.initialGroceryList && result.status === 'processing') {
+          addLog('Saving initial grocery list data for quantity reference', 'info');
+          window.initialGroceryList = JSON.parse(JSON.stringify(result));
+        }
+
         // Check if we need to preserve the internal item objects
         if (result.groceryList.length > 0 &&
             result.groceryList[0].items &&
             Array.isArray(result.groceryList[0].items) &&
             result.groceryList[0].items.length > 0 &&
-            typeof result.groceryList[0].items[0] === 'object' &&
-            result.groceryList[0].items[0].unitOfMeasure) {
+            typeof result.groceryList[0].items[0] === 'object') {
 
-          addLog('Detected nested item objects with unitOfMeasure - preserving full object data', 'info');
-          // Just pass through the full structure with nested objects
+          addLog('Detected nested item objects - checking quantities', 'info');
+
+          // If we have the initial data with correct quantities, use it to fix the current result
+          if (window.initialGroceryList &&
+              window.initialGroceryList.groceryList &&
+              window.initialGroceryList.groceryList.length > 0 &&
+              window.initialGroceryList.groceryList[0].items) {
+
+            addLog('Using initial data to fix quantities', 'info');
+            const originalItems = {};
+
+            // First create a map of original quantities
+            window.initialGroceryList.groceryList[0].items.forEach(item => {
+              if (item && item.name && item.quantity) {
+                // Some quantities may include the unit (e.g. "96 oz")
+                const parts = String(item.quantity).split(' ');
+                if (parts.length > 1) {
+                  originalItems[item.name.toLowerCase()] = {
+                    quantity: parts[0],
+                    unit: parts.slice(1).join(' ')
+                  };
+                  addLog(`Original: ${item.name} = ${parts[0]} ${parts.slice(1).join(' ')}`, 'info');
+                } else {
+                  originalItems[item.name.toLowerCase()] = {
+                    quantity: item.quantity,
+                    unit: ''
+                  };
+                }
+              }
+            });
+
+            // Now update each category's items
+            let fixCount = 0;
+            result.groceryList.forEach(category => {
+              if (category && Array.isArray(category.items)) {
+                category.items.forEach(item => {
+                  if (item && item.name) {
+                    const originalItem = originalItems[item.name.toLowerCase()];
+                    if (originalItem) {
+                      item.quantity = originalItem.quantity;
+                      if (originalItem.unit) {
+                        item.unitOfMeasure = originalItem.unit;
+                      }
+                      fixCount++;
+                    }
+                  }
+                });
+              }
+            });
+
+            addLog(`Fixed ${fixCount} items with original quantities`, 'success');
+          } else {
+            addLog('No initial data available for quantity repair', 'warning');
+          }
         } else {
           addLog('Standard groceryList format detected', 'info');
         }
