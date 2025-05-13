@@ -1231,18 +1231,38 @@ const handleAddToCart = async (items, store) => {
   // Already defined earlier in the file, removing duplicate
 
   const renderStoreSection = (store, items, searchFn, ResultsComponent) => {
-    // Guard against null/undefined store
+    // Guard against null/undefined parameters
     if (!store) {
       console.error('renderStoreSection called with null/undefined store');
       return null;
     }
+
+    if (!items) {
+      console.error(`renderStoreSection called with null/undefined items for store: ${store}`);
+      items = [];
+    }
+
+    if (!searchFn) {
+      console.error(`renderStoreSection called with null/undefined searchFn for store: ${store}`);
+      searchFn = () => console.warn(`Search function not provided for ${store}`);
+    }
+
+    if (!ResultsComponent) {
+      console.error(`renderStoreSection called with null/undefined ResultsComponent for store: ${store}`);
+      return null;
+    }
+
+    // Safely get store name with capitalization
+    const storeName = typeof store === 'string' ?
+      `${store.charAt(0).toUpperCase()}${store.slice(1)}` :
+      'Unknown Store';
 
     return (
     <Card sx={{ mb: 4 }}>
       <CardContent>
         <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
           <Typography variant="h6">
-            {`${store.charAt(0).toUpperCase() + store.slice(1)} Items`}
+            {`${storeName} Items`}
           </Typography>
           <Box>
             <Tooltip title="Clear all items">
@@ -1258,7 +1278,7 @@ const handleAddToCart = async (items, store) => {
               <IconButton 
                 size="small" 
                 onClick={() => clearSearchResults(store)}
-                disabled={searchResults[store].length === 0}
+                disabled={!searchResults || !store || !searchResults[store] || searchResults[store].length === 0}
               >
                 <ClearIcon />
               </IconButton>
@@ -1301,13 +1321,13 @@ const handleAddToCart = async (items, store) => {
             <Button
               variant="contained"
               onClick={searchFn}
-              disabled={loading.search || loading[store]}
-              startIcon={loading[store] ? <CircularProgress size={20} /> : <RefreshIcon />}
+              disabled={loading && (loading.search || (store && loading[store]))}
+              startIcon={loading && store && loading[store] ? <CircularProgress size={20} /> : <RefreshIcon />}
             >
-              {`Search ${store}`}
+              {`Search ${storeName}`}
             </Button>
 
-            {searchResults[store].length > 0 && (
+            {searchResults && store && searchResults[store] && searchResults[store].length > 0 && (
               <Box sx={{ mt: 2 }}>
                 <ResultsComponent 
                   results={searchResults[store]} 
