@@ -470,8 +470,10 @@ const CategorizedShoppingList = ({ groceryData, selectedStore, onAddToCart }) =>
                                     border: '1px solid #ccd6ff'
                                   }}
                                 >
-                                  {/* SIMPLIFIED DISPLAY - just show the raw quantity string */}
-                                  {item.quantity} {item.unitOfMeasure || item.unit || ''}
+                                  {/* Show quantity and unit - handle combined strings */}
+                                  {typeof item.quantity === 'string' && item.quantity.includes(' ')
+                                    ? item.quantity  // Already has unit embedded like "96 oz"
+                                    : `${item.quantity} ${item.unitOfMeasure || item.unit || ''}`}
                                 </Typography>
                               </Box>
                             }

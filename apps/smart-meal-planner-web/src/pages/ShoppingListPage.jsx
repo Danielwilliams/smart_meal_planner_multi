@@ -41,7 +41,6 @@ import ShoppingList from '../components/ShoppingList';
 import SmartShoppingList from '../components/SmartShoppingList';
 import CategorizedShoppingList from '../components/CategorizedShoppingList';
 import { adaptShoppingListResponse } from '../utils/aiShoppingListAdapter';
-import { captureOriginalQuantities, fixQuantities, resetQuantities } from '../utils/directFix';
 import { 
   AutoAwesome as AiIcon,
   ExpandMore as ExpandMoreIcon,
@@ -1210,7 +1209,6 @@ function ShoppingListPage() {
     setGenerationLogs([]);
     setGenerationStats(null);
     setAiShoppingLoading(true);
-    resetQuantities(); // Reset stored quantities
     const startTime = new Date();
 
     // Define result variable to fix reference errors
@@ -1307,9 +1305,9 @@ Combine duplicate ingredients, adding up quantities when appropriate.
       result = initialResult;
       addLog('Received initial response from API', 'success');
 
-      // Capture original quantities for later use
-      captureOriginalQuantities(initialResult);
-      addLog('Captured original quantities from response', 'info');
+      // Save initial response for later reference
+      window.initialGroceryData = initialResult;
+      console.log("Initial grocery data saved:", initialResult);
 
       // Log the entire response structure to debug
       addLog(`Response keys: ${Object.keys(initialResult).join(', ')}`, 'info');
@@ -1443,8 +1441,51 @@ Combine duplicate ingredients, adding up quantities when appropriate.
         addLog(`Final data structure: ${Object.keys(finalResult).join(', ')}`, 'info');
 
         // Apply original quantities to final result before processing
-        finalResult = fixQuantities(finalResult);
-        addLog('Applied original quantities to categorized items', 'info');
+        if (window.initialGroceryData &&
+            window.initialGroceryData.groceryList &&
+            window.initialGroceryData.groceryList[0] &&
+            window.initialGroceryData.groceryList[0].items) {
+
+            const originalItems = window.initialGroceryData.groceryList[0].items;
+            addLog(`Found ${originalItems.length} original items to apply`, 'info');
+
+            // Create a map of original items by name for quick lookup
+            const originalItemsMap = {};
+            originalItems.forEach(item => {
+                if (item && item.name) {
+                    originalItemsMap[item.name.toLowerCase()] = item;
+                }
+            });
+
+            // Go through each category and apply original quantities
+            let fixedCount = 0;
+            finalResult.groceryList.forEach(category => {
+                if (category && category.items && Array.isArray(category.items)) {
+                    category.items.forEach(item => {
+                        if (item && item.name) {
+                            const originalItem = originalItemsMap[item.name.toLowerCase()];
+                            if (originalItem) {
+                                // Apply original quantity
+                                item.quantity = originalItem.quantity;
+                                // Make the unit available through multiple properties for compatibility
+                                if (typeof originalItem.quantity === 'string' && originalItem.quantity.includes(' ')) {
+                                    // Extract unit from quantity like "96 oz"
+                                    const parts = originalItem.quantity.split(' ');
+                                    const unit = parts.slice(1).join(' ');
+                                    item.unitOfMeasure = unit;
+                                    item.unit = unit;
+                                }
+                                fixedCount++;
+                            }
+                        }
+                    });
+                }
+            });
+
+            addLog(`Fixed ${fixedCount} items with original quantities`, 'success');
+        } else {
+            addLog('No original quantities available to apply', 'warning');
+        }
 
         // Process the final result
         var processedResult = adaptShoppingListResponse(finalResult, selectedMenuId, addLog);
