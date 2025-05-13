@@ -296,25 +296,93 @@ def process_ai_shopping_list_background(menu_id: int, menu_data, grocery_list, a
         # Log AI result
         logger.info(f"AI processing completed for menu {menu_id}")
         if result:
-            logger.info(f"Result contains {len(result.get('groceryList', []))} categories")
+            # Handle both dictionary and list formats
+            if isinstance(result, list):
+                # New format - direct list of items
+                logger.info(f"Result contains {len(result)} items in an array")
+
+                # Convert to our expected format for backward compatibility
+                categorized_result = {
+                    "groceryList": [],
+                    "recommendations": ["Organized by department for easy shopping"],
+                    "status": "completed"
+                }
+
+                # Group items by category
+                categories = {}
+                for item in result:
+                    if isinstance(item, dict) and "category" in item:
+                        category = item["category"]
+                        if category not in categories:
+                            categories[category] = []
+                        categories[category].append(item)
+
+                # Convert to expected format
+                for category, items in categories.items():
+                    categorized_result["groceryList"].append({
+                        "category": category,
+                        "items": items
+                    })
+
+                # Replace result with formatted version
+                result = categorized_result
+                logger.info(f"Converted to {len(result['groceryList'])} categories")
+            else:
+                # Old format - dictionary with groceryList key
+                logger.info(f"Result contains {len(result.get('groceryList', []))} categories")
 
         # Store the completed result in cache
-        if result and isinstance(result, dict) and "groceryList" in result:
-            result['status'] = 'completed'
-            result['cached'] = False
-            result['cache_timestamp'] = datetime.now().isoformat()
-            result['menu_id'] = menu_id
+        if result:
+            # Double-check we've converted any list to the expected format
+            if isinstance(result, list):
+                # Convert list format to dictionary format if it wasn't already done above
+                logger.info("Converting list result to dictionary format for cache")
+                categorized_result = {
+                    "groceryList": [],
+                    "recommendations": ["Organized by department for easy shopping"],
+                    "status": "completed"
+                }
 
-            AI_SHOPPING_LIST_CACHE[cache_key] = {
-                'data': result,
-                'timestamp': time.time(),
-                'status': 'completed'
-            }
+                # Group by category
+                categories = {}
+                for item in result:
+                    if isinstance(item, dict) and "category" in item:
+                        category = item["category"]
+                        if category not in categories:
+                            categories[category] = []
+                        categories[category].append(item)
 
-            logger.info(f"Completed AI shopping list for menu {menu_id} and stored in cache")
+                # Convert to expected format
+                for category, items in categories.items():
+                    categorized_result["groceryList"].append({
+                        "category": category,
+                        "items": items
+                    })
+
+                result = categorized_result
+
+            # Now result should be a dictionary
+            if isinstance(result, dict) and "groceryList" in result:
+                result['status'] = 'completed'
+                result['cached'] = False
+                result['cache_timestamp'] = datetime.now().isoformat()
+                result['menu_id'] = menu_id
+
+                AI_SHOPPING_LIST_CACHE[cache_key] = {
+                    'data': result,
+                    'timestamp': time.time(),
+                    'status': 'completed'
+                }
+
+                logger.info(f"Completed AI shopping list for menu {menu_id} and stored in cache")
+            else:
+                # Invalid format even after conversion
+                logger.warning(f"Result has invalid format for menu {menu_id}, creating fallback categorized list")
+                # If AI processing failed, create a categorized fallback grocery list
+                logger.warning(f"AI processing failed for menu {menu_id}, creating fallback categorized list")
         else:
-            # If AI processing failed, create a categorized fallback grocery list
-            logger.warning(f"AI processing failed for menu {menu_id}, creating fallback categorized list")
+            # No result at all
+            logger.warning(f"No result returned for menu {menu_id}, creating fallback categorized list")
 
             # Generate a categorized fallback list
             categorized_list = create_categorized_fallback(grocery_list)
