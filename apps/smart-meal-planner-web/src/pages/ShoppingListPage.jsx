@@ -96,7 +96,8 @@ function ShoppingListPage() {
   const [showAiShoppingPrompt, setShowAiShoppingPrompt] = useState(false);
   const [aiShoppingLoading, setAiShoppingLoading] = useState(false);
   const [aiShoppingData, setAiShoppingData] = useState(null);
-  const [activeTab, setActiveTab] = useState(1); // Default to AI Enhanced tab
+  // Default to AI Enhanced tab (index 1)
+  const [activeTab, setActiveTab] = useState(1);
   const [aiPreferences, setAiPreferences] = useState('');
   const [usingAiList, setUsingAiList] = useState(false);
 
@@ -1463,8 +1464,22 @@ Combine duplicate ingredients, adding up quantities when appropriate.
         // Direct JSON array from OpenAI with the format we requested
         addLog(`Found direct JSON array with ${result.length} items`, 'success');
 
-        // Pass the array directly to the component
-        processedResult = result;
+        // Pass the array directly to the component, but wrap in a format that the renderer expects
+        processedResult = {
+          groceryList: Object.entries(
+            result.reduce((acc, item) => {
+              const category = item.category || 'Other';
+              if (!acc[category]) acc[category] = { category, items: [] };
+              acc[category].items.push(item);
+              return acc;
+            }, {})
+          ).map(([_, value]) => value),
+          recommendations: ["Organized by department for easy shopping"],
+          nutritionTips: ["Items categorized for easier shopping"],
+          timestamp: new Date().toISOString()
+        };
+
+        console.log("Processed AI shopping data:", processedResult);
       }
       // Handle ingredient_list array
       else if (result.ingredient_list && Array.isArray(result.ingredient_list)) {
@@ -3088,6 +3103,10 @@ Combine duplicate ingredients, adding up quantities when appropriate.
   useEffect(() => {
     console.log(`Selected menu changed to: ${selectedMenuId}`);
 
+    // Force active tab to AI Enhanced (index 1)
+    console.log('Setting active tab to AI Enhanced (1)');
+    setActiveTab(1);
+
     // Reset AI data when menu changes to avoid showing previous menu's items
     if (selectedMenuId) {
       // Clear previous AI data and loading state
@@ -3868,26 +3887,31 @@ const categorizeItems = (mealPlanData) => {
       {/* Shopping List Display with Tabs */}
       {groceryList && groceryList.length > 0 ? (
         <Box sx={{ width: '100%' }}>
-          {/* Only show tab interface if we have AI data */}
-          {aiShoppingData ? (
+          {/* Always show tab interface regardless of AI data */}
+          {(
             <>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                <Tabs 
-                  value={activeTab} 
-                  onChange={(e, newValue) => setActiveTab(newValue)}
+                {/* Always show tabs */}
+                <Tabs
+                  value={activeTab}
+                  onChange={(e, newValue) => {
+                    console.log(`Switching to tab: ${newValue}`);
+                    setActiveTab(newValue);
+                  }}
                   aria-label="shopping list tabs"
+                  sx={{ mb: 2 }}
                 >
-                  <Tab 
-                    icon={<BasketIcon />} 
-                    label="Standard" 
-                    id="tab-0" 
-                    aria-controls="tabpanel-0" 
+                  <Tab
+                    icon={<BasketIcon />}
+                    label="Standard"
+                    id="tab-0"
+                    aria-controls="tabpanel-0"
                   />
-                  <Tab 
-                    icon={<AiIcon />} 
-                    label="AI Enhanced" 
-                    id="tab-1" 
-                    aria-controls="tabpanel-1" 
+                  <Tab
+                    icon={<AiIcon />}
+                    label="AI Enhanced"
+                    id="tab-1"
+                    aria-controls="tabpanel-1"
                   />
                 </Tabs>
                 
@@ -4059,12 +4083,13 @@ const categorizeItems = (mealPlanData) => {
                 id="tabpanel-0"
                 aria-labelledby="tab-0"
               >
-                {activeTab === 0 && (
-                  <ShoppingList 
-                    categories={formatCategoriesForDisplay(groceryList)} 
-                    selectedStore={selectedStore} 
-                    onAddToCart={handleAddToCart} 
-                    onAddToMixedCart={handleAddToMixedCart} 
+                {/* Always display standard tab content */}
+                {(
+                  <ShoppingList
+                    categories={formatCategoriesForDisplay(groceryList)}
+                    selectedStore={selectedStore}
+                    onAddToCart={handleAddToCart}
+                    onAddToMixedCart={handleAddToMixedCart}
                   />
                 )}
               </div>
@@ -4076,7 +4101,8 @@ const categorizeItems = (mealPlanData) => {
                 id="tabpanel-1"
                 aria-labelledby="tab-1"
               >
-                {activeTab === 1 && (
+                {/* Always display AI tab content */}
+              {(
                   <Box>
                     {/* Processing indicator with entertaining messages */}
                     {aiShoppingLoading && (
@@ -4136,6 +4162,7 @@ const categorizeItems = (mealPlanData) => {
                     )}
 
                     {/* Display AI shopping data when available */}
+                    {console.log("AI Shopping Data available:", !!aiShoppingData)}
                     {aiShoppingData && (
                     <>
                     {/* Display cache info if applicable */}
@@ -4464,23 +4491,9 @@ const categorizeItems = (mealPlanData) => {
                 )}
               </div>
             </>
-          ) : (
-            // No AI data, just show regular shopping list
-            aiShoppingData ? (
-              <CategorizedShoppingList
-                groceryData={aiShoppingData}
-                selectedStore={selectedStore}
-                onAddToCart={handleAddToCart}
-              />
-            ) : (
-              <ShoppingList
-                categories={formatCategoriesForDisplay(groceryList)}
-                selectedStore={selectedStore}
-                onAddToCart={handleAddToCart}
-                onAddToMixedCart={handleAddToMixedCart}
-              />
-            )
           )}
+
+          {/* AI data is now always shown in the AI tab, regardless of the conditional above */}
         </Box>
       ) : (
         !loading && (
