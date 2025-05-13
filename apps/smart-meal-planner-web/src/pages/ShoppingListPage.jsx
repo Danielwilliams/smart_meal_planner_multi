@@ -4332,7 +4332,7 @@ const categorizeItems = (mealPlanData) => {
             </>
           ) : (
             // No AI data, just show regular shopping list
-            {aiShoppingData ? (
+            aiShoppingData ? (
               <CategorizedShoppingList
                 groceryData={aiShoppingData}
                 selectedStore={selectedStore}
@@ -4345,7 +4345,7 @@ const categorizeItems = (mealPlanData) => {
                 onAddToCart={handleAddToCart}
                 onAddToMixedCart={handleAddToMixedCart}
               />
-            )}
+            )
           )}
         </Box>
       ) : (
