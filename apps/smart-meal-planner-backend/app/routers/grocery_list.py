@@ -1027,23 +1027,41 @@ def generate_ai_shopping_list(menu_data, basic_grocery_list, additional_preferen
   ]
 }
 """
-        # Simplified instructions focusing on the most critical aspects
-        prompt += "\n\nIMPORTANT FORMATTING RULES:"
-        prompt += "\n1. Keep the name field SIMPLE - just the ingredient name (e.g., \"Chicken Breast\", not \"Chicken Breast: 2 lb\")"
-        prompt += "\n2. Use REASONABLE quantities - 1-5 lb for meats, 1-3 cups for grains, 1-3 for produce items"
-        prompt += "\n3. Choose APPROPRIATE units - lb for meats, cups/oz for grains, medium/piece for produce, tsp/tbsp for spices"
-        prompt += "\n4. Format the display_name as 'Item: Quantity-Unit' (e.g., \"Chicken Breast: 2-lb\", \"Spinach: 3-cups\")"
-        prompt += "\n5. Include THESE CATEGORIES: Produce, Meat and Proteins, Dairy, Grains, Condiments, Spices and Herbs, Baking, Frozen"
-        prompt += "\n6. ALWAYS include at least 3 healthy alternatives in the healthyAlternatives field"
-        prompt += "\n7. ALWAYS include at least 3 shopping tips in the shoppingTips field"
-        prompt += "\n8. Format as VALID JSON - the JSON must parse correctly with proper quotes, commas, and brackets"
+        # Simple, direct instructions for exactly what we want
+        prompt += "\n\nPlease return a JSON array where each item has these fields:"
+        prompt += "\n1. name: The ingredient name"
+        prompt += "\n2. quantity: The numeric amount"
+        prompt += "\n3. unitOfMeasure: The standardized unit"
+        prompt += "\n4. category: The department category"
 
-        prompt += "\n\nI need to parse your response programmatically, so it MUST be valid JSON. Don't include explanations outside the JSON structure."
-        
+        prompt += "\n\nExample format:"
+        prompt += """
+[
+  {
+    "name": "Chicken Breast",
+    "quantity": "2",
+    "unitOfMeasure": "lb",
+    "category": "Meat & Seafood"
+  },
+  {
+    "name": "Spinach",
+    "quantity": "1",
+    "unitOfMeasure": "bag",
+    "category": "Produce"
+  }
+]
+"""
+        prompt += "\n\nUse these categories: Produce, Meat & Seafood, Dairy & Eggs, Bakery & Bread, Dry Goods & Pasta, Canned Goods, Frozen Foods, Condiments & Spices, Snacks, Beverages, Baking, Other."
+        prompt += "\n\nMake sure quantities and units make sense for each item (e.g. '3 eggs' not '3 lb eggs')."
+        prompt += "\n\nStandardize units of measure to common kitchen units (cups, tbsp, tsp, oz, lb, etc.)."
+        prompt += "\n\nCombine duplicate ingredients, adding up quantities when appropriate."
+
+        prompt += "\n\nRETURN ONLY THE JSON ARRAY - no wrapper object or other text."
+
         logger.info("Making OpenAI API call")
         # Make OpenAI API call with better error handling
         try:
-            system_prompt = "You are a helpful meal planning assistant that helps organize shopping lists efficiently. You always return well-structured JSON with consistent formatting for grocery items. Follow the format example precisely."
+            system_prompt = "You are a helpful meal planning assistant that creates organized shopping lists with standardized units and categories. Return a direct JSON array without any wrapper or extra text."
             message_array = [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt}
@@ -1073,6 +1091,39 @@ def generate_ai_shopping_list(menu_data, basic_grocery_list, additional_preferen
             # Extract and parse the response
             ai_content = response.choices[0].message.content.strip()
             logger.info("Received OpenAI response")
+
+            # Try to parse as JSON array
+            try:
+                # First, check if we need to extract JSON from markdown formatting
+                if "```json" in ai_content and "```" in ai_content:
+                    # Extract JSON from markdown code block
+                    import re
+                    match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', ai_content)
+                    if match:
+                        ai_content = match.group(1).strip()
+
+                # Parse the JSON array response
+                shopping_list_items = json.loads(ai_content)
+
+                # Make sure we have a valid array
+                if isinstance(shopping_list_items, list) and len(shopping_list_items) > 0:
+                    # Direct return of the array
+                    logger.info(f"Successfully parsed JSON array with {len(shopping_list_items)} items")
+                    return shopping_list_items
+                else:
+                    logger.warning("OpenAI response wasn't a list - falling back to default format")
+            except json.JSONDecodeError as je:
+                logger.error(f"JSON parsing error: {str(je)}")
+                logger.error(f"Raw content: {ai_content[:500]}...")
+            except Exception as parse_error:
+                logger.error(f"Error parsing OpenAI response: {str(parse_error)}")
+
+            # If we get here, something went wrong with parsing - return fallback format
+            return {
+                "groceryList": [{"category": "All Items", "items": [{"name": item} for item in grocery_items]}],
+                "recommendations": ["AI service unavailable - showing standard list"],
+                "error": "Error parsing AI response"
+            }
 
         except Exception as openai_error:
             logger.error(f"Error calling OpenAI API: {str(openai_error)}")
