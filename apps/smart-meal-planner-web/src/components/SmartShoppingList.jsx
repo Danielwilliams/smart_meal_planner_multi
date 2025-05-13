@@ -54,8 +54,17 @@ const SmartShoppingList = ({ groceryData, selectedStore, onAddToCart }) => {
         if (groceryData.days) {
           // Full menu structure with days
           flatList = extractItemsFromMenu(groceryData);
+        } else if (groceryData.categories && typeof groceryData.categories === 'object') {
+          // This is the shopping list format with categories
+          console.log("Found categories structure:", groceryData.categories);
+          // Flatten all items from all categories
+          Object.entries(groceryData.categories).forEach(([category, items]) => {
+            if (Array.isArray(items)) {
+              flatList = [...flatList, ...items];
+            }
+          });
         } else {
-          // Object with category keys
+          // Object with category keys - assume it's a direct categories object
           Object.values(groceryData).forEach(items => {
             if (Array.isArray(items)) {
               flatList = [...flatList, ...items];

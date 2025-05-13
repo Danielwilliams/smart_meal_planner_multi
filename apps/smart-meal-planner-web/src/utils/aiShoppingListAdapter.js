@@ -89,12 +89,12 @@ export const adaptShoppingListResponse = (result, menuId, logger = null) => {
 
           // Keywords for categorization
           const categoryKeywords = {
-            "Protein": ["chicken", "beef", "turkey", "salmon", "fish", "pork", "tofu", "sausage", "bacon", "shrimp", "meat", "protein"],
-            "Produce": ["pepper", "onion", "garlic", "broccoli", "carrot", "lettuce", "tomato", "spinach", "cucumber", "avocado", "potato", "berr", "lime", "ginger", "vegetable", "fruit"],
-            "Dairy": ["cheese", "yogurt", "milk", "cream", "butter", "egg", "parmesan", "cheddar", "mozzarella"],
-            "Grains": ["rice", "pasta", "quinoa", "oat", "bread", "tortilla", "flour", "gluten-free"],
-            "Pantry": ["oil", "spice", "salt", "pepper", "sugar", "honey", "cornstarch", "vinegar", "sauce", "canned", "can", "broth", "stock"],
-            "Condiments": ["salsa", "sauce", "soy sauce", "lime juice"]
+            "Protein": ["chicken", "beef", "turkey", "salmon", "fish", "pork", "tofu", "sausage", "bacon", "shrimp", "meat", "protein", "ground"],
+            "Produce": ["pepper", "onion", "garlic", "broccoli", "carrot", "lettuce", "tomato", "spinach", "cucumber", "avocado", "potato", "berr", "lime", "lemon", "ginger", "vegetable", "fruit", "cilantro", "parsley", "basil", "edamame", "bell", "saffron", "herb"],
+            "Dairy": ["cheese", "yogurt", "milk", "cream", "butter", "egg", "parmesan", "cheddar", "mozzarella", "greek yogurt"],
+            "Grains": ["rice", "pasta", "quinoa", "oat", "bread", "tortilla", "flour", "gluten-free", "granola", "cereal", "breadcrumb"],
+            "Pantry": ["oil", "spice", "salt", "pepper", "sugar", "honey", "cornstarch", "vinegar", "sauce", "canned", "can", "broth", "stock", "almond", "nut", "sesame", "paprika", "cumin", "garlic powder", "chili powder", "bean", "water chestnut"],
+            "Condiments": ["salsa", "sauce", "soy sauce", "lime juice", "marinade", "marinara", "olive oil"]
           };
 
           // Helper function to categorize an item
@@ -118,7 +118,8 @@ export const adaptShoppingListResponse = (result, menuId, logger = null) => {
           // Categorize each item
           firstItem.items.forEach(item => {
             const category = categorizeItem(item);
-            categorizedItems[category].push(item);
+            // Make a copy of the item to avoid reference issues
+            categorizedItems[category].push({...item});
           });
 
           // Remove empty categories
@@ -128,7 +129,18 @@ export const adaptShoppingListResponse = (result, menuId, logger = null) => {
             }
           }
 
-          categories = categorizedItems;
+          // Convert the categorized items format to the expected categories format
+          const formattedCategories = {};
+          Object.entries(categorizedItems).forEach(([category, items]) => {
+            formattedCategories[category] = items.map(item => {
+              if (item.name && item.quantity) {
+                return `${item.name}: ${item.quantity}`;
+              }
+              return item.name || String(item);
+            });
+          });
+
+          categories = formattedCategories;
           log(`Auto-categorized items into ${Object.keys(categories).length} categories: ${Object.keys(categories).join(', ')}`, 'info');
         } else {
           // Use the categories as-is
@@ -304,6 +316,8 @@ export const adaptShoppingListResponse = (result, menuId, logger = null) => {
     if (!processedResult.healthyAlternatives) processedResult.healthyAlternatives = [];
     if (!processedResult.shoppingTips) processedResult.shoppingTips = [];
     
+    // Log the final structure right before returning
+    console.log('FINAL ADAPTER OUTPUT STRUCTURE:', JSON.stringify(processedResult, null, 2));
     return processedResult;
   } catch (error) {
     log(`Error processing shopping list data: ${error.message}`, 'error');

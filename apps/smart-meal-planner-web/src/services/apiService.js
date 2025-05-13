@@ -5,6 +5,9 @@ import axios from 'axios';
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://smartmealplannermulti-production.up.railway.app';
 console.log('Using API base URL:', API_BASE_URL);
 
+// Store the API URL for use in other methods
+let apiUrl = API_BASE_URL;
+
 const axiosInstance = axios.create({
   baseURL: API_BASE_URL,
   timeout: 600000, // Increased to 10 minutes (600,000 ms)
@@ -296,9 +299,30 @@ const apiService = {
       console.log('AI shopping list raw response:', resp);
       console.log('AI shopping list response data:', resp.data);
 
+      // Save the response data for potential fallback during polling
+      this.lastShoppingListResponse = resp.data;
+
       // Check if response was from cache
       if (resp.data && resp.data.cached) {
         console.log("Retrieved cached response from server:", resp.data.cache_timestamp);
+      }
+
+      // Check if response requires polling for completion
+      if (resp.data && resp.data.status === "processing") {
+        console.log("AI processing in progress - starting to poll for results");
+
+        try {
+          // Poll for the final results
+          const pollResult = await this.pollForShoppingListResults(menuId);
+          if (pollResult) {
+            console.log("Final response received");
+            return pollResult;
+          }
+        } catch (pollError) {
+          console.error("Polling error:", pollError);
+          console.log("Using initial response instead due to polling failure");
+          // Continue with the initial response
+        }
       }
 
       // Validate and ensure proper response structure
@@ -399,6 +423,9 @@ const apiService = {
 
       const resp = await axiosInstance.get(`${url}${params}`);
       console.log('AI shopping list status response:', resp.data);
+
+      // Store the initial response for potential fallback during polling
+      this.lastShoppingListResponse = resp.data;
 
       // Ensure consistent structure even for error responses
       const responseData = resp.data;
@@ -2841,6 +2868,66 @@ const apiService = {
       console.error('Error suggesting custom meal:', err);
       throw err;
     }
+  },
+
+  // Method to get authentication token
+  getToken: () => {
+    const token = localStorage.getItem('token');
+    return token;
+  },
+
+  // Method to poll for shopping list results with error handling
+  pollForShoppingListResults: async (menuId, maxAttempts = 20, intervalMs = 2000) => {
+    let attempts = 0;
+
+    while (attempts < maxAttempts) {
+      attempts++;
+      console.log(`Polling for results (attempt ${attempts}/${maxAttempts})...`);
+
+      try {
+        const response = await fetch(`${apiUrl}/menu/${menuId}/shopping-list/status`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${apiService.getToken()}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (response.status === 405) {
+          console.log('Polling error: 405');
+          // Just return the initial response - the 405 error means the endpoint is not implemented
+          // but we already have data from the initial response
+          return apiService.lastShoppingListResponse;
+        }
+
+        if (!response.ok) {
+          throw new Error(`Polling error: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        if (data.status === 'completed') {
+          return data;
+        }
+
+        // Wait before next attempt
+        await new Promise(resolve => setTimeout(resolve, intervalMs));
+      } catch (error) {
+        console.error('Error during polling:', error.message);
+        // If we get an error but have an initial response, use it
+        if (apiService.lastShoppingListResponse) {
+          return apiService.lastShoppingListResponse;
+        }
+        throw error;
+      }
+    }
+
+    // If we time out but have initial data, use that
+    if (apiService.lastShoppingListResponse) {
+      return apiService.lastShoppingListResponse;
+    }
+
+    throw new Error('Polling timed out');
   }
 }; // Close the apiService object here
 

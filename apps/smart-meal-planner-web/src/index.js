@@ -7,7 +7,11 @@ import theme from './theme'; // Ensure theme is correctly imported
 import { AuthProvider } from './context/AuthContext'; // Import AuthContext
 import './index.css';  // optional global styles
 import apiService from './services/apiService';
+import { fixShoppingListPolling } from './utils/fixShoppingListPolling';
 import { BrowserRouter } from 'react-router-dom';
+
+// Apply shopping list polling fix
+fixShoppingListPolling(apiService);
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 
