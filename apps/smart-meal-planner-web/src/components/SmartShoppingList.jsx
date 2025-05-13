@@ -215,10 +215,21 @@ const SmartShoppingList = ({ groceryData, selectedStore, onAddToCart }) => {
         <CartIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
         Smart Shopping List
       </Typography>
-      
+
       <Typography variant="subtitle2" color="text.secondary" paragraph>
         Intelligently organized by department
       </Typography>
+
+      {/* Debug info to help with troubleshooting */}
+      <Box sx={{ p: 2, border: '1px dashed grey', mb: 2, fontSize: '0.8rem', display: 'none' }}>
+        <Typography variant="caption" sx={{ display: 'block', mb: 1 }}>
+          Debug Info (Hidden in Production)
+        </Typography>
+        <pre>
+          GroceryData: {JSON.stringify(groceryData, null, 2)}
+          OrganizedList: {JSON.stringify(organizedList, null, 2)}
+        </pre>
+      </Box>
       
       {Object.keys(organizedList).length === 0 ? (
         <Alert severity="info" sx={{ my: 2 }}>

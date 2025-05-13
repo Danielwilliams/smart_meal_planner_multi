@@ -39,6 +39,7 @@ import apiService from '../services/apiService';
 import CATEGORY_MAPPING from '../data/categoryMapping';
 import ShoppingList from '../components/ShoppingList';
 import SmartShoppingList from '../components/SmartShoppingList';
+import CategorizedShoppingList from '../components/CategorizedShoppingList';
 import { adaptShoppingListResponse } from '../utils/aiShoppingListAdapter';
 import { 
   AutoAwesome as AiIcon,
@@ -4331,9 +4332,9 @@ const categorizeItems = (mealPlanData) => {
             </>
           ) : (
             // No AI data, just show regular shopping list
-            {aiData && aiData.categories ? (
-              <SmartShoppingList
-                groceryData={aiData}
+            {aiShoppingData ? (
+              <CategorizedShoppingList
+                groceryData={aiShoppingData}
                 selectedStore={selectedStore}
                 onAddToCart={handleAddToCart}
               />
