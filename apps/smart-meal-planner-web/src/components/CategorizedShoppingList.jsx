@@ -440,6 +440,7 @@ const CategorizedShoppingList = ({ groceryData, selectedStore, onAddToCart }) =>
                             size="small"
                             startIcon={<AddIcon />}
                             variant="outlined"
+                            color={selectedStore === 'instacart' ? 'secondary' : 'primary'}
                             onClick={() => {
                               // Handle both string and object formats
                               const itemName = typeof item === 'string'
@@ -448,7 +449,7 @@ const CategorizedShoppingList = ({ groceryData, selectedStore, onAddToCart }) =>
                               onAddToCart && onAddToCart(itemName, selectedStore);
                             }}
                           >
-                            Add
+                            {selectedStore === 'instacart' ? 'Add to Instacart' : 'Add'}
                           </Button>
                         }
                       >
@@ -494,10 +495,15 @@ const CategorizedShoppingList = ({ groceryData, selectedStore, onAddToCart }) =>
       )}
 
       <Box display="flex" justifyContent="center" mt={3}>
-        <Chip 
-          icon={<CartIcon />} 
-          label={`Store: ${selectedStore.charAt(0).toUpperCase() + selectedStore.slice(1)}`}
-          color="primary"
+        <Chip
+          icon={<CartIcon />}
+          label={`Store: ${
+            selectedStore === 'kroger' ? 'Kroger' :
+            selectedStore === 'instacart' ? 'Instacart' :
+            selectedStore === 'walmart' ? 'Walmart' :
+            selectedStore.charAt(0).toUpperCase() + selectedStore.slice(1)
+          }`}
+          color={selectedStore === 'instacart' ? 'secondary' : 'primary'}
         />
       </Box>
     </Paper>

@@ -64,38 +64,66 @@ const searchStores = async (lat, lon) => {
       
       // Try direct API endpoint first
       try {
-        const directEndpoint = storeType === 'kroger' ? '/kroger/direct-stores' : `/${storeType}/stores/near`;
-        
-        const searchParams = {
-          zipCode: zipCode,
-          radius: searchRadius
-        };
-        
-        if (lat && lon) {
-          searchParams.latitude = lat;
-          searchParams.longitude = lon;
-        }
-        
-        const directResponse = await axiosInstance.post(directEndpoint, searchParams);
-        
-        if (directResponse.data && directResponse.data.data && Array.isArray(directResponse.data.data)) {
-          console.log(`Found ${directResponse.data.data.length} stores through direct API`);
-          
-          // Format the stores according to our expected format
-          const formattedStores = directResponse.data.data.map(store => ({
-            locationId: store.locationId || store.storeId || store.id,
-            name: store.name || `${storeType} Store`,
-            address: store.address?.addressLine1 || store.address || '',
-            city: store.address?.city || store.city || '',
-            state: store.address?.state || store.state || '',
-            zipCode: store.address?.zipCode || store.zipCode || zipCode,
-            distance: store.distance || '0',
-            hours: store.hours || null
-          }));
-          
-          setStores(formattedStores);
-          setLoading(false);
-          return;
+        // Handle Instacart differently - use the retailers endpoint
+        if (storeType === 'instacart') {
+          console.log('Fetching Instacart retailers');
+          const retailersResponse = await axiosInstance.get('/instacart/retailers');
+
+          if (retailersResponse.data && Array.isArray(retailersResponse.data)) {
+            console.log(`Found ${retailersResponse.data.length} Instacart retailers`);
+
+            // Format the retailers as stores
+            const formattedStores = retailersResponse.data.map(retailer => ({
+              locationId: retailer.id,
+              name: retailer.name,
+              address: 'Available in your area',
+              city: '',
+              state: '',
+              zipCode: zipCode,
+              distance: 'Delivery service',
+              hours: null,
+              logo_url: retailer.logo_url || null // Store logo URL for display
+            }));
+
+            setStores(formattedStores);
+            setLoading(false);
+            return;
+          }
+        } else {
+          // Original logic for Kroger and Walmart
+          const directEndpoint = storeType === 'kroger' ? '/kroger/direct-stores' : `/${storeType}/stores/near`;
+
+          const searchParams = {
+            zipCode: zipCode,
+            radius: searchRadius
+          };
+
+          if (lat && lon) {
+            searchParams.latitude = lat;
+            searchParams.longitude = lon;
+          }
+
+          const directResponse = await axiosInstance.post(directEndpoint, searchParams);
+
+          if (directResponse.data && directResponse.data.data && Array.isArray(directResponse.data.data)) {
+            console.log(`Found ${directResponse.data.data.length} stores through direct API`);
+
+            // Format the stores according to our expected format
+            const formattedStores = directResponse.data.data.map(store => ({
+              locationId: store.locationId || store.storeId || store.id,
+              name: store.name || `${storeType} Store`,
+              address: store.address?.addressLine1 || store.address || '',
+              city: store.address?.city || store.city || '',
+              state: store.address?.state || store.state || '',
+              zipCode: store.address?.zipCode || store.zipCode || zipCode,
+              distance: store.distance || '0',
+              hours: store.hours || null
+            }));
+
+            setStores(formattedStores);
+            setLoading(false);
+            return;
+          }
         }
       } catch (directError) {
         console.error('Error using direct API for store search:', directError);
@@ -128,7 +156,8 @@ const searchStores = async (lat, lon) => {
         // Get a plausible store chain name
         const storeChains = {
           kroger: ["Kroger", "Fred Meyer", "Ralphs", "Dillons", "Smith's", "King Soopers"],
-          walmart: ["Walmart", "Walmart Supercenter", "Walmart Neighborhood Market"]
+          walmart: ["Walmart", "Walmart Supercenter", "Walmart Neighborhood Market"],
+          instacart: ["Instacart", "Instacart Partner Store", "Instacart Delivery"]
         };
         
         const getStoreName = () => {
@@ -237,94 +266,114 @@ const searchStores = async (lat, lon) => {
       setError('Unable to select store: Missing store ID');
       return;
     }
-    
-    console.log(`Selected store: ${storeId}`);
-    
+
+    console.log(`Selected ${storeType} store: ${storeId}`);
+
     // Immediately close the dialog to improve user experience
     handleClose();
-    
-    // FIRST SET OF ACTIONS: Set ALL possible flags in localStorage for maximum compatibility
-    // This ensures that no matter which flag is being checked, it will be found
-    
-    // Original kroger_store_location flag
-    localStorage.setItem('kroger_store_location', storeId);
-    // Additional location ID format 
-    localStorage.setItem('kroger_store_location_id', storeId);
-    // Store selection flags
-    localStorage.setItem('kroger_store_selected', 'true');
-    localStorage.setItem('kroger_store_configured', 'true');
-    localStorage.setItem('kroger_store_selection_done', 'true');
+
+    // FIRST SET OF ACTIONS: Set store-specific flags in localStorage
+    // Store the selected store type
+    localStorage.setItem('selected_store_type', storeType);
+    localStorage.setItem(`${storeType}_store_location`, storeId);
+    localStorage.setItem(`${storeType}_store_location_id`, storeId);
+    localStorage.setItem(`${storeType}_store_selected`, 'true');
+    localStorage.setItem(`${storeType}_store_configured`, 'true');
+    localStorage.setItem(`${storeType}_store_selection_done`, 'true');
+
     // Session storage flags to prevent prompts in current session
-    sessionStorage.setItem('kroger_store_selection_complete', 'true');
+    sessionStorage.setItem(`${storeType}_store_selection_complete`, 'true');
+
     // Timestamps for diagnostics
-    localStorage.setItem('kroger_store_timestamp', Date.now().toString());
-    localStorage.setItem('kroger_store_selection_timestamp', Date.now().toString());
-    
+    localStorage.setItem(`${storeType}_store_timestamp`, Date.now().toString());
+    localStorage.setItem(`${storeType}_store_selection_timestamp`, Date.now().toString());
+
     // SECOND SET OF ACTIONS: Clear any flags that might trigger store selection
-    sessionStorage.removeItem('kroger_needs_store_selection');
-    
+    sessionStorage.removeItem(`${storeType}_needs_store_selection`);
+
+    // For backwards compatibility, also set Kroger flags if this is another store type
+    // This ensures existing code that checks for Kroger selection still works
+    if (storeType !== 'kroger') {
+      localStorage.setItem('kroger_store_location', storeId);
+      localStorage.setItem('kroger_store_location_id', storeId);
+      localStorage.setItem('kroger_store_selected', 'true');
+      localStorage.setItem('kroger_store_configured', 'true');
+      localStorage.setItem('kroger_store_selection_done', 'true');
+      sessionStorage.setItem('kroger_store_selection_complete', 'true');
+    }
+
     // Log all the flags we've set for debugging
     console.log('Store selection flags set:', {
+      'store_type': storeType,
+      'store_id': storeId,
+      [`${storeType}_store_location`]: localStorage.getItem(`${storeType}_store_location`),
+      [`${storeType}_store_selected`]: localStorage.getItem(`${storeType}_store_selected`),
       'kroger_store_location': localStorage.getItem('kroger_store_location'),
-      'kroger_store_location_id': localStorage.getItem('kroger_store_location_id'),
-      'kroger_store_selected': localStorage.getItem('kroger_store_selected'),
-      'kroger_store_configured': localStorage.getItem('kroger_store_configured'),
-      'kroger_store_selection_done': localStorage.getItem('kroger_store_selection_done'),
-      'kroger_store_selection_complete (session)': sessionStorage.getItem('kroger_store_selection_complete'),
-      'kroger_needs_store_selection (session)': sessionStorage.getItem('kroger_needs_store_selection')
+      'kroger_store_selection_complete (session)': sessionStorage.getItem('kroger_store_selection_complete')
     });
-    
-    // THIRD SET OF ACTIONS: Update backend in multiple ways for robustness
-    console.log("Updating store location in backend DB...");
-    
-    // First attempt: Standard API call with error handling
+
+    // THIRD SET OF ACTIONS: Update backend based on store type
+    console.log(`Updating ${storeType} location in backend DB...`);
+
+    // Update backend based on store type
     const updateBackend = async () => {
       try {
-        // Try POST method first
-        console.log("Attempting to update store location via POST method");
-        const postResponse = await apiService.updateKrogerLocation(storeId);
-        
-        console.log("Backend POST response:", postResponse);
-        if (postResponse && postResponse.success) {
-          console.log("Successfully updated store location in backend via POST");
+        if (storeType === 'instacart') {
+          // For Instacart, we just need to store the retailer ID
+          console.log("Saving Instacart retailer selection");
+          localStorage.setItem('instacart_retailer_id', storeId);
+
+          // No backend update needed for Instacart as we just use the retailer ID directly
           return true;
-        }
-        
-        // If we get here, POST failed, try alternative approach
-        console.log("POST failed, trying alternative backend update approach");
-        
-        // Try direct API call as fallback
-        const alternativeResponse = await fetch(`${apiService.API_BASE_URL}/kroger/store-location?location_id=${storeId}`, {
-          method: 'GET',
-          credentials: 'include',
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
-            'Content-Type': 'application/json'
+        } else if (storeType === 'kroger') {
+          // Original Kroger update logic
+          console.log("Attempting to update Kroger store location");
+          const postResponse = await apiService.updateKrogerLocation(storeId);
+
+          if (postResponse && postResponse.success) {
+            console.log("Successfully updated Kroger store location");
+            return true;
           }
-        });
-        
-        if (alternativeResponse.ok) {
-          console.log("Alternative backend update succeeded");
+
+          // Fallback approach for Kroger
+          console.log("Trying alternative Kroger update approach");
+          const alternativeResponse = await fetch(`${apiService.API_BASE_URL}/kroger/store-location?location_id=${storeId}`, {
+            method: 'GET',
+            credentials: 'include',
+            headers: {
+              'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+              'Content-Type': 'application/json'
+            }
+          });
+
+          if (alternativeResponse.ok) {
+            console.log("Alternative Kroger update succeeded");
+            return true;
+          }
+        } else if (storeType === 'walmart') {
+          // Walmart store update logic
+          console.log("Updating Walmart store location");
+          // Add any Walmart-specific update logic here
           return true;
         }
-        
-        console.warn("Failed to update store location in backend, but continuing with client-side tracking");
+
+        console.warn(`Failed to update ${storeType} location in backend, but continuing with client-side tracking`);
         return false;
-        
+
       } catch (err) {
-        console.error("Error updating store location in backend:", err);
-        
+        console.error(`Error updating ${storeType} location in backend:`, err);
+
         // Check if this is a database schema issue
-        if (err.response?.data?.error?.includes('client_id') || 
+        if (err.response?.data?.error?.includes('client_id') ||
             err.response?.data?.error?.includes('column')) {
           console.log("Database schema issue detected in error, storing locally only");
           localStorage.setItem('database_schema_issue', 'true');
         }
-        
+
         return false;
       }
     };
-    
+
     // Start backend update process asynchronously
     updateBackend().then(success => {
       if (success) {
@@ -333,7 +382,7 @@ const searchStores = async (lat, lon) => {
         console.log("Using client-side storage as fallback");
       }
     });
-    
+
     // Call the parent handler immediately - don't wait for backend to complete
     // This ensures the user experience isn't interrupted if backend is slow
     onStoreSelect(storeId);
@@ -353,8 +402,10 @@ const searchStores = async (lat, lon) => {
         <Box display="flex" justifyContent="space-between" alignItems="center">
           <Typography variant="h6">
             Select Your {
-              storeType === 'kroger' ? 'Kroger' : 
-              storeType === 'instacart' ? 'Instacart' : 'Walmart'
+              storeType === 'kroger' ? 'Kroger' :
+              storeType === 'instacart' ? 'Instacart' :
+              storeType === 'walmart' ? 'Walmart' :
+              storeType.charAt(0).toUpperCase() + storeType.slice(1)
             } Store
           </Typography>
           <IconButton onClick={handleClose} size="small">
@@ -438,33 +489,67 @@ const searchStores = async (lat, lon) => {
                   }
                 }}
               >
-                <CardContent 
+                <CardContent
                   onClick={() => handleStoreSelect(store.location_id || store.locationId)}
                   sx={{ pb: showHours[store.location_id || store.locationId] ? 0 : undefined }}
                 >
-                  <Typography variant="subtitle1" component="div">
-                    {store.name}
-                  </Typography>
+                  {storeType === 'instacart' && store.logo_url ? (
+                    <Box display="flex" alignItems="center" mb={1}>
+                      <img
+                        src={store.logo_url}
+                        alt={`${store.name} logo`}
+                        style={{
+                          maxHeight: '30px',
+                          maxWidth: '100px',
+                          marginRight: '10px',
+                          objectFit: 'contain'
+                        }}
+                      />
+                      <Typography variant="subtitle1" component="div">
+                        {store.name}
+                      </Typography>
+                    </Box>
+                  ) : (
+                    <Typography variant="subtitle1" component="div">
+                      {store.name}
+                    </Typography>
+                  )}
+
                   <Typography variant="body2" color="text.secondary">
-                    {store.address}<br />
-                    {store.city}, {store.state} {store.zipCode}
+                    {store.address}
+                    {store.city && store.state && (
+                      <>
+                        <br />
+                        {store.city}, {store.state} {store.zipCode}
+                      </>
+                    )}
                   </Typography>
+
                   <Box display="flex" justifyContent="space-between" alignItems="center" mt={0.5}>
                     <Typography variant="body2" color="text.secondary">
-                      {store.distance !== undefined && `${parseFloat(store.distance).toFixed(1)} miles away`}
+                      {typeof store.distance === 'string' && store.distance.includes('Delivery') ? (
+                        store.distance
+                      ) : (
+                        store.distance !== undefined && `${parseFloat(store.distance).toFixed(1)} miles away`
+                      )}
                     </Typography>
-                    <Tooltip title={`Store ID: ${store.location_id || store.locationId}`}>
-                      <IconButton 
-                        size="small" 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleHours(store.location_id || store.locationId);
-                        }}
-                      >
-                        <TimeIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
+
+                    {/* Only show hours button for stores that actually have hours */}
+                    {storeType !== 'instacart' && (
+                      <Tooltip title={`Store ID: ${store.location_id || store.locationId}`}>
+                        <IconButton
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleHours(store.location_id || store.locationId);
+                          }}
+                        >
+                          <TimeIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    )}
                   </Box>
+
                   {showHours[store.location_id || store.locationId] && formatHours(store.hours)}
                 </CardContent>
               </Card>
