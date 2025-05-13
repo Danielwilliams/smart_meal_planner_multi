@@ -1,5 +1,5 @@
 // src/pages/CartPage.jsx
-import React, { useState, useEffect, Component } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Container, 
   Typography, 
@@ -47,13 +47,13 @@ import instacartService from '../services/instacartService';
 const InstacartResultsWrapper = ({ results, onAddToCart }) => {
   // Get retailerId from localStorage
   const retailerId = localStorage.getItem('instacart_retailer_id');
-
+  
   // Log the props received for debugging
   console.log("InstacartResultsWrapper props:", { results, retailerId });
-
+  
   // Convert results array to groceryItems format expected by InstacartResults
   let groceryItems = [];
-
+  
   // Handle different formats of results
   if (Array.isArray(results)) {
     groceryItems = results
@@ -63,7 +63,7 @@ const InstacartResultsWrapper = ({ results, onAddToCart }) => {
         return item.name || item.description || item.title || "Unknown Item";
       });
   }
-
+  
   // In case results come in as an object instead of array
   if (results && typeof results === 'object' && !Array.isArray(results)) {
     Object.values(results).forEach(item => {
@@ -72,14 +72,14 @@ const InstacartResultsWrapper = ({ results, onAddToCart }) => {
       }
     });
   }
-
+  
   console.log("Converted groceryItems:", groceryItems);
-
+  
   // If no retailerId is stored, use a default value
   if (!retailerId) {
     console.warn("No Instacart retailer ID found in localStorage, using default");
   }
-
+  
   return (
     <InstacartResults
       groceryItems={groceryItems}
@@ -95,53 +95,12 @@ const InstacartResultsWrapper = ({ results, onAddToCart }) => {
   );
 };
 
-// ErrorBoundary component to catch rendering errors
-class ErrorBoundary extends React.Component {
-  constructor(props) {
-    super(props);
-    this.state = { hasError: false, error: null, errorInfo: null };
-  }
-
-  static getDerivedStateFromError(error) {
-    return { hasError: true };
-  }
-
-  componentDidCatch(error, errorInfo) {
-    console.error("CartPage error caught by boundary:", error, errorInfo);
-    this.setState({ error, errorInfo });
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <Box p={3} bgcolor="#ffebee" borderRadius={1} mt={2}>
-          <Typography variant="h6" color="error">Something went wrong</Typography>
-          <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
-            {this.state.error && this.state.error.toString()}
-          </Typography>
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={() => this.setState({ hasError: false })}
-            sx={{ mt: 2 }}
-          >
-            Try Again
-          </Button>
-        </Box>
-      );
-    }
-    return this.props.children;
-  }
-}
-
 function CartPage() {
   console.log("CartPage rendering started");
 
-  try {
-    const { user } = useAuth();
-    const navigate = useNavigate();
-
-    console.log("CartPage auth and navigation initialized, user:", user);
+  // Move all hooks to the top level
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const [showStoreSelector, setShowStoreSelector] = useState(false);
   const [currentStore, setCurrentStore] = useState(null);
   const [lastSearchedItems, setLastSearchedItems] = useState([]);
@@ -152,13 +111,13 @@ function CartPage() {
     instacart: [],
     unassigned: []
   });
-  
+
   const [searchResults, setSearchResults] = useState({
     walmart: [],
     kroger: [],
     instacart: []
   });
-  
+
   const [loading, setLoading] = useState({
     cart: false,
     search: false,
@@ -172,7 +131,6 @@ function CartPage() {
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [showKrogerCartDialog, setShowKrogerCartDialog] = useState(false);
   const [showErrorDialog, setShowErrorDialog] = useState(false);
-  const [useSimplifiedView, setUseSimplifiedView] = useState(false);
   const [errorDialogContent, setErrorDialogContent] = useState({
     title: '',
     message: '',
@@ -183,21 +141,14 @@ function CartPage() {
   useEffect(() => {
     console.log("CartPage mount effect triggered, user:", user);
 
-    // Initialize with empty cart to prevent null/undefined errors
-    setInternalCart({
-      walmart: [],
-      kroger: [],
-      instacart: [],
-      unassigned: []
-    });
-
     if (user?.userId) {
       console.log("User ID available, loading cart");
       loadInternalCart();
     } else {
       console.warn("No user ID available on mount, cart cannot be loaded");
     }
-  }, [user?.userId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
   
   // Process Kroger auth data when loading the cart page
   useEffect(() => {
@@ -410,7 +361,37 @@ function CartPage() {
     if (krogerAuthCode || krogerConnected === 'true' || reconnectAttempted) {
       processKrogerAuth();
     }
-  }, [internalCart.kroger]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [internalCart]);
+
+  const handleError = (err) => {
+    if (!err) {
+      console.warn("handleError called with null/undefined error");
+      setError("An unknown error occurred");
+      setSnackbarMessage("An unknown error occurred");
+      setSnackbarOpen(true);
+      return;
+    }
+
+    console.error("Error details:", {
+      message: err.message,
+      stack: err.stack,
+      response: err.response
+    });
+
+    if (err.response?.status === 401) {
+      console.log("401 Unauthorized error - redirecting to login");
+      setSnackbarMessage("Please log in to continue");
+      setSnackbarOpen(true);
+      setTimeout(() => navigate('/login'), 1500);
+      return;
+    }
+
+    const errorMessage = err.response?.data?.detail || err.message || 'An error occurred';
+    setError(errorMessage);
+    setSnackbarMessage(errorMessage);
+    setSnackbarOpen(true);
+  };
 
   const loadInternalCart = async () => {
     console.log("loadInternalCart called, userId:", user?.userId);
@@ -459,34 +440,6 @@ function CartPage() {
     }
   };
 
-  const handleError = (err) => {
-    if (!err) {
-      console.warn("handleError called with null/undefined error");
-      setError("An unknown error occurred");
-      setSnackbarMessage("An unknown error occurred");
-      setSnackbarOpen(true);
-      return;
-    }
-
-    console.error("Error details:", {
-      message: err.message,
-      stack: err.stack,
-      response: err.response
-    });
-
-    if (err.response?.status === 401) {
-      console.log("401 Unauthorized error - redirecting to login");
-      setSnackbarMessage("Please log in to continue");
-      setSnackbarOpen(true);
-      setTimeout(() => navigate('/login'), 1500);
-      return;
-    }
-
-    const errorMessage = err.response?.data?.detail || err.message || 'An error occurred';
-    setError(errorMessage);
-    setSnackbarMessage(errorMessage);
-    setSnackbarOpen(true);
-  };
 
   const showKrogerError = (title, message, needsReconnect = false) => {
     setErrorDialogContent({
@@ -596,6 +549,74 @@ function CartPage() {
       true
     );
     return false;
+  };
+
+  // Helper function to extract grocery items for Instacart
+  const extractGroceryItems = () => {
+    // Check if we have a flat or categorized grocery list
+    if (Array.isArray(internalCart.instacart)) {
+      // If it's a flat array, extract names
+      return internalCart.instacart.map(item => 
+        typeof item === 'string' ? item : (item.name || '')
+      ).filter(name => name.trim() !== '');
+    }
+    
+    // Default to empty array if we couldn't extract items
+    return [];
+  };
+
+  const handleInstacartSearch = async () => {
+    try {
+      // Get the items from the instacart store
+      const storeItems = internalCart.instacart.map(item => item.name);
+      setLastSearchedItems(storeItems);
+      
+      if (storeItems.length === 0) {
+        setError('No items assigned to instacart');
+        return;
+      }
+      
+      setLoading(prev => ({ ...prev, search: true, instacart: true }));
+      setError(null);
+      
+      // Get Instacart retailers
+      const retailers = await instacartService.getRetailers();
+      
+      if (!retailers || retailers.length === 0) {
+        setError('No Instacart retailers available');
+        setLoading(prev => ({ ...prev, search: false, instacart: false }));
+        return;
+      }
+      
+      // Use the first retailer for now
+      const retailerId = retailers[0].id;
+      localStorage.setItem('instacart_retailer_id', retailerId);
+      
+      // Search for each item
+      const results = [];
+      for (const item of storeItems) {
+        try {
+          const productResults = await instacartService.searchProducts(retailerId, item, 3);
+          if (productResults && productResults.length > 0) {
+            results.push(...productResults);
+          }
+        } catch (err) {
+          console.error(`Error searching for "${item}":`, err);
+        }
+      }
+      
+      // Update search results
+      setSearchResults(prev => ({
+        ...prev,
+        instacart: results
+      }));
+      
+      setLoading(prev => ({ ...prev, search: false, instacart: false }));
+    } catch (err) {
+      console.error('Error searching Instacart items:', err);
+      setError('Failed to search Instacart items: ' + (err.message || 'Unknown error'));
+      setLoading(prev => ({ ...prev, search: false, instacart: false }));
+    }
   };
 
   const handleStoreSearch = async (store) => {
@@ -853,66 +874,12 @@ function CartPage() {
     }
   };
 
-  const handleInstacartSearch = async () => {
-    try {
-      // Get the items from the instacart store
-      const storeItems = internalCart.instacart.map(item => item.name);
-      setLastSearchedItems(storeItems);
-
-      if (storeItems.length === 0) {
-        setError('No items assigned to instacart');
-        return;
-      }
-
-      setLoading(prev => ({ ...prev, search: true, instacart: true }));
-      setError(null);
-
-      // Get Instacart retailers
-      const retailers = await instacartService.getRetailers();
-
-      if (!retailers || retailers.length === 0) {
-        setError('No Instacart retailers available');
-        setLoading(prev => ({ ...prev, search: false, instacart: false }));
-        return;
-      }
-
-      // Use the first retailer for now
-      const retailerId = retailers[0].id;
-      localStorage.setItem('instacart_retailer_id', retailerId);
-
-      // Search for each item
-      const results = [];
-      for (const item of storeItems) {
-        try {
-          const productResults = await instacartService.searchProducts(retailerId, item, 3);
-          if (productResults && productResults.length > 0) {
-            results.push(...productResults);
-          }
-        } catch (err) {
-          console.error(`Error searching for "${item}":`, err);
-        }
-      }
-
-      // Update search results
-      setSearchResults(prev => ({
-        ...prev,
-        instacart: results
-      }));
-
-      setLoading(prev => ({ ...prev, search: false, instacart: false }));
-    } catch (err) {
-      console.error('Error searching Instacart items:', err);
-      setError('Failed to search Instacart items: ' + (err.message || 'Unknown error'));
-      setLoading(prev => ({ ...prev, search: false, instacart: false }));
-    }
-  };
-
   const handleKrogerAuthError = async () => {
     try {
       // First attempt to refresh the token
       console.log("Attempting to refresh Kroger token via auth service");
       const refreshResult = await krogerAuthService.getKrogerToken();
-
+      
       if (refreshResult.success) {
         setSnackbarMessage("Kroger connection refreshed successfully");
         setSnackbarOpen(true);
@@ -921,7 +888,7 @@ function CartPage() {
         // If refresh fails, show reconnect dialog
         console.log("Token refresh failed, showing reconnect dialog");
         showKrogerError(
-          "Kroger Authentication Required",
+          "Kroger Authentication Required", 
           "Your Kroger session has expired. Please reconnect your account to continue.",
           true
         );
@@ -930,7 +897,7 @@ function CartPage() {
     } catch (err) {
       console.error("Error handling Kroger auth:", err);
       showKrogerError(
-        "Kroger Authentication Error",
+        "Kroger Authentication Error", 
         "There was a problem with your Kroger connection. Please reconnect your account.",
         true
       );
@@ -1271,7 +1238,7 @@ const handleAddToCart = async (items, store) => {
     if (store) {
       setSearchResults(prev => ({ ...prev, [store]: [] }));
     } else {
-      setSearchResults({ walmart: [], kroger: [] });
+      setSearchResults({ walmart: [], kroger: [], instacart: [] });
     }
   };
 
@@ -1335,35 +1302,34 @@ const handleAddToCart = async (items, store) => {
     }
   };
 
-  // Already defined earlier in the file, removing duplicate
-
+  // Helper function to safely render store sections with null checking
   const renderStoreSection = (store, items, searchFn, ResultsComponent) => {
-    // Guard against null/undefined parameters
+    // Guard against null/undefined store
     if (!store) {
       console.error('renderStoreSection called with null/undefined store');
       return null;
     }
-
+    
     if (!items) {
       console.error(`renderStoreSection called with null/undefined items for store: ${store}`);
       items = [];
     }
-
+    
     if (!searchFn) {
       console.error(`renderStoreSection called with null/undefined searchFn for store: ${store}`);
       searchFn = () => console.warn(`Search function not provided for ${store}`);
     }
-
+    
     if (!ResultsComponent) {
       console.error(`renderStoreSection called with null/undefined ResultsComponent for store: ${store}`);
       return null;
     }
-
+    
     // Safely get store name with capitalization
-    const storeName = typeof store === 'string' ?
-      `${store.charAt(0).toUpperCase()}${store.slice(1)}` :
+    const storeName = typeof store === 'string' ? 
+      `${store.charAt(0).toUpperCase()}${store.slice(1)}` : 
       'Unknown Store';
-
+    
     return (
     <Card sx={{ mb: 4 }}>
       <CardContent>
@@ -1449,60 +1415,13 @@ const handleAddToCart = async (items, store) => {
     );
   };
 
-  const renderSimplifiedCartPage = () => {
-    console.log("Rendering simplified cart page");
-    return (
-      <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
+  return (
+    <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
         <Typography variant="h4" gutterBottom>
           Shopping Cart
         </Typography>
-        <Card sx={{ p: 3, mb: 3 }}>
-          <Typography variant="h6" gutterBottom>Cart Status</Typography>
-          <Typography>
-            {user ? `User: ${user.email || user.userId}` : 'No user logged in'}
-          </Typography>
-          <Typography>
-            Cart Items: {internalCart ?
-              `${Object.keys(internalCart).map(store =>
-                `${store}: ${internalCart[store] ? internalCart[store].length : 0} items`
-              ).join(', ')}` :
-              'No items loaded'
-            }
-          </Typography>
-          <Box mt={2}>
-            <Button
-              variant="contained"
-              color="primary"
-              onClick={loadInternalCart}
-            >
-              Reload Cart
-            </Button>
-          </Box>
-        </Card>
-      </Container>
-    );
-  };
-
-  // Return with error boundary
-  return (
-    <ErrorBoundary>
-      {useSimplifiedView ? (
-        renderSimplifiedCartPage()
-      ) : (
-        <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-          <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-            <Typography variant="h4" gutterBottom>
-              Shopping Cart
-            </Typography>
-            <Button
-              variant="outlined"
-              color="secondary"
-              onClick={() => setUseSimplifiedView(true)}
-              size="small"
-            >
-              Switch to Simple View
-            </Button>
-          </Box>
+      </Box>
 
       {/* Unassigned Items */}
       <Card sx={{ mb: 4 }}>
@@ -1707,29 +1626,7 @@ const handleAddToCart = async (items, store) => {
         message={snackbarMessage}
       />
     </Container>
-      )}
-    </ErrorBoundary>
   );
-  } catch (error) {
-    console.error("Fatal error in CartPage rendering:", error);
-    return (
-      <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-        <Typography variant="h4" gutterBottom>Shopping Cart</Typography>
-        <Box p={3} bgcolor="#ffebee" borderRadius={1}>
-          <Typography variant="h6" color="error">Error loading cart</Typography>
-          <Typography variant="body2">{error.message}</Typography>
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={() => window.location.reload()}
-            sx={{ mt: 2 }}
-          >
-            Reload Page
-          </Button>
-        </Box>
-      </Container>
-    );
-  }
 }
 
 export default CartPage;
