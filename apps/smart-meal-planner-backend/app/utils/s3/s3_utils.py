@@ -345,13 +345,42 @@ def force_initialize_s3_helper():
     
     return s3_helper
 
-# Try to create the singleton instance
-try:
-    s3_helper = S3Helper()
-    logger.info(f"S3Helper initialized successfully with bucket: {s3_helper.bucket_name}")
-except ValueError as e:
-    logger.warning(f"S3Helper initialization failed: {str(e)}")
-    # Create a placeholder that will attempt runtime initialization when called
+# Try to create the singleton instance, but only if not running in Railway
+# Railway environment should use on-demand initialization to avoid startup issues
+if os.environ.get("RAILWAY_ENVIRONMENT") == "true":
+    logger.info("Running in Railway environment, skipping automatic S3 initialization")
+    # Use dummy helper that will initialize on-demand
+    class DummyS3Helper:
+        def __init__(self):
+            self.bucket_name = None
+
+        async def upload_image(self, file, folder="recipe-images"):
+            logger.info("Railway environment detected - initializing S3 on demand")
+            # Try to initialize on demand if called after environment variables are set
+            s3 = force_initialize_s3_helper()
+            if not hasattr(s3, 'bucket_name') or s3.bucket_name is None:
+                raise HTTPException(
+                    status_code=500,
+                    detail="S3 configuration is missing or incomplete. Check AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, S3_BUCKET_NAME, and AWS_REGION environment variables."
+                )
+            return await s3.upload_image(file, folder)
+
+        def delete_image(self, image_url):
+            logger.info("Railway environment detected - initializing S3 on demand")
+            # Try to initialize on demand
+            s3 = force_initialize_s3_helper()
+            if not hasattr(s3, 'bucket_name') or s3.bucket_name is None:
+                return False
+            return s3.delete_image(image_url)
+
+    s3_helper = DummyS3Helper()
+else:
+    try:
+        s3_helper = S3Helper()
+        logger.info(f"S3Helper initialized successfully with bucket: {s3_helper.bucket_name}")
+    except ValueError as e:
+        logger.warning(f"S3Helper initialization failed: {str(e)}")
+        # Create a placeholder that will attempt runtime initialization when called
     class DummyS3Helper:
         def __init__(self):
             self.bucket_name = None

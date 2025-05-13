@@ -423,10 +423,29 @@ async def test_s3_config(user = Depends(get_user_from_token)):
     Test S3 configuration and return diagnostic information
     """
     try:
+        # Check if we're in Railway environment
+        railway_env = os.environ.get("RAILWAY_ENVIRONMENT", "false").lower() == "true"
+
         # Force initialize to get the very latest environment variables
-        from ..utils.s3.s3_utils import force_initialize_s3_helper
-        logger.info("Force initializing S3 helper for configuration test...")
-        s3_helper_instance = force_initialize_s3_helper()
+        if railway_env:
+            try:
+                # In Railway environment, we need to be careful about importing and initializing
+                from ..utils.s3.s3_utils import force_initialize_s3_helper
+                logger.info("Railway environment detected - carefully initializing S3 helper...")
+                s3_helper_instance = force_initialize_s3_helper()
+            except Exception as railway_error:
+                logger.warning(f"Railway environment S3 initialization failed: {str(railway_error)}")
+                # Create a dummy object with needed attributes for diagnostics
+                class DummyHelper:
+                    def __init__(self):
+                        self.bucket_name = os.getenv("S3_BUCKET_NAME")
+                        self.region = os.getenv("AWS_REGION", "us-east-2")
+                s3_helper_instance = DummyHelper()
+        else:
+            # Normal environment, just do the regular initialization
+            from ..utils.s3.s3_utils import force_initialize_s3_helper
+            logger.info("Force initializing S3 helper for configuration test...")
+            s3_helper_instance = force_initialize_s3_helper()
         
         # Get environment variables (masking sensitive data)
         aws_access_key = os.getenv("AWS_ACCESS_KEY_ID")
