@@ -109,8 +109,10 @@ def create_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=["*"],  # Allow all origins temporarily
         allow_credentials=True,
-        allow_methods=["*"],  # Allow all methods
-        allow_headers=["*"],  # Allow all headers
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+        allow_headers=["Content-Type", "Authorization", "Accept", "Origin", "X-Requested-With"],
+        expose_headers=["Access-Control-Allow-Origin"],
+        max_age=600  # Cache preflight requests for 10 minutes
     )
 
     # Add trusted host middleware

@@ -160,7 +160,7 @@ export async function generateSimpleShoppingList(menuData) {
     }
     
     // Create API request
-    const apiUrl = "https://smartmealplannermulti-production.up.railway.app/ai/simple-shopping-list";
+    const apiUrl = "https://smartmealplannermulti-production.up.railway.app/custom/ai-simple-shopping-list";
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
@@ -168,13 +168,23 @@ export async function generateSimpleShoppingList(menuData) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        menu_text: menuText
+        menu_text: menuText,
+        model: "gpt-3.5-turbo" // Use a faster model for quicker response
       })
     });
     
     if (!response.ok) {
       // If API fails, try client-side fallback
-      console.warn("API request failed, using client-side fallback");
+      const errorStatus = response.status;
+      let errorText = "";
+      try {
+        errorText = await response.text();
+      } catch (e) {
+        errorText = "Could not read error response";
+      }
+
+      console.warn(`API request failed with status ${errorStatus}: ${errorText}`);
+      console.warn("Using client-side fallback for shopping list generation");
       return generateLocalShoppingList(menuData);
     }
     

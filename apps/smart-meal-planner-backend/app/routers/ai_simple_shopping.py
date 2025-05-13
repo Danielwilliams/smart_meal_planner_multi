@@ -4,7 +4,12 @@ from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
 import json
 import os
-import openai
+# Support both older and newer OpenAI API versions
+try:
+    import openai
+    from openai import OpenAI
+except ImportError:
+    import openai
 from app.utils.auth_utils import get_user_from_token
 from app.models.user import User
 
@@ -30,7 +35,7 @@ class ShoppingListItem(BaseModel):
 class ShoppingListResponse(BaseModel):
     items: List[ShoppingListItem]
 
-@router.post("/ai/simple-shopping-list", response_model=ShoppingListResponse)
+@router.post("/custom/ai-simple-shopping-list", response_model=ShoppingListResponse)
 async def generate_shopping_list(
     request: ShoppingListRequest,
     current_user = Depends(get_user_from_token)
