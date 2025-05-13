@@ -13,7 +13,8 @@ import apiService from './apiService';
  */
 export const getRetailers = async () => {
   try {
-    const response = await apiService.get('/instacart/retailers');
+    // Make sure to use the correct API call method from apiService
+    const response = await apiService.makeRequest('GET', '/instacart/retailers');
     return response.data;
   } catch (error) {
     console.error('Error fetching Instacart retailers:', error);
@@ -30,9 +31,10 @@ export const getRetailers = async () => {
  */
 export const searchProducts = async (retailerId, query, limit = 10) => {
   try {
-    const response = await apiService.get(
+    const response = await apiService.makeRequest(
+      'GET',
       `/instacart/retailers/${retailerId}/products/search`,
-      { params: { query, limit } }
+      { query, limit }
     );
     return response.data;
   } catch (error) {
@@ -49,7 +51,7 @@ export const searchProducts = async (retailerId, query, limit = 10) => {
  */
 export const createCart = async (retailerId, items) => {
   try {
-    const response = await apiService.post('/instacart/carts', {
+    const response = await apiService.makeRequest('POST', '/instacart/carts', null, {
       retailer_id: retailerId,
       items
     });
@@ -69,7 +71,7 @@ export const createCart = async (retailerId, items) => {
  */
 export const addItemToCart = async (cartId, productId, quantity = 1) => {
   try {
-    const response = await apiService.post(`/instacart/carts/${cartId}/items`, {
+    const response = await apiService.makeRequest('POST', `/instacart/carts/${cartId}/items`, null, {
       product_id: productId,
       quantity
     });
@@ -87,7 +89,7 @@ export const addItemToCart = async (cartId, productId, quantity = 1) => {
  */
 export const getCart = async (cartId) => {
   try {
-    const response = await apiService.get(`/instacart/carts/${cartId}`);
+    const response = await apiService.makeRequest('GET', `/instacart/carts/${cartId}`);
     return response.data;
   } catch (error) {
     console.error('Error getting Instacart cart:', error);
@@ -103,8 +105,8 @@ export const getCart = async (cartId) => {
  */
 export const matchGroceryList = async (retailerId, menuId) => {
   try {
-    const response = await apiService.get(`/instacart/match/${retailerId}`, {
-      params: { menu_id: menuId }
+    const response = await apiService.makeRequest('GET', `/instacart/match/${retailerId}`, {
+      menu_id: menuId
     });
     return response.data;
   } catch (error) {

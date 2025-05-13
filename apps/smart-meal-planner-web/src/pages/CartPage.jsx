@@ -38,8 +38,10 @@ import apiService from '../services/apiService';
 import { useNavigate } from 'react-router-dom';
 import KrogerResults from '../components/KrogerResults';
 import WalmartResults from '../components/WalmartResults';
+import InstacartResults from '../components/InstacartResults';
 import { StoreSelector } from '../components/StoreSelector';
 import krogerAuthService from '../services/krogerAuthService';
+import instacartService from '../services/instacartService';
 
 function CartPage() {
   const { user } = useAuth();
@@ -51,19 +53,22 @@ function CartPage() {
   const [internalCart, setInternalCart] = useState({
     walmart: [],
     kroger: [],
+    instacart: [],
     unassigned: []
   });
   
   const [searchResults, setSearchResults] = useState({
     walmart: [],
-    kroger: []
+    kroger: [],
+    instacart: []
   });
   
   const [loading, setLoading] = useState({
     cart: false,
     search: false,
     kroger: false,
-    walmart: false
+    walmart: false,
+    instacart: false
   });
 
   const [error, setError] = useState(null);
@@ -689,12 +694,66 @@ function CartPage() {
     }
   };
 
+  const handleInstacartSearch = async () => {
+    try {
+      // Get the items from the instacart store
+      const storeItems = internalCart.instacart.map(item => item.name);
+      setLastSearchedItems(storeItems);
+
+      if (storeItems.length === 0) {
+        setError('No items assigned to instacart');
+        return;
+      }
+
+      setLoading(prev => ({ ...prev, search: true, instacart: true }));
+      setError(null);
+
+      // Get Instacart retailers
+      const retailers = await instacartService.getRetailers();
+
+      if (!retailers || retailers.length === 0) {
+        setError('No Instacart retailers available');
+        setLoading(prev => ({ ...prev, search: false, instacart: false }));
+        return;
+      }
+
+      // Use the first retailer for now
+      const retailerId = retailers[0].id;
+      localStorage.setItem('instacart_retailer_id', retailerId);
+
+      // Search for each item
+      const results = [];
+      for (const item of storeItems) {
+        try {
+          const productResults = await instacartService.searchProducts(retailerId, item, 3);
+          if (productResults && productResults.length > 0) {
+            results.push(...productResults);
+          }
+        } catch (err) {
+          console.error(`Error searching for "${item}":`, err);
+        }
+      }
+
+      // Update search results
+      setSearchResults(prev => ({
+        ...prev,
+        instacart: results
+      }));
+
+      setLoading(prev => ({ ...prev, search: false, instacart: false }));
+    } catch (err) {
+      console.error('Error searching Instacart items:', err);
+      setError('Failed to search Instacart items: ' + (err.message || 'Unknown error'));
+      setLoading(prev => ({ ...prev, search: false, instacart: false }));
+    }
+  };
+
   const handleKrogerAuthError = async () => {
     try {
       // First attempt to refresh the token
       console.log("Attempting to refresh Kroger token via auth service");
       const refreshResult = await krogerAuthService.getKrogerToken();
-      
+
       if (refreshResult.success) {
         setSnackbarMessage("Kroger connection refreshed successfully");
         setSnackbarOpen(true);
@@ -703,7 +762,7 @@ function CartPage() {
         // If refresh fails, show reconnect dialog
         console.log("Token refresh failed, showing reconnect dialog");
         showKrogerError(
-          "Kroger Authentication Required", 
+          "Kroger Authentication Required",
           "Your Kroger session has expired. Please reconnect your account to continue.",
           true
         );
@@ -712,7 +771,7 @@ function CartPage() {
     } catch (err) {
       console.error("Error handling Kroger auth:", err);
       showKrogerError(
-        "Kroger Authentication Error", 
+        "Kroger Authentication Error",
         "There was a problem with your Kroger connection. Please reconnect your account.",
         true
       );
@@ -1254,6 +1313,7 @@ const handleAddToCart = async (items, store) => {
                       >
                         <MenuItem value="walmart">Walmart</MenuItem>
                         <MenuItem value="kroger">Kroger</MenuItem>
+                        <MenuItem value="instacart">Instacart</MenuItem>
                       </Select>
                     </FormControl>
                     <IconButton
@@ -1274,6 +1334,7 @@ const handleAddToCart = async (items, store) => {
       {/* Store Sections */}
       {renderStoreSection('kroger', internalCart.kroger, () => handleStoreSearch('kroger'), KrogerResults)}
       {renderStoreSection('walmart', internalCart.walmart, () => handleStoreSearch('walmart'), WalmartResults)}
+      {renderStoreSection('instacart', internalCart.instacart, () => handleInstacartSearch(), InstacartResults)}
 
       {/* Error Display */}
       {error && (
