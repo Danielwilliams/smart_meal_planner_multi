@@ -266,16 +266,50 @@ export const adaptShoppingListResponse = (result, menuId, logger = null) => {
     // Format 4: Direct array of items
     else if (Array.isArray(result)) {
       log(`Found direct array with ${result.length} items`, 'info');
-      
-      // Create a single category with all items
-      processedResult = {
-        categories: { 'All Items': result },
-        healthyAlternatives: [],
-        shoppingTips: [],
-        cached: false,
-        timestamp: new Date().toISOString(),
-        menuId: menuId
-      };
+
+      // Check if this array contains properly categorized items
+      const hasCategories = result.length > 0 &&
+                           result[0].category &&
+                           typeof result[0].category === 'string';
+
+      if (hasCategories) {
+        log(`Direct array has category property, checking for proper categorization`, 'info');
+
+        // Extract all unique categories
+        const uniqueCategories = [...new Set(result.map(item => item.category))];
+        log(`Found ${uniqueCategories.length} unique categories: ${uniqueCategories.join(', ')}`, 'info');
+
+        // If we have more than one category or a single category that's not "All Items",
+        // then we have proper categorization from OpenAI
+        const hasProperCategories = uniqueCategories.length > 1 ||
+                                   (uniqueCategories.length === 1 && uniqueCategories[0] !== 'All Items');
+
+        if (hasProperCategories) {
+          log(`Array has properly categorized items`, 'success');
+
+          // Organize items by category
+          const categoryMap = {};
+          uniqueCategories.forEach(category => {
+            categoryMap[category] = result.filter(item => item.category === category);
+          });
+
+          processedResult = {
+            categories: categoryMap,
+            healthyAlternatives: [],
+            shoppingTips: [],
+            cached: false,
+            timestamp: new Date().toISOString(),
+            menuId: menuId
+          };
+
+          return processedResult;
+        }
+      }
+
+      // If we don't have proper categories or categories at all, just pass the array through
+      // CategorizedShoppingList component will handle categorization
+      log(`Returning the direct array for client-side processing`, 'info');
+      return result;
     }
     // Format 5: Unknown format - try to extract useful data
     else {

@@ -141,15 +141,73 @@ const CategorizedShoppingList = ({ groceryData, selectedStore, onAddToCart }) =>
     // Handle direct array format (from OpenAI response)
     else if (Array.isArray(groceryData)) {
       const categorized = {};
+
+      // First check if we have proper categories
+      let hasProperCategories = false;
+      if (groceryData.length > 0 && groceryData[0].category) {
+        // Get unique categories
+        const uniqueCategories = [...new Set(groceryData.map(item => item.category))];
+        // If we have more than one category or a single category that's not "All Items",
+        // then we have proper categorization
+        hasProperCategories = uniqueCategories.length > 1 ||
+                             (uniqueCategories.length === 1 && uniqueCategories[0] !== 'All Items');
+      }
+
+      if (hasProperCategories) {
+        console.log("Direct array has proper categories:",
+          [...new Set(groceryData.map(item => item.category))].join(', '));
+      } else {
+        console.log("Direct array lacks proper categories, will apply client-side categorization");
+      }
+
+      // Process each item
       groceryData.forEach(item => {
         if (item && typeof item === 'object') {
-          const category = item.category || 'Other';
+          let category = item.category || 'Other';
+
+          // Apply client-side categorization if we don't have proper categories
+          if (!hasProperCategories) {
+            const itemName = (item.name || '').toLowerCase();
+
+            // Only recategorize if the category is missing or "All Items"
+            if (!item.category || item.category === 'All Items') {
+              // Determine category based on name
+              if (/chicken|beef|pork|fish|seafood|meat|protein|turkey|steak|sausage|bacon/.test(itemName)) {
+                category = 'Meat & Seafood';
+              } else if (/spinach|lettuce|tomato|onion|potato|garlic|pepper|vegetable|carrot|cucumber|produce|fruit|apple|banana|avocado|ginger/.test(itemName)) {
+                category = 'Produce';
+              } else if (/milk|cheese|yogurt|cream|egg|butter|dairy/.test(itemName)) {
+                category = 'Dairy & Eggs';
+              } else if (/bread|roll|tortilla|bagel|bakery/.test(itemName)) {
+                category = 'Bakery & Bread';
+              } else if (/pasta|rice|quinoa|cereal|grain|flour/.test(itemName)) {
+                category = 'Dry Goods & Pasta';
+              } else if (/frozen|ice cream/.test(itemName)) {
+                category = 'Frozen Foods';
+              } else if (/oil|vinegar|sauce|dressing|condiment|ketchup|mustard/.test(itemName)) {
+                category = 'Condiments & Spices';
+              } else if (/salt|pepper|spice|herb|seasoning/.test(itemName)) {
+                category = 'Condiments & Spices';
+              } else if (/cookie|chip|candy|snack/.test(itemName)) {
+                category = 'Snacks';
+              } else if (/water|juice|soda|beverage|drink|coffee|tea/.test(itemName)) {
+                category = 'Beverages';
+              } else if (/sugar|baking powder|baking soda|vanilla|chocolate/.test(itemName)) {
+                category = 'Baking';
+              } else {
+                category = 'Other';
+              }
+            }
+          }
+
           if (!categorized[category]) {
             categorized[category] = [];
           }
+
           categorized[category].push(formatItemDisplay(item));
         }
       });
+
       return categorized;
     }
 

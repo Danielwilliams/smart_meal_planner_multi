@@ -1349,9 +1349,37 @@ Combine duplicate ingredients, adding up quantities when appropriate.
             const pollResult = await pollResponse.json();
 
             // Check if processing is complete
-            if (pollResult.status === 'completed' || pollResult.status === 'error' ||
-                (pollResult.groceryList && pollResult.groceryList.length > 0)) {
+            if (pollResult.status === 'completed' || pollResult.status === 'error') {
               addLog('Processing complete! Final results received', 'success');
+
+              // Check if this still has 'All Items' category, which means processing isn't really done
+              if ((pollResult.groceryList &&
+                  pollResult.groceryList.length === 1 &&
+                  pollResult.groceryList[0].category === 'All Items') ||
+                  // Also check if we have an array that might be the direct JSON format from OpenAI
+                  (Array.isArray(pollResult) &&
+                   pollResult.length > 0 &&
+                   (!pollResult[0].category || pollResult[0].category === 'All Items')) ||
+                  // Also check for ingredient_list format
+                  (pollResult.ingredient_list &&
+                   Array.isArray(pollResult.ingredient_list) &&
+                   pollResult.ingredient_list.length > 0 &&
+                   (!pollResult.ingredient_list[0].category || pollResult.ingredient_list[0].category === 'All Items'))) {
+
+                if (pollCount < maxPolls) {
+                  // Keep polling since we just have a placeholder
+                  addLog('Received only placeholder data, continuing polling...', 'info');
+                  return new Promise(resolve => {
+                    setTimeout(async () => {
+                      const result = await pollForResult();
+                      resolve(result);
+                    }, pollInterval);
+                  });
+                } else {
+                  addLog('Reached maximum polling attempts but still have placeholder data', 'warning');
+                }
+              }
+
               return pollResult;
             } else {
               // Still processing, continue polling
