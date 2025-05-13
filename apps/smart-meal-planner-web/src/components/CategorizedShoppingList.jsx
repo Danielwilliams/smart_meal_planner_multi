@@ -36,18 +36,35 @@ const CategorizedShoppingList = ({ groceryData, selectedStore, onAddToCart }) =>
     if (typeof item === 'string') return item;
 
     const name = item.name || '';
-    const quantity = item.quantity || '';
-    const unit = item.unitOfMeasure || item.unit || '';
+    let quantity = item.quantity || '';
+    let unit = item.unitOfMeasure || item.unit || '';
+
+    // Special handling for quantities with embedded units
+    if (typeof quantity === 'string' && quantity.includes(' ')) {
+      // Extract parts like "96 oz" -> "96" and "oz"
+      const parts = quantity.split(' ');
+      quantity = parts[0];
+      // Only use the embedded unit if we don't already have one
+      if (!unit) {
+        unit = parts.slice(1).join(' ');
+      }
+    }
 
     // Log the item for debugging
     console.log("Formatting item:", {
       name,
       quantity,
       unit,
-      originalUnit: item.unitOfMeasure,
-      originalUnit2: item.unit
+      originalQuantity: item.quantity,
+      originalUnit: item.unitOfMeasure || item.unit || ''
     });
 
+    // For "To taste" quantities
+    if (typeof item.quantity === 'string' && item.quantity.toLowerCase().includes('taste')) {
+      return `${name}: To taste`;
+    }
+
+    // Normal case with quantity and unit
     return `${name}: ${quantity} ${unit}`.trim();
   };
 
@@ -453,20 +470,35 @@ const CategorizedShoppingList = ({ groceryData, selectedStore, onAddToCart }) =>
                                     border: '1px solid #ccd6ff'
                                   }}
                                 >
-                                  {typeof item.quantity === 'string' && item.quantity.toLowerCase() === 'to taste'
+                                  {typeof item.quantity === 'string' && item.quantity.toLowerCase().includes('taste')
                                     ? 'To taste'  // Special handling for "To taste" quantities
                                     : (
                                       <>
-                                        {/* For embedded units like "96 oz", just use the first part */}
+                                        {/* First determine the quantity part */}
                                         {typeof item.quantity === 'string' && item.quantity.includes(' ')
-                                          ? item.quantity.split(' ')[0]  // Just show the number part
+                                          ? item.quantity.split(' ')[0]  // Just show the number part for embedded units
                                           : item.quantity}
+
+                                        {/* Spacer */}
                                         {' '}
-                                        <Box component="span" sx={{ color: '#555' }}>
-                                          {/* Then show the unit part */}
-                                          {typeof item.quantity === 'string' && item.quantity.includes(' ')
-                                            ? item.quantity.split(' ').slice(1).join(' ')  // Unit embedded in quantity
-                                            : (item.unitOfMeasure || item.unit || '')}
+
+                                        {/* Then explicitly determine the unit part with fallbacks */}
+                                        <Box component="span" sx={{ color: '#555', fontWeight: 'normal' }}>
+                                          {(() => {
+                                            // Try to get unit from quantity field (like "96 oz")
+                                            if (typeof item.quantity === 'string' && item.quantity.includes(' ')) {
+                                              return item.quantity.split(' ').slice(1).join(' ');
+                                            }
+                                            // Try to get unit from unit-specific fields
+                                            else if (item.unitOfMeasure) {
+                                              return item.unitOfMeasure;
+                                            }
+                                            else if (item.unit) {
+                                              return item.unit;
+                                            }
+                                            // Default empty string
+                                            return '';
+                                          })()}
                                         </Box>
                                       </>
                                     )}

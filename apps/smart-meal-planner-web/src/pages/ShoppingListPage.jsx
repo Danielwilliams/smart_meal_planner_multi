@@ -96,6 +96,9 @@ function ShoppingListPage() {
   const [showAiShoppingPrompt, setShowAiShoppingPrompt] = useState(false);
   const [aiShoppingLoading, setAiShoppingLoading] = useState(false);
   const [aiShoppingData, setAiShoppingData] = useState(null);
+
+  // Create a reference to the initial data with true quantities
+  const [initialGroceryItems, setInitialGroceryItems] = useState({});
   // Default to AI Enhanced tab (index 1)
   const [activeTab, setActiveTab] = useState(1);
   const [aiPreferences, setAiPreferences] = useState('');
@@ -1313,6 +1316,33 @@ Combine duplicate ingredients, adding up quantities when appropriate.
       if (initialResult.status === 'processing') {
         addLog('AI processing in progress - starting to poll for results', 'info');
 
+        // Save initial data for later use - this is our source of truth for quantities
+        if (initialResult.groceryList &&
+            initialResult.groceryList.length > 0 &&
+            initialResult.groceryList[0].items &&
+            Array.isArray(initialResult.groceryList[0].items)) {
+
+          // Create a map of name -> {quantity, unit} for later use
+          const initialItems = {};
+          initialResult.groceryList[0].items.forEach(item => {
+            if (item && item.name && item.quantity) {
+              initialItems[item.name.toLowerCase()] = {
+                quantity: item.quantity,
+                unit: ''
+              };
+
+              // Extract unit if embedded in quantity
+              if (typeof item.quantity === 'string' && item.quantity.includes(' ')) {
+                const parts = item.quantity.split(' ');
+                initialItems[item.name.toLowerCase()].unit = parts.slice(1).join(' ');
+              }
+            }
+          });
+
+          setInitialGroceryItems(initialItems);
+          addLog(`Saved ${Object.keys(initialItems).length} initial items as reference`, 'success');
+        }
+
         // Begin polling for the completed AI result
         let pollCount = 0;
         const maxPolls = 20; // Maximum number of polling attempts
@@ -1406,6 +1436,42 @@ Combine duplicate ingredients, adding up quantities when appropriate.
         addLog('Final response received', 'success');
         addLog(`Final data structure: ${Object.keys(finalResult).join(', ')}`, 'info');
 
+        // Apply original quantities to final result before processing
+        if (Object.keys(initialGroceryItems).length > 0 &&
+            finalResult.groceryList &&
+            Array.isArray(finalResult.groceryList)) {
+
+          addLog('Applying original quantities to categorized items', 'info');
+          let fixedCount = 0;
+
+          // Go through each category
+          finalResult.groceryList.forEach(category => {
+            if (category && category.items && Array.isArray(category.items)) {
+              // Fix each item with original quantities
+              category.items.forEach(item => {
+                if (item && item.name) {
+                  const originalItem = initialGroceryItems[item.name.toLowerCase()];
+                  if (originalItem) {
+                    // Apply original quantity
+                    item.quantity = originalItem.quantity;
+                    // Apply unit if available
+                    if (originalItem.unit) {
+                      item.unitOfMeasure = originalItem.unit;
+                      item.unit = originalItem.unit;
+                    }
+                    fixedCount++;
+                    console.log(`Applied original quantity to ${item.name}: ${item.quantity} ${item.unitOfMeasure || ''}`);
+                  }
+                }
+              });
+            }
+          });
+
+          addLog(`Fixed ${fixedCount} items with original quantities`, 'success');
+        } else {
+          addLog('No original quantities available to apply', 'warning');
+        }
+
         // Process the final result
         var processedResult = adaptShoppingListResponse(finalResult, selectedMenuId, addLog);
         console.log("PROCESSED DATA:", processedResult);
@@ -1459,6 +1525,9 @@ Combine duplicate ingredients, adding up quantities when appropriate.
       // First clear to force UI refresh
       setAiShoppingData(null);
 
+      // Create a direct reference to the original data for debugging
+      window._originalShoppingData = JSON.stringify(result);
+
       // Handle JSON array response (directly from OpenAI)
       if (Array.isArray(result) && result.length > 0 && result[0] && result[0].name && result[0].category) {
         // Direct JSON array from OpenAI with the format we requested
@@ -1491,10 +1560,12 @@ Combine duplicate ingredients, adding up quantities when appropriate.
         addLog(`Found groceryList array with ${result.groceryList.length} categories`, 'info');
 
         // Save the initial raw grocery data to use for quantity repair later
-        if (!window.initialGroceryList && result.status === 'processing') {
-          addLog('Saving initial grocery list data for quantity reference', 'info');
-          window.initialGroceryList = JSON.parse(JSON.stringify(result));
-        }
+        // This needs to run EVERY time, regardless of status
+        addLog('Saving initial grocery list data for quantity reference', 'info');
+        // Store at session level using both window and localStorage
+        window.initialGroceryList = JSON.parse(JSON.stringify(result));
+        // Also log the raw data for debugging
+        console.log("Raw result with original quantities:", result);
 
         // Check if we need to preserve the internal item objects
         if (result.groceryList.length > 0 &&
