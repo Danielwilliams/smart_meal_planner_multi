@@ -4331,12 +4331,20 @@ const categorizeItems = (mealPlanData) => {
             </>
           ) : (
             // No AI data, just show regular shopping list
-            <ShoppingList 
-              categories={formatCategoriesForDisplay(groceryList)} 
-              selectedStore={selectedStore} 
-              onAddToCart={handleAddToCart} 
-              onAddToMixedCart={handleAddToMixedCart} 
-            />
+            {aiData && aiData.categories ? (
+              <SmartShoppingList
+                groceryData={aiData}
+                selectedStore={selectedStore}
+                onAddToCart={handleAddToCart}
+              />
+            ) : (
+              <ShoppingList
+                categories={formatCategoriesForDisplay(groceryList)}
+                selectedStore={selectedStore}
+                onAddToCart={handleAddToCart}
+                onAddToMixedCart={handleAddToMixedCart}
+              />
+            )}
           )}
         </Box>
       ) : (

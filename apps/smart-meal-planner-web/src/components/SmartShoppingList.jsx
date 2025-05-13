@@ -38,9 +38,10 @@ const SmartShoppingList = ({ groceryData, selectedStore, onAddToCart }) => {
   // Process the grocery data when it changes
   useEffect(() => {
     setLoading(true);
-    
+
     try {
       console.log("SmartShoppingList received data:", groceryData);
+      console.log("Direct inspection - has categories?", groceryData && groceryData.categories ? "YES" : "NO");
       
       // Extract flat list of items from grocery data
       let flatList = [];
@@ -74,11 +75,31 @@ const SmartShoppingList = ({ groceryData, selectedStore, onAddToCart }) => {
       }
       
       console.log("Extracted flat list:", flatList);
-      
+
+      // Debug to check if the data has categories
+      if (groceryData && groceryData.categories) {
+        console.log("Using direct categories from data:", Object.keys(groceryData.categories));
+
+        // If we have direct categories, use them instead of processing
+        const organizedFromCategories = {};
+        Object.entries(groceryData.categories).forEach(([category, items]) => {
+          if (items && items.length > 0) {
+            organizedFromCategories[category] = items;
+          }
+        });
+
+        if (Object.keys(organizedFromCategories).length > 0) {
+          console.log("Setting organized list directly from categories");
+          setProcessedList(flatList);
+          setOrganizedList(organizedFromCategories);
+          return; // Skip the normal processing
+        }
+      }
+
       // Process the items to combine and format quantities
       const processed = processShoppingList(flatList);
       setProcessedList(processed);
-      
+
       // Organize by department
       const organized = organizeByDepartment(processed);
       setOrganizedList(organized);
