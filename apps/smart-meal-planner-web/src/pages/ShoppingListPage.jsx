@@ -1520,11 +1520,12 @@ Combine duplicate ingredients, adding up quantities when appropriate.
                 // Some quantities may include the unit (e.g. "96 oz")
                 const parts = String(item.quantity).split(' ');
                 if (parts.length > 1) {
+                  // Keep the original string with embedded unit
                   originalItems[item.name.toLowerCase()] = {
-                    quantity: parts[0],
-                    unit: parts.slice(1).join(' ')
+                    quantity: String(item.quantity),  // Keep the full string "96 oz"
+                    unit: parts.slice(1).join(' ')    // Still extract the unit for fallback
                   };
-                  addLog(`Original: ${item.name} = ${parts[0]} ${parts.slice(1).join(' ')}`, 'info');
+                  addLog(`Original: ${item.name} = ${item.quantity} (embedded unit)`, 'info');
                 } else {
                   originalItems[item.name.toLowerCase()] = {
                     quantity: item.quantity,
@@ -1545,7 +1546,11 @@ Combine duplicate ingredients, adding up quantities when appropriate.
                       item.quantity = originalItem.quantity;
                       if (originalItem.unit) {
                         item.unitOfMeasure = originalItem.unit;
+                        // Make sure we set both format properties for compatibility
+                        item.unit = originalItem.unit;
                       }
+                      // Log every item we fix for debugging
+                      console.log(`Fixed item: ${item.name} = ${item.quantity} ${item.unitOfMeasure || item.unit || ''}`);
                       fixCount++;
                     }
                   }

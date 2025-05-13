@@ -39,6 +39,15 @@ const CategorizedShoppingList = ({ groceryData, selectedStore, onAddToCart }) =>
     const quantity = item.quantity || '';
     const unit = item.unitOfMeasure || item.unit || '';
 
+    // Log the item for debugging
+    console.log("Formatting item:", {
+      name,
+      quantity,
+      unit,
+      originalUnit: item.unitOfMeasure,
+      originalUnit2: item.unit
+    });
+
     return `${name}: ${quantity} ${unit}`.trim();
   };
 
@@ -437,13 +446,30 @@ const CategorizedShoppingList = ({ groceryData, selectedStore, onAddToCart }) =>
                                   sx={{
                                     fontWeight: 'bold',
                                     ml: 2,
-                                    backgroundColor: '#f5f5f5',
-                                    px: 1,
+                                    backgroundColor: '#f0f4ff',
+                                    px: 1.5,
                                     py: 0.5,
-                                    borderRadius: 1
+                                    borderRadius: 1,
+                                    border: '1px solid #ccd6ff'
                                   }}
                                 >
-                                  {item.quantity} {item.unitOfMeasure || item.unit || ''}
+                                  {typeof item.quantity === 'string' && item.quantity.toLowerCase() === 'to taste'
+                                    ? 'To taste'  // Special handling for "To taste" quantities
+                                    : (
+                                      <>
+                                        {/* For embedded units like "96 oz", just use the first part */}
+                                        {typeof item.quantity === 'string' && item.quantity.includes(' ')
+                                          ? item.quantity.split(' ')[0]  // Just show the number part
+                                          : item.quantity}
+                                        {' '}
+                                        <Box component="span" sx={{ color: '#555' }}>
+                                          {/* Then show the unit part */}
+                                          {typeof item.quantity === 'string' && item.quantity.includes(' ')
+                                            ? item.quantity.split(' ').slice(1).join(' ')  // Unit embedded in quantity
+                                            : (item.unitOfMeasure || item.unit || '')}
+                                        </Box>
+                                      </>
+                                    )}
                                 </Typography>
                               </Box>
                             }
