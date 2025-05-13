@@ -82,18 +82,35 @@ const SmartShoppingList = ({ groceryData, selectedStore, onAddToCart }) => {
 
         // If we have direct categories, use them instead of processing
         const organizedFromCategories = {};
+
+        // Log full data for troubleshooting
+        console.log("Full groceryData structure:", groceryData);
+        console.log("Categories content:", groceryData.categories);
+
         Object.entries(groceryData.categories).forEach(([category, items]) => {
+          console.log(`Processing category ${category} with ${items ? items.length : 0} items`);
           if (items && items.length > 0) {
             organizedFromCategories[category] = items;
           }
         });
 
         if (Object.keys(organizedFromCategories).length > 0) {
-          console.log("Setting organized list directly from categories");
+          console.log("Setting organized list directly from categories:", organizedFromCategories);
           setProcessedList(flatList);
           setOrganizedList(organizedFromCategories);
+
+          // Expand the first section by default
+          if (Object.keys(organizedFromCategories).length > 0) {
+            setExpandedSection(Object.keys(organizedFromCategories)[0]);
+          }
+
+          setLoading(false); // Ensure loading is set to false
           return; // Skip the normal processing
+        } else {
+          console.log("No non-empty categories found, falling back to processing");
         }
+      } else {
+        console.log("No categories found in groceryData, using standard processing");
       }
 
       // Process the items to combine and format quantities

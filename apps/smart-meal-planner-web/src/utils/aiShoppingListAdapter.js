@@ -142,6 +142,9 @@ export const adaptShoppingListResponse = (result, menuId, logger = null) => {
 
           categories = formattedCategories;
           log(`Auto-categorized items into ${Object.keys(categories).length} categories: ${Object.keys(categories).join(', ')}`, 'info');
+
+          // Log the final categorized structure for debugging
+          console.log("Final categorized structure:", JSON.stringify(categories, null, 2));
         } else {
           // Use the categories as-is
           categories[firstItem.category] = firstItem.items;
