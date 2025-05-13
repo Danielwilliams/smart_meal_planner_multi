@@ -1,5 +1,5 @@
 // src/pages/CartPage.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Component } from 'react';
 import { 
   Container, 
   Typography, 
@@ -95,9 +95,53 @@ const InstacartResultsWrapper = ({ results, onAddToCart }) => {
   );
 };
 
+// ErrorBoundary component to catch rendering errors
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null, errorInfo: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error("CartPage error caught by boundary:", error, errorInfo);
+    this.setState({ error, errorInfo });
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <Box p={3} bgcolor="#ffebee" borderRadius={1} mt={2}>
+          <Typography variant="h6" color="error">Something went wrong</Typography>
+          <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
+            {this.state.error && this.state.error.toString()}
+          </Typography>
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={() => this.setState({ hasError: false })}
+            sx={{ mt: 2 }}
+          >
+            Try Again
+          </Button>
+        </Box>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 function CartPage() {
-  const { user } = useAuth();
-  const navigate = useNavigate();
+  console.log("CartPage rendering started");
+
+  try {
+    const { user } = useAuth();
+    const navigate = useNavigate();
+
+    console.log("CartPage auth and navigation initialized, user:", user);
   const [showStoreSelector, setShowStoreSelector] = useState(false);
   const [currentStore, setCurrentStore] = useState(null);
   const [lastSearchedItems, setLastSearchedItems] = useState([]);
@@ -128,6 +172,7 @@ function CartPage() {
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [showKrogerCartDialog, setShowKrogerCartDialog] = useState(false);
   const [showErrorDialog, setShowErrorDialog] = useState(false);
+  const [useSimplifiedView, setUseSimplifiedView] = useState(false);
   const [errorDialogContent, setErrorDialogContent] = useState({
     title: '',
     message: '',
@@ -136,8 +181,21 @@ function CartPage() {
 
   // Load cart contents on mount
   useEffect(() => {
+    console.log("CartPage mount effect triggered, user:", user);
+
+    // Initialize with empty cart to prevent null/undefined errors
+    setInternalCart({
+      walmart: [],
+      kroger: [],
+      instacart: [],
+      unassigned: []
+    });
+
     if (user?.userId) {
+      console.log("User ID available, loading cart");
       loadInternalCart();
+    } else {
+      console.warn("No user ID available on mount, cart cannot be loaded");
     }
   }, [user?.userId]);
   
@@ -355,26 +413,75 @@ function CartPage() {
   }, [internalCart.kroger]);
 
   const loadInternalCart = async () => {
+    console.log("loadInternalCart called, userId:", user?.userId);
+
+    if (!user || !user.userId) {
+      console.error("Cannot load cart: No user ID available");
+      setError("Please log in to view your cart");
+      return;
+    }
+
     try {
       setLoading(prev => ({ ...prev, cart: true }));
+      console.log("Calling apiService.getCartContents with userId:", user.userId);
+
       const response = await apiService.getCartContents(user.userId);
+      console.log("Cart API response:", response);
 
       if (response?.status === 'success' && response?.cart) {
+        console.log("Setting cart data:", response.cart);
         setInternalCart(response.cart);
+        setSnackbarMessage("Cart loaded successfully");
+        setSnackbarOpen(true);
+      } else {
+        console.warn("Unexpected cart response format:", response);
+        // Initialize with empty cart for each store if not returned
+        setInternalCart({
+          walmart: [],
+          kroger: [],
+          instacart: [],
+          unassigned: []
+        });
       }
     } catch (err) {
       console.error('Cart load error:', err);
       handleError(err);
+
+      // Initialize with empty cart to prevent null/undefined errors
+      setInternalCart({
+        walmart: [],
+        kroger: [],
+        instacart: [],
+        unassigned: []
+      });
     } finally {
       setLoading(prev => ({ ...prev, cart: false }));
     }
   };
 
   const handleError = (err) => {
-    if (err.response?.status === 401) {
-      navigate('/login');
+    if (!err) {
+      console.warn("handleError called with null/undefined error");
+      setError("An unknown error occurred");
+      setSnackbarMessage("An unknown error occurred");
+      setSnackbarOpen(true);
       return;
     }
+
+    console.error("Error details:", {
+      message: err.message,
+      stack: err.stack,
+      response: err.response
+    });
+
+    if (err.response?.status === 401) {
+      console.log("401 Unauthorized error - redirecting to login");
+      setSnackbarMessage("Please log in to continue");
+      setSnackbarOpen(true);
+      setTimeout(() => navigate('/login'), 1500);
+      return;
+    }
+
     const errorMessage = err.response?.data?.detail || err.message || 'An error occurred';
     setError(errorMessage);
     setSnackbarMessage(errorMessage);
@@ -1342,11 +1449,60 @@ const handleAddToCart = async (items, store) => {
     );
   };
 
+  const renderSimplifiedCartPage = () => {
+    console.log("Rendering simplified cart page");
+    return (
+      <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
+        <Typography variant="h4" gutterBottom>
+          Shopping Cart
+        </Typography>
+        <Card sx={{ p: 3, mb: 3 }}>
+          <Typography variant="h6" gutterBottom>Cart Status</Typography>
+          <Typography>
+            {user ? `User: ${user.email || user.userId}` : 'No user logged in'}
+          </Typography>
+          <Typography>
+            Cart Items: {internalCart ?
+              `${Object.keys(internalCart).map(store =>
+                `${store}: ${internalCart[store] ? internalCart[store].length : 0} items`
+              ).join(', ')}` :
+              'No items loaded'
+            }
+          </Typography>
+          <Box mt={2}>
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={loadInternalCart}
+            >
+              Reload Cart
+            </Button>
+          </Box>
+        </Card>
+      </Container>
+    );
+  };
+
+  // Return with error boundary
   return (
-    <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-      <Typography variant="h4" gutterBottom>
-        Shopping Cart
-      </Typography>
+    <ErrorBoundary>
+      {useSimplifiedView ? (
+        renderSimplifiedCartPage()
+      ) : (
+        <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
+          <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+            <Typography variant="h4" gutterBottom>
+              Shopping Cart
+            </Typography>
+            <Button
+              variant="outlined"
+              color="secondary"
+              onClick={() => setUseSimplifiedView(true)}
+              size="small"
+            >
+              Switch to Simple View
+            </Button>
+          </Box>
 
       {/* Unassigned Items */}
       <Card sx={{ mb: 4 }}>
@@ -1551,7 +1707,29 @@ const handleAddToCart = async (items, store) => {
         message={snackbarMessage}
       />
     </Container>
+      )}
+    </ErrorBoundary>
   );
+  } catch (error) {
+    console.error("Fatal error in CartPage rendering:", error);
+    return (
+      <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
+        <Typography variant="h4" gutterBottom>Shopping Cart</Typography>
+        <Box p={3} bgcolor="#ffebee" borderRadius={1}>
+          <Typography variant="h6" color="error">Error loading cart</Typography>
+          <Typography variant="body2">{error.message}</Typography>
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={() => window.location.reload()}
+            sx={{ mt: 2 }}
+          >
+            Reload Page
+          </Button>
+        </Box>
+      </Container>
+    );
+  }
 }
 
 export default CartPage;
