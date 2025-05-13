@@ -9,7 +9,7 @@ from typing import List, Dict, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
-from app.utils.auth_middleware import get_current_user
+from app.utils.auth_utils import get_user_from_token as get_current_user
 from app.integration import instacart
 
 # Configure logging
