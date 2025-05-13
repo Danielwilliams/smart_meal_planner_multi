@@ -1205,6 +1205,9 @@ function ShoppingListPage() {
     setAiShoppingLoading(true);
     const startTime = new Date();
 
+    // Define result variable to fix reference errors
+    let result;
+
     // Helper to add logs with timestamps
     const addLog = (message, type = 'info') => {
       const timestamp = new Date().toLocaleTimeString();
@@ -1273,6 +1276,8 @@ Also include helpful shopping tips.
       }
 
       const initialResult = await response.json();
+      // Assign to result to fix reference errors
+      result = initialResult;
       addLog('Received initial response from API', 'success');
 
       // Log the entire response structure to debug
@@ -1339,6 +1344,8 @@ Also include helpful shopping tips.
 
         // Start polling and wait for the final result
         const finalResult = await pollForResult() || initialResult;
+        // Update result variable with finalResult to fix reference errors
+        result = finalResult;
         addLog('Final response received', 'success');
         addLog(`Final data structure: ${Object.keys(finalResult).join(', ')}`, 'info');
 
@@ -1348,6 +1355,8 @@ Also include helpful shopping tips.
       } else {
         // We already have the final result
         addLog('Processing already complete - no polling needed', 'success');
+        // Use initialResult as the final result
+        result = initialResult;
         var processedResult = adaptShoppingListResponse(initialResult, selectedMenuId, addLog);
         console.log("PROCESSED DATA:", processedResult);
       }
