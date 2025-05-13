@@ -1117,6 +1117,8 @@ const handleAddToCart = async (items, store) => {
     }
   };
 
+  // Already defined earlier in the file, removing duplicate
+
   const renderStoreSection = (store, items, searchFn, ResultsComponent) => (
     <Card sx={{ mb: 4 }}>
       <CardContent>
