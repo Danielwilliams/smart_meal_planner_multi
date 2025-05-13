@@ -7,14 +7,8 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from dotenv import load_dotenv
 
-# Import S3 helper for initialization (but will only initialize on-demand in Railway)
-# This import is deferred to avoid crashing the application at startup
-import os
-if os.environ.get("RAILWAY_ENVIRONMENT") != "true":
-    from app.utils.s3.s3_utils import s3_helper
-else:
-    import logging
-    logging.getLogger(__name__).info("Deferring S3 initialization in Railway environment")
+# Import S3 helper for initialization
+from app.utils.s3.s3_utils import s3_helper
 
 # Import regular routers
 from app.routers import (
@@ -31,8 +25,6 @@ from app.routers import (
 # Import store-specific routers directly
 from app.routers.kroger_store import router as kroger_store_router
 from app.routers.walmart_store import router as walmart_store_router
-from app.routers.instacart_store import router as instacart_store_router
-from app.routers.instacart_cart import router as instacart_cart_router
 from app.routers import saved_recipes 
 from app.routers import organizations
 from app.routers import organization_clients
@@ -135,8 +127,6 @@ def create_app() -> FastAPI:
     app.include_router(order.router)
     app.include_router(kroger_store_router)
     app.include_router(walmart_store_router)
-    app.include_router(instacart_store_router)
-    app.include_router(instacart_cart_router)
     app.include_router(kroger_auth.router)
     app.include_router(grocery_list.router)
     app.include_router(store.router)
@@ -175,49 +165,15 @@ def create_app() -> FastAPI:
             "AWS_ACCESS_KEY_ID": bool(os.getenv("AWS_ACCESS_KEY_ID")),
             "AWS_SECRET_ACCESS_KEY": bool(os.getenv("AWS_SECRET_ACCESS_KEY")),
             "AWS_REGION": os.getenv("AWS_REGION", "us-east-1"),
-            "S3_BUCKET_NAME": os.getenv("S3_BUCKET_NAME"),
-            "RAILWAY_ENVIRONMENT": os.getenv("RAILWAY_ENVIRONMENT", "false")
+            "S3_BUCKET_NAME": os.getenv("S3_BUCKET_NAME")
         }
 
-        # Initialize s3_helper on demand if needed (Railway environment)
-        if os.environ.get("RAILWAY_ENVIRONMENT") == "true":
-            try:
-                # Import on demand
-                from app.utils.s3.s3_utils import s3_helper, force_initialize_s3_helper
-                # Try to initialize if not already initialized
-                if not hasattr(s3_helper, "bucket_name") or s3_helper.bucket_name is None:
-                    logger.info("Attempting to initialize S3 helper on demand")
-                    s3_helper = force_initialize_s3_helper()
-            except Exception as e:
-                logger.error(f"Error initializing S3 helper on demand: {str(e)}")
-                helper_status = {
-                    "initialized": False,
-                    "deferred": True,
-                    "error": str(e)
-                }
-                return {
-                    "s3_environment_vars": s3_vars,
-                    "s3_helper_status": helper_status
-                }
-
         # Check s3_helper initialization
-        try:
-            # For Railway environment, we need to import here
-            if os.environ.get("RAILWAY_ENVIRONMENT") == "true" and 's3_helper' not in locals():
-                from app.utils.s3.s3_utils import s3_helper
-
-            helper_status = {
-                "initialized": hasattr(s3_helper, "bucket_name") and s3_helper.bucket_name is not None,
-                "bucket_name": getattr(s3_helper, "bucket_name", None),
-                "region": getattr(s3_helper, "region", None) if hasattr(s3_helper, "region") else None,
-                "deferred": os.environ.get("RAILWAY_ENVIRONMENT") == "true"
-            }
-        except Exception as e:
-            helper_status = {
-                "initialized": False,
-                "error": str(e),
-                "deferred": os.environ.get("RAILWAY_ENVIRONMENT") == "true"
-            }
+        helper_status = {
+            "initialized": hasattr(s3_helper, "bucket_name") and s3_helper.bucket_name is not None,
+            "bucket_name": getattr(s3_helper, "bucket_name", None),
+            "region": getattr(s3_helper, "region", None) if hasattr(s3_helper, "region") else None
+        }
 
         return {
             "s3_environment_vars": s3_vars,
