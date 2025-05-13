@@ -39,6 +39,29 @@ import { useNavigate } from 'react-router-dom';
 import KrogerResults from '../components/KrogerResults';
 import WalmartResults from '../components/WalmartResults';
 import InstacartResults from '../components/InstacartResults';
+
+// Wrapper component to adapt InstacartResults to the interface expected by renderStoreSection
+const InstacartResultsWrapper = ({ results, onAddToCart }) => {
+  // Get retailerId from localStorage
+  const retailerId = localStorage.getItem('instacart_retailer_id');
+
+  // Convert results array to groceryItems format expected by InstacartResults
+  const groceryItems = results.map(item => item.name || item.description || "Unknown Item");
+
+  return (
+    <InstacartResults
+      groceryItems={groceryItems}
+      retailerId={retailerId}
+      onSuccess={(cart) => {
+        console.log("Instacart cart created:", cart);
+        onAddToCart(groceryItems);
+      }}
+      onError={(err) => {
+        console.error("Instacart error:", err);
+      }}
+    />
+  );
+};
 import { StoreSelector } from '../components/StoreSelector';
 import krogerAuthService from '../services/krogerAuthService';
 import instacartService from '../services/instacartService';
@@ -1178,7 +1201,14 @@ const handleAddToCart = async (items, store) => {
 
   // Already defined earlier in the file, removing duplicate
 
-  const renderStoreSection = (store, items, searchFn, ResultsComponent) => (
+  const renderStoreSection = (store, items, searchFn, ResultsComponent) => {
+    // Guard against null/undefined store
+    if (!store) {
+      console.error('renderStoreSection called with null/undefined store');
+      return null;
+    }
+
+    return (
     <Card sx={{ mb: 4 }}>
       <CardContent>
         <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
@@ -1260,7 +1290,8 @@ const handleAddToCart = async (items, store) => {
         )}
       </CardContent>
     </Card>
-  );
+    );
+  };
 
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
@@ -1334,7 +1365,7 @@ const handleAddToCart = async (items, store) => {
       {/* Store Sections */}
       {renderStoreSection('kroger', internalCart.kroger, () => handleStoreSearch('kroger'), KrogerResults)}
       {renderStoreSection('walmart', internalCart.walmart, () => handleStoreSearch('walmart'), WalmartResults)}
-      {renderStoreSection('instacart', internalCart.instacart, () => handleInstacartSearch(), InstacartResults)}
+      {renderStoreSection('instacart', internalCart.instacart, () => handleInstacartSearch(), InstacartResultsWrapper)}
 
       {/* Error Display */}
       {error && (
