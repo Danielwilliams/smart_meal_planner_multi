@@ -36,10 +36,12 @@ import {
 import StoreSelector from '../components/StoreSelector';
 import { useAuth } from '../context/AuthContext';
 import apiService from '../services/apiService';
+import instacartService from '../services/instacartService';
 import CATEGORY_MAPPING from '../data/categoryMapping';
 import ShoppingList from '../components/ShoppingList';
 import SmartShoppingList from '../components/SmartShoppingList';
 import CategorizedShoppingList from '../components/CategorizedShoppingList';
+import InstacartResults from '../components/InstacartResults';
 import { adaptShoppingListResponse } from '../utils/aiShoppingListAdapter';
 import { 
   AutoAwesome as AiIcon,
@@ -111,6 +113,7 @@ function ShoppingListPage() {
 
   // For entertaining messages while loading
   const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
+  const [instacartRetailerId, setInstacartRetailerId] = useState('');
   const loadingMessages = [
     "AI chef is chopping ingredients into categories...",
     "Sorting your tomatoes from your potatoes...",
@@ -3962,6 +3965,67 @@ const categorizeItems = (mealPlanData) => {
     setSnackbarOpen(false);
   };
 
+  // Handle Instacart retailer selection
+  const handleSelectInstacartRetailer = async () => {
+    try {
+      setLoading(true);
+      const retailers = await instacartService.getRetailers();
+
+      if (retailers && retailers.length > 0) {
+        // For simplicity, select the first retailer
+        setInstacartRetailerId(retailers[0].id);
+        showSnackbar(`Selected Instacart retailer: ${retailers[0].name}`);
+      } else {
+        setError('No Instacart retailers found');
+        showSnackbar('Error: No Instacart retailers available');
+      }
+    } catch (err) {
+      console.error('Error fetching Instacart retailers:', err);
+      setError(`Error fetching Instacart retailers: ${err.message}`);
+      showSnackbar(`Error: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Effect to get Instacart retailer when store is set to instacart
+  useEffect(() => {
+    if (selectedStore === 'instacart' && !instacartRetailerId) {
+      handleSelectInstacartRetailer();
+    }
+  }, [selectedStore, instacartRetailerId]);
+
+  // Helper function to extract grocery items for Instacart
+  const extractGroceryItems = () => {
+    // Check if we have a flat or categorized grocery list
+    if (Array.isArray(groceryList)) {
+      // If it's a flat array, extract names
+      return groceryList.map(item =>
+        typeof item === 'string' ? item : (item.name || '')
+      ).filter(name => name.trim() !== '');
+    } else if (groceryList && typeof groceryList === 'object') {
+      // If it's categorized, flatten all categories
+      const items = [];
+      Object.values(groceryList).forEach(categoryItems => {
+        if (Array.isArray(categoryItems)) {
+          categoryItems.forEach(item => {
+            const itemName = typeof item === 'string'
+              ? item.split(':')[0].trim() // Handle "item: quantity" format
+              : (item.name || '');
+
+            if (itemName.trim() !== '') {
+              items.push(itemName);
+            }
+          });
+        }
+      });
+      return items;
+    }
+
+    // Default to empty array if we couldn't extract items
+    return [];
+  };
+
   return (
     <Container maxWidth="md">
       <Typography variant="h4" gutterBottom>
@@ -4011,13 +4075,14 @@ const categorizeItems = (mealPlanData) => {
           >
             <MenuItem value="walmart">Walmart</MenuItem>
             <MenuItem value="kroger">Kroger</MenuItem>
+            <MenuItem value="instacart">Instacart</MenuItem>
             <MenuItem value="mixed">Mixed Stores</MenuItem>
           </Select>
         </FormControl>
 
         {selectedStore !== 'mixed' && groceryList.length > 0 && (
-          <Button 
-            variant="contained" 
+          <Button
+            variant="contained"
             onClick={handleStoreSearchAll}
             disabled={loading}
           >
@@ -4025,6 +4090,21 @@ const categorizeItems = (mealPlanData) => {
           </Button>
         )}
       </Box>
+
+      {/* Instacart Results Component */}
+      {selectedStore === 'instacart' && instacartRetailerId && (
+        <Box sx={{ mt: 3 }}>
+          <InstacartResults
+            groceryItems={extractGroceryItems()}
+            retailerId={instacartRetailerId}
+            onSuccess={(cart) => showSnackbar(`Added items to Instacart cart`)}
+            onError={(err) => {
+              console.error('Instacart error:', err);
+              showSnackbar(`Error: ${err.message}`);
+            }}
+          />
+        </Box>
+      )}
 
       {/* Shopping List Display with Tabs */}
       {groceryList && groceryList.length > 0 ? (

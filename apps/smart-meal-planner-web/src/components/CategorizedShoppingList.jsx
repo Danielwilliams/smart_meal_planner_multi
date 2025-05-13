@@ -16,7 +16,8 @@ import {
 import {
   ExpandMore as ExpandMoreIcon,
   Add as AddIcon,
-  ShoppingCart as CartIcon
+  ShoppingCart as CartIcon,
+  ShoppingBasket as BasketIcon
 } from '@mui/icons-material';
 
 /**
@@ -496,7 +497,7 @@ const CategorizedShoppingList = ({ groceryData, selectedStore, onAddToCart }) =>
 
       <Box display="flex" justifyContent="center" mt={3}>
         <Chip
-          icon={<CartIcon />}
+          icon={selectedStore === 'instacart' ? <BasketIcon /> : <CartIcon />}
           label={`Store: ${
             selectedStore === 'kroger' ? 'Kroger' :
             selectedStore === 'instacart' ? 'Instacart' :
