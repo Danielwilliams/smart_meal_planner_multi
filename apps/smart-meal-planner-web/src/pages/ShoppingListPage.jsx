@@ -1467,14 +1467,8 @@ Combine duplicate ingredients, adding up quantities when appropriate.
                             if (originalItem) {
                                 // Apply original quantity
                                 item.quantity = originalItem.quantity;
-                                // Make the unit available through multiple properties for compatibility
-                                if (typeof originalItem.quantity === 'string' && originalItem.quantity.includes(' ')) {
-                                    // Extract unit from quantity like "96 oz"
-                                    const parts = originalItem.quantity.split(' ');
-                                    const unit = parts.slice(1).join(' ');
-                                    item.unitOfMeasure = unit;
-                                    item.unit = unit;
-                                }
+                                // Don't set separate unitOfMeasure or unit when quantity has embedded unit
+                                // We'll just use the quantity string directly when displaying
                                 fixedCount++;
                             }
                         }

@@ -470,10 +470,12 @@ const CategorizedShoppingList = ({ groceryData, selectedStore, onAddToCart }) =>
                                     border: '1px solid #ccd6ff'
                                   }}
                                 >
-                                  {/* Show quantity and unit - handle combined strings */}
-                                  {typeof item.quantity === 'string' && item.quantity.includes(' ')
-                                    ? item.quantity  // Already has unit embedded like "96 oz"
-                                    : `${item.quantity} ${item.unitOfMeasure || item.unit || ''}`}
+                                  {/* Show quantity and unit without duplicates */}
+                                  {typeof item.quantity === 'string' && item.quantity.toLowerCase().includes('taste')
+                                    ? item.quantity  // Just show "To taste" as is
+                                    : typeof item.quantity === 'string' && item.quantity.includes(' ')
+                                      ? item.quantity  // Already has unit embedded like "96 oz"
+                                      : `${item.quantity}${(item.unitOfMeasure || item.unit) ? ' ' + (item.unitOfMeasure || item.unit) : ''}`}
                                 </Typography>
                               </Box>
                             }
