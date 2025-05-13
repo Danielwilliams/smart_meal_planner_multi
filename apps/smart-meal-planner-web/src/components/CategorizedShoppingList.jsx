@@ -36,6 +36,60 @@ const CategorizedShoppingList = ({ groceryData, selectedStore, onAddToCart }) =>
     if (groceryData && groceryData.groceryList && Array.isArray(groceryData.groceryList)) {
       // Old format - with groceryList array of category objects
       const categorized = {};
+
+      // Special handling for "All Items" category - redistribute into proper categories
+      if (groceryData.groceryList.length === 1 &&
+          groceryData.groceryList[0].category === 'All Items' &&
+          Array.isArray(groceryData.groceryList[0].items)) {
+
+        console.log("Found 'All Items' category - recategorizing items");
+
+        // Categorize items based on name
+        groceryData.groceryList[0].items.forEach(item => {
+          if (!item || !item.name) return;
+
+          const itemName = item.name.toLowerCase();
+          let category = 'Other';
+
+          // Determine category based on name
+          if (/chicken|beef|pork|fish|seafood|meat|protein|turkey|steak|sausage|bacon/.test(itemName)) {
+            category = 'Meat & Seafood';
+          } else if (/spinach|lettuce|tomato|onion|potato|garlic|pepper|vegetable|carrot|cucumber|produce|fruit|apple|banana|avocado|ginger/.test(itemName)) {
+            category = 'Produce';
+          } else if (/milk|cheese|yogurt|cream|egg|butter|dairy/.test(itemName)) {
+            category = 'Dairy & Eggs';
+          } else if (/bread|roll|tortilla|bagel|bakery/.test(itemName)) {
+            category = 'Bakery & Bread';
+          } else if (/pasta|rice|quinoa|cereal|grain|flour/.test(itemName)) {
+            category = 'Dry Goods & Pasta';
+          } else if (/frozen|ice cream/.test(itemName)) {
+            category = 'Frozen Foods';
+          } else if (/oil|vinegar|sauce|dressing|condiment|ketchup|mustard/.test(itemName)) {
+            category = 'Condiments & Spices';
+          } else if (/salt|pepper|spice|herb|seasoning/.test(itemName)) {
+            category = 'Condiments & Spices';
+          } else if (/cookie|chip|candy|snack/.test(itemName)) {
+            category = 'Snacks';
+          } else if (/water|juice|soda|beverage|drink|coffee|tea/.test(itemName)) {
+            category = 'Beverages';
+          } else if (/sugar|baking powder|baking soda|vanilla|chocolate/.test(itemName)) {
+            category = 'Baking';
+          }
+
+          // Add to category
+          if (!categorized[category]) {
+            categorized[category] = [];
+          }
+
+          categorized[category].push(typeof item === 'string'
+            ? item
+            : `${item.name}: ${item.quantity || ''} ${item.unit || ''}`);
+        });
+
+        return categorized;
+      }
+
+      // Normal handling for pre-categorized groceryList
       groceryData.groceryList.forEach(catItem => {
         const category = catItem.category || 'Other';
         if (!categorized[category]) {
