@@ -1,11 +1,29 @@
 /**
  * Instacart API Service
- * 
+ *
  * This service handles all interactions with the Instacart API endpoints
  * in our backend, which in turn communicates with the Instacart API.
+ *
+ * IMPORTANT: We're using Instacart's development environment, not production!
  */
 
-import apiService, { axiosInstance } from './apiService';
+import axios from 'axios';
+import apiService from './apiService';
+
+// Create a separate axios instance for Instacart development environment
+// Use development environment URL for Instacart API calls
+const INSTACART_DEV_URL = 'https://smartmealplannermulti-development.up.railway.app';
+console.log('Using Instacart development URL:', INSTACART_DEV_URL);
+
+const instacartAxiosInstance = axios.create({
+  baseURL: INSTACART_DEV_URL,
+  timeout: 600000, // 10 minutes
+  headers: {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json'
+  },
+  withCredentials: false
+});
 
 /**
  * Get a list of available retailers on Instacart
@@ -13,7 +31,8 @@ import apiService, { axiosInstance } from './apiService';
  */
 export const getRetailers = async () => {
   try {
-    const response = await axiosInstance.get('/instacart/retailers');
+    const response = await instacartAxiosInstance.get('/instacart/retailers');
+    console.log('Instacart retailers response:', response);
     return response.data;
   } catch (error) {
     console.error('Error fetching Instacart retailers:', error);
@@ -30,10 +49,12 @@ export const getRetailers = async () => {
  */
 export const searchProducts = async (retailerId, query, limit = 10) => {
   try {
-    const response = await axiosInstance.get(
+    console.log(`Searching Instacart (DEV) products - retailer: ${retailerId}, query: ${query}, limit: ${limit}`);
+    const response = await instacartAxiosInstance.get(
       `/instacart/retailers/${retailerId}/products/search`,
       { params: { query, limit } }
     );
+    console.log('Instacart search response:', response);
     return response.data;
   } catch (error) {
     console.error('Error searching Instacart products:', error);
@@ -49,10 +70,12 @@ export const searchProducts = async (retailerId, query, limit = 10) => {
  */
 export const createCart = async (retailerId, items) => {
   try {
-    const response = await axiosInstance.post('/instacart/carts', {
+    console.log(`Creating Instacart (DEV) cart - retailer: ${retailerId}, items:`, items);
+    const response = await instacartAxiosInstance.post('/instacart/carts', {
       retailer_id: retailerId,
       items
     });
+    console.log('Instacart cart creation response:', response);
     return response.data;
   } catch (error) {
     console.error('Error creating Instacart cart:', error);
@@ -69,10 +92,12 @@ export const createCart = async (retailerId, items) => {
  */
 export const addItemToCart = async (cartId, productId, quantity = 1) => {
   try {
-    const response = await axiosInstance.post(`/instacart/carts/${cartId}/items`, {
+    console.log(`Adding item to Instacart (DEV) cart - cartId: ${cartId}, productId: ${productId}, quantity: ${quantity}`);
+    const response = await instacartAxiosInstance.post(`/instacart/carts/${cartId}/items`, {
       product_id: productId,
       quantity
     });
+    console.log('Add item response:', response);
     return response.data;
   } catch (error) {
     console.error('Error adding item to Instacart cart:', error);
@@ -87,7 +112,9 @@ export const addItemToCart = async (cartId, productId, quantity = 1) => {
  */
 export const getCart = async (cartId) => {
   try {
-    const response = await axiosInstance.get(`/instacart/carts/${cartId}`);
+    console.log(`Getting Instacart (DEV) cart - cartId: ${cartId}`);
+    const response = await instacartAxiosInstance.get(`/instacart/carts/${cartId}`);
+    console.log('Get cart response:', response);
     return response.data;
   } catch (error) {
     console.error('Error getting Instacart cart:', error);
@@ -103,9 +130,11 @@ export const getCart = async (cartId) => {
  */
 export const matchGroceryList = async (retailerId, menuId) => {
   try {
-    const response = await axiosInstance.get(`/instacart/match/${retailerId}`, {
+    console.log(`Matching grocery list with Instacart (DEV) - retailerId: ${retailerId}, menuId: ${menuId}`);
+    const response = await instacartAxiosInstance.get(`/instacart/match/${retailerId}`, {
       params: { menu_id: menuId }
     });
+    console.log('Match grocery list response:', response);
     return response.data;
   } catch (error) {
     console.error('Error matching grocery list with Instacart:', error);
@@ -121,26 +150,35 @@ export const matchGroceryList = async (retailerId, menuId) => {
  */
 export const addGroceryItemsToInstacart = async (retailerId, groceryItems) => {
   try {
+    console.log(`Adding grocery items to Instacart (DEV) - retailerId: ${retailerId}, items:`, groceryItems);
+
     // First search for each item
-    const itemPromises = groceryItems.map(item => 
+    const itemPromises = groceryItems.map(item =>
       searchProducts(retailerId, item, 1)
-        .then(results => results.length > 0 ? results[0] : null)
+        .then(results => {
+          console.log(`Search results for "${item}":`, results);
+          return results && results.length > 0 ? results[0] : null;
+        })
     );
-    
+
     const searchResults = await Promise.all(itemPromises);
     const foundProducts = searchResults.filter(Boolean);
-    
+
+    console.log('Found products:', foundProducts);
+
     if (foundProducts.length === 0) {
       throw new Error('No matching products found on Instacart');
     }
-    
+
     // Create cart with found products
     const cartItems = foundProducts.map(product => ({
       product_id: product.id,
       quantity: 1
     }));
-    
+
+    console.log('Creating cart with items:', cartItems);
     const cart = await createCart(retailerId, cartItems);
+    console.log('Created cart:', cart);
     return cart;
   } catch (error) {
     console.error('Error adding grocery items to Instacart:', error);
