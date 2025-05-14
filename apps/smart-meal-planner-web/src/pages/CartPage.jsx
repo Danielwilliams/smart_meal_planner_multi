@@ -23,7 +23,10 @@ import {
   DialogContent,
   DialogContentText,
   DialogActions,
-  Paper
+  Paper,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails
 } from '@mui/material';
 import {
   Delete as DeleteIcon,
@@ -32,7 +35,9 @@ import {
   Add as AddIcon,
   Remove as RemoveIcon,
   ShoppingCart as ShoppingCartIcon,
-  Error as ErrorIcon
+  Error as ErrorIcon,
+  ExpandMore as ExpandMoreIcon,
+  BugReport as BugReportIcon
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import apiService from '../services/apiService';
@@ -41,6 +46,7 @@ import KrogerResults from '../components/KrogerResults';
 // Walmart API integration removed due to API access issues
 import InstacartResults from '../components/InstacartResults';
 import InstacartRetailerSelector from '../components/InstacartRetailerSelector';
+import InstacartApiTester from '../components/InstacartApiTester';
 import { StoreSelector } from '../components/StoreSelector';
 import krogerAuthService from '../services/krogerAuthService';
 import instacartService from '../services/instacartService';
@@ -1618,10 +1624,32 @@ function CartPage() {
         </Card>
       </ErrorBoundary>
 
+      {/* Debug Tools - Only in development mode */}
+      {process.env.NODE_ENV === 'development' && (
+        <Card sx={{ mb: 4 }}>
+          <CardContent>
+            <Accordion>
+              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                <Box display="flex" alignItems="center">
+                  <BugReportIcon sx={{ mr: 1, color: 'warning.main' }} />
+                  <Typography variant="h6" color="warning.main">Developer Debug Tools</Typography>
+                </Box>
+              </AccordionSummary>
+              <AccordionDetails>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  These tools are only available in development mode and help diagnose API connection issues.
+                </Typography>
+                <InstacartApiTester />
+              </AccordionDetails>
+            </Accordion>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Error Display */}
       {error && (
-        <Alert 
-          severity="error" 
+        <Alert
+          severity="error"
           sx={{ mt: 2 }}
           onClose={() => setError(null)}
         >

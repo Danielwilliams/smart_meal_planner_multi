@@ -97,12 +97,22 @@ const InstacartRetailerSelector = ({
       console.error('Error loading Instacart retailers:', err);
 
       // Show a more user-friendly error message
-      if (err.message.includes('CORS')) {
+      if (err.isApiKeyError) {
+        setError('API key error: The Instacart API key appears to be invalid or unauthorized. Please contact support.');
+      } else if (err.message.includes('API key error')) {
+        setError(err.message);
+      } else if (err.message.includes('CORS')) {
         setError('Cross-origin resource sharing (CORS) error. The server is not configured to allow requests from this domain.');
       } else if (err.message.includes('Network Error')) {
         setError('Network error connecting to Instacart API. Please check your internet connection or try again later.');
       } else if (err.message.includes('404')) {
         setError('The Instacart retailer lookup API is not available. Please try again later.');
+      } else if (err.response && err.response.status === 401) {
+        setError('Authentication error: Unable to access Instacart API. The API key may be missing or invalid.');
+      } else if (err.response && err.response.status === 403) {
+        setError('Access denied: The Instacart API key does not have permission to access this resource.');
+      } else if (err.response && err.response.status === 429) {
+        setError('Too many requests to Instacart API. Please try again in a few minutes.');
       } else {
         setError(`Error loading retailers: ${err.message}`);
       }
@@ -177,9 +187,13 @@ const InstacartRetailerSelector = ({
                     {error || "No Instacart retailers found in your area."}
                   </Typography>
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                    {error ?
-                      "This might be due to a server configuration issue or API limitation." :
-                      "This could be because Instacart doesn't serve this area or there was an issue with the API."}
+                    {error && error.includes('API key') ?
+                      "This is likely a configuration issue with the API key. Try clearing your browser cache or contact support." :
+                      error && error.includes('CORS') ?
+                        "This is a server configuration issue. The development environment may need to be updated." :
+                        error ?
+                          "This might be due to a server configuration issue or API limitation." :
+                          "This could be because Instacart doesn't serve this area or there was an issue with the API."}
                   </Typography>
                   <Button
                     variant="outlined"

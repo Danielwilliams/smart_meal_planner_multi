@@ -12,13 +12,13 @@ from app.utils.s3.s3_utils import s3_helper
 
 # Import regular routers
 from app.routers import (
-    auth, 
-    preferences, 
-    menu, 
-    cart, 
-    kroger_auth, 
-    order, 
-    store, 
+    auth,
+    preferences,
+    menu,
+    cart,
+    kroger_auth,
+    order,
+    store,
     grocery_list
 )
 
@@ -27,6 +27,7 @@ from app.routers.kroger_store import router as kroger_store_router
 from app.routers.walmart_store import router as walmart_store_router
 from app.routers.instacart_store import router as instacart_store_router
 from app.routers.instacart_cart import router as instacart_cart_router
+from app.routers.instacart_debug import router as instacart_debug_router
 from app.routers import saved_recipes 
 from app.routers import organizations
 from app.routers import organization_clients
@@ -131,6 +132,11 @@ def create_app() -> FastAPI:
     app.include_router(walmart_store_router)
     app.include_router(instacart_store_router)
     app.include_router(instacart_cart_router)
+
+    # Only include debug router in development environment
+    if ENVIRONMENT == "development":
+        logger.info("Registering Instacart debug router (development only)...")
+        app.include_router(instacart_debug_router)
     app.include_router(kroger_auth.router)
     app.include_router(grocery_list.router)
     app.include_router(store.router)

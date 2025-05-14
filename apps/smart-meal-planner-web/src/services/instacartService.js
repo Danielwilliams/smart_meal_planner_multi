@@ -20,10 +20,57 @@ const instacartAxiosInstance = axios.create({
   timeout: 600000, // 10 minutes
   headers: {
     'Content-Type': 'application/json',
-    'Accept': 'application/json'
+    'Accept': 'application/json',
+    'X-Instacart-API-Key': 'INSTACARTAPI_DEV' // This will be replaced with the actual key on the backend
   },
   withCredentials: false
 });
+
+// Log the configuration for debugging
+console.info('Instacart API config:', {
+  baseURL: INSTACART_DEV_URL,
+  headers: {
+    // Don't log the actual API key value in production
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+    'X-Instacart-API-Key': '[CONFIGURED]'
+  }
+});
+
+// Add a request interceptor to log API call details
+instacartAxiosInstance.interceptors.request.use(
+  config => {
+    console.log(`Instacart API Request: ${config.method.toUpperCase()} ${config.url}`, config);
+    return config;
+  },
+  error => {
+    console.error('Instacart API Request Error:', error);
+    return Promise.reject(error);
+  }
+);
+
+// Add a response interceptor to log responses
+instacartAxiosInstance.interceptors.response.use(
+  response => {
+    console.log('Instacart API Response:', response.status, response.data);
+    return response;
+  },
+  error => {
+    console.error('Instacart API Response Error:', error.response ? error.response.status : 'Network Error',
+                 error.response ? error.response.data : error.message);
+
+    // Enhance error object with more debugging information
+    if (error.response) {
+      // If unauthorized (401) or forbidden (403), likely an API key issue
+      if (error.response.status === 401 || error.response.status === 403) {
+        error.isApiKeyError = true;
+        error.apiErrorMessage = 'API key unauthorized. Please check the INSTACARTAPI_DEV configuration.';
+      }
+    }
+
+    return Promise.reject(error);
+  }
+);
 
 /**
  * Get a list of available retailers on Instacart
@@ -79,6 +126,16 @@ export const getNearbyRetailers = async (zipCode) => {
     }
   } catch (error) {
     console.error(`Error fetching Instacart retailers for ZIP ${zipCode}:`, error);
+
+    // Check for specific error conditions and provide better error messages
+    if (error.isApiKeyError) {
+      throw new Error(`API key error: ${error.apiErrorMessage}`);
+    }
+
+    if (error.response && error.response.status === 429) {
+      throw new Error('Too many requests to Instacart API. Please try again later.');
+    }
+
     // Propagate the error instead of masking it with mock data
     throw error;
   }
