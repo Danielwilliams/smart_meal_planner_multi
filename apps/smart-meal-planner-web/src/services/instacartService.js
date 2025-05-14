@@ -9,13 +9,16 @@
 
 import axios from 'axios';
 import apiService from './apiService';
+// Import mock data for fallback
+import { getMockRetailersByZip } from './mockData/instacartRetailers';
+import { getMockProductSearch } from './mockData/instacartProducts';
 
 // Determine which endpoint to use based on environment
 // For production, use our own API proxy to avoid CORS issues
 const isProduction = process.env.NODE_ENV === 'production';
 
 // Try to detect if we're in Vercel Preview or actual deployment
-const isVercel = typeof window !== 'undefined' &&
+const isVercel = typeof window !== 'undefined' && 
                  window.location.hostname.includes('vercel.app');
 
 // In production, we'll use our own API proxy to avoid CORS issues
@@ -32,9 +35,9 @@ const getBaseUrl = () => {
 
 const INSTACART_DEV_URL = getBaseUrl();
 
-console.log(`Using Instacart ${isProduction ? 'production proxy' : 'direct development'} URL:`,
+console.log(`Using Instacart ${isProduction ? 'production proxy' : 'direct development'} URL:`, 
   INSTACART_DEV_URL || 'relative paths');
-
+  
 // Helper function to get the full API path for retailer endpoints
 const getRetailerPath = (path, useProxy = false) => {
   if (useProxy || (isProduction || isVercel)) {
@@ -45,6 +48,9 @@ const getRetailerPath = (path, useProxy = false) => {
     return `${INSTACART_DEV_URL}${path.startsWith('/') ? path : `/${path}`}`;
   }
 };
+
+// Flag to enable mock data fallback
+const ENABLE_MOCK_FALLBACK = true; // Set to false to disable mock data
 
 const instacartAxiosInstance = axios.create({
   baseURL: INSTACART_DEV_URL,
@@ -92,7 +98,7 @@ instacartAxiosInstance.interceptors.response.use(
   error => {
     console.error('Instacart API Response Error:', error.response ? error.response.status : 'Network Error',
                  error.response ? error.response.data : error.message);
-
+                 
     // Enhance error object with more debugging information
     if (error.response) {
       // If unauthorized (401) or forbidden (403), likely an API key issue
@@ -101,7 +107,7 @@ instacartAxiosInstance.interceptors.response.use(
         error.apiErrorMessage = 'API key unauthorized. Please check the INSTACARTAPI_DEV configuration.';
       }
     }
-
+    
     return Promise.reject(error);
   }
 );
@@ -119,9 +125,9 @@ export const getRetailers = async () => {
     // Ultimate fallback - direct URL
     () => axios.get('https://smartmealplannermulti-development.up.railway.app/instacart/retailers')
   ];
-
+  
   let lastError = null;
-
+  
   // Try each approach until one works
   for (const attempt of attempts) {
     try {
@@ -134,9 +140,16 @@ export const getRetailers = async () => {
       // Continue to next attempt
     }
   }
-
+  
   // If we get here, all attempts failed
   console.error('Error fetching Instacart retailers:', lastError);
+  
+  // Use mock data as fallback if enabled
+  if (ENABLE_MOCK_FALLBACK) {
+    console.log('⚠️ API is unreachable - Using mock data as fallback');
+    return getMockRetailersByZip('80538');
+  }
+  
   throw lastError;
 };
 
@@ -154,31 +167,31 @@ export const getNearbyRetailers = async (zipCode) => {
     const maxRetries = 2;
     let attempt = 0;
     let lastError = null;
-
+    
     // Try to get retailers by ZIP code with retries
     while (attempt < maxRetries) {
       try {
         // If we're on a retry, use a different approach
         let endpoint = '/instacart/retailers/nearby';
         let instance = instacartAxiosInstance;
-
+        
         // On retry, use direct axios with different configurations
         if (attempt > 0) {
           console.log('Using fallback approach on retry');
           endpoint = '/api/instacart/retailers/nearby';
           instance = axios;
         }
-
+        
         console.log(`Attempt ${attempt + 1}: Fetching from ${endpoint}`);
         const response = await instance.get(endpoint, {
           params: { zip_code: zipCode },
           // Use these headers for direct axios calls
-          ...(attempt > 0 ? {
+          ...(attempt > 0 ? { 
             headers: instacartAxiosInstance.defaults.headers,
             withCredentials: true
           } : {})
         });
-
+        
         console.log('Nearby Instacart retailers response:', response);
 
         if (response.data && Array.isArray(response.data) && response.data.length > 0) {
@@ -191,7 +204,7 @@ export const getNearbyRetailers = async (zipCode) => {
         lastError = nearbyError;
         attempt++;
         console.warn(`Attempt ${attempt} failed:`, nearbyError.message);
-
+        
         // If it's the last attempt, try the fallback to all retailers
         if (attempt === maxRetries) {
           // If the endpoint doesn't exist or returns an error, fall back to the standard endpoint
@@ -209,7 +222,7 @@ export const getNearbyRetailers = async (zipCode) => {
                 headers: instacartAxiosInstance.defaults.headers
               });
             }
-
+            
             console.log('All retailers response:', allRetailersResponse);
 
             if (!allRetailersResponse.data || !Array.isArray(allRetailersResponse.data) || allRetailersResponse.data.length === 0) {
@@ -219,35 +232,54 @@ export const getNearbyRetailers = async (zipCode) => {
             return allRetailersResponse.data;
           } catch (fallbackError) {
             console.error('Final fallback attempt failed:', fallbackError);
-            throw fallbackError; // Throw the fallback error as it's more specific
+            
+            // Use mock data as a last resort if enabled
+            if (ENABLE_MOCK_FALLBACK) {
+              console.log('⚠️ API is unreachable - Using mock data as fallback');
+              return getMockRetailersByZip(zipCode);
+            }
+            
+            throw fallbackError; // Throw the fallback error if mock data is disabled
           }
         }
-
+        
         // Wait briefly before retrying
         await new Promise(resolve => setTimeout(resolve, 500));
       }
     }
-
+    
     // If we got here, all retries failed
+    // Use mock data as a last resort if enabled
+    if (ENABLE_MOCK_FALLBACK) {
+      console.log('⚠️ API is unreachable - Using mock data as fallback');
+      return getMockRetailersByZip(zipCode);
+    }
+    
     throw lastError || new Error('Failed to get nearby retailers after multiple attempts');
   } catch (error) {
     console.error(`Error fetching Instacart retailers for ZIP ${zipCode}:`, error);
-
+    
     // Check for specific error conditions and provide better error messages
     if (error.isApiKeyError) {
       throw new Error(`API key error: ${error.apiErrorMessage}`);
     }
-
+    
     if (error.response && error.response.status === 429) {
       throw new Error('Too many requests to Instacart API. Please try again later.');
     }
-
+    
     // For CORS errors, suggest a different approach
     if (error.message && error.message.includes('CORS')) {
       throw new Error('CORS error: Try using a different browser or clearing your browser cache.');
     }
-
-    // Propagate the error instead of masking it with mock data
+    
+    // Use mock data as a last resort if enabled
+    if (ENABLE_MOCK_FALLBACK) {
+      console.log('⚠️ API is unreachable - Using mock data as fallback');
+      return getMockRetailersByZip(zipCode);
+    }
+    
+    // Propagate the error if mock data is disabled
     throw error;
   }
 };
@@ -262,14 +294,72 @@ export const getNearbyRetailers = async (zipCode) => {
 export const searchProducts = async (retailerId, query, limit = 10) => {
   try {
     console.log(`Searching Instacart (DEV) products - retailer: ${retailerId}, query: ${query}, limit: ${limit}`);
-    const response = await instacartAxiosInstance.get(
-      `/instacart/retailers/${retailerId}/products/search`,
-      { params: { query, limit } }
-    );
-    console.log('Instacart search response:', response);
-    return response.data;
+    
+    // Try multiple approaches for searching products
+    const searchAttempts = [
+      // First try the standard approach
+      async () => {
+        const response = await instacartAxiosInstance.get(
+          `/instacart/retailers/${retailerId}/products/search`,
+          { params: { query, limit } }
+        );
+        return response.data;
+      },
+      // Then try with API prefix
+      async () => {
+        const response = await axios.get(
+          `/api/instacart/retailers/${retailerId}/products/search`,
+          {
+            params: { query, limit },
+            headers: instacartAxiosInstance.defaults.headers
+          }
+        );
+        return response.data;
+      },
+      // Finally try direct URL as last attempt
+      async () => {
+        const response = await axios.get(
+          `https://smartmealplannermulti-development.up.railway.app/instacart/retailers/${retailerId}/products/search`,
+          {
+            params: { query, limit },
+            headers: instacartAxiosInstance.defaults.headers
+          }
+        );
+        return response.data;
+      }
+    ];
+    
+    // Try each approach in sequence
+    let lastError = null;
+    for (const attempt of searchAttempts) {
+      try {
+        const results = await attempt();
+        console.log('Instacart search response:', results);
+        return results;
+      } catch (err) {
+        console.warn('Product search attempt failed:', err.message);
+        lastError = err;
+        // Continue to next attempt
+      }
+    }
+    
+    // If all attempts failed, use mock data if enabled
+    if (ENABLE_MOCK_FALLBACK) {
+      console.log('⚠️ API is unreachable - Using mock product data as fallback');
+      return getMockProductSearch(query, limit);
+    }
+    
+    // Otherwise throw the error
+    throw lastError || new Error('Failed to search products after multiple attempts');
   } catch (error) {
     console.error('Error searching Instacart products:', error);
+    
+    // Use mock data as fallback if enabled
+    if (ENABLE_MOCK_FALLBACK) {
+      console.log('⚠️ API is unreachable - Using mock product data as fallback');
+      return getMockProductSearch(query, limit);
+    }
+    
     throw error;
   }
 };
