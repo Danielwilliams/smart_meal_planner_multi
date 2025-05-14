@@ -22,7 +22,8 @@ import {
   DialogTitle,
   DialogContent,
   DialogContentText,
-  DialogActions
+  DialogActions,
+  Paper
 } from '@mui/material';
 import {
   Delete as DeleteIcon,
