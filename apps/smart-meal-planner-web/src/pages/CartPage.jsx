@@ -46,11 +46,10 @@ import KrogerResults from '../components/KrogerResults';
 // Walmart API integration removed due to API access issues
 import InstacartResults from '../components/InstacartResults';
 import InstacartRetailerSelector from '../components/InstacartRetailerSelector';
-import InstacartApiTester from '../components/InstacartApiTester';
+import InstacartSimpleTester from '../components/InstacartSimpleTester';
 import { StoreSelector } from '../components/StoreSelector';
 import krogerAuthService from '../services/krogerAuthService';
-import instacartService from '../services/instacartService';
-import instacartAuthService from '../services/instacartAuthService';
+import instacartBackendService from '../services/instacartBackendService';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -1823,27 +1822,25 @@ function CartPage() {
         </Card>
       </ErrorBoundary>
 
-      {/* Debug Tools - Only in development mode */}
-      {process.env.NODE_ENV === 'development' && (
-        <Card sx={{ mb: 4 }}>
-          <CardContent>
-            <Accordion>
-              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                <Box display="flex" alignItems="center">
-                  <BugReportIcon sx={{ mr: 1, color: 'warning.main' }} />
-                  <Typography variant="h6" color="warning.main">Developer Debug Tools</Typography>
-                </Box>
-              </AccordionSummary>
-              <AccordionDetails>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  These tools are only available in development mode and help diagnose API connection issues.
-                </Typography>
-                <InstacartApiTester />
-              </AccordionDetails>
-            </Accordion>
-          </CardContent>
-        </Card>
-      )}
+      {/* Debug Tools - Always available */}
+      <Card sx={{ mb: 4 }}>
+        <CardContent>
+          <Accordion>
+            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+              <Box display="flex" alignItems="center">
+                <BugReportIcon sx={{ mr: 1, color: 'warning.main' }} />
+                <Typography variant="h6" color="warning.main">Instacart API Diagnostics</Typography>
+              </Box>
+            </AccordionSummary>
+            <AccordionDetails>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Use this tool to test the Instacart API connection through our secure backend proxy.
+              </Typography>
+              <InstacartSimpleTester />
+            </AccordionDetails>
+          </Accordion>
+        </CardContent>
+      </Card>
 
       {/* Error Display */}
       {error && (

@@ -24,8 +24,7 @@ import {
   Error as ErrorIcon,
   OpenInNew as OpenInNewIcon
 } from '@mui/icons-material';
-import instacartService from '../services/instacartService';
-import instacartAuthService from '../services/instacartAuthService';
+import instacartBackendService from '../services/instacartBackendService';
 
 /**
  * Component to display Instacart search results and cart management
@@ -60,46 +59,33 @@ const InstacartResults = ({
     setDialogStep('searching');
 
     try {
-      // First check API status to ensure we're properly connected
-      console.log('Checking Instacart API connectivity before searching...');
-      const apiStatus = await instacartAuthService.checkInstacartApiStatus();
-      console.log('Instacart API status check result:', apiStatus);
+      // First check API status from our backend
+      console.log('Checking Instacart API connectivity through backend...');
+      try {
+        const apiStatus = await instacartBackendService.checkInstacartStatus();
+        console.log('Instacart API status check result:', apiStatus);
 
-      // Check for saved API path and connection status from localStorage
-      const savedApiPath = localStorage.getItem('instacart_api_path');
-      const isConnected = localStorage.getItem('instacart_api_connected') === 'true';
-      const lastSuccessTime = localStorage.getItem('instacart_api_last_success');
-      const lastSuccess = lastSuccessTime ? new Date(parseInt(lastSuccessTime)).toLocaleString() : 'never';
+        if (!apiStatus.is_connected) {
+          console.warn('Instacart API not properly connected:', apiStatus);
 
-      console.log('API connection details from localStorage:', {
-        savedApiPath,
-        isConnected,
-        lastSuccess
-      });
-
-      if (apiStatus.status !== 'connected' && !isConnected) {
-        console.warn('Instacart API not properly connected:', apiStatus);
-
-        // Show a more detailed error message with diagnostic information
-        setError(
-          <div>
-            <div><strong>Instacart API Connection Issue</strong></div>
-            <div>Status: {apiStatus.status || 'disconnected'}</div>
-            <div>Message: {apiStatus.message || 'Connection failed'}</div>
+          // Show a detailed error message
+          setError(
             <div>
-              <small>
-                Please try the following:
-                <ul style={{ marginTop: 5, paddingLeft: 20 }}>
-                  <li>Check that your Instacart API key is correctly formatted</li>
-                  <li>Verify that the API key has access to the Instacart Connect API</li>
-                  <li>Try selecting a different retailer</li>
-                  <li>Check the API diagnostics in Developer Tools</li>
-                </ul>
-              </small>
+              <div><strong>Instacart API Connection Issue</strong></div>
+              <div>Status: {apiStatus.status || 'disconnected'}</div>
+              <div>Message: {apiStatus.message || 'Connection failed'}</div>
+              <div>
+                <small>
+                  Please check that the Instacart API is properly configured on the backend server.
+                </small>
+              </div>
             </div>
-          </div>
-        );
-        return;
+          );
+          return;
+        }
+      } catch (statusError) {
+        console.error('Error checking API status:', statusError);
+        // Continue with the search anyway, as our backend may still work
       }
 
       // Validate retailer ID
@@ -121,8 +107,8 @@ const InstacartResults = ({
         try {
           console.log(`Searching for "${item}" at retailer ${retailerId}...`);
 
-          // Use the more robust auth service for searching
-          const productResults = await instacartAuthService.searchProducts(retailerId, item, 3);
+          // Use the backend service for searching
+          const productResults = await instacartBackendService.searchProducts(retailerId, item, 3);
 
           // Validate that we have valid product IDs for each result
           if (Array.isArray(productResults)) {
@@ -313,30 +299,10 @@ const InstacartResults = ({
         quantity: 1
       }));
 
-      // Check API connection status first
-      console.log('Checking API status before creating cart...');
-      const apiStatus = await instacartAuthService.checkInstacartApiStatus();
-      console.log('API status before cart creation:', apiStatus);
-
-      if (apiStatus.status !== 'connected' && localStorage.getItem('instacart_api_connected') !== 'true') {
-        setError(
-          <div>
-            <div><strong>Cannot Create Cart - API Not Connected</strong></div>
-            <div>The Instacart API is not properly connected.</div>
-            <div>
-              <small>
-                Please check API connection first using the diagnostic tools.
-              </small>
-            </div>
-          </div>
-        );
-        return;
-      }
-
       console.log(`Creating cart with ${items.length} items at retailer ${retailerId}...`);
 
-      // Create cart using the more robust auth service
-      const cart = await instacartAuthService.createCart(retailerId, items);
+      // Create cart using the backend service
+      const cart = await instacartBackendService.createCart(retailerId, items);
 
       // Verify the cart was created successfully
       if (!cart || !cart.id) {
@@ -645,8 +611,8 @@ const InstacartResults = ({
             onClick={async () => {
               try {
                 setLoading(true);
-                const status = await instacartAuthService.checkInstacartApiStatus();
-                setError(`API Status: ${status.status}. ${status.message || ''}. Using retailer: ${retailerId}`);
+                const status = await instacartBackendService.checkInstacartStatus();
+                setError(`API Status: ${status.is_connected ? 'Connected' : 'Disconnected'}. ${status.message || ''}. Using retailer: ${retailerId}`);
               } catch (err) {
                 setError(`Error checking API status: ${err.message}`);
               } finally {

@@ -15,10 +15,7 @@ import {
   Grid
 } from '@mui/material';
 import { ExpandMore as ExpandMoreIcon } from '@mui/icons-material';
-import instacartService from '../services/instacartService';
-import instacartDevTools from '../services/instacartDevTools';
-import instacartAuthService from '../services/instacartAuthService';
-import instacartApiKeyTester from '../services/instacartApiKeyTester';
+import instacartBackendService from '../services/instacartBackendService';
 import axios from 'axios';
 
 /**
