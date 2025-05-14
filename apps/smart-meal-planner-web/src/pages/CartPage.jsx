@@ -1,17 +1,17 @@
 // src/pages/CartPage.jsx
 import React, { useState, useEffect } from 'react';
-import { 
-  Container, 
-  Typography, 
-  Card, 
-  CardContent, 
-  Button, 
-  Select, 
-  MenuItem, 
-  FormControl, 
-  InputLabel, 
-  Box, 
-  CircularProgress, 
+import {
+  Container,
+  Typography,
+  Card,
+  CardContent,
+  Button,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Box,
+  CircularProgress,
   Alert,
   Snackbar,
   IconButton,
@@ -24,8 +24,8 @@ import {
   DialogContentText,
   DialogActions
 } from '@mui/material';
-import { 
-  Delete as DeleteIcon, 
+import {
+  Delete as DeleteIcon,
   Refresh as RefreshIcon,
   Clear as ClearIcon,
   Add as AddIcon,
@@ -38,10 +38,9 @@ import apiService from '../services/apiService';
 import { useNavigate } from 'react-router-dom';
 import KrogerResults from '../components/KrogerResults';
 import WalmartResults from '../components/WalmartResults';
+import InstacartResults from '../components/InstacartResults';
 import { StoreSelector } from '../components/StoreSelector';
 import krogerAuthService from '../services/krogerAuthService';
-
-// DEBUGGING INFO - removed InstacartResults temporarily to debug the cart page
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -971,24 +970,47 @@ function CartPage() {
       searchFnProvided: Boolean(searchFn),
       ComponentProvided: Boolean(ResultsComponent)
     });
-    
+
     try {
+      // Defensive type checks
+      if (!store) {
+        console.warn("⚠️ DEBUG: Store is null or undefined");
+        return (
+          <Card sx={{ mb: 4, p: 2, backgroundColor: '#fff3e0' }}>
+            <Typography variant="h6" color="warning.main">Store Error</Typography>
+            <Typography variant="body2">Store identifier is missing</Typography>
+          </Card>
+        );
+      }
+
       // Safely get store name with capitalization
       let storeName = 'Unknown Store';
-      if (store && typeof store === 'string') {
+      if (typeof store === 'string') {
         console.log(`⚠️ DEBUG: Store is string "${store}"`);
-        storeName = `${store.charAt(0).toUpperCase()}${store.slice(1)}`;
+        if (store.length > 0) {
+          storeName = `${store.charAt(0).toUpperCase()}${store.slice(1)}`;
+        } else {
+          storeName = "Store"; // Default if empty string
+        }
       } else {
         console.warn(`⚠️ DEBUG: Store is not a string: ${typeof store}, value:`, store);
-        return <Card sx={{ mb: 4 }}><CardContent><Typography>Invalid store type: {typeof store}</Typography></CardContent></Card>;
+        return (
+          <Card sx={{ mb: 4, p: 2, backgroundColor: '#fff3e0' }}>
+            <Typography variant="h6" color="warning.main">Invalid Store Type</Typography>
+            <Typography variant="body2">Expected string, received: {typeof store}</Typography>
+          </Card>
+        );
       }
-      
-      // Initial check for items array
+
+      // Initial check for items array with defensive handling
       if (!items) {
         console.warn(`⚠️ DEBUG: Items is ${items} for ${store}`);
         items = [];
+      } else if (!Array.isArray(items)) {
+        console.warn(`⚠️ DEBUG: Items is not an array for ${store}:`, items);
+        items = [];
       }
-      
+
       // Check for search function
       if (!searchFn) {
         console.warn(`⚠️ DEBUG: No search function for ${store}`);
@@ -997,7 +1019,7 @@ function CartPage() {
           setError(`Cannot search for ${store} items - no search function available`);
         };
       }
-      
+
       // Check for results component
       if (!ResultsComponent) {
         console.warn(`⚠️ DEBUG: No results component for ${store}`);
@@ -1009,18 +1031,19 @@ function CartPage() {
           </Card>
         );
       }
-      
-      // Check if searchResults exists for this store
+
+      // Check if searchResults exists for this store with defensive checks
       const hasSearchResults = Boolean(
-        searchResults && 
-        typeof searchResults === 'object' && 
-        store && 
+        searchResults &&
+        typeof searchResults === 'object' &&
+        store &&
         searchResults[store] &&
+        Array.isArray(searchResults[store]) &&
         searchResults[store].length > 0
       );
-      
+
       console.log(`⚠️ DEBUG: ${store} has search results: ${hasSearchResults}`);
-      
+
       return (
         <Card sx={{ mb: 4 }}>
           <CardContent>
@@ -1030,17 +1053,17 @@ function CartPage() {
               </Typography>
               <Box>
                 <Tooltip title="Clear all items">
-                  <IconButton 
-                    size="small" 
+                  <IconButton
+                    size="small"
                     onClick={() => clearStoreItems(store)}
-                    disabled={items.length === 0 || loading.cart}
+                    disabled={!items || items.length === 0 || loading.cart}
                   >
                     <DeleteIcon />
                   </IconButton>
                 </Tooltip>
                 <Tooltip title="Clear search results">
-                  <IconButton 
-                    size="small" 
+                  <IconButton
+                    size="small"
                     onClick={() => clearSearchResults(store)}
                     disabled={!hasSearchResults}
                   >
@@ -1050,7 +1073,7 @@ function CartPage() {
               </Box>
             </Box>
 
-            {items.length === 0 ? (
+            {!items || items.length === 0 ? (
               <Typography color="text.secondary">
                 {`No items assigned to ${store}`}
               </Typography>
@@ -1058,7 +1081,7 @@ function CartPage() {
               <>
                 <Box sx={{ mb: 2 }}>
                   {items.map((item, index) => (
-                    <Box 
+                    <Box
                       key={index}
                       sx={{
                         display: 'flex',
@@ -1067,7 +1090,7 @@ function CartPage() {
                         py: 1
                       }}
                     >
-                      <Typography>{item.name || "Unnamed item"}</Typography>
+                      <Typography>{item?.name || "Unnamed item"}</Typography>
                       <Box display="flex" alignItems="center">
                         <IconButton
                           size="small"
@@ -1098,8 +1121,8 @@ function CartPage() {
                       {JSON.stringify(searchResults[store].slice(0, 2), null, 2)}...
                     </pre>
                     <ErrorBoundary>
-                      <ResultsComponent 
-                        results={searchResults[store]} 
+                      <ResultsComponent
+                        results={searchResults[store]}
                         onAddToCart={(items) => handleAddToCart(items, store)}
                       />
                     </ErrorBoundary>
@@ -1114,9 +1137,9 @@ function CartPage() {
       console.error(`⚠️ DEBUG: Error rendering store section for ${store}:`, err);
       return (
         <Card sx={{ mb: 4, p: 2, backgroundColor: '#ffebee' }}>
-          <Typography variant="h6" color="error">Error in {store} section</Typography>
+          <Typography variant="h6" color="error">Error in {store || 'unknown'} section</Typography>
           <Typography variant="body2" component="pre" style={{ whiteSpace: 'pre-wrap' }}>
-            {err.toString()}
+            {err ? err.toString() : 'Unknown error'}
           </Typography>
         </Card>
       );
@@ -1351,9 +1374,6 @@ function CartPage() {
       <Typography variant="h4" gutterBottom>
         Shopping Cart
       </Typography>
-      <Typography color="textSecondary" sx={{ mb: 2 }}>
-        ⚠️ DEBUG MODE - Removed InstacartResults temporarily to debug the page
-      </Typography>
 
       {/* Unassigned Items */}
       <ErrorBoundary>
@@ -1425,6 +1445,55 @@ function CartPage() {
       </ErrorBoundary>
       <ErrorBoundary>
         {renderStoreSection('walmart', internalCart.walmart, () => handleStoreSearch('walmart'), WalmartResults)}
+      </ErrorBoundary>
+
+      {/* Instacart Section */}
+      <ErrorBoundary>
+        <Card sx={{ mb: 4 }}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom>
+              Instacart Integration
+            </Typography>
+            <Typography variant="body2" color="text.secondary" paragraph>
+              You can also add your items to Instacart. Select a retailer and click the button below.
+            </Typography>
+
+            <FormControl fullWidth sx={{ mb: 2 }}>
+              <InputLabel id="instacart-retailer-label">Instacart Retailer</InputLabel>
+              <Select
+                labelId="instacart-retailer-label"
+                value={"publix"}
+                label="Instacart Retailer"
+                disabled={!internalCart.kroger || internalCart.kroger.length === 0}
+              >
+                <MenuItem value="publix">Publix</MenuItem>
+                <MenuItem value="aldi">Aldi</MenuItem>
+                <MenuItem value="target">Target</MenuItem>
+              </Select>
+            </FormControl>
+
+            {internalCart.kroger && Array.isArray(internalCart.kroger) && internalCart.kroger.length > 0 ? (
+              <InstacartResults
+                groceryItems={internalCart.kroger
+                  .filter(item => item && typeof item === 'object' && item.name)
+                  .map(item => item.name)
+                }
+                retailerId={"publix"}
+                onSuccess={(cart) => {
+                  setSnackbarMessage("Items added to Instacart cart successfully");
+                  setSnackbarOpen(true);
+                }}
+                onError={(err) => {
+                  setError("Error adding items to Instacart: " + (err?.message || "Unknown error"));
+                }}
+              />
+            ) : (
+              <Alert severity="info">
+                Add items to Kroger or Walmart sections above before using Instacart integration.
+              </Alert>
+            )}
+          </CardContent>
+        </Card>
       </ErrorBoundary>
 
       {/* Error Display */}
