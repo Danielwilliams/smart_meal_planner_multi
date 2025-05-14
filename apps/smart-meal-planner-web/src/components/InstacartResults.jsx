@@ -25,6 +25,7 @@ import {
   OpenInNew as OpenInNewIcon
 } from '@mui/icons-material';
 import instacartService from '../services/instacartService';
+import instacartAuthService from '../services/instacartAuthService';
 
 /**
  * Component to display Instacart search results and cart management
@@ -57,29 +58,44 @@ const InstacartResults = ({
     setCartId(null);
     setCheckoutUrl(null);
     setDialogStep('searching');
-    
+
     try {
+      // First check API status to ensure we're properly connected
+      const apiStatus = await instacartAuthService.checkInstacartApiStatus();
+      console.log('Instacart API status check result:', apiStatus);
+
       // Search for each item
       const results = {};
-      
+
       for (const item of groceryItems) {
         // Skip empty items
         if (!item || !item.trim()) continue;
-        
+
         try {
-          const productResults = await instacartService.searchProducts(retailerId, item, 3);
+          // Use the more robust auth service for searching
+          const productResults = await instacartAuthService.searchProducts(retailerId, item, 3);
           results[item] = productResults;
         } catch (err) {
           console.error(`Error searching for "${item}":`, err);
           results[item] = { error: err.message };
         }
       }
-      
+
       setSearchResults(results);
       setDialogStep('results');
     } catch (err) {
       console.error('Error searching items:', err);
-      setError(err.message);
+
+      // Provide more user-friendly error messages based on error type
+      if (err.message && err.message.includes('Network Error')) {
+        setError('Network Error: The Instacart retailer lookup API is not available. Please try again later.');
+      } else if (err.response && err.response.status === 404) {
+        setError('The Instacart service endpoint could not be found. The service may be temporarily down.');
+      } else if (err.response && err.response.status === 403) {
+        setError('Access to the Instacart API is restricted. Please contact support.');
+      } else {
+        setError(err.message || 'An unknown error occurred while searching for items');
+      }
     } finally {
       setLoading(false);
     }
@@ -102,30 +118,44 @@ const InstacartResults = ({
   const createInstacartCart = async () => {
     setLoading(true);
     setError(null);
-    
+
     try {
       // Format items for cart creation
       const items = cartItems.map(item => ({
         product_id: item.product.id,
         quantity: 1
       }));
-      
-      // Create cart
-      const cart = await instacartService.createCart(retailerId, items);
-      
+
+      // Create cart using the more robust auth service
+      const cart = await instacartAuthService.createCart(retailerId, items);
+
       setCartId(cart.id);
       setCheckoutUrl(cart.checkout_url);
       setDialogStep('cart');
-      
+
       if (onSuccess) {
         onSuccess(cart);
       }
     } catch (err) {
       console.error('Error creating Instacart cart:', err);
-      setError(err.message);
-      
+
+      // Provide more user-friendly error messages based on error type
+      let errorMessage = 'Error creating Instacart cart';
+
+      if (err.message && err.message.includes('Network Error')) {
+        errorMessage = 'Network Error: Unable to connect to the Instacart cart service. Please try again later.';
+      } else if (err.response && err.response.status === 404) {
+        errorMessage = 'The Instacart cart service endpoint could not be found. The service may be temporarily down.';
+      } else if (err.response && err.response.status === 403) {
+        errorMessage = 'Access to the Instacart cart API is restricted. Please contact support.';
+      } else {
+        errorMessage = err.message || 'An unknown error occurred while creating the cart';
+      }
+
+      setError(errorMessage);
+
       if (onError) {
-        onError(err);
+        onError({...err, userMessage: errorMessage});
       }
     } finally {
       setLoading(false);

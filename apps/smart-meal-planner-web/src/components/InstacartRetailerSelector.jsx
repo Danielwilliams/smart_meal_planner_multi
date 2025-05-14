@@ -24,6 +24,7 @@ import {
   Check as CheckIcon
 } from '@mui/icons-material';
 import instacartService from '../services/instacartService';
+import instacartAuthService from '../services/instacartAuthService';
 import ZipCodeDialog from './ZipCodeDialog';
 
 /**
@@ -65,7 +66,12 @@ const InstacartRetailerSelector = ({
     setRetailers([]); // Clear previous retailers while loading
 
     try {
-      const response = await instacartService.getNearbyRetailers(zipCode);
+      // First check Instacart API status to ensure connectivity
+      const apiStatus = await instacartAuthService.checkInstacartApiStatus();
+      console.log('Instacart API status check result:', apiStatus);
+
+      // Use the more robust auth service for getting retailers
+      const response = await instacartAuthService.getNearbyRetailers(zipCode);
       console.log('Loaded retailers:', response);
 
       if (Array.isArray(response)) {
@@ -96,16 +102,23 @@ const InstacartRetailerSelector = ({
     } catch (err) {
       console.error('Error loading Instacart retailers:', err);
 
+      // Check if this is a mock data situation (less severe error)
+      const isMockData = localStorage.getItem('instacart_using_mock_data') === 'true';
+
       // Show a more user-friendly error message
-      if (err.isApiKeyError) {
+      if (isMockData) {
+        // Using mock data - show informational message instead of error
+        console.log('Using mock data for retailers due to API unavailability');
+        // Don't show error, just continue with the mock data that will be returned
+      } else if (err.isApiKeyError) {
         setError('API key error: The Instacart API key appears to be invalid or unauthorized. Please contact support.');
-      } else if (err.message.includes('API key error')) {
+      } else if (err.message && err.message.includes('API key error')) {
         setError(err.message);
-      } else if (err.message.includes('CORS')) {
+      } else if (err.message && err.message.includes('CORS')) {
         setError('Cross-origin resource sharing (CORS) error. The server is not configured to allow requests from this domain.');
-      } else if (err.message.includes('Network Error')) {
+      } else if (err.message && err.message.includes('Network Error')) {
         setError('Network error connecting to Instacart API. Please check your internet connection or try again later.');
-      } else if (err.message.includes('404')) {
+      } else if (err.message && err.message.includes('404')) {
         setError('The Instacart retailer lookup API is not available. Please try again later.');
       } else if (err.response && err.response.status === 401) {
         setError('Authentication error: Unable to access Instacart API. The API key may be missing or invalid.');
@@ -114,7 +127,7 @@ const InstacartRetailerSelector = ({
       } else if (err.response && err.response.status === 429) {
         setError('Too many requests to Instacart API. Please try again in a few minutes.');
       } else {
-        setError(`Error loading retailers: ${err.message}`);
+        setError(`Error loading retailers: ${err.message || 'Unknown error'}`);
       }
     } finally {
       setLoading(false);

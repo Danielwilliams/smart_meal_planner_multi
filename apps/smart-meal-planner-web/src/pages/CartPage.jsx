@@ -50,6 +50,7 @@ import InstacartApiTester from '../components/InstacartApiTester';
 import { StoreSelector } from '../components/StoreSelector';
 import krogerAuthService from '../services/krogerAuthService';
 import instacartService from '../services/instacartService';
+import instacartAuthService from '../services/instacartAuthService';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -468,19 +469,30 @@ function CartPage() {
       if (store === 'kroger') {
         searchFunction = apiService.searchKrogerItems;
       } else if (store === 'instacart') {
-        // For instacart, we'll just set up direct search results
-        // without going through the API since instacart has its own UI
-        setSearchResults(prev => ({
-          ...prev,
-          instacart: internalCart.instacart.map(item => ({
-            id: item.name,
-            name: item.name,
-            original_query: item.name,
-            price: null,
-            image_url: null
-          }))
-        }));
-        setLoading(prev => ({ ...prev, search: false }));
+        try {
+          // First check if the API is working
+          setLoading(prev => ({ ...prev, instacart: true }));
+          const apiStatus = await instacartAuthService.checkInstacartApiStatus();
+          console.log('Instacart API status before search:', apiStatus);
+
+          // For instacart, we'll just set up direct search results
+          // without going through the API since instacart has its own UI
+          setSearchResults(prev => ({
+            ...prev,
+            instacart: internalCart.instacart.map(item => ({
+              id: item.name,
+              name: item.name,
+              original_query: item.name,
+              price: null,
+              image_url: null
+            }))
+          }));
+        } catch (err) {
+          console.error('Error checking Instacart API status before search:', err);
+          // Still proceed with search - the error will be caught in the UI
+        } finally {
+          setLoading(prev => ({ ...prev, instacart: false, search: false }));
+        }
         return;
       } else {
         // Fallback to avoid errors
@@ -1575,9 +1587,41 @@ function CartPage() {
               </Button>
             </Paper>
 
-            {/* Instacart action buttons */}
+            {/* Instacart API status and action buttons */}
             <Box display="flex" justifyContent="space-between" mt={2} flexWrap="wrap">
-              {/* Single button that directly searches Instacart */}
+              <Box width="100%" mb={2}>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  color="secondary"
+                  onClick={async () => {
+                    try {
+                      setLoading(prev => ({...prev, instacart: true}));
+                      const status = await instacartAuthService.checkInstacartApiStatus();
+                      console.log('Instacart API status:', status);
+
+                      // Show status in a snackbar
+                      if (status.status === 'connected') {
+                        setSnackbarMessage('Instacart API is connected and working properly');
+                      } else {
+                        setSnackbarMessage(`Instacart API status: ${status.status}. ${status.message || ''}`);
+                      }
+                      setSnackbarOpen(true);
+                    } catch (err) {
+                      console.error('Error checking Instacart API status:', err);
+                      setError('Error checking Instacart API status: ' + (err.message || 'Unknown error'));
+                    } finally {
+                      setLoading(prev => ({...prev, instacart: false}));
+                    }
+                  }}
+                  disabled={loading.instacart}
+                  sx={{ mb: 1 }}
+                >
+                  Check API Status
+                </Button>
+              </Box>
+
+              {/* Search button that directly searches Instacart */}
               <Button
                 variant="contained"
                 color="secondary"
@@ -1596,23 +1640,53 @@ function CartPage() {
                   <Typography variant="subtitle2" gutterBottom>
                     Found {searchResults.instacart.length} items in Instacart
                   </Typography>
-                  <InstacartResults
-                    groceryItems={internalCart.instacart && Array.isArray(internalCart.instacart)
-                      ? internalCart.instacart
-                          .filter(item => item && typeof item === 'object' && item.name)
-                          .map(item => item.name)
-                      : []
-                    }
-                    retailerId={instacartRetailer?.id || "publix"}
-                    onSuccess={(cart) => {
-                      setSnackbarMessage(`Items added to ${instacartRetailer?.name || 'Instacart'} cart successfully`);
-                      setSnackbarOpen(true);
-                      clearSearchResults('instacart');
-                    }}
-                    onError={(err) => {
-                      setError(`Error adding items to ${instacartRetailer?.name || 'Instacart'}: ${err?.message || "Unknown error"}`);
-                    }}
-                  />
+
+                  {/* Check for retailer ID before showing results */}
+                  {!instacartRetailer?.id ? (
+                    <Alert
+                      severity="warning"
+                      sx={{ mb: 2 }}
+                      action={
+                        <Button
+                          color="inherit"
+                          size="small"
+                          onClick={() => setShowInstacartRetailerSelector(true)}
+                        >
+                          Select Retailer
+                        </Button>
+                      }
+                    >
+                      Please select an Instacart retailer before proceeding
+                    </Alert>
+                  ) : (
+                    <InstacartResults
+                      groceryItems={internalCart.instacart && Array.isArray(internalCart.instacart)
+                        ? internalCart.instacart
+                            .filter(item => item && typeof item === 'object' && item.name)
+                            .map(item => item.name)
+                        : []
+                      }
+                      retailerId={instacartRetailer?.id}
+                      onSuccess={(cart) => {
+                        setSnackbarMessage(`Items added to ${instacartRetailer?.name || 'Instacart'} cart successfully`);
+                        setSnackbarOpen(true);
+                        clearSearchResults('instacart');
+                      }}
+                      onError={(err) => {
+                        // Use the user-friendly message if available
+                        const errorMessage = err?.userMessage || err?.message || "Unknown error";
+                        setError(`Error adding items to ${instacartRetailer?.name || 'Instacart'}: ${errorMessage}`);
+
+                        // If this is an API connectivity issue, suggest checking status
+                        if (errorMessage.includes('Network Error') || errorMessage.includes('API is unreachable')) {
+                          setTimeout(() => {
+                            setSnackbarMessage('Try clicking "Check API Status" to diagnose connection issues');
+                            setSnackbarOpen(true);
+                          }, 2000);
+                        }
+                      }}
+                    />
+                  )}
                 </Box>
               ) : (
                 <Typography color="text.secondary" sx={{ width: '100%', mt: 2 }}>
