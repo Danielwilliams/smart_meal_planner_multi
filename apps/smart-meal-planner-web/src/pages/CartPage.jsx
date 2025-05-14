@@ -39,8 +39,10 @@ import { useNavigate } from 'react-router-dom';
 import KrogerResults from '../components/KrogerResults';
 // Walmart API integration removed due to API access issues
 import InstacartResults from '../components/InstacartResults';
+import InstacartRetailerSelector from '../components/InstacartRetailerSelector';
 import { StoreSelector } from '../components/StoreSelector';
 import krogerAuthService from '../services/krogerAuthService';
+import instacartService from '../services/instacartService';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -90,8 +92,18 @@ function CartPage() {
   console.log("⚠️ DEBUG: useNavigate called");
 
   const [showStoreSelector, setShowStoreSelector] = useState(false);
+  const [showInstacartRetailerSelector, setShowInstacartRetailerSelector] = useState(false);
   const [currentStore, setCurrentStore] = useState(null);
   const [lastSearchedItems, setLastSearchedItems] = useState([]);
+  const [instacartRetailer, setInstacartRetailer] = useState(() => {
+    // Try to get from localStorage
+    const savedRetailer = localStorage.getItem('instacart_retailer');
+    return savedRetailer ? JSON.parse(savedRetailer) : { id: 'publix', name: 'Publix' };
+  });
+  const [zipCode, setZipCode] = useState(() => {
+    // Try to get from localStorage
+    return localStorage.getItem('instacart_zip_code') || '';
+  });
 
   const [internalCart, setInternalCart] = useState({
     kroger: [],
@@ -1520,18 +1532,31 @@ function CartPage() {
             )}
 
             {/* Retailer Selector */}
-            <FormControl fullWidth sx={{ mb: 2 }}>
-              <InputLabel id="instacart-retailer-label">Instacart Retailer</InputLabel>
-              <Select
-                labelId="instacart-retailer-label"
-                value={"publix"}
-                label="Instacart Retailer"
+            <Paper
+              variant="outlined"
+              sx={{ p: 2, mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+            >
+              <Box>
+                <Typography variant="subtitle2" color="text.secondary">
+                  Selected Retailer
+                </Typography>
+                <Typography variant="body1" sx={{ fontWeight: 'medium' }}>
+                  {instacartRetailer?.name || 'Select a retailer'}
+                </Typography>
+                {zipCode && (
+                  <Typography variant="caption" color="text.secondary">
+                    ZIP Code: {zipCode}
+                  </Typography>
+                )}
+              </Box>
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={() => setShowInstacartRetailerSelector(true)}
               >
-                <MenuItem value="publix">Publix</MenuItem>
-                <MenuItem value="aldi">Aldi</MenuItem>
-                <MenuItem value="target">Target</MenuItem>
-              </Select>
-            </FormControl>
+                Change Retailer
+              </Button>
+            </Paper>
 
             {/* Instacart action buttons */}
             <Box display="flex" justifyContent="space-between" mt={2} flexWrap="wrap">
@@ -1561,14 +1586,14 @@ function CartPage() {
                           .map(item => item.name)
                       : []
                     }
-                    retailerId={"publix"}
+                    retailerId={instacartRetailer?.id || "publix"}
                     onSuccess={(cart) => {
-                      setSnackbarMessage("Items added to Instacart cart successfully");
+                      setSnackbarMessage(`Items added to ${instacartRetailer?.name || 'Instacart'} cart successfully`);
                       setSnackbarOpen(true);
                       clearSearchResults('instacart');
                     }}
                     onError={(err) => {
-                      setError("Error adding items to Instacart: " + (err?.message || "Unknown error"));
+                      setError(`Error adding items to ${instacartRetailer?.name || 'Instacart'}: ${err?.message || "Unknown error"}`);
                     }}
                   />
                 </Box>
@@ -1600,6 +1625,28 @@ function CartPage() {
           storeType={currentStore}
           onStoreSelect={handleStoreSelect}
           onClose={() => setShowStoreSelector(false)}
+        />
+      </ErrorBoundary>
+
+      {/* Instacart Retailer Selector */}
+      <ErrorBoundary>
+        <InstacartRetailerSelector
+          open={showInstacartRetailerSelector}
+          onClose={() => setShowInstacartRetailerSelector(false)}
+          onRetailerSelect={(retailerId, retailerObj) => {
+            console.log('Selected Instacart retailer:', retailerId, retailerObj);
+            setInstacartRetailer(retailerObj);
+            // Save to localStorage
+            localStorage.setItem('instacart_retailer', JSON.stringify(retailerObj));
+            // Also update the zip code
+            if (retailerObj && retailerObj.address && retailerObj.address.zip_code) {
+              setZipCode(retailerObj.address.zip_code);
+              localStorage.setItem('instacart_zip_code', retailerObj.address.zip_code);
+            }
+            setShowInstacartRetailerSelector(false);
+          }}
+          defaultRetailerId={instacartRetailer?.id}
+          initialZipCode={zipCode}
         />
       </ErrorBoundary>
 

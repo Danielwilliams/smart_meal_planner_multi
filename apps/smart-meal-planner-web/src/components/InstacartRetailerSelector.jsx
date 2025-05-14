@@ -1,0 +1,260 @@
+import React, { useState, useEffect } from 'react';
+import {
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  Typography,
+  CircularProgress,
+  Alert,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemAvatar,
+  Avatar,
+  Box,
+  Divider,
+  Paper,
+  Chip
+} from '@mui/material';
+import {
+  Store as StoreIcon,
+  LocationOn as LocationIcon,
+  Check as CheckIcon
+} from '@mui/icons-material';
+import instacartService from '../services/instacartService';
+import ZipCodeDialog from './ZipCodeDialog';
+
+/**
+ * Component for selecting an Instacart retailer
+ * Shows a dialog with nearby retailers based on ZIP code
+ */
+const InstacartRetailerSelector = ({
+  open,
+  onClose,
+  onRetailerSelect,
+  defaultRetailerId = null,
+  initialZipCode = null
+}) => {
+  const [retailers, setRetailers] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [selectedRetailerId, setSelectedRetailerId] = useState(defaultRetailerId);
+  const [zipCode, setZipCode] = useState(initialZipCode);
+  const [showZipCodeDialog, setShowZipCodeDialog] = useState(false);
+
+  // Open ZIP code dialog if we don't have a ZIP code yet
+  useEffect(() => {
+    if (open && !zipCode) {
+      setShowZipCodeDialog(true);
+    }
+  }, [open, zipCode]);
+
+  // Load retailers when ZIP code is set
+  useEffect(() => {
+    if (zipCode) {
+      loadRetailers(zipCode);
+    }
+  }, [zipCode]);
+
+  // Function to load retailers based on ZIP code
+  const loadRetailers = async (zipCode) => {
+    setLoading(true);
+    setError('');
+    
+    try {
+      const response = await instacartService.getNearbyRetailers(zipCode);
+      console.log('Loaded retailers:', response);
+      
+      if (Array.isArray(response)) {
+        setRetailers(response);
+        
+        // If we have a default retailer ID, check if it's in the list
+        if (defaultRetailerId) {
+          const retailerExists = response.some(r => r.id === defaultRetailerId);
+          if (!retailerExists && response.length > 0) {
+            // Default retailer not available, select first one
+            setSelectedRetailerId(response[0].id);
+          } else {
+            setSelectedRetailerId(defaultRetailerId);
+          }
+        } else if (response.length > 0) {
+          // No default, select first one
+          setSelectedRetailerId(response[0].id);
+        }
+      } else {
+        setError('Invalid response format from Instacart API');
+      }
+    } catch (err) {
+      console.error('Error loading Instacart retailers:', err);
+      setError(err.message || 'Failed to load Instacart retailers');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle ZIP code submission
+  const handleZipCodeSubmit = (zipCode) => {
+    setZipCode(zipCode);
+    setShowZipCodeDialog(false);
+  };
+
+  // Handle retailer selection
+  const handleRetailerSelect = () => {
+    if (selectedRetailerId && onRetailerSelect) {
+      // Find the complete retailer object
+      const selectedRetailer = retailers.find(r => r.id === selectedRetailerId);
+      onRetailerSelect(selectedRetailerId, selectedRetailer);
+    }
+    onClose();
+  };
+
+  // Handle change ZIP code
+  const handleChangeZipCode = () => {
+    setShowZipCodeDialog(true);
+  };
+
+  return (
+    <>
+      <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center' }}>
+          <StoreIcon sx={{ mr: 1 }} />
+          Select Instacart Retailer
+        </DialogTitle>
+        
+        <DialogContent>
+          {error && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {error}
+            </Alert>
+          )}
+          
+          {loading ? (
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 4 }}>
+              <CircularProgress size={60} sx={{ mb: 2 }} />
+              <Typography variant="body1">
+                Finding Instacart retailers near {zipCode}...
+              </Typography>
+            </Box>
+          ) : (
+            <>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="subtitle1">
+                  Retailers near {zipCode}
+                </Typography>
+                <Button
+                  size="small"
+                  startIcon={<LocationIcon />}
+                  onClick={handleChangeZipCode}
+                >
+                  Change ZIP Code
+                </Button>
+              </Box>
+              
+              {retailers.length === 0 ? (
+                <Paper variant="outlined" sx={{ p: 3, textAlign: 'center' }}>
+                  <Typography variant="body1">
+                    No Instacart retailers found in your area.
+                  </Typography>
+                  <Button
+                    variant="outlined"
+                    startIcon={<LocationIcon />}
+                    onClick={handleChangeZipCode}
+                    sx={{ mt: 2 }}
+                  >
+                    Try a Different ZIP Code
+                  </Button>
+                </Paper>
+              ) : (
+                <List sx={{ maxHeight: '50vh', overflow: 'auto' }}>
+                  {retailers.map((retailer, index) => (
+                    <React.Fragment key={retailer.id}>
+                      <ListItem
+                        button
+                        selected={selectedRetailerId === retailer.id}
+                        onClick={() => setSelectedRetailerId(retailer.id)}
+                        sx={{ 
+                          borderRadius: 1,
+                          '&.Mui-selected': { bgcolor: 'action.selected' }
+                        }}
+                      >
+                        <ListItemAvatar>
+                          {retailer.logo_url ? (
+                            <Avatar src={retailer.logo_url} alt={retailer.name} />
+                          ) : (
+                            <Avatar>
+                              <StoreIcon />
+                            </Avatar>
+                          )}
+                        </ListItemAvatar>
+                        <ListItemText
+                          primary={
+                            <Box display="flex" alignItems="center">
+                              {retailer.name}
+                              {selectedRetailerId === retailer.id && (
+                                <Chip
+                                  size="small"
+                                  icon={<CheckIcon />}
+                                  label="Selected"
+                                  color="primary"
+                                  variant="outlined"
+                                  sx={{ ml: 1 }}
+                                />
+                              )}
+                            </Box>
+                          }
+                          secondary={
+                            <>
+                              <Typography variant="body2" component="span">
+                                {retailer.address && (
+                                  <Box component="span" sx={{ display: 'flex', alignItems: 'center' }}>
+                                    <LocationIcon fontSize="small" sx={{ mr: 0.5, fontSize: '1rem' }} />
+                                    {`${retailer.address.city}, ${retailer.address.state}`}
+                                  </Box>
+                                )}
+                              </Typography>
+                            </>
+                          }
+                        />
+                      </ListItem>
+                      {index < retailers.length - 1 && <Divider variant="inset" component="li" />}
+                    </React.Fragment>
+                  ))}
+                </List>
+              )}
+            </>
+          )}
+        </DialogContent>
+        
+        <DialogActions>
+          <Button onClick={onClose}>
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleRetailerSelect} 
+            variant="contained" 
+            color="primary"
+            disabled={!selectedRetailerId || loading}
+          >
+            Select Retailer
+          </Button>
+        </DialogActions>
+      </Dialog>
+      
+      <ZipCodeDialog
+        open={showZipCodeDialog}
+        onClose={() => {
+          setShowZipCodeDialog(false);
+          // If we don't have a ZIP code yet and the user cancels, close the parent dialog too
+          if (!zipCode) {
+            onClose();
+          }
+        }}
+        onZipCodeSubmit={handleZipCodeSubmit}
+      />
+    </>
+  );
+};
+
+export default InstacartRetailerSelector;

@@ -28,6 +28,7 @@ const instacartAxiosInstance = axios.create({
 /**
  * Get a list of available retailers on Instacart
  * @returns {Promise<Array>} List of retailers with id, name, and logo_url
+ * @deprecated Use getNearbyRetailers instead for more accurate location-based results
  */
 export const getRetailers = async () => {
   try {
@@ -36,6 +37,25 @@ export const getRetailers = async () => {
     return response.data;
   } catch (error) {
     console.error('Error fetching Instacart retailers:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get a list of nearby retailers on Instacart based on zip code
+ * @param {string} zipCode - The ZIP code to search retailers near
+ * @returns {Promise<Array>} List of nearby retailers with id, name, logo_url and other details
+ */
+export const getNearbyRetailers = async (zipCode) => {
+  try {
+    console.log(`Getting nearby Instacart retailers for ZIP: ${zipCode}`);
+    const response = await instacartAxiosInstance.get('/instacart/retailers/nearby', {
+      params: { zip_code: zipCode }
+    });
+    console.log('Nearby Instacart retailers response:', response);
+    return response.data;
+  } catch (error) {
+    console.error(`Error fetching nearby Instacart retailers for ZIP ${zipCode}:`, error);
     throw error;
   }
 };
@@ -188,6 +208,7 @@ export const addGroceryItemsToInstacart = async (retailerId, groceryItems) => {
 
 export default {
   getRetailers,
+  getNearbyRetailers,
   searchProducts,
   createCart,
   addItemToCart,
