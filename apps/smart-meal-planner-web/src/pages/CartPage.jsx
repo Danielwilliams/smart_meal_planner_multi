@@ -1546,7 +1546,7 @@ function CartPage() {
                 startIcon={loading.instacart ? <CircularProgress size={20} /> : <ShoppingCartIcon />}
                 sx={{ mr: 1, mb: 1 }}
               >
-                Add to Instacart
+                Search Instacart
               </Button>
 
               {searchResults.instacart && searchResults.instacart.length > 0 ? (

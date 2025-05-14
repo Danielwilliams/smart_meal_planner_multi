@@ -44,6 +44,11 @@ const InstacartResults = ({
   const [showDialog, setShowDialog] = useState(false);
   const [dialogStep, setDialogStep] = useState('searching'); // searching, results, cart
   
+  // Set dialog to be open by default so user sees the search immediately
+  useEffect(() => {
+    setShowDialog(true);
+  }, []);
+
   const searchAllItems = async () => {
     setLoading(true);
     setError(null);
@@ -52,7 +57,6 @@ const InstacartResults = ({
     setCartId(null);
     setCheckoutUrl(null);
     setDialogStep('searching');
-    setShowDialog(true);
     
     try {
       // Search for each item
@@ -286,20 +290,17 @@ const InstacartResults = ({
     }
   };
   
+  // Auto-start the search when the component mounts
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (groceryItems && groceryItems.length > 0) {
+      // Start search automatically when component renders
+      searchAllItems();
+    }
+  }, []);
+
   return (
     <Box>
-      <Button
-        variant="contained"
-        color="secondary"
-        startIcon={<BasketIcon />}
-        onClick={searchAllItems}
-        disabled={loading || !groceryItems || groceryItems.length === 0}
-        fullWidth
-        sx={{ py: 1.5 }}
-      >
-        {loading ? <CircularProgress size={24} /> : "Add to Instacart"}
-      </Button>
-      
       <Dialog
         open={showDialog}
         onClose={handleClose}
