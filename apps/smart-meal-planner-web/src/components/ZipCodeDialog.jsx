@@ -36,11 +36,20 @@ const ZipCodeDialog = ({
     if (open) {
       setError('');
       setAutoSubmitted(false);
-      
+
+      // Clear saved zip code if the dialog is explicitly opened
+      // This allows "Change ZIP Code" to work properly
+      const forceZipCodeChange = localStorage.getItem('force_zip_code_change');
+      if (forceZipCodeChange === 'true') {
+        console.log('Forcing ZIP code change, not auto-submitting');
+        localStorage.removeItem('force_zip_code_change');
+        return; // Don't auto-submit
+      }
+
       // Try to get zip code from user profile first
       if (user && user[zipCodeFieldName]) {
         setZipCode(user[zipCodeFieldName]);
-        
+
         // Auto-submit if we have a zip code and haven't auto-submitted yet
         if (!autoSubmitted) {
           handleSubmit(user[zipCodeFieldName]);
@@ -51,7 +60,7 @@ const ZipCodeDialog = ({
         const savedZipCode = localStorage.getItem('instacart_zip_code');
         if (savedZipCode) {
           setZipCode(savedZipCode);
-          
+
           // Auto-submit if we have a saved zip code and haven't auto-submitted yet
           if (!autoSubmitted) {
             handleSubmit(savedZipCode);

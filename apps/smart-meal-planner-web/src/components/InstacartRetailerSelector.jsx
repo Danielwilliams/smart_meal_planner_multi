@@ -112,6 +112,8 @@ const InstacartRetailerSelector = ({
 
   // Handle change ZIP code
   const handleChangeZipCode = () => {
+    // Set a flag in localStorage to prevent auto-submit in ZipCodeDialog
+    localStorage.setItem('force_zip_code_change', 'true');
     setShowZipCodeDialog(true);
   };
 
