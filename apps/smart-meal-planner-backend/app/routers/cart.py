@@ -47,7 +47,7 @@ async def get_internal_cart(
         # Initialize cart if needed
         if user_id not in internal_carts:
             internal_carts[user_id] = {
-                'walmart': [],
+                'instacart': [],
                 'kroger': [],
                 'unassigned': []
             }
@@ -74,7 +74,7 @@ async def add_to_internal_cart(
         # Initialize cart if needed
         if user_id not in internal_carts:
             internal_carts[user_id] = {
-                'walmart': [],
+                'instacart': [],
                 'kroger': [],
                 'unassigned': []
             }
@@ -82,6 +82,12 @@ async def add_to_internal_cart(
         # Add items to appropriate store list
         for item in req.items:
             store = req.store or item.store_preference or 'unassigned'
+
+            # Ensure the store key exists in the cart
+            if store not in internal_carts[user_id]:
+                logger.info(f"Creating new store section in cart: {store}")
+                internal_carts[user_id][store] = []
+
             internal_carts[user_id][store].append(item)
 
         return {
@@ -144,7 +150,7 @@ async def clear_internal_cart(
             
         if user_id in internal_carts:
             internal_carts[user_id] = {
-                'walmart': [],
+                'instacart': [],
                 'kroger': [],
                 'unassigned': []
             }
@@ -198,7 +204,7 @@ async def get_store_items(
             
         if user_id not in internal_carts:
             internal_carts[user_id] = {
-                'walmart': [],
+                'instacart': [],
                 'kroger': [],
                 'unassigned': []
             }
