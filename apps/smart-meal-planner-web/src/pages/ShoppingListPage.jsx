@@ -4073,9 +4073,8 @@ const categorizeItems = (mealPlanData) => {
             label="Store Search Mode"
             onChange={(e) => setSelectedStore(e.target.value)}
           >
-            <MenuItem value="walmart">Walmart</MenuItem>
-            <MenuItem value="kroger">Kroger</MenuItem>
             <MenuItem value="instacart">Instacart</MenuItem>
+            <MenuItem value="kroger">Kroger</MenuItem>
             <MenuItem value="mixed">Mixed Stores</MenuItem>
           </Select>
         </FormControl>
@@ -4609,13 +4608,13 @@ const categorizeItems = (mealPlanData) => {
                                       <Box sx={{ mt: 1 }}>
                                         {selectedStore === 'mixed' ? (
                                           <>
-                                            <Button 
-                                              variant="outlined" 
-                                              size="small" 
+                                            <Button
+                                              variant="outlined"
+                                              size="small"
                                               sx={{ mr: 1 }}
-                                              onClick={() => handleAddToMixedCart(typeof item === 'string' ? item : item.name, 'walmart')}
+                                              onClick={() => handleAddToMixedCart(typeof item === 'string' ? item : item.name, 'instacart')}
                                             >
-                                              Add to Walmart
+                                              Add to Instacart
                                             </Button>
                                             <Button 
                                               variant="outlined" 
@@ -4669,13 +4668,13 @@ const categorizeItems = (mealPlanData) => {
                                     <Box sx={{ mt: 1 }}>
                                       {selectedStore === 'mixed' ? (
                                         <>
-                                          <Button 
-                                            variant="outlined" 
-                                            size="small" 
+                                          <Button
+                                            variant="outlined"
+                                            size="small"
                                             sx={{ mr: 1 }}
-                                            onClick={() => handleAddToMixedCart(typeof item === 'string' ? item : item.name, 'walmart')}
+                                            onClick={() => handleAddToMixedCart(typeof item === 'string' ? item : item.name, 'instacart')}
                                           >
-                                            Add to Walmart
+                                            Add to Instacart
                                           </Button>
                                           <Button 
                                             variant="outlined" 

@@ -1548,14 +1548,14 @@ const ShoppingListItem = ({
         // Check if we have a configured Kroger store in localStorage
         const isConfigured = localStorage.getItem('kroger_store_configured') === 'true';
         const locationId = localStorage.getItem('kroger_store_location_id');
-        
+
         // If not configured, show the setup dialog
         if (!isConfigured || !locationId) {
           console.log("Kroger store not configured, showing setup dialog");
           onKrogerNeededSetup(itemName);
           return;
         }
-        
+
         // If configured, try to add to cart
         if (selectedStore === 'mixed') {
           onAddToMixedCart(itemName, 'kroger');
@@ -1566,8 +1566,15 @@ const ShoppingListItem = ({
         console.error("Error checking Kroger configuration:", err);
         onKrogerNeededSetup(itemName);
       }
+    } else if (store === 'instacart') {
+      // For Instacart, just proceed normally
+      if (selectedStore === 'mixed') {
+        onAddToMixedCart(itemName, 'instacart');
+      } else {
+        onAddToCart(itemName, 'instacart');
+      }
     } else {
-      // For Walmart, just proceed normally
+      // For any other store, just proceed normally
       if (selectedStore === 'mixed') {
         onAddToMixedCart(itemName, store);
       } else {
@@ -1608,9 +1615,9 @@ const ShoppingListItem = ({
             variant="outlined"
             size="small"
             sx={{ mr: 1 }}
-            onClick={() => handleStoreClick('walmart', itemName)}
+            onClick={() => handleStoreClick('instacart', itemName)}
           >
-            Add to Walmart
+            Add to Instacart
           </Button>
           <Button
             variant="outlined"
