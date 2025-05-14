@@ -1233,7 +1233,10 @@ const createCart = async (retailerId, items) => {
           const altEndpoint = `${INSTACART_CONNECT_URL}/idp/v1/retailers/${retailerId}/carts`;
 
           const altResponse = await axios.post(altEndpoint, {
-            items: formattedItems
+            items: items.map(item => ({
+              product_id: item.product_id.toString(),
+              quantity: item.quantity || 1
+            }))
           }, {
             headers: {
               'Content-Type': 'application/json',
