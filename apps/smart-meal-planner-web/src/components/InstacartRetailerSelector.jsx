@@ -62,14 +62,21 @@ const InstacartRetailerSelector = ({
   const loadRetailers = async (zipCode) => {
     setLoading(true);
     setError('');
-    
+    setRetailers([]); // Clear previous retailers while loading
+
     try {
       const response = await instacartService.getNearbyRetailers(zipCode);
       console.log('Loaded retailers:', response);
-      
+
       if (Array.isArray(response)) {
+        // Check if we actually have any retailers
+        if (response.length === 0) {
+          setError(`No Instacart retailers found for ZIP code ${zipCode}. Try a different ZIP code.`);
+          return;
+        }
+
         setRetailers(response);
-        
+
         // If we have a default retailer ID, check if it's in the list
         if (defaultRetailerId) {
           const retailerExists = response.some(r => r.id === defaultRetailerId);
@@ -84,11 +91,21 @@ const InstacartRetailerSelector = ({
           setSelectedRetailerId(response[0].id);
         }
       } else {
-        setError('Invalid response format from Instacart API');
+        setError('Invalid response format from Instacart API. Please try a different ZIP code.');
       }
     } catch (err) {
       console.error('Error loading Instacart retailers:', err);
-      setError(err.message || 'Failed to load Instacart retailers');
+
+      // Show a more user-friendly error message
+      if (err.message.includes('CORS')) {
+        setError('Cross-origin resource sharing (CORS) error. The server is not configured to allow requests from this domain.');
+      } else if (err.message.includes('Network Error')) {
+        setError('Network error connecting to Instacart API. Please check your internet connection or try again later.');
+      } else if (err.message.includes('404')) {
+        setError('The Instacart retailer lookup API is not available. Please try again later.');
+      } else {
+        setError(`Error loading retailers: ${err.message}`);
+      }
     } finally {
       setLoading(false);
     }
@@ -156,8 +173,13 @@ const InstacartRetailerSelector = ({
               
               {retailers.length === 0 ? (
                 <Paper variant="outlined" sx={{ p: 3, textAlign: 'center' }}>
-                  <Typography variant="body1">
-                    No Instacart retailers found in your area.
+                  <Typography variant="body1" color="error" sx={{ mb: 2 }}>
+                    {error || "No Instacart retailers found in your area."}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                    {error ?
+                      "This might be due to a server configuration issue or API limitation." :
+                      "This could be because Instacart doesn't serve this area or there was an issue with the API."}
                   </Typography>
                   <Button
                     variant="outlined"

@@ -50,120 +50,37 @@ export const getNearbyRetailers = async (zipCode) => {
   try {
     console.log(`Getting nearby Instacart retailers for ZIP: ${zipCode}`);
 
-    // First try to get all retailers (since the nearby endpoint might not exist yet)
-    console.log('Falling back to getRetailers since /nearby endpoint may not exist yet');
+    // Try to get retailers by ZIP code first
+    try {
+      const response = await instacartAxiosInstance.get('/instacart/retailers/nearby', {
+        params: { zip_code: zipCode }
+      });
+      console.log('Nearby Instacart retailers response:', response);
 
-    // Get all retailers as a fallback
-    const response = await instacartAxiosInstance.get('/instacart/retailers');
-    console.log('Retailers response:', response);
-
-    // Just return the full list for now as a fallback
-    // In the future, this would filter by ZIP code
-    const retailers = response.data;
-
-    // Add mock data if needed for testing
-    if (!retailers || retailers.length === 0) {
-      console.log('No retailers found, adding mock data for testing');
-      return [
-        {
-          id: 'publix',
-          name: 'Publix',
-          logo_url: 'https://www.instacart.com/assets/retailers/publix-e038b4e4dddb75ad3b3b4a4acdbaf7edcff86d42b7e4ecb6c8c8a1f708d21758.png',
-          address: {
-            street: '123 Main St',
-            city: 'Loveland',
-            state: 'CO',
-            zip_code: zipCode
-          }
-        },
-        {
-          id: 'kroger',
-          name: 'Kroger',
-          logo_url: 'https://www.instacart.com/assets/retailers/kroger-5d418ef8b50e0ed307c36f5fe3fdfbff0b247a2f803860bc81459a8db4472408.png',
-          address: {
-            street: '456 Oak Ave',
-            city: 'Loveland',
-            state: 'CO',
-            zip_code: zipCode
-          }
-        },
-        {
-          id: 'target',
-          name: 'Target',
-          logo_url: 'https://www.instacart.com/assets/retailers/target-3b7fdad9c41e99ba74f6be5ee83d964ec7bfe7a10a2f8b61b5dd22bc93c46095.png',
-          address: {
-            street: '789 Pine Blvd',
-            city: 'Loveland',
-            state: 'CO',
-            zip_code: zipCode
-          }
-        },
-        {
-          id: 'aldi',
-          name: 'ALDI',
-          logo_url: 'https://www.instacart.com/assets/retailers/aldi-f6de3c93bedc5c053cfa307d8d4aac342ab7a348c39ab810db1bd962d4b0f533.png',
-          address: {
-            street: '101 Elm St',
-            city: 'Loveland',
-            state: 'CO',
-            zip_code: zipCode
-          }
-        }
-      ];
-    }
-
-    return retailers;
-  } catch (error) {
-    console.error(`Error fetching nearby Instacart retailers for ZIP ${zipCode}:`, error);
-    console.log('Providing mock data due to error');
-
-    // Return mock data as fallback in case of errors
-    return [
-      {
-        id: 'publix',
-        name: 'Publix',
-        logo_url: 'https://www.instacart.com/assets/retailers/publix-e038b4e4dddb75ad3b3b4a4acdbaf7edcff86d42b7e4ecb6c8c8a1f708d21758.png',
-        address: {
-          street: '123 Main St',
-          city: 'Loveland',
-          state: 'CO',
-          zip_code: zipCode
-        }
-      },
-      {
-        id: 'kroger',
-        name: 'Kroger',
-        logo_url: 'https://www.instacart.com/assets/retailers/kroger-5d418ef8b50e0ed307c36f5fe3fdfbff0b247a2f803860bc81459a8db4472408.png',
-        address: {
-          street: '456 Oak Ave',
-          city: 'Loveland',
-          state: 'CO',
-          zip_code: zipCode
-        }
-      },
-      {
-        id: 'target',
-        name: 'Target',
-        logo_url: 'https://www.instacart.com/assets/retailers/target-3b7fdad9c41e99ba74f6be5ee83d964ec7bfe7a10a2f8b61b5dd22bc93c46095.png',
-        address: {
-          street: '789 Pine Blvd',
-          city: 'Loveland',
-          state: 'CO',
-          zip_code: zipCode
-        }
-      },
-      {
-        id: 'aldi',
-        name: 'ALDI',
-        logo_url: 'https://www.instacart.com/assets/retailers/aldi-f6de3c93bedc5c053cfa307d8d4aac342ab7a348c39ab810db1bd962d4b0f533.png',
-        address: {
-          street: '101 Elm St',
-          city: 'Loveland',
-          state: 'CO',
-          zip_code: zipCode
-        }
+      if (response.data && Array.isArray(response.data) && response.data.length > 0) {
+        return response.data;
       }
-    ];
+
+      console.warn('Nearby retailers endpoint returned empty results');
+      throw new Error('No nearby retailers found');
+    } catch (nearbyError) {
+      // If the endpoint doesn't exist or returns an error, fall back to the standard endpoint
+      console.warn(`Nearby retailers endpoint failed: ${nearbyError.message}`);
+      console.log('Falling back to standard retailers endpoint');
+
+      const response = await instacartAxiosInstance.get('/instacart/retailers');
+      console.log('All retailers response:', response);
+
+      if (!response.data || !Array.isArray(response.data) || response.data.length === 0) {
+        throw new Error('No retailers available from Instacart API');
+      }
+
+      return response.data;
+    }
+  } catch (error) {
+    console.error(`Error fetching Instacart retailers for ZIP ${zipCode}:`, error);
+    // Propagate the error instead of masking it with mock data
+    throw error;
   }
 };
 
