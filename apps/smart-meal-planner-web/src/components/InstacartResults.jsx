@@ -94,7 +94,7 @@ const InstacartResults = ({
         return;
       }
 
-      console.log(`Searching products for retailer: ${retailerId} using ${savedApiPath || 'default'} API path`);
+      console.log(`Searching products for retailer: ${retailerId}`);
 
       // Search for each item
       const results = {};

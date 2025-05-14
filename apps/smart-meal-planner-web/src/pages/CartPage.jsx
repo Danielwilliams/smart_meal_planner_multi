@@ -474,11 +474,11 @@ function CartPage() {
 
           // First check if the API is working
           console.log('Checking Instacart API status before search...');
-          const apiStatus = await instacartAuthService.checkInstacartApiStatus();
+          const apiStatus = await instacartBackendService.checkInstacartStatus();
           console.log('Instacart API status before search:', apiStatus);
 
           // If API is connected, attempt to use it directly for searching products
-          if (apiStatus.status === 'connected') {
+          if (apiStatus.is_connected) {
             console.log('Instacart API is connected, attempting to search products directly');
 
             try {
@@ -504,8 +504,8 @@ function CartPage() {
 
                 const searchPromises = internalCart.instacart.map(async (item) => {
                   try {
-                    // Use instacartAuthService for robust searching
-                    const searchResults = await instacartAuthService.searchProducts(retailerId, item.name, 1);
+                    // Use instacartBackendService for robust searching
+                    const searchResults = await instacartBackendService.searchProducts(retailerId, item.name, 1);
 
                     if (searchResults && searchResults.length > 0) {
                       console.log(`Found match for "${item.name}":`, searchResults[0]);
@@ -1721,14 +1721,14 @@ function CartPage() {
                   onClick={async () => {
                     try {
                       setLoading(prev => ({...prev, instacart: true}));
-                      const status = await instacartAuthService.checkInstacartApiStatus();
+                      const status = await instacartBackendService.checkInstacartStatus();
                       console.log('Instacart API status:', status);
 
                       // Show status in a snackbar
-                      if (status.status === 'connected') {
+                      if (status.is_connected) {
                         setSnackbarMessage('Instacart API is connected and working properly');
                       } else {
-                        setSnackbarMessage(`Instacart API status: ${status.status}. ${status.message || ''}`);
+                        setSnackbarMessage(`Instacart API status: Disconnected. ${status.message || ''}`);
                       }
                       setSnackbarOpen(true);
                     } catch (err) {
