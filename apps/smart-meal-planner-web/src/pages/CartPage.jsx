@@ -37,7 +37,7 @@ import { useAuth } from '../context/AuthContext';
 import apiService from '../services/apiService';
 import { useNavigate } from 'react-router-dom';
 import KrogerResults from '../components/KrogerResults';
-import WalmartResults from '../components/WalmartResults';
+// Walmart API integration removed due to API access issues
 import InstacartResults from '../components/InstacartResults';
 import { StoreSelector } from '../components/StoreSelector';
 import krogerAuthService from '../services/krogerAuthService';
@@ -94,21 +94,21 @@ function CartPage() {
   const [lastSearchedItems, setLastSearchedItems] = useState([]);
 
   const [internalCart, setInternalCart] = useState({
-    walmart: [],
     kroger: [],
+    instacart: [],
     unassigned: []
   });
 
   const [searchResults, setSearchResults] = useState({
-    walmart: [],
-    kroger: []
+    kroger: [],
+    instacart: []
   });
 
   const [loading, setLoading] = useState({
     cart: false,
     search: false,
     kroger: false,
-    walmart: false
+    instacart: false
   });
 
   const [error, setError] = useState(null);
@@ -156,7 +156,7 @@ function CartPage() {
     if (store) {
       setSearchResults(prev => ({ ...prev, [store]: [] }));
     } else {
-      setSearchResults({ walmart: [], kroger: [] });
+      setSearchResults({ kroger: [], instacart: [] });
     }
   };
 
@@ -435,9 +435,30 @@ function CartPage() {
       }
 
       // Choose the appropriate search function
-      const searchFunction = store === 'kroger' 
-        ? apiService.searchKrogerItems 
-        : apiService.searchWalmartItems;
+      let searchFunction;
+      if (store === 'kroger') {
+        searchFunction = apiService.searchKrogerItems;
+      } else if (store === 'instacart') {
+        // For instacart, we'll just set up direct search results
+        // without going through the API since instacart has its own UI
+        setSearchResults(prev => ({
+          ...prev,
+          instacart: internalCart.instacart.map(item => ({
+            id: item.name,
+            name: item.name,
+            original_query: item.name,
+            price: null,
+            image_url: null
+          }))
+        }));
+        setLoading(prev => ({ ...prev, search: false }));
+        return;
+      } else {
+        // Fallback to avoid errors
+        setError(`No search function available for store: ${store}`);
+        setLoading(prev => ({ ...prev, search: false }));
+        return;
+      }
 
       // Execute the search
       const response = await searchFunction(storeItems);
@@ -1419,8 +1440,8 @@ function CartPage() {
                           onChange={(e) => assignStore([item], e.target.value)}
                           disabled={loading.cart}
                         >
-                          <MenuItem value="walmart">Walmart</MenuItem>
                           <MenuItem value="kroger">Kroger</MenuItem>
+                          <MenuItem value="instacart">Instacart</MenuItem>
                         </Select>
                       </FormControl>
                       <IconButton
@@ -1443,28 +1464,68 @@ function CartPage() {
       <ErrorBoundary>
         {renderStoreSection('kroger', internalCart.kroger, () => handleStoreSearch('kroger'), KrogerResults)}
       </ErrorBoundary>
-      <ErrorBoundary>
-        {renderStoreSection('walmart', internalCart.walmart, () => handleStoreSearch('walmart'), WalmartResults)}
-      </ErrorBoundary>
 
       {/* Instacart Section */}
       <ErrorBoundary>
         <Card sx={{ mb: 4 }}>
           <CardContent>
-            <Typography variant="h6" gutterBottom>
-              Instacart Integration
-            </Typography>
-            <Typography variant="body2" color="text.secondary" paragraph>
-              You can also add your items to Instacart. Select a retailer and click the button below.
-            </Typography>
+            <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+              <Typography variant="h6">
+                Instacart Items
+              </Typography>
+              <Box>
+                <Tooltip title="Clear all items">
+                  <IconButton
+                    size="small"
+                    onClick={() => clearStoreItems('instacart')}
+                    disabled={!internalCart.instacart || !Array.isArray(internalCart.instacart) || internalCart.instacart.length === 0 || loading.cart}
+                  >
+                    <DeleteIcon />
+                  </IconButton>
+                </Tooltip>
+              </Box>
+            </Box>
 
+            {/* Show items if they exist */}
+            {internalCart.instacart && Array.isArray(internalCart.instacart) && internalCart.instacart.length > 0 ? (
+              <Box sx={{ mb: 2 }}>
+                {internalCart.instacart.map((item, index) => (
+                  <Box
+                    key={index}
+                    sx={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      py: 1
+                    }}
+                  >
+                    <Typography>{item?.name || "Unnamed item"}</Typography>
+                    <Box display="flex" alignItems="center">
+                      <IconButton
+                        size="small"
+                        onClick={() => removeItem(item, 'instacart')}
+                        disabled={loading.cart}
+                        sx={{ ml: 1 }}
+                      >
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    </Box>
+                  </Box>
+                ))}
+              </Box>
+            ) : (
+              <Typography color="text.secondary" sx={{ mb: 2 }}>
+                No items assigned to Instacart
+              </Typography>
+            )}
+
+            {/* Retailer Selector */}
             <FormControl fullWidth sx={{ mb: 2 }}>
               <InputLabel id="instacart-retailer-label">Instacart Retailer</InputLabel>
               <Select
                 labelId="instacart-retailer-label"
                 value={"publix"}
                 label="Instacart Retailer"
-                disabled={!internalCart.kroger || internalCart.kroger.length === 0}
               >
                 <MenuItem value="publix">Publix</MenuItem>
                 <MenuItem value="aldi">Aldi</MenuItem>
@@ -1472,26 +1533,61 @@ function CartPage() {
               </Select>
             </FormControl>
 
-            {internalCart.kroger && Array.isArray(internalCart.kroger) && internalCart.kroger.length > 0 ? (
-              <InstacartResults
-                groceryItems={internalCart.kroger
-                  .filter(item => item && typeof item === 'object' && item.name)
-                  .map(item => item.name)
-                }
-                retailerId={"publix"}
-                onSuccess={(cart) => {
-                  setSnackbarMessage("Items added to Instacart cart successfully");
-                  setSnackbarOpen(true);
-                }}
-                onError={(err) => {
-                  setError("Error adding items to Instacart: " + (err?.message || "Unknown error"));
-                }}
-              />
-            ) : (
-              <Alert severity="info">
-                Add items to Kroger or Walmart sections above before using Instacart integration.
-              </Alert>
-            )}
+            {/* Instacart action buttons */}
+            <Box display="flex" justifyContent="space-between" mt={2} flexWrap="wrap">
+              <Button
+                variant="outlined"
+                color="primary"
+                onClick={() => internalCart.unassigned && internalCart.unassigned.length > 0 &&
+                  assignStore(internalCart.unassigned, 'instacart')}
+                disabled={!internalCart.unassigned || internalCart.unassigned.length === 0}
+                sx={{ mr: 1, mb: 1 }}
+              >
+                Add Unassigned Items
+              </Button>
+
+              <Button
+                variant="contained"
+                color="secondary"
+                onClick={() => handleStoreSearch('instacart')}
+                disabled={loading.search || loading.instacart ||
+                  !internalCart.instacart || !Array.isArray(internalCart.instacart) ||
+                  internalCart.instacart.length === 0}
+                startIcon={loading.instacart ? <CircularProgress size={20} /> : <RefreshIcon />}
+                sx={{ mr: 1, mb: 1 }}
+              >
+                Search Instacart
+              </Button>
+
+              {searchResults.instacart && searchResults.instacart.length > 0 ? (
+                <Box sx={{ width: '100%', mt: 2 }}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Found {searchResults.instacart.length} items in Instacart
+                  </Typography>
+                  <InstacartResults
+                    groceryItems={internalCart.instacart && Array.isArray(internalCart.instacart)
+                      ? internalCart.instacart
+                          .filter(item => item && typeof item === 'object' && item.name)
+                          .map(item => item.name)
+                      : []
+                    }
+                    retailerId={"publix"}
+                    onSuccess={(cart) => {
+                      setSnackbarMessage("Items added to Instacart cart successfully");
+                      setSnackbarOpen(true);
+                      clearSearchResults('instacart');
+                    }}
+                    onError={(err) => {
+                      setError("Error adding items to Instacart: " + (err?.message || "Unknown error"));
+                    }}
+                  />
+                </Box>
+              ) : (
+                <Typography color="text.secondary" sx={{ width: '100%', mt: 2 }}>
+                  Click "Search Instacart" to find your items
+                </Typography>
+              )}
+            </Box>
           </CardContent>
         </Card>
       </ErrorBoundary>
