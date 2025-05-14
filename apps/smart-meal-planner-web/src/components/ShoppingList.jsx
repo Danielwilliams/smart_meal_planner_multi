@@ -1629,7 +1629,7 @@ const ShoppingListItem = ({
             sx={{ mr: 1 }}
             onClick={() => handleStoreClick('instacart', itemName)}
           >
-            Search Instacart
+            Add to Instacart
           </Button>
           <Button
             variant="outlined"
@@ -1646,7 +1646,7 @@ const ShoppingListItem = ({
           sx={{ mt: 1 }}
           onClick={() => handleStoreClick(selectedStore, itemName)}
         >
-          {selectedStore === 'instacart' ? 'Search Instacart' : `Add to ${selectedStore && typeof selectedStore === 'string' ? selectedStore.charAt(0).toUpperCase() + selectedStore.slice(1) : 'Store'} Cart`}
+          Add to {selectedStore && typeof selectedStore === 'string' ? selectedStore.charAt(0).toUpperCase() + selectedStore.slice(1) : 'Store'} Cart
         </Button>
       )}
     </Grid>

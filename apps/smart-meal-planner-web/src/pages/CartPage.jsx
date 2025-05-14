@@ -1535,6 +1535,7 @@ function CartPage() {
 
             {/* Instacart action buttons */}
             <Box display="flex" justifyContent="space-between" mt={2} flexWrap="wrap">
+              {/* Single button that directly searches Instacart */}
               <Button
                 variant="contained"
                 color="secondary"
@@ -1542,10 +1543,10 @@ function CartPage() {
                 disabled={loading.search || loading.instacart ||
                   !internalCart.instacart || !Array.isArray(internalCart.instacart) ||
                   internalCart.instacart.length === 0}
-                startIcon={loading.instacart ? <CircularProgress size={20} /> : <RefreshIcon />}
+                startIcon={loading.instacart ? <CircularProgress size={20} /> : <ShoppingCartIcon />}
                 sx={{ mr: 1, mb: 1 }}
               >
-                Search Instacart
+                Add to Instacart
               </Button>
 
               {searchResults.instacart && searchResults.instacart.length > 0 ? (

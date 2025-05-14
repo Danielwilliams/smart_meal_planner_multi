@@ -4614,7 +4614,7 @@ const categorizeItems = (mealPlanData) => {
                                               sx={{ mr: 1 }}
                                               onClick={() => handleAddToMixedCart(typeof item === 'string' ? item : item.name, 'instacart')}
                                             >
-                                              Search Instacart
+                                              Add to Instacart
                                             </Button>
                                             <Button 
                                               variant="outlined" 
@@ -4674,7 +4674,7 @@ const categorizeItems = (mealPlanData) => {
                                             sx={{ mr: 1 }}
                                             onClick={() => handleAddToMixedCart(typeof item === 'string' ? item : item.name, 'instacart')}
                                           >
-                                            Search Instacart
+                                            Add to Instacart
                                           </Button>
                                           <Button 
                                             variant="outlined" 
