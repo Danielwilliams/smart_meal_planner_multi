@@ -11,12 +11,22 @@
   ],
   "routes": [
     {
-      "src": "^/api/instacart/(.*)",
-      "dest": "https://smartmealplannermulti-development.up.railway.app/instacart/$1"
+      "src": "/api/instacart/(.*)",
+      "dest": "https://smartmealplannermulti-development.up.railway.app/instacart/$1",
+      "headers": {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+        "Access-Control-Allow-Headers": "X-Requested-With, Content-Type, Authorization, X-Instacart-API-Key"
+      }
     },
     {
-      "src": "^/api/(.*)",
-      "dest": "https://smartmealplannermulti-development.up.railway.app/$1"
+      "src": "/api/(.*)",
+      "dest": "https://smartmealplannermulti-development.up.railway.app/$1",
+      "headers": {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+        "Access-Control-Allow-Headers": "X-Requested-With, Content-Type, Authorization, X-Instacart-API-Key"
+      }
     },
     {
       "src": "^/static/(.*)",

@@ -1,11 +1,15 @@
 {
   "root": "build/",
   "proxies": {
+    "/api/instacart/": {
+      "origin": "https://smartmealplannermulti-development.up.railway.app/instacart/"
+    },
     "/api/": {
-      "origin": "https://smartmealplannermulti-development.up.railway.app"
+      "origin": "https://smartmealplannermulti-development.up.railway.app/"
     }
   },
   "routes": {
+    "/api/instacart/*": "/api/instacart/$1",
     "/api/*": "/api/$1",
     "/**": "index.html"
   },

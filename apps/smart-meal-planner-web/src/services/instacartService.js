@@ -14,13 +14,37 @@ import apiService from './apiService';
 // For production, use our own API proxy to avoid CORS issues
 const isProduction = process.env.NODE_ENV === 'production';
 
-// In production, we'll use our own API (which will proxy to the dev API)
-// In development, we can continue to use the direct development URL
-const INSTACART_DEV_URL = isProduction
-  ? '/api'  // Use relative path in production to avoid CORS - this will be handled by our proxy
-  : 'https://smartmealplannermulti-development.up.railway.app';
+// Try to detect if we're in Vercel Preview or actual deployment
+const isVercel = typeof window !== 'undefined' &&
+                 window.location.hostname.includes('vercel.app');
 
-console.log(`Using Instacart ${isProduction ? 'production proxy' : 'direct development'} URL:`, INSTACART_DEV_URL);
+// In production, we'll use our own API proxy to avoid CORS issues
+// We'll try different approaches in case one fails
+const getBaseUrl = () => {
+  if (isProduction || isVercel) {
+    // For production or Vercel previews, use relative path proxy
+    return '';
+  } else {
+    // In development, use direct URL
+    return 'https://smartmealplannermulti-development.up.railway.app';
+  }
+};
+
+const INSTACART_DEV_URL = getBaseUrl();
+
+console.log(`Using Instacart ${isProduction ? 'production proxy' : 'direct development'} URL:`,
+  INSTACART_DEV_URL || 'relative paths');
+
+// Helper function to get the full API path for retailer endpoints
+const getRetailerPath = (path, useProxy = false) => {
+  if (useProxy || (isProduction || isVercel)) {
+    // Use /api prefix for production or when proxy is requested
+    return `/api${path.startsWith('/') ? path : `/${path}`}`;
+  } else {
+    // Direct URL for development
+    return `${INSTACART_DEV_URL}${path.startsWith('/') ? path : `/${path}`}`;
+  }
+};
 
 const instacartAxiosInstance = axios.create({
   baseURL: INSTACART_DEV_URL,
@@ -88,14 +112,32 @@ instacartAxiosInstance.interceptors.response.use(
  * @deprecated Use getNearbyRetailers instead for more accurate location-based results
  */
 export const getRetailers = async () => {
-  try {
-    const response = await instacartAxiosInstance.get('/instacart/retailers');
-    console.log('Instacart retailers response:', response);
-    return response.data;
-  } catch (error) {
-    console.error('Error fetching Instacart retailers:', error);
-    throw error;
+  const attempts = [
+    () => instacartAxiosInstance.get('/instacart/retailers'),
+    () => axios.get(getRetailerPath('/instacart/retailers')),
+    () => axios.get('/api/instacart/retailers'),
+    // Ultimate fallback - direct URL
+    () => axios.get('https://smartmealplannermulti-development.up.railway.app/instacart/retailers')
+  ];
+
+  let lastError = null;
+
+  // Try each approach until one works
+  for (const attempt of attempts) {
+    try {
+      const response = await attempt();
+      console.log('Instacart retailers response:', response);
+      return response.data;
+    } catch (error) {
+      console.warn('Retailers attempt failed:', error.message);
+      lastError = error;
+      // Continue to next attempt
+    }
   }
+
+  // If we get here, all attempts failed
+  console.error('Error fetching Instacart retailers:', lastError);
+  throw lastError;
 };
 
 /**
