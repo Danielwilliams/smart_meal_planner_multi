@@ -1250,9 +1250,12 @@ const combineItems = (items) => {
             resultItems.push(ITEM_DISPLAY_NAMES[name]);
           } else {
             try {
-              const titleCaseName = name.split(' ')
-                .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-                .join(' ');
+              const titleCaseName = name && typeof name === 'string' ?
+                name.split(' ')
+                  .map(word => word && typeof word === 'string' && word.length > 0 ?
+                    word.charAt(0).toUpperCase() + word.slice(1) : '')
+                  .join(' ')
+                : 'Unknown Item';
               resultItems.push(titleCaseName);
             } catch (titleError) {
               resultItems.push(name); // Fallback to the original name
@@ -1287,12 +1290,14 @@ const combineItems = (items) => {
               totalAmount += q.amount || 0;
             }
             const displayName = ITEM_DISPLAY_NAMES[name] ||
-              name.charAt(0).toUpperCase() + name.slice(1);
+              (name && typeof name === 'string' && name.length > 0 ?
+                name.charAt(0).toUpperCase() + name.slice(1) : 'Unknown Item');
             resultItems.push(`${displayName}: ${totalAmount} tbsp`);
             continue;
           } catch (butterError) {
             console.error('Error handling nut butter:', butterError);
-            resultItems.push(name.charAt(0).toUpperCase() + name.slice(1));
+            resultItems.push(name && typeof name === 'string' && name.length > 0 ?
+              name.charAt(0).toUpperCase() + name.slice(1) : 'Unknown Item');
             continue;
           }
         }
@@ -1375,7 +1380,12 @@ const combineItems = (items) => {
         let displayName;
         try {
           displayName = ITEM_DISPLAY_NAMES[name] ||
-            name.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+            (name && typeof name === 'string' ?
+              name.split(' ')
+                .map(word => word && typeof word === 'string' && word.length > 0 ?
+                  word.charAt(0).toUpperCase() + word.slice(1) : '')
+                .join(' ')
+              : 'Unknown Item');
         } catch (displayNameError) {
           console.error('Error creating display name:', displayNameError);
           displayName = name; // Fallback to original
@@ -2059,10 +2069,12 @@ const ShoppingList = ({
                       const cleanName = match[2];
 
                       // Capitalize first letter of each word in name
-                      const formattedName = cleanName
-                        .split(' ')
-                        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-                        .join(' ');
+                      const formattedName = cleanName && typeof cleanName === 'string' ?
+                        cleanName.split(' ')
+                          .map(word => word && typeof word === 'string' && word.length > 0 ?
+                            word.charAt(0).toUpperCase() + word.slice(1) : '')
+                          .join(' ')
+                        : 'Unknown Item';
 
                       displayItem = {
                         ...item,
@@ -2080,10 +2092,12 @@ const ShoppingList = ({
                         const cleanName = piecesMatch[2];
 
                         // Capitalize first letter of each word in name
-                        const formattedName = cleanName
-                          .split(' ')
-                          .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-                          .join(' ');
+                        const formattedName = cleanName && typeof cleanName === 'string' ?
+                          cleanName.split(' ')
+                            .map(word => word && typeof word === 'string' && word.length > 0 ?
+                              word.charAt(0).toUpperCase() + word.slice(1) : '')
+                            .join(' ')
+                          : 'Unknown Item';
 
                         displayItem = {
                           ...item,
@@ -2104,10 +2118,12 @@ const ShoppingList = ({
                         const quantity = colonMatch[2].trim();
 
                         // Format the item name with proper capitalization
-                        const formattedName = itemName
-                          .split(' ')
-                          .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-                          .join(' ');
+                        const formattedName = itemName && typeof itemName === 'string' ?
+                          itemName.split(' ')
+                            .map(word => word && typeof word === 'string' && word.length > 0 ?
+                              word.charAt(0).toUpperCase() + word.slice(1) : '')
+                            .join(' ')
+                          : 'Unknown Item';
 
                         displayItem = {
                           ...item,
@@ -2130,10 +2146,12 @@ const ShoppingList = ({
                     }
                     else {
                       // Default case - just use the name with first letter capitalized
-                      const formattedName = nameStr
-                        .split(' ')
-                        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-                        .join(' ');
+                      const formattedName = nameStr && typeof nameStr === 'string' ?
+                        nameStr.split(' ')
+                          .map(word => word && typeof word === 'string' && word.length > 0 ?
+                            word.charAt(0).toUpperCase() + word.slice(1) : '')
+                          .join(' ')
+                        : 'Unknown Item';
 
                       displayItem = {
                         ...item,
