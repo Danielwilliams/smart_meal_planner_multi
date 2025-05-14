@@ -1,6 +1,19 @@
 {
   "root": "build/",
+  "proxies": {
+    "/api/": {
+      "origin": "https://smartmealplannermulti-development.up.railway.app"
+    }
+  },
   "routes": {
+    "/api/*": "/api/$1",
     "/**": "index.html"
+  },
+  "headers": {
+    "/**": {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+      "Access-Control-Allow-Headers": "X-Requested-With, Content-Type, Authorization, X-Instacart-API-Key"
+    }
   }
 }

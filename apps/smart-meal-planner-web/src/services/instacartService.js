@@ -10,10 +10,17 @@
 import axios from 'axios';
 import apiService from './apiService';
 
-// Create a separate axios instance for Instacart development environment
-// Use development environment URL for Instacart API calls
-const INSTACART_DEV_URL = 'https://smartmealplannermulti-development.up.railway.app';
-console.log('Using Instacart development URL:', INSTACART_DEV_URL);
+// Determine which endpoint to use based on environment
+// For production, use our own API proxy to avoid CORS issues
+const isProduction = process.env.NODE_ENV === 'production';
+
+// In production, we'll use our own API (which will proxy to the dev API)
+// In development, we can continue to use the direct development URL
+const INSTACART_DEV_URL = isProduction
+  ? '/api'  // Use relative path in production to avoid CORS - this will be handled by our proxy
+  : 'https://smartmealplannermulti-development.up.railway.app';
+
+console.log(`Using Instacart ${isProduction ? 'production proxy' : 'direct development'} URL:`, INSTACART_DEV_URL);
 
 const instacartAxiosInstance = axios.create({
   baseURL: INSTACART_DEV_URL,
@@ -23,12 +30,15 @@ const instacartAxiosInstance = axios.create({
     'Accept': 'application/json',
     'X-Instacart-API-Key': 'INSTACARTAPI_DEV' // This will be replaced with the actual key on the backend
   },
-  withCredentials: false
+  withCredentials: isProduction, // Enable credentials for same-origin requests in production
+  // Set to true to include cookies in same-origin requests
 });
 
 // Log the configuration for debugging
 console.info('Instacart API config:', {
   baseURL: INSTACART_DEV_URL,
+  environment: process.env.NODE_ENV,
+  withCredentials: isProduction,
   headers: {
     // Don't log the actual API key value in production
     'Content-Type': 'application/json',
@@ -97,33 +107,87 @@ export const getNearbyRetailers = async (zipCode) => {
   try {
     console.log(`Getting nearby Instacart retailers for ZIP: ${zipCode}`);
 
-    // Try to get retailers by ZIP code first
-    try {
-      const response = await instacartAxiosInstance.get('/instacart/retailers/nearby', {
-        params: { zip_code: zipCode }
-      });
-      console.log('Nearby Instacart retailers response:', response);
+    // If we're in production and having CORS issues, we'll add a retry mechanism
+    // that falls back to our API proxy with relative paths
+    const maxRetries = 2;
+    let attempt = 0;
+    let lastError = null;
 
-      if (response.data && Array.isArray(response.data) && response.data.length > 0) {
-        return response.data;
+    // Try to get retailers by ZIP code with retries
+    while (attempt < maxRetries) {
+      try {
+        // If we're on a retry, use a different approach
+        let endpoint = '/instacart/retailers/nearby';
+        let instance = instacartAxiosInstance;
+
+        // On retry, use direct axios with different configurations
+        if (attempt > 0) {
+          console.log('Using fallback approach on retry');
+          endpoint = '/api/instacart/retailers/nearby';
+          instance = axios;
+        }
+
+        console.log(`Attempt ${attempt + 1}: Fetching from ${endpoint}`);
+        const response = await instance.get(endpoint, {
+          params: { zip_code: zipCode },
+          // Use these headers for direct axios calls
+          ...(attempt > 0 ? {
+            headers: instacartAxiosInstance.defaults.headers,
+            withCredentials: true
+          } : {})
+        });
+
+        console.log('Nearby Instacart retailers response:', response);
+
+        if (response.data && Array.isArray(response.data) && response.data.length > 0) {
+          return response.data;
+        }
+
+        console.warn('Nearby retailers endpoint returned empty results');
+        throw new Error('No nearby retailers found');
+      } catch (nearbyError) {
+        lastError = nearbyError;
+        attempt++;
+        console.warn(`Attempt ${attempt} failed:`, nearbyError.message);
+
+        // If it's the last attempt, try the fallback to all retailers
+        if (attempt === maxRetries) {
+          // If the endpoint doesn't exist or returns an error, fall back to the standard endpoint
+          console.warn(`All nearby retailer attempts failed: ${nearbyError.message}`);
+          console.log('Falling back to standard retailers endpoint');
+
+          try {
+            // Try both direct and relative paths
+            let allRetailersResponse;
+            try {
+              allRetailersResponse = await instacartAxiosInstance.get('/instacart/retailers');
+            } catch (directError) {
+              console.warn('Direct retailer endpoint failed, trying relative path');
+              allRetailersResponse = await axios.get('/api/instacart/retailers', {
+                headers: instacartAxiosInstance.defaults.headers
+              });
+            }
+
+            console.log('All retailers response:', allRetailersResponse);
+
+            if (!allRetailersResponse.data || !Array.isArray(allRetailersResponse.data) || allRetailersResponse.data.length === 0) {
+              throw new Error('No retailers available from Instacart API');
+            }
+
+            return allRetailersResponse.data;
+          } catch (fallbackError) {
+            console.error('Final fallback attempt failed:', fallbackError);
+            throw fallbackError; // Throw the fallback error as it's more specific
+          }
+        }
+
+        // Wait briefly before retrying
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
-
-      console.warn('Nearby retailers endpoint returned empty results');
-      throw new Error('No nearby retailers found');
-    } catch (nearbyError) {
-      // If the endpoint doesn't exist or returns an error, fall back to the standard endpoint
-      console.warn(`Nearby retailers endpoint failed: ${nearbyError.message}`);
-      console.log('Falling back to standard retailers endpoint');
-
-      const response = await instacartAxiosInstance.get('/instacart/retailers');
-      console.log('All retailers response:', response);
-
-      if (!response.data || !Array.isArray(response.data) || response.data.length === 0) {
-        throw new Error('No retailers available from Instacart API');
-      }
-
-      return response.data;
     }
+
+    // If we got here, all retries failed
+    throw lastError || new Error('Failed to get nearby retailers after multiple attempts');
   } catch (error) {
     console.error(`Error fetching Instacart retailers for ZIP ${zipCode}:`, error);
 
@@ -134,6 +198,11 @@ export const getNearbyRetailers = async (zipCode) => {
 
     if (error.response && error.response.status === 429) {
       throw new Error('Too many requests to Instacart API. Please try again later.');
+    }
+
+    // For CORS errors, suggest a different approach
+    if (error.message && error.message.includes('CORS')) {
+      throw new Error('CORS error: Try using a different browser or clearing your browser cache.');
     }
 
     // Propagate the error instead of masking it with mock data
