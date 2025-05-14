@@ -1125,8 +1125,11 @@ function CartPage() {
   };
 
   const renderStoreSection = (store, items, searchFn, ResultsComponent) => {
-    console.log(`⚠️ DEBUG: Rendering store section for ${store}`, {
-      store: store,
+    // Make sure store is defined with a safe default for logging
+    const safeStore = store || 'unknown';
+
+    console.log(`⚠️ DEBUG: Rendering store section for ${safeStore}`, {
+      store: safeStore,
       hasItems: items && items.length > 0,
       numberOfItems: items ? items.length : 0,
       searchFnProvided: Boolean(searchFn),
@@ -1134,7 +1137,7 @@ function CartPage() {
     });
 
     try {
-      // Defensive type checks
+      // Defensive type checks - return early with error card if store is falsy
       if (!store) {
         console.warn("⚠️ DEBUG: Store is null or undefined");
         return (
@@ -1150,7 +1153,13 @@ function CartPage() {
       if (typeof store === 'string') {
         console.log(`⚠️ DEBUG: Store is string "${store}"`);
         if (store.length > 0) {
-          storeName = `${store.charAt(0).toUpperCase()}${store.slice(1)}`;
+          // Extra safety check to ensure charAt doesn't fail
+          try {
+            storeName = `${store.charAt(0).toUpperCase()}${store.slice(1)}`;
+          } catch (err) {
+            console.error("Error capitalizing store name:", err);
+            storeName = store; // Fallback to original store string
+          }
         } else {
           storeName = "Store"; // Default if empty string
         }
@@ -1545,56 +1554,61 @@ function CartPage() {
               Unassigned Items
             </Typography>
             
-            {internalCart.unassigned && internalCart.unassigned.length === 0 ? (
+            {!internalCart?.unassigned || internalCart.unassigned.length === 0 ? (
               <Typography color="text.secondary">No unassigned items</Typography>
             ) : (
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                {internalCart.unassigned && internalCart.unassigned.map((item, index) => (
-                  <Box key={index} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Box display="flex" alignItems="center">
-                      <Typography>{item.name}</Typography>
-                      <Box display="flex" alignItems="center" ml={2}>
+                {Array.isArray(internalCart.unassigned) && internalCart.unassigned.map((item, index) => {
+                  // Extra safety check for null items
+                  if (!item) return null;
+
+                  return (
+                    <Box key={index} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Box display="flex" alignItems="center">
+                        <Typography>{item?.name || "Unnamed item"}</Typography>
+                        <Box display="flex" alignItems="center" ml={2}>
+                          <IconButton
+                            size="small"
+                            onClick={() => item ? updateItemQuantity(item, 'unassigned', -1) : null}
+                            disabled={!item || (item.quantity || 1) <= 1 || loading.cart}
+                          >
+                            <RemoveIcon fontSize="small" />
+                          </IconButton>
+                          <Typography sx={{ mx: 1 }}>
+                            {item?.quantity || 1}
+                          </Typography>
+                          <IconButton
+                            size="small"
+                            onClick={() => item ? updateItemQuantity(item, 'unassigned', 1) : null}
+                            disabled={!item || loading.cart}
+                          >
+                            <AddIcon fontSize="small" />
+                          </IconButton>
+                        </Box>
+                      </Box>
+                      <Box display="flex" alignItems="center">
+                        <FormControl sx={{ minWidth: 120, mr: 1 }}>
+                          <InputLabel>Store</InputLabel>
+                          <Select
+                            label="Store"
+                            onChange={(e) => item ? assignStore([item], e.target.value) : null}
+                            disabled={!item || loading.cart}
+                          >
+                            <MenuItem value="kroger">Kroger</MenuItem>
+                            <MenuItem value="instacart">Instacart</MenuItem>
+                          </Select>
+                        </FormControl>
                         <IconButton
                           size="small"
-                          onClick={() => updateItemQuantity(item, 'unassigned', -1)}
-                          disabled={(item.quantity || 1) <= 1 || loading.cart}
+                          onClick={() => item ? removeItem(item, 'unassigned') : null}
+                          disabled={!item || loading.cart}
                         >
-                          <RemoveIcon fontSize="small" />
-                        </IconButton>
-                        <Typography sx={{ mx: 1 }}>
-                          {item.quantity || 1}
-                        </Typography>
-                        <IconButton
-                          size="small"
-                          onClick={() => updateItemQuantity(item, 'unassigned', 1)}
-                          disabled={loading.cart}
-                        >
-                          <AddIcon fontSize="small" />
+                          <DeleteIcon fontSize="small" />
                         </IconButton>
                       </Box>
                     </Box>
-                    <Box display="flex" alignItems="center">
-                      <FormControl sx={{ minWidth: 120, mr: 1 }}>
-                        <InputLabel>Store</InputLabel>
-                        <Select
-                          label="Store"
-                          onChange={(e) => assignStore([item], e.target.value)}
-                          disabled={loading.cart}
-                        >
-                          <MenuItem value="kroger">Kroger</MenuItem>
-                          <MenuItem value="instacart">Instacart</MenuItem>
-                        </Select>
-                      </FormControl>
-                      <IconButton
-                        size="small"
-                        onClick={() => removeItem(item, 'unassigned')}
-                        disabled={loading.cart}
-                      >
-                        <DeleteIcon fontSize="small" />
-                      </IconButton>
-                    </Box>
-                  </Box>
-                ))}
+                  );
+                })}
               </Box>
             )}
           </CardContent>
@@ -1603,7 +1617,13 @@ function CartPage() {
 
       {/* Store Sections */}
       <ErrorBoundary>
-        {renderStoreSection('kroger', internalCart.kroger, () => handleStoreSearch('kroger'), KrogerResults)}
+        {/* Verify all parameters before calling renderStoreSection */}
+        {renderStoreSection(
+          'kroger',
+          Array.isArray(internalCart?.kroger) ? internalCart.kroger : [],
+          () => handleStoreSearch('kroger'),
+          KrogerResults
+        )}
       </ErrorBoundary>
 
       {/* Instacart Section */}
@@ -1628,31 +1648,36 @@ function CartPage() {
             </Box>
 
             {/* Show items if they exist */}
-            {internalCart.instacart && Array.isArray(internalCart.instacart) && internalCart.instacart.length > 0 ? (
+            {internalCart?.instacart && Array.isArray(internalCart.instacart) && internalCart.instacart.length > 0 ? (
               <Box sx={{ mb: 2 }}>
-                {internalCart.instacart.map((item, index) => (
-                  <Box
-                    key={index}
-                    sx={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      py: 1
-                    }}
-                  >
-                    <Typography>{item?.name || "Unnamed item"}</Typography>
-                    <Box display="flex" alignItems="center">
-                      <IconButton
-                        size="small"
-                        onClick={() => removeItem(item, 'instacart')}
-                        disabled={loading.cart}
-                        sx={{ ml: 1 }}
-                      >
-                        <DeleteIcon fontSize="small" />
-                      </IconButton>
+                {internalCart.instacart.map((item, index) => {
+                  // Extra safety check for null items
+                  if (!item) return null;
+
+                  return (
+                    <Box
+                      key={index}
+                      sx={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        py: 1
+                      }}
+                    >
+                      <Typography>{item?.name || "Unnamed item"}</Typography>
+                      <Box display="flex" alignItems="center">
+                        <IconButton
+                          size="small"
+                          onClick={() => item ? removeItem(item, 'instacart') : null}
+                          disabled={loading.cart || !item}
+                          sx={{ ml: 1 }}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Box>
                     </Box>
-                  </Box>
-                ))}
+                  );
+                })}
               </Box>
             ) : (
               <Typography color="text.secondary" sx={{ mb: 2 }}>
