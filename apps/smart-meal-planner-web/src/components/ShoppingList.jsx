@@ -658,8 +658,10 @@ const formatDisplayName = (name, quantity, unit, originalItem) => {
   };
   
   // Get proper display name with capitalization
-  const displayName = specialCases[name] || ITEM_DISPLAY_NAMES[name] || 
-    name.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+  const displayName = specialCases[name] || ITEM_DISPLAY_NAMES[name] ||
+    (name && typeof name === 'string' ?
+      name.split(' ').map(word => word && word.length > 0 ? word.charAt(0).toUpperCase() + word.slice(1) : '').join(' ') :
+      'Unknown Item');
   
   // Check for category-based unit handling first
   
@@ -1604,7 +1606,7 @@ const ShoppingListItem = ({
                 (typeof item.name === 'string' ?
                   (item.name.includes(':') ? item.name :
                     (item.name.match(/^\d/) ? item.name : // If name starts with a number
-                      (item.name.charAt(0).toUpperCase() + item.name.slice(1)))) : // Capitalize first letter
+                      (item.name && typeof item.name === 'string' ? item.name.charAt(0).toUpperCase() + item.name.slice(1) : 'Unknown Item'))) : // Capitalize first letter
                   "Unknown Item")))) :
           (typeof item === 'string' ? item : "Unknown Item")}
       </Typography>
@@ -1617,7 +1619,7 @@ const ShoppingListItem = ({
             sx={{ mr: 1 }}
             onClick={() => handleStoreClick('instacart', itemName)}
           >
-            Add to Instacart
+            Search Instacart
           </Button>
           <Button
             variant="outlined"
@@ -1634,7 +1636,7 @@ const ShoppingListItem = ({
           sx={{ mt: 1 }}
           onClick={() => handleStoreClick(selectedStore, itemName)}
         >
-          Add to {selectedStore.charAt(0).toUpperCase() + selectedStore.slice(1)} Cart
+          {selectedStore === 'instacart' ? 'Search Instacart' : `Add to ${selectedStore && typeof selectedStore === 'string' ? selectedStore.charAt(0).toUpperCase() + selectedStore.slice(1) : 'Store'} Cart`}
         </Button>
       )}
     </Grid>

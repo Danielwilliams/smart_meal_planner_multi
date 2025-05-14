@@ -1536,17 +1536,6 @@ function CartPage() {
             {/* Instacart action buttons */}
             <Box display="flex" justifyContent="space-between" mt={2} flexWrap="wrap">
               <Button
-                variant="outlined"
-                color="primary"
-                onClick={() => internalCart.unassigned && internalCart.unassigned.length > 0 &&
-                  assignStore(internalCart.unassigned, 'instacart')}
-                disabled={!internalCart.unassigned || internalCart.unassigned.length === 0}
-                sx={{ mr: 1, mb: 1 }}
-              >
-                Add Unassigned Items
-              </Button>
-
-              <Button
                 variant="contained"
                 color="secondary"
                 onClick={() => handleStoreSearch('instacart')}
