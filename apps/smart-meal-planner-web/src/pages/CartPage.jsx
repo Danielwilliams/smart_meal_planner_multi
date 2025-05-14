@@ -470,13 +470,115 @@ function CartPage() {
         searchFunction = apiService.searchKrogerItems;
       } else if (store === 'instacart') {
         try {
-          // First check if the API is working
+          // Set loading state
           setLoading(prev => ({ ...prev, instacart: true }));
+
+          // First check if the API is working
+          console.log('Checking Instacart API status before search...');
           const apiStatus = await instacartAuthService.checkInstacartApiStatus();
           console.log('Instacart API status before search:', apiStatus);
 
-          // For instacart, we'll just set up direct search results
-          // without going through the API since instacart has its own UI
+          // If API is connected, attempt to use it directly for searching products
+          if (apiStatus.status === 'connected') {
+            console.log('Instacart API is connected, attempting to search products directly');
+
+            try {
+              // Get the retailer ID from localStorage
+              const retailerId = instacartRetailer?.id;
+
+              if (!retailerId) {
+                console.warn('No retailer ID found, please select a retailer first');
+                // Still proceed with basic mapping
+                setSearchResults(prev => ({
+                  ...prev,
+                  instacart: internalCart.instacart.map(item => ({
+                    id: item.name,
+                    name: item.name,
+                    original_query: item.name,
+                    price: null,
+                    image_url: null
+                  }))
+                }));
+              } else {
+                // Try to search for each item to get better product info
+                console.log(`Searching for ${internalCart.instacart.length} items at retailer ${retailerId}`);
+
+                const searchPromises = internalCart.instacart.map(async (item) => {
+                  try {
+                    // Use instacartAuthService for robust searching
+                    const searchResults = await instacartAuthService.searchProducts(retailerId, item.name, 1);
+
+                    if (searchResults && searchResults.length > 0) {
+                      console.log(`Found match for "${item.name}":`, searchResults[0]);
+                      return {
+                        ...searchResults[0],
+                        original_query: item.name
+                      };
+                    } else {
+                      // Fall back to basic item info if no results
+                      return {
+                        id: item.name,
+                        name: item.name,
+                        original_query: item.name,
+                        price: null,
+                        image_url: null
+                      };
+                    }
+                  } catch (searchErr) {
+                    console.warn(`Error searching for "${item.name}":`, searchErr.message);
+                    return {
+                      id: item.name,
+                      name: item.name,
+                      original_query: item.name,
+                      price: null,
+                      image_url: null,
+                      search_error: searchErr.message
+                    };
+                  }
+                });
+
+                // Wait for all searches to complete
+                const searchResults = await Promise.all(searchPromises);
+
+                // Update the search results with the product data
+                setSearchResults(prev => ({
+                  ...prev,
+                  instacart: searchResults
+                }));
+
+                console.log('Updated search results with product data:', searchResults);
+              }
+            } catch (searchErr) {
+              console.error('Error searching products:', searchErr);
+              // Fall back to basic mapping
+              setSearchResults(prev => ({
+                ...prev,
+                instacart: internalCart.instacart.map(item => ({
+                  id: item.name,
+                  name: item.name,
+                  original_query: item.name,
+                  price: null,
+                  image_url: null
+                }))
+              }));
+            }
+          } else {
+            // API is not connected, fall back to basic mapping
+            console.log('Instacart API is not connected, using basic item mapping');
+            setSearchResults(prev => ({
+              ...prev,
+              instacart: internalCart.instacart.map(item => ({
+                id: item.name,
+                name: item.name,
+                original_query: item.name,
+                price: null,
+                image_url: null
+              }))
+            }));
+          }
+        } catch (err) {
+          console.error('Error checking Instacart API status before search:', err);
+          // Fall back to basic mapping on error
           setSearchResults(prev => ({
             ...prev,
             instacart: internalCart.instacart.map(item => ({
@@ -484,12 +586,10 @@ function CartPage() {
               name: item.name,
               original_query: item.name,
               price: null,
-              image_url: null
+              image_url: null,
+              error: err.message
             }))
           }));
-        } catch (err) {
-          console.error('Error checking Instacart API status before search:', err);
-          // Still proceed with search - the error will be caught in the UI
         } finally {
           setLoading(prev => ({ ...prev, instacart: false, search: false }));
         }

@@ -61,12 +61,44 @@ const InstacartResults = ({
 
     try {
       // First check API status to ensure we're properly connected
+      console.log('Checking Instacart API connectivity before searching...');
       const apiStatus = await instacartAuthService.checkInstacartApiStatus();
       console.log('Instacart API status check result:', apiStatus);
 
-      if (apiStatus.status !== 'connected') {
+      // Check for saved API path and connection status from localStorage
+      const savedApiPath = localStorage.getItem('instacart_api_path');
+      const isConnected = localStorage.getItem('instacart_api_connected') === 'true';
+      const lastSuccessTime = localStorage.getItem('instacart_api_last_success');
+      const lastSuccess = lastSuccessTime ? new Date(parseInt(lastSuccessTime)).toLocaleString() : 'never';
+
+      console.log('API connection details from localStorage:', {
+        savedApiPath,
+        isConnected,
+        lastSuccess
+      });
+
+      if (apiStatus.status !== 'connected' && !isConnected) {
         console.warn('Instacart API not properly connected:', apiStatus);
-        setError(`Instacart API not available: ${apiStatus.message || apiStatus.status}. Please try again later.`);
+
+        // Show a more detailed error message with diagnostic information
+        setError(
+          <div>
+            <div><strong>Instacart API Connection Issue</strong></div>
+            <div>Status: {apiStatus.status || 'disconnected'}</div>
+            <div>Message: {apiStatus.message || 'Connection failed'}</div>
+            <div>
+              <small>
+                Please try the following:
+                <ul style={{ marginTop: 5, paddingLeft: 20 }}>
+                  <li>Check that your Instacart API key is correctly formatted</li>
+                  <li>Verify that the API key has access to the Instacart Connect API</li>
+                  <li>Try selecting a different retailer</li>
+                  <li>Check the API diagnostics in Developer Tools</li>
+                </ul>
+              </small>
+            </div>
+          </div>
+        );
         return;
       }
 
@@ -76,16 +108,19 @@ const InstacartResults = ({
         return;
       }
 
-      console.log(`Searching products for retailer: ${retailerId}`);
+      console.log(`Searching products for retailer: ${retailerId} using ${savedApiPath || 'default'} API path`);
 
       // Search for each item
       const results = {};
+      const searchErrors = [];
 
       for (const item of groceryItems) {
         // Skip empty items
         if (!item || !item.trim()) continue;
 
         try {
+          console.log(`Searching for "${item}" at retailer ${retailerId}...`);
+
           // Use the more robust auth service for searching
           const productResults = await instacartAuthService.searchProducts(retailerId, item, 3);
 
@@ -108,11 +143,51 @@ const InstacartResults = ({
           } else {
             console.warn(`Unexpected result type for "${item}"`, productResults);
             results[item] = [];
+            searchErrors.push({
+              item,
+              error: 'Unexpected result format from API'
+            });
           }
         } catch (err) {
           console.error(`Error searching for "${item}":`, err);
           results[item] = { error: err.message };
+          searchErrors.push({
+            item,
+            error: err.message
+          });
         }
+      }
+
+      // If all searches failed, show a comprehensive error
+      if (searchErrors.length === groceryItems.length) {
+        console.error('All searches failed with errors:', searchErrors);
+
+        // Try to identify the most common error for better feedback
+        const errorMessages = searchErrors.map(e => e.error);
+        const mostCommonError = errorMessages.sort((a, b) =>
+          errorMessages.filter(e => e === a).length - errorMessages.filter(e => e === b).length
+        ).pop();
+
+        setError(
+          <div>
+            <div><strong>Search Failed for All Items</strong></div>
+            <div>Most common error: {mostCommonError || 'Unknown error'}</div>
+            <div>
+              <small>
+                This could be due to:
+                <ul style={{ marginTop: 5, paddingLeft: 20 }}>
+                  <li>API key authentication issues</li>
+                  <li>Retailer ID may be invalid</li>
+                  <li>Network connectivity problems</li>
+                  <li>Service may be temporarily unavailable</li>
+                </ul>
+              </small>
+            </div>
+          </div>
+        );
+      } else if (searchErrors.length > 0) {
+        // Some searches failed but not all
+        console.warn(`${searchErrors.length} out of ${groceryItems.length} searches failed`);
       }
 
       setSearchResults(results);
@@ -122,15 +197,80 @@ const InstacartResults = ({
 
       // Provide more user-friendly error messages based on error type
       if (err.message && err.message.includes('Network Error')) {
-        setError('Network Error: The Instacart retailer lookup API is not available. Please try again later.');
+        setError(
+          <div>
+            <div><strong>Network Error</strong></div>
+            <div>The Instacart API is not reachable. Please check your internet connection.</div>
+            <div>
+              <small>Technical details: {err.message}</small>
+            </div>
+            <div>
+              <small>
+                Troubleshooting steps:
+                <ul style={{ marginTop: 5, paddingLeft: 20 }}>
+                  <li>Check your internet connection</li>
+                  <li>Verify that https://connect.dev.instacart.tools is accessible</li>
+                  <li>Try again later</li>
+                </ul>
+              </small>
+            </div>
+          </div>
+        );
       } else if (err.response && err.response.status === 404) {
-        setError('The Instacart service endpoint could not be found. The service may be temporarily down.');
+        setError(
+          <div>
+            <div><strong>API Endpoint Not Found (404)</strong></div>
+            <div>The Instacart service endpoint could not be found.</div>
+            <div>
+              <small>This could be due to API changes or service downtime.</small>
+            </div>
+          </div>
+        );
       } else if (err.response && err.response.status === 403) {
-        setError('Access to the Instacart API is restricted. Please contact support.');
+        setError(
+          <div>
+            <div><strong>Access Denied (403)</strong></div>
+            <div>Your API key does not have permission to access this resource.</div>
+            <div>
+              <small>Check that your API key has the correct permissions and is properly formatted.</small>
+            </div>
+          </div>
+        );
+      } else if (err.response && err.response.status === 401) {
+        setError(
+          <div>
+            <div><strong>Authentication Failed (401)</strong></div>
+            <div>The API rejected your authentication credentials.</div>
+            <div>
+              <small>
+                Make sure your authorization header is in the correct format:
+                <pre style={{ marginTop: 5, padding: 5, backgroundColor: '#f5f5f5' }}>
+                  Authorization: InstacartAPI YOUR_API_KEY
+                </pre>
+              </small>
+            </div>
+          </div>
+        );
       } else if (err.response && err.response.status === 500) {
-        setError('The Instacart server encountered an error. Please try a different retailer or search again later.');
+        setError(
+          <div>
+            <div><strong>Server Error (500)</strong></div>
+            <div>The Instacart server encountered an error processing your request.</div>
+            <div>
+              <small>This is likely a temporary issue. Please try again later.</small>
+            </div>
+          </div>
+        );
       } else {
-        setError(err.message || 'An unknown error occurred while searching for items');
+        setError(
+          <div>
+            <div><strong>Error Searching Items</strong></div>
+            <div>{err.message || 'An unknown error occurred'}</div>
+            <div>
+              <small>Check the console for more detailed error information.</small>
+            </div>
+          </div>
+        );
       }
     } finally {
       setLoading(false);
@@ -156,42 +296,193 @@ const InstacartResults = ({
     setError(null);
 
     try {
+      // Verify we have valid items and a retailer ID first
+      if (!cartItems.length) {
+        setError('Please select at least one item to add to your cart');
+        return;
+      }
+
+      if (!retailerId) {
+        setError('No retailer selected. Please select a retailer first.');
+        return;
+      }
+
       // Format items for cart creation
       const items = cartItems.map(item => ({
         product_id: item.product.id,
         quantity: 1
       }));
 
+      // Check API connection status first
+      console.log('Checking API status before creating cart...');
+      const apiStatus = await instacartAuthService.checkInstacartApiStatus();
+      console.log('API status before cart creation:', apiStatus);
+
+      if (apiStatus.status !== 'connected' && localStorage.getItem('instacart_api_connected') !== 'true') {
+        setError(
+          <div>
+            <div><strong>Cannot Create Cart - API Not Connected</strong></div>
+            <div>The Instacart API is not properly connected.</div>
+            <div>
+              <small>
+                Please check API connection first using the diagnostic tools.
+              </small>
+            </div>
+          </div>
+        );
+        return;
+      }
+
+      console.log(`Creating cart with ${items.length} items at retailer ${retailerId}...`);
+
       // Create cart using the more robust auth service
       const cart = await instacartAuthService.createCart(retailerId, items);
 
+      // Verify the cart was created successfully
+      if (!cart || !cart.id) {
+        console.error('Cart created but missing ID:', cart);
+        throw new Error('Cart created but missing required information');
+      }
+
+      console.log('Cart created successfully:', cart);
+
+      // Update state with cart details
       setCartId(cart.id);
       setCheckoutUrl(cart.checkout_url);
       setDialogStep('cart');
 
+      // Store successful cart creation in localStorage for diagnostics
+      localStorage.setItem('instacart_last_cart_created', Date.now().toString());
+      localStorage.setItem('instacart_last_cart_id', cart.id);
+
+      // Call success callback
       if (onSuccess) {
         onSuccess(cart);
       }
     } catch (err) {
       console.error('Error creating Instacart cart:', err);
 
-      // Provide more user-friendly error messages based on error type
-      let errorMessage = 'Error creating Instacart cart';
+      // Provide rich, detailed error messages with troubleshooting steps
+      let errorContent;
 
+      // Check for specific error types
       if (err.message && err.message.includes('Network Error')) {
-        errorMessage = 'Network Error: Unable to connect to the Instacart cart service. Please try again later.';
+        errorContent = (
+          <div>
+            <div><strong>Network Error</strong></div>
+            <div>Unable to connect to the Instacart cart service.</div>
+            <div>
+              <small>Technical details: {err.message}</small>
+            </div>
+            <div>
+              <small>
+                Troubleshooting steps:
+                <ul style={{ marginTop: 5, paddingLeft: 20 }}>
+                  <li>Check your internet connection</li>
+                  <li>Verify that https://connect.dev.instacart.tools is accessible</li>
+                  <li>Try again in a few minutes</li>
+                </ul>
+              </small>
+            </div>
+          </div>
+        );
       } else if (err.response && err.response.status === 404) {
-        errorMessage = 'The Instacart cart service endpoint could not be found. The service may be temporarily down.';
+        errorContent = (
+          <div>
+            <div><strong>API Endpoint Not Found (404)</strong></div>
+            <div>The Instacart cart service endpoint could not be found.</div>
+            <div>
+              <small>This could be due to API changes or service downtime.</small>
+            </div>
+          </div>
+        );
+      } else if (err.response && err.response.status === 401) {
+        errorContent = (
+          <div>
+            <div><strong>Authentication Failed (401)</strong></div>
+            <div>The API rejected your authentication credentials.</div>
+            <div>
+              <small>
+                Make sure your authorization header is in the correct format:
+                <pre style={{ marginTop: 5, padding: 5, backgroundColor: '#f5f5f5' }}>
+                  Authorization: InstacartAPI YOUR_API_KEY
+                </pre>
+              </small>
+            </div>
+          </div>
+        );
       } else if (err.response && err.response.status === 403) {
-        errorMessage = 'Access to the Instacart cart API is restricted. Please contact support.';
+        errorContent = (
+          <div>
+            <div><strong>Access Denied (403)</strong></div>
+            <div>Your API key does not have permission to access the cart API.</div>
+            <div>
+              <small>
+                Check that your API key:
+                <ul style={{ marginTop: 5, paddingLeft: 20 }}>
+                  <li>Has cart creation permissions</li>
+                  <li>Is properly formatted</li>
+                  <li>Has not expired</li>
+                </ul>
+              </small>
+            </div>
+          </div>
+        );
+      } else if (err.response && err.response.status === 500) {
+        errorContent = (
+          <div>
+            <div><strong>Server Error (500)</strong></div>
+            <div>The Instacart server encountered an internal error.</div>
+            <div>
+              <small>
+                This could be due to:
+                <ul style={{ marginTop: 5, paddingLeft: 20 }}>
+                  <li>Invalid product IDs in the cart</li>
+                  <li>Server-side validation failures</li>
+                  <li>Temporary service disruption</li>
+                </ul>
+                Try again with fewer items or different products.
+              </small>
+            </div>
+          </div>
+        );
       } else {
-        errorMessage = err.message || 'An unknown error occurred while creating the cart';
+        // Generic error with any available details
+        errorContent = (
+          <div>
+            <div><strong>Error Creating Instacart Cart</strong></div>
+            <div>{err.message || 'An unknown error occurred'}</div>
+            <div>
+              <small>
+                Please try:
+                <ul style={{ marginTop: 5, paddingLeft: 20 }}>
+                  <li>Selecting fewer items</li>
+                  <li>Using the diagnostic tools to check API connectivity</li>
+                  <li>Verifying the retailer ID is correct</li>
+                  <li>Trying again later</li>
+                </ul>
+              </small>
+            </div>
+          </div>
+        );
       }
 
-      setError(errorMessage);
+      // Set the formatted error content
+      setError(errorContent);
 
+      // Create a user-friendly message for the callback
+      const userMessage = err.response?.status
+        ? `Error (${err.response.status}): ${err.message || 'Could not create cart'}`
+        : err.message || 'Error creating Instacart cart';
+
+      // Call error callback with enhanced error object
       if (onError) {
-        onError({...err, userMessage: errorMessage});
+        onError({
+          ...err,
+          userMessage,
+          apiPath: localStorage.getItem('instacart_api_path'),
+          isConnected: localStorage.getItem('instacart_api_connected') === 'true'
+        });
       }
     } finally {
       setLoading(false);
