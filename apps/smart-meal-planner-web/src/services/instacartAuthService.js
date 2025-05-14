@@ -3,21 +3,159 @@ import axios from 'axios';
 import { getMockRetailersByZip } from './mockData/instacartRetailers';
 import { getMockProductSearch } from './mockData/instacartProducts';
 
-// Ensure we're using the correct API base URL
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://smartmealplannermulti-development.up.railway.app';
-console.log('InstacartAuthService using API base URL:', API_BASE_URL);
+// The actual Instacart API URL (this is the correct URL to use, not our backend proxy)
+// Using the development URL as provided
+const INSTACART_CONNECT_URL = 'https://connect.dev.instacart.tools';
 
-// Instacart API Key
-const INSTACART_API_KEY = process.env.REACT_APP_INSTACART_API_KEY || 'INSTACARTAPI_DEV';
+// Our backend API URL for proxied requests (if we need to avoid CORS issues)
+const BACKEND_API_URL = process.env.REACT_APP_API_BASE_URL || 'https://smartmealplannermulti-production.up.railway.app';
 
-// Flag to enable mock data fallback - setting to false per user request
+console.log('InstacartAuthService using URLs:', {
+  instacartConnectUrl: INSTACART_CONNECT_URL,
+  backendProxyUrl: BACKEND_API_URL
+});
+
+// Try a simple ping to diagnose the API endpoints
+const pingApiEndpoints = async () => {
+  console.log('Pinging available API endpoints to diagnose issues...');
+  
+  // Get API key for Instacart direct API calls
+  const apiKey = INSTACART_API_KEY;
+  const zipCode = localStorage.getItem('instacart_zip_code') || '80041';
+  
+  // First, check the actual Instacart Dev API
+  try {
+    console.log(`Checking direct Instacart Dev API with ZIP code ${zipCode}...`);
+    // Using /v1/retailers endpoint with postal_code and country_code parameters
+    const instacartEndpoint = `${INSTACART_CONNECT_URL}/v1/retailers?postal_code=${zipCode}&country_code=US`;
+    
+    const response = await axios.get(instacartEndpoint, {
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Authorization': `InstacartAPI ${apiKey}`
+      },
+      timeout: 5000
+    });
+    
+    console.log(`✅ DIRECT INSTACART API SUCCESS: ${response.status} - found ${response.data?.retailers?.length || 0} retailers`);
+    
+    // If successful, store for later use
+    if (response.data && response.data.retailers) {
+      try {
+        localStorage.setItem('instacart_direct_retailers', JSON.stringify(response.data.retailers));
+        localStorage.setItem('instacart_direct_retailers_timestamp', Date.now().toString());
+        console.log(`Cached ${response.data.retailers.length} retailers from direct API`);
+      } catch (e) {
+        console.warn('Failed to cache retailers:', e);
+      }
+    }
+  } catch (error) {
+    console.log(`❌ DIRECT INSTACART API FAILED: ${error.message}`);
+    console.log('Error details:', error.response?.data || 'No response data');
+    console.log('Error status:', error.response?.status || 'No status code');
+    
+    // Log headers for debugging
+    if (error.config) {
+      console.log('Request headers:', error.config.headers);
+    }
+  }
+  
+  // Also test a few alternate API paths
+  try {
+    console.log('Testing alternate Instacart API path...');
+    const altEndpoint = `${INSTACART_CONNECT_URL}/idp/v1/retailers?postal_code=${zipCode}&country_code=US`;
+    
+    const response = await axios.get(altEndpoint, {
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Authorization': `InstacartAPI ${apiKey}`
+      },
+      timeout: 5000
+    });
+    
+    console.log(`✅ ALTERNATE API PATH SUCCESS: ${response.status}`);
+  } catch (error) {
+    console.log(`❌ ALTERNATE API PATH FAILED: ${error.message}`);
+  }
+  
+  // Now also check our backend endpoints as fallback
+  console.log('Checking backend API endpoints...');
+  const backendUrls = [
+    BACKEND_API_URL,
+    'https://smartmealplannermulti-production.up.railway.app',
+    'https://smartmealplannermulti-development.up.railway.app',
+    '/api'
+  ];
+  
+  const endpoints = [
+    '/instacart/retailers/nearby?zip_code=' + zipCode, 
+    '/instacart/retailers', 
+    '/instacart/health'
+  ];
+  
+  // Test each combination of base URL and endpoint
+  for (const baseUrl of backendUrls) {
+    console.log(`Testing backend URL: ${baseUrl}`);
+    
+    for (const endpoint of endpoints) {
+      try {
+        console.log(`Trying ${baseUrl}${endpoint}...`);
+        const response = await axios.get(`${baseUrl}${endpoint}`, { 
+          timeout: 5000,
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Instacart-API-Key': apiKey
+          }
+        });
+        console.log(`✅ BACKEND SUCCESS: ${baseUrl}${endpoint} - ${response.status}`);
+      } catch (error) {
+        console.log(`❌ BACKEND FAILED: ${baseUrl}${endpoint} - ${error.message}`);
+      }
+    }
+  }
+};
+
+// Run the ping diagnostics
+pingApiEndpoints();
+
+// Instacart API Key - The 500 errors might be due to the API key not being configured correctly
+// Try to get the API key from localStorage as a fallback, in case it was set there
+let INSTACART_API_KEY = process.env.REACT_APP_INSTACART_API_KEY;
+
+// Try to load from localStorage if not in environment
+if (!INSTACART_API_KEY) {
+  try {
+    INSTACART_API_KEY = localStorage.getItem('instacart_api_key');
+    console.log('Loaded API key from localStorage:', !!INSTACART_API_KEY);
+  } catch (e) {
+    console.warn('Error reading from localStorage:', e);
+  }
+}
+
+// Fall back to default dev key if still not found
+if (!INSTACART_API_KEY) {
+  INSTACART_API_KEY = 'INSTACARTAPI_DEV';
+  console.warn('Using default API key, this might be the cause of 500 errors');
+}
+
+// Try to diagnose potential API key issues
+console.log('API Key diagnostics:', {
+  keyLength: INSTACART_API_KEY ? INSTACART_API_KEY.length : 0,
+  firstChars: INSTACART_API_KEY ? INSTACART_API_KEY.substring(0, 3) + '...' : 'none',
+  fromEnv: !!process.env.REACT_APP_INSTACART_API_KEY,
+  fromLocalStorage: !!localStorage.getItem('instacart_api_key')
+});
+
+// Flag to enable mock data fallback - keeping disabled to find the root cause
 const USE_MOCK_DATA = false;
 
 // Log configuration for debugging
 console.log('Instacart configuration:', {
   apiKeyExists: !!INSTACART_API_KEY,
   apiKeyValue: INSTACART_API_KEY ? '[REDACTED]' : 'missing',
-  apiBaseUrl: API_BASE_URL,
+  apiBaseUrl: BACKEND_API_URL,
   useMockData: USE_MOCK_DATA,
   envVars: {
     REACT_APP_INSTACART_API_KEY: !!process.env.REACT_APP_INSTACART_API_KEY,
@@ -27,7 +165,7 @@ console.log('Instacart configuration:', {
 
 // Standalone axios instance for Instacart auth-related requests
 const instacartAxios = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: BACKEND_API_URL,
   timeout: 15000,
   headers: {
     'Content-Type': 'application/json',
@@ -69,7 +207,7 @@ let detectedApiIssue = false;
 // Clear any existing mock data flags from localStorage
 try {
   localStorage.removeItem('instacart_using_mock_data');
-
+  
   // Clear cached retailers to force fresh data
   const keys = [];
   for (let i = 0; i < localStorage.length; i++) {
@@ -78,7 +216,7 @@ try {
       keys.push(key);
     }
   }
-
+  
   // Remove all cached instacart data
   keys.forEach(key => localStorage.removeItem(key));
   console.log('Cleared cached Instacart data from localStorage');
@@ -94,7 +232,40 @@ const checkInstacartApiStatus = async () => {
   try {
     console.log('Checking Instacart API status...');
     
-    // Store the ZIP code for nearby retailer checks
+    // First try direct Instacart API connection
+    try {
+      const zipCode = localStorage.getItem('instacart_zip_code') || '80538';
+      console.log('Trying direct Instacart API connection...');
+      
+      const response = await axios.get(`${INSTACART_CONNECT_URL}/v1/retailers?postal_code=${zipCode}&country_code=US`, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': `InstacartAPI ${INSTACART_API_KEY}`
+        },
+        timeout: 5000
+      });
+      
+      if (response.status === 200) {
+        console.log('✅ Direct Instacart API connection success!');
+        
+        // Reset API issue flag if set
+        if (detectedApiIssue) {
+          detectedApiIssue = false;
+          localStorage.removeItem('instacart_api_issue');
+        }
+        
+        return {
+          status: 'connected',
+          direct_api: true,
+          retailer_count: response.data?.retailers?.length || 0
+        };
+      }
+    } catch (directError) {
+      console.warn('Direct API connection failed:', directError.message);
+    }
+    
+    // Then try backend strategies
     const zipCode = localStorage.getItem('instacart_zip_code') || '80538';
     
     // Strategy 1: Check API configuration on the backend
@@ -211,8 +382,7 @@ const checkInstacartApiStatus = async () => {
 
 /**
  * Get a list of retailers based on ZIP code with caching and fallbacks
- * This is a drop-in replacement for instacartService.getNearbyRetailers
- * with better caching, error handling, and fallbacks
+ * This uses the Instacart Connect API directly first, then falls back to our backend if needed
  * 
  * @param {string} zipCode - ZIP code to search for nearby retailers
  * @returns {Promise<Array>} List of retailers
@@ -237,8 +407,8 @@ const getNearbyRetailers = async (zipCode) => {
     const cacheTimestamp = localStorage.getItem(`instacart_retailers_${zipCode}_timestamp`);
     const cacheAge = cacheTimestamp ? Date.now() - parseInt(cacheTimestamp, 10) : Infinity;
     
-    // Use cache if available and less than 24 hours old
-    if (cachedRetailers && cacheAge < 24 * 60 * 60 * 1000) {
+    // Use cache if available and less than 1 hour old
+    if (cachedRetailers && cacheAge < 1 * 60 * 60 * 1000) {
       try {
         const retailers = JSON.parse(cachedRetailers);
         if (Array.isArray(retailers) && retailers.length > 0) {
@@ -253,7 +423,13 @@ const getNearbyRetailers = async (zipCode) => {
     
     // Start loading retailers
     isLoadingRetailers = true;
-    retailersPromise = fetchRetailersWithFallbacks(zipCode);
+    
+    // Try direct Instacart API first, then fall back to our backend
+    retailersPromise = fetchRetailersDirectApi(zipCode)
+      .catch(error => {
+        console.warn('Direct API failed, falling back to backend:', error.message);
+        return fetchRetailersWithFallbacks(zipCode);
+      });
     
     try {
       const result = await retailersPromise;
@@ -271,6 +447,68 @@ const getNearbyRetailers = async (zipCode) => {
       return getMockRetailersByZip(zipCode);
     }
     
+    throw error;
+  }
+};
+
+/**
+ * Fetch retailers directly from Instacart Connect API
+ * @param {string} zipCode - ZIP code to search for nearby retailers
+ * @returns {Promise<Array>} List of formatted retailers
+ */
+const fetchRetailersDirectApi = async (zipCode) => {
+  console.log('Fetching retailers directly from Instacart Connect API');
+  
+  try {
+    // Construct the endpoint URL
+    const endpoint = `${INSTACART_CONNECT_URL}/v1/retailers?postal_code=${zipCode}&country_code=US`;
+    
+    // Make the request with headers
+    const response = await axios.get(endpoint, {
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Authorization': `InstacartAPI ${INSTACART_API_KEY}`
+      }
+    });
+    
+    // Process the retailers data
+    if (response.data && response.data.retailers && Array.isArray(response.data.retailers)) {
+      const retailers = response.data.retailers.map(retailer => {
+        // Format to match the structure expected by the rest of the app
+        return {
+          id: retailer.id.toString(),
+          name: retailer.name,
+          logo_url: retailer.image_url || retailer.logo_url,
+          distance: retailer.distance_miles || retailer.distance || 0,
+          address: {
+            city: retailer.address?.city || '',
+            state: retailer.address?.state || '',
+            zip_code: retailer.address?.postal_code || zipCode
+          }
+        };
+      });
+      
+      // Sort by distance
+      const sortedRetailers = retailers.sort((a, b) => a.distance - b.distance);
+      
+      // Cache the result
+      localStorage.setItem(`instacart_retailers_${zipCode}`, JSON.stringify(sortedRetailers));
+      localStorage.setItem(`instacart_retailers_${zipCode}_timestamp`, Date.now().toString());
+      localStorage.setItem('instacart_direct_api_success', 'true');
+      
+      console.log(`✅ Direct API success: Found ${sortedRetailers.length} retailers`);
+      return sortedRetailers;
+    } else {
+      throw new Error('Invalid response format from Instacart API');
+    }
+  } catch (error) {
+    console.error('Error fetching from direct API:', error);
+    localStorage.setItem('instacart_direct_api_error', JSON.stringify({
+      message: error.message,
+      status: error.response?.status || 'unknown',
+      timestamp: Date.now()
+    }));
     throw error;
   }
 };
@@ -376,7 +614,7 @@ const fetchRetailersWithFallbacks = async (zipCode) => {
   // Strategy 4: Direct URL as a last resort
   try {
     console.log('Strategy 4: Direct URL as last resort');
-    const url = `${API_BASE_URL}/instacart/retailers`;
+    const url = `${BACKEND_API_URL}/instacart/retailers`;
     console.log('Trying direct URL:', url);
     
     const response = await axios.get(url, {
@@ -472,7 +710,58 @@ const searchProducts = async (retailerId, query, limit = 10) => {
       }
     }
     
-    // Try multiple approaches for product search
+    // First try direct Instacart Connect API
+    try {
+      console.log('Trying direct Instacart Connect API for product search');
+      
+      // Construct the search endpoint for Instacart Connect API
+      const endpoint = `${INSTACART_CONNECT_URL}/v1/retailers/${retailerId}/products/search`;
+      
+      // Make the request
+      const response = await axios.get(endpoint, {
+        params: {
+          query,
+          limit
+        },
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': `InstacartAPI ${INSTACART_API_KEY}`
+        }
+      });
+      
+      // Process the search results
+      if (response.data && response.data.products && Array.isArray(response.data.products)) {
+        const formattedResults = response.data.products.map(product => ({
+          id: product.id.toString(),
+          name: product.name,
+          price: product.price?.amount || null,
+          image_url: product.image_url || null,
+          size: product.size || null,
+          brand: product.brand || null,
+          original_query: query
+        }));
+        
+        // Cache the results
+        console.log(`Direct API success: Found ${formattedResults.length} products for "${query}"`);
+        localStorage.setItem(cacheKey, JSON.stringify(formattedResults));
+        localStorage.setItem(`${cacheKey}_timestamp`, Date.now().toString());
+        localStorage.setItem('instacart_direct_search_success', 'true');
+        
+        return formattedResults.slice(0, limit);
+      }
+    } catch (directApiError) {
+      console.warn('Direct API product search failed:', directApiError.message);
+      
+      // Store error details for debugging
+      localStorage.setItem('instacart_direct_search_error', JSON.stringify({
+        message: directApiError.message,
+        status: directApiError.response?.status || 'unknown',
+        timestamp: Date.now()
+      }));
+    }
+    
+    // If direct API failed, try our backend with multiple approaches
     const searchAttempts = [
       // First try standard approach with proper path
       async () => {
@@ -489,9 +778,9 @@ const searchProducts = async (retailerId, query, limit = 10) => {
         });
         return response.data;
       },
-      // Then try direct URL as last resort
+      // Then try direct URL to backend as last resort
       async () => {
-        const response = await axios.get(`${API_BASE_URL}/instacart/retailers/${retailerId}/products/search`, {
+        const response = await axios.get(`${BACKEND_API_URL}/instacart/retailers/${retailerId}/products/search`, {
           params: { query, limit },
           headers: {
             'Content-Type': 'application/json',
@@ -507,7 +796,7 @@ const searchProducts = async (retailerId, query, limit = 10) => {
     for (const attempt of searchAttempts) {
       try {
         const results = await attempt();
-        console.log(`Search results for "${query}":`, results ? results.length : 0, 'products found');
+        console.log(`Backend search results for "${query}":`, results ? results.length : 0, 'products found');
         
         // Cache the results if we got some
         if (Array.isArray(results) && results.length > 0) {
@@ -517,7 +806,7 @@ const searchProducts = async (retailerId, query, limit = 10) => {
         
         return results;
       } catch (error) {
-        console.warn('Product search attempt failed:', error.message);
+        console.warn('Backend product search attempt failed:', error.message);
         lastError = error;
         // Continue to next attempt
       }
@@ -569,7 +858,70 @@ const createCart = async (retailerId, items) => {
       throw new Error('Items array is required and must not be empty');
     }
     
-    // Try multiple approaches to create the cart
+    // First try direct Instacart Connect API
+    try {
+      console.log('Trying direct Instacart Connect API for cart creation');
+      
+      // Ensure all product IDs are strings
+      const formattedItems = items.map(item => ({
+        product_id: item.product_id.toString(),
+        quantity: item.quantity || 1
+      }));
+      
+      // Construct the endpoint
+      const endpoint = `${INSTACART_CONNECT_URL}/v1/retailers/${retailerId}/carts`;
+      
+      // Make the request
+      const response = await axios.post(endpoint, {
+        items: formattedItems
+      }, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': `InstacartAPI ${INSTACART_API_KEY}`
+        },
+        timeout: 30000 // Extended timeout
+      });
+      
+      // Process the cart data
+      if (response.data && response.data.cart && response.data.cart.id) {
+        const cart = {
+          id: response.data.cart.id,
+          checkout_url: response.data.cart.checkout_url || 
+                        `https://www.instacart.com/store/checkout?cartId=${response.data.cart.id}`,
+          item_count: items.length
+        };
+        
+        // Store success in localStorage
+        localStorage.setItem('instacart_direct_cart_success', 'true');
+        localStorage.setItem('instacart_last_cart', JSON.stringify({
+          id: cart.id,
+          retailer_id: retailerId,
+          item_count: items.length,
+          created_at: new Date().toISOString(),
+          checkout_url: cart.checkout_url
+        }));
+        
+        console.log('Direct API cart creation successful:', cart);
+        return cart;
+      } else {
+        throw new Error('Invalid cart data from API');
+      }
+    } catch (directApiError) {
+      console.warn('Direct API cart creation failed:', directApiError.message);
+      
+      // Store error details for debugging
+      localStorage.setItem('instacart_direct_cart_error', JSON.stringify({
+        message: directApiError.message,
+        status: directApiError.response?.status || 'unknown',
+        timestamp: Date.now()
+      }));
+      
+      // Fall back to backend approach
+      console.log('Falling back to backend for cart creation');
+    }
+    
+    // If direct API failed, try our backend with multiple approaches
     const attempts = [
       // First try standard approach - include more data for detailed debugging
       async () => {
@@ -578,7 +930,7 @@ const createCart = async (retailerId, items) => {
           retailer_id: retailerId,
           items: items
         });
-
+        
         // Use extended timeout for debugging
         const response = await instacartAxios.post('/instacart/carts', {
           retailer_id: retailerId,
@@ -607,16 +959,16 @@ const createCart = async (retailerId, items) => {
       // Then try direct URL with base64 encoding for item IDs (fixes some 500 errors)
       async () => {
         console.log('Attempting cart creation with direct URL and encoding');
-
+        
         // Try to fix potential encoding issues with item IDs
         const encodedItems = items.map(item => ({
           ...item,
-          product_id: typeof item.product_id === 'string' ?
+          product_id: typeof item.product_id === 'string' ? 
             item.product_id : // Keep strings as is
             `${item.product_id}` // Convert numbers to strings
         }));
-
-        const response = await axios.post(`${API_BASE_URL}/instacart/carts`, {
+        
+        const response = await axios.post(`${BACKEND_API_URL}/instacart/carts`, {
           retailer_id: retailerId,
           items: encodedItems
         }, {
@@ -636,7 +988,7 @@ const createCart = async (retailerId, items) => {
     for (const attempt of attempts) {
       try {
         const cart = await attempt();
-        console.log('Cart creation successful:', cart);
+        console.log('Backend cart creation successful:', cart);
         
         // Store the cart info in localStorage for reference
         try {
@@ -653,7 +1005,7 @@ const createCart = async (retailerId, items) => {
         
         return cart;
       } catch (error) {
-        console.warn('Cart creation attempt failed:', error.message);
+        console.warn('Backend cart creation attempt failed:', error.message);
         lastError = error;
         // Continue to next attempt
       }
@@ -663,7 +1015,7 @@ const createCart = async (retailerId, items) => {
     throw lastError || new Error('Failed to create cart after multiple attempts');
   } catch (error) {
     console.error('Error creating Instacart cart:', error);
-
+    
     // Provide more specific error information for debugging
     if (error.response && error.response.status === 500) {
       console.error('Server error details:', {
@@ -672,13 +1024,13 @@ const createCart = async (retailerId, items) => {
         headers: error.response.headers,
         data: error.response.data
       });
-
+      
       const enhancedError = new Error('Server error (500) while creating Instacart cart. This may be due to an issue with the retailer ID or product IDs. Please try a different retailer or search again.');
       enhancedError.originalError = error;
       enhancedError.response = error.response;
       throw enhancedError;
     }
-
+    
     throw error;
   }
 };
