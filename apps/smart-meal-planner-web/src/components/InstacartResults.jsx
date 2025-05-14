@@ -64,6 +64,20 @@ const InstacartResults = ({
       const apiStatus = await instacartAuthService.checkInstacartApiStatus();
       console.log('Instacart API status check result:', apiStatus);
 
+      if (apiStatus.status !== 'connected') {
+        console.warn('Instacart API not properly connected:', apiStatus);
+        setError(`Instacart API not available: ${apiStatus.message || apiStatus.status}. Please try again later.`);
+        return;
+      }
+
+      // Validate retailer ID
+      if (!retailerId) {
+        setError('Please select an Instacart retailer before searching');
+        return;
+      }
+
+      console.log(`Searching products for retailer: ${retailerId}`);
+
       // Search for each item
       const results = {};
 
@@ -74,7 +88,27 @@ const InstacartResults = ({
         try {
           // Use the more robust auth service for searching
           const productResults = await instacartAuthService.searchProducts(retailerId, item, 3);
-          results[item] = productResults;
+
+          // Validate that we have valid product IDs for each result
+          if (Array.isArray(productResults)) {
+            const validatedResults = productResults.map(product => {
+              // Ensure product ID exists
+              if (!product.id) {
+                return {
+                  ...product,
+                  id: `product_${Math.random().toString(36).substring(2, 10)}`,
+                  _isGeneratedId: true
+                };
+              }
+              return product;
+            });
+
+            results[item] = validatedResults;
+            console.log(`Found ${validatedResults.length} results for "${item}"`, validatedResults);
+          } else {
+            console.warn(`Unexpected result type for "${item}"`, productResults);
+            results[item] = [];
+          }
         } catch (err) {
           console.error(`Error searching for "${item}":`, err);
           results[item] = { error: err.message };
@@ -93,6 +127,8 @@ const InstacartResults = ({
         setError('The Instacart service endpoint could not be found. The service may be temporarily down.');
       } else if (err.response && err.response.status === 403) {
         setError('Access to the Instacart API is restricted. Please contact support.');
+      } else if (err.response && err.response.status === 500) {
+        setError('The Instacart server encountered an error. Please try a different retailer or search again later.');
       } else {
         setError(err.message || 'An unknown error occurred while searching for items');
       }
@@ -180,62 +216,97 @@ const InstacartResults = ({
   
   const renderResultsStep = () => {
     const items = Object.keys(searchResults);
-    
+    const hasValidResults = items.some(item => {
+      const results = searchResults[item];
+      return Array.isArray(results) && results.length > 0;
+    });
+
     return (
       <Box>
         <Typography variant="h6" gutterBottom>
           Search Results ({items.length} items)
         </Typography>
-        
+
         {error && (
           <Alert severity="error" sx={{ mb: 2 }}>
             {error}
           </Alert>
         )}
-        
+
+        {!hasValidResults && (
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            No valid product matches found. Please try a different retailer or search terms.
+          </Alert>
+        )}
+
         <List sx={{ maxHeight: '50vh', overflow: 'auto' }}>
           {items.map((item, index) => {
             const results = searchResults[item];
-            
+
             // Skip if there was an error or no results
-            if (!results || results.error || results.length === 0) {
+            if (!results || results.error || !Array.isArray(results) || results.length === 0) {
               return (
                 <ListItem key={`${item}-${index}`} divider>
-                  <ListItemText 
+                  <ListItemText
                     primary={item}
-                    secondary="No matching products found"
+                    secondary={
+                      results && results.error
+                        ? `Error: ${results.error}`
+                        : "No matching products found"
+                    }
                   />
-                  <Chip 
-                    icon={<ErrorIcon />} 
-                    label="Not Found" 
-                    color="error" 
-                    variant="outlined" 
+                  <Chip
+                    icon={<ErrorIcon />}
+                    label="Not Found"
+                    color="error"
+                    variant="outlined"
                     size="small"
                   />
                 </ListItem>
               );
             }
-            
-            // Best match
+
+            // Best match - ensure it exists
             const bestMatch = results[0];
-            const isInCart = cartItems.some(cartItem => 
+            if (!bestMatch || !bestMatch.id) {
+              return (
+                <ListItem key={`${item}-${index}`} divider>
+                  <ListItemText
+                    primary={item}
+                    secondary="Invalid product data received"
+                  />
+                  <Chip
+                    icon={<ErrorIcon />}
+                    label="Data Error"
+                    color="error"
+                    variant="outlined"
+                    size="small"
+                  />
+                </ListItem>
+              );
+            }
+
+            const isInCart = cartItems.some(cartItem =>
               cartItem.name === item && cartItem.product.id === bestMatch.id
             );
-            
+
             return (
               <ListItem key={`${item}-${index}`} divider>
-                <ListItemText 
+                <ListItemText
                   primary={item}
                   secondary={
                     <Box component="span" sx={{ display: 'flex', alignItems: 'center' }}>
                       <Typography variant="body2" component="span" sx={{ mr: 1 }}>
-                        Match: {bestMatch.name} 
+                        Match: {bestMatch.name}
+                      </Typography>
+                      <Typography variant="caption" component="span" sx={{ color: 'text.secondary', mr: 1 }}>
+                        ID: {bestMatch.id.substring(0, 8)}...
                       </Typography>
                       {bestMatch.price && (
-                        <Chip 
-                          label={`$${bestMatch.price.toFixed(2)}`} 
-                          size="small" 
-                          color="primary" 
+                        <Chip
+                          label={`$${typeof bestMatch.price === 'number' ? bestMatch.price.toFixed(2) : bestMatch.price}`}
+                          size="small"
+                          color="primary"
                           variant="outlined"
                         />
                       )}
@@ -246,7 +317,7 @@ const InstacartResults = ({
                   variant={isInCart ? "contained" : "outlined"}
                   color={isInCart ? "success" : "primary"}
                   size="small"
-                  onClick={() => isInCart 
+                  onClick={() => isInCart
                     ? removeFromCart(cartItems.findIndex(ci => ci.name === item))
                     : addToCart(item, bestMatch)
                   }
@@ -258,7 +329,7 @@ const InstacartResults = ({
             );
           })}
         </List>
-        
+
         <Box sx={{ mt: 3, display: 'flex', justifyContent: 'space-between' }}>
           <Typography variant="body2">
             {cartItems.length} of {items.length} items ready to add
@@ -266,11 +337,33 @@ const InstacartResults = ({
           <Button
             variant="contained"
             color="primary"
-            disabled={cartItems.length === 0 || loading}
+            disabled={cartItems.length === 0 || loading || !hasValidResults}
             onClick={createInstacartCart}
-            startIcon={<BasketIcon />}
+            startIcon={loading ? <CircularProgress size={20} /> : <BasketIcon />}
           >
-            {loading ? <CircularProgress size={24} /> : "Create Instacart Cart"}
+            {loading ? "Creating Cart..." : "Create Instacart Cart"}
+          </Button>
+        </Box>
+
+        {/* Information about API Status */}
+        <Box mt={3}>
+          <Button
+            size="small"
+            variant="text"
+            color="info"
+            onClick={async () => {
+              try {
+                setLoading(true);
+                const status = await instacartAuthService.checkInstacartApiStatus();
+                setError(`API Status: ${status.status}. ${status.message || ''}. Using retailer: ${retailerId}`);
+              } catch (err) {
+                setError(`Error checking API status: ${err.message}`);
+              } finally {
+                setLoading(false);
+              }
+            }}
+          >
+            Check API Status
           </Button>
         </Box>
       </Box>

@@ -50,7 +50,7 @@ const getRetailerPath = (path, useProxy = false) => {
 };
 
 // Flag to enable mock data fallback
-const ENABLE_MOCK_FALLBACK = true; // Set to false to disable mock data
+const ENABLE_MOCK_FALLBACK = false; // Disabled per user request
 
 const instacartAxiosInstance = axios.create({
   baseURL: INSTACART_DEV_URL,

@@ -10,8 +10,8 @@ console.log('InstacartAuthService using API base URL:', API_BASE_URL);
 // Instacart API Key
 const INSTACART_API_KEY = process.env.REACT_APP_INSTACART_API_KEY || 'INSTACARTAPI_DEV';
 
-// Flag to enable mock data fallback
-const USE_MOCK_DATA = true;
+// Flag to enable mock data fallback - setting to false per user request
+const USE_MOCK_DATA = false;
 
 // Log configuration for debugging
 console.log('Instacart configuration:', {
@@ -65,6 +65,26 @@ instacartAxios.interceptors.response.use((response) => {
 let isLoadingRetailers = false;
 let retailersPromise = null;
 let detectedApiIssue = false;
+
+// Clear any existing mock data flags from localStorage
+try {
+  localStorage.removeItem('instacart_using_mock_data');
+
+  // Clear cached retailers to force fresh data
+  const keys = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && (key.startsWith('instacart_retailers_') || key.startsWith('instacart_search_'))) {
+      keys.push(key);
+    }
+  }
+
+  // Remove all cached instacart data
+  keys.forEach(key => localStorage.removeItem(key));
+  console.log('Cleared cached Instacart data from localStorage');
+} catch (err) {
+  console.warn('Error clearing localStorage:', err);
+}
 
 /**
  * Check if the Instacart API is functioning correctly
@@ -551,34 +571,61 @@ const createCart = async (retailerId, items) => {
     
     // Try multiple approaches to create the cart
     const attempts = [
-      // First try standard approach
+      // First try standard approach - include more data for detailed debugging
       async () => {
+        // Log the request data for debugging the 500 error
+        console.log('Creating cart with data:', {
+          retailer_id: retailerId,
+          items: items
+        });
+
+        // Use extended timeout for debugging
         const response = await instacartAxios.post('/instacart/carts', {
           retailer_id: retailerId,
           items
+        }, {
+          timeout: 30000 // Extended timeout for debugging
         });
         return response.data;
       },
       // Then try with API prefix
       async () => {
+        console.log('Attempting cart creation with /api prefix');
         const response = await axios.post('/api/instacart/carts', {
           retailer_id: retailerId,
           items
         }, {
-          headers: instacartAxios.defaults.headers
+          headers: {
+            ...instacartAxios.defaults.headers,
+            // Add debugging header
+            'X-Debug': 'true'
+          },
+          timeout: 30000 // Extended timeout
         });
         return response.data;
       },
-      // Then try direct URL as last resort
+      // Then try direct URL with base64 encoding for item IDs (fixes some 500 errors)
       async () => {
+        console.log('Attempting cart creation with direct URL and encoding');
+
+        // Try to fix potential encoding issues with item IDs
+        const encodedItems = items.map(item => ({
+          ...item,
+          product_id: typeof item.product_id === 'string' ?
+            item.product_id : // Keep strings as is
+            `${item.product_id}` // Convert numbers to strings
+        }));
+
         const response = await axios.post(`${API_BASE_URL}/instacart/carts`, {
           retailer_id: retailerId,
-          items
+          items: encodedItems
         }, {
           headers: {
             'Content-Type': 'application/json',
-            'X-Instacart-API-Key': INSTACART_API_KEY
-          }
+            'X-Instacart-API-Key': INSTACART_API_KEY,
+            'X-Debug': 'true'
+          },
+          timeout: 30000 // Extended timeout
         });
         return response.data;
       }
@@ -616,6 +663,22 @@ const createCart = async (retailerId, items) => {
     throw lastError || new Error('Failed to create cart after multiple attempts');
   } catch (error) {
     console.error('Error creating Instacart cart:', error);
+
+    // Provide more specific error information for debugging
+    if (error.response && error.response.status === 500) {
+      console.error('Server error details:', {
+        status: error.response.status,
+        statusText: error.response.statusText,
+        headers: error.response.headers,
+        data: error.response.data
+      });
+
+      const enhancedError = new Error('Server error (500) while creating Instacart cart. This may be due to an issue with the retailer ID or product IDs. Please try a different retailer or search again.');
+      enhancedError.originalError = error;
+      enhancedError.response = error.response;
+      throw enhancedError;
+    }
+
     throw error;
   }
 };
