@@ -97,9 +97,19 @@ function CartPage() {
   const [currentStore, setCurrentStore] = useState(null);
   const [lastSearchedItems, setLastSearchedItems] = useState([]);
   const [instacartRetailer, setInstacartRetailer] = useState(() => {
-    // Try to get from localStorage
-    const savedRetailer = localStorage.getItem('instacart_retailer');
-    return savedRetailer ? JSON.parse(savedRetailer) : { id: 'publix', name: 'Publix' };
+    // Try to get from localStorage with safe parsing
+    try {
+      const savedRetailer = localStorage.getItem('instacart_retailer');
+      if (savedRetailer && savedRetailer !== 'undefined' && savedRetailer !== 'null') {
+        return JSON.parse(savedRetailer);
+      }
+    } catch (err) {
+      console.error('Error parsing saved Instacart retailer:', err);
+      // Clear bad data
+      localStorage.removeItem('instacart_retailer');
+    }
+    // Default value
+    return { id: 'publix', name: 'Publix' };
   });
   const [zipCode, setZipCode] = useState(() => {
     // Try to get from localStorage
@@ -1636,13 +1646,24 @@ function CartPage() {
           onClose={() => setShowInstacartRetailerSelector(false)}
           onRetailerSelect={(retailerId, retailerObj) => {
             console.log('Selected Instacart retailer:', retailerId, retailerObj);
-            setInstacartRetailer(retailerObj);
-            // Save to localStorage
-            localStorage.setItem('instacart_retailer', JSON.stringify(retailerObj));
-            // Also update the zip code
-            if (retailerObj && retailerObj.address && retailerObj.address.zip_code) {
-              setZipCode(retailerObj.address.zip_code);
-              localStorage.setItem('instacart_zip_code', retailerObj.address.zip_code);
+            // Ensure we have a valid object
+            if (retailerObj && typeof retailerObj === 'object') {
+              setInstacartRetailer(retailerObj);
+              // Safe save to localStorage
+              try {
+                localStorage.setItem('instacart_retailer', JSON.stringify(retailerObj));
+              } catch (err) {
+                console.error('Error saving retailer to localStorage:', err);
+              }
+              // Also update the zip code
+              if (retailerObj.address && retailerObj.address.zip_code) {
+                setZipCode(retailerObj.address.zip_code);
+                localStorage.setItem('instacart_zip_code', retailerObj.address.zip_code);
+              }
+            } else {
+              console.error('Invalid retailer object:', retailerObj);
+              // Use a default value
+              setInstacartRetailer({ id: retailerId || 'publix', name: 'Retailer' });
             }
             setShowInstacartRetailerSelector(false);
           }}
