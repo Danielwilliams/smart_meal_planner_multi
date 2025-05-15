@@ -19,7 +19,7 @@ from app.integration import instacart
 logger = logging.getLogger(__name__)
 
 # Router - with specific tag for debugging endpoints
-router = APIRouter(tags=["instacart-debug"])
+router = APIRouter(prefix="/instacart", tags=["instacart-debug"])
 
 # Models
 class ConfigTestResponse(BaseModel):
@@ -36,7 +36,7 @@ class EnvironmentResponse(BaseModel):
     base_url: str
 
 # Routes - Update paths to match frontend expectations
-@router.get("/api/instacart/config/test", response_model=ConfigTestResponse)
+@router.get("/config/test", response_model=ConfigTestResponse)
 async def test_api_key_configuration(current_user: dict = Depends(get_current_user)):
     """
     Test if the Instacart API key is properly configured.
@@ -90,7 +90,7 @@ async def test_api_key_configuration(current_user: dict = Depends(get_current_us
             detail=f"Failed to test configuration: {str(e)}"
         )
 
-@router.get("/api/instacart/environment", response_model=EnvironmentResponse)
+@router.get("/environment", response_model=EnvironmentResponse)
 async def get_environment_info(current_user: dict = Depends(get_current_user)):
     """
     Get information about the current environment configuration.
@@ -112,7 +112,7 @@ async def get_environment_info(current_user: dict = Depends(get_current_user)):
             detail=f"Failed to get environment info: {str(e)}"
         )
 
-@router.get("/api/instacart/debug/retailers/nearby")
+@router.get("/debug/retailers/nearby")
 async def get_nearby_retailers(
     zip_code: str,
     current_user: dict = Depends(get_current_user)
@@ -179,21 +179,5 @@ async def get_nearby_retailers(
             detail=f"Failed to get nearby retailers: {str(e)}"
         )
 
-# Keep the original routes for backward compatibility
-@router.get("/instacart/config/test", response_model=ConfigTestResponse)
-async def test_api_key_configuration_legacy(current_user: dict = Depends(get_current_user)):
-    """Legacy route - redirects to the new API path"""
-    return await test_api_key_configuration(current_user)
-
-@router.get("/instacart/environment", response_model=EnvironmentResponse)
-async def get_environment_info_legacy(current_user: dict = Depends(get_current_user)):
-    """Legacy route - redirects to the new API path"""
-    return await get_environment_info(current_user)
-
-@router.get("/instacart/retailers/nearby")
-async def get_nearby_retailers_legacy(
-    zip_code: str,
-    current_user: dict = Depends(get_current_user)
-):
-    """Legacy route - redirects to the new API path"""
-    return await get_nearby_retailers(zip_code, current_user)
+# No need for legacy routes with the prefix approach
+# The framework will handle the /instacart prefix

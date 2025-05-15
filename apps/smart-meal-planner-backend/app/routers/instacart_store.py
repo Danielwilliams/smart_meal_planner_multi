@@ -17,7 +17,7 @@ from app.integration import instacart
 logger = logging.getLogger(__name__)
 
 # Router
-router = APIRouter(tags=["instacart"])
+router = APIRouter(prefix="/instacart", tags=["instacart"])
 
 # Models
 class Address(BaseModel):
@@ -42,7 +42,7 @@ class ProductResponse(BaseModel):
     size: Optional[str] = None
 
 # Routes - Update paths to match frontend expectations
-@router.get("/api/instacart/retailers", response_model=List[RetailerResponse])
+@router.get("/retailers", response_model=List[RetailerResponse])
 async def get_instacart_retailers(current_user: dict = Depends(get_current_user)):
     """
     Get a list of available retailers on Instacart.
@@ -70,7 +70,7 @@ async def get_instacart_retailers(current_user: dict = Depends(get_current_user)
             detail=f"Failed to get Instacart retailers: {str(e)}"
         )
 
-@router.get("/api/instacart/retailers/{retailer_id}/products/search", response_model=List[ProductResponse])
+@router.get("/retailers/{retailer_id}/products/search", response_model=List[ProductResponse])
 async def search_instacart_products(
     retailer_id: str,
     query: str,
@@ -105,7 +105,7 @@ async def search_instacart_products(
             detail=f"Failed to search Instacart products: {str(e)}"
         )
 
-@router.get("/api/instacart/retailers/nearby", response_model=List[RetailerResponse])
+@router.get("/retailers/nearby", response_model=List[RetailerResponse])
 async def get_nearby_instacart_retailers(
     zip_code: str = Query(..., description="ZIP code to find nearby retailers"),
     current_user: dict = Depends(get_current_user)
@@ -174,7 +174,7 @@ async def get_nearby_instacart_retailers(
             detail=f"Failed to get nearby Instacart retailers: {str(e)}"
         )
 
-@router.get("/api/instacart/match/{retailer_id}", response_model=Dict)
+@router.get("/match/{retailer_id}", response_model=Dict)
 async def match_grocery_list(
     retailer_id: str,
     menu_id: int,
@@ -204,35 +204,5 @@ async def match_grocery_list(
             detail=f"Failed to match grocery list: {str(e)}"
         )
 
-# Keep the original routes for backward compatibility
-@router.get("/instacart/retailers", response_model=List[RetailerResponse])
-async def get_instacart_retailers_legacy(current_user: dict = Depends(get_current_user)):
-    """Legacy route - redirects to the new API path"""
-    return await get_instacart_retailers(current_user)
-
-@router.get("/instacart/retailers/{retailer_id}/products/search", response_model=List[ProductResponse])
-async def search_instacart_products_legacy(
-    retailer_id: str,
-    query: str,
-    limit: int = Query(10, ge=1, le=50),
-    current_user: dict = Depends(get_current_user)
-):
-    """Legacy route - redirects to the new API path"""
-    return await search_instacart_products(retailer_id, query, limit, current_user)
-
-@router.get("/instacart/retailers/nearby", response_model=List[RetailerResponse])
-async def get_nearby_instacart_retailers_legacy(
-    zip_code: str = Query(..., description="ZIP code to find nearby retailers"),
-    current_user: dict = Depends(get_current_user)
-):
-    """Legacy route - redirects to the new API path"""
-    return await get_nearby_instacart_retailers(zip_code, current_user)
-
-@router.get("/instacart/match/{retailer_id}", response_model=Dict)
-async def match_grocery_list_legacy(
-    retailer_id: str,
-    menu_id: int,
-    current_user: dict = Depends(get_current_user)
-):
-    """Legacy route - redirects to the new API path"""
-    return await match_grocery_list(retailer_id, menu_id, current_user)
+# No need for legacy routes with the prefix approach
+# The framework will handle the /instacart prefix

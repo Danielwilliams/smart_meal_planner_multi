@@ -18,7 +18,7 @@ from app.integration import instacart
 logger = logging.getLogger(__name__)
 
 # Router
-router = APIRouter(tags=["instacart"])
+router = APIRouter(prefix="/instacart", tags=["instacart"])
 
 # Models
 class APIKeyInfo(BaseModel):
@@ -32,7 +32,7 @@ class StatusResponse(BaseModel):
     api_key_info: Optional[APIKeyInfo] = None
 
 # Routes
-@router.get("/api/instacart/status", response_model=StatusResponse)
+@router.get("/status", response_model=StatusResponse)
 async def check_instacart_status(current_user: dict = Depends(get_current_user)):
     """
     Check if the Instacart API is properly configured and accessible.

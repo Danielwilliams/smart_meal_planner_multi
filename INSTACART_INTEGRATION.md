@@ -16,25 +16,25 @@ The following endpoints are available for the Instacart integration:
 
 ### Status Endpoint
 
-- `GET /api/instacart/status` - Checks if the Instacart API is properly configured and accessible
+- `GET /instacart/status` - Checks if the Instacart API is properly configured and accessible
 
 ### Retailer Endpoints
 
-- `GET /api/instacart/retailers` - Gets a list of available retailers on Instacart
-- `GET /api/instacart/retailers/nearby?zip_code={zip_code}` - Gets a list of retailers near a specified ZIP code
-- `GET /api/instacart/retailers/{retailer_id}/products/search?query={query}&limit={limit}` - Searches for products at a specific retailer
+- `GET /instacart/retailers` - Gets a list of available retailers on Instacart
+- `GET /instacart/retailers/nearby?zip_code={zip_code}` - Gets a list of retailers near a specified ZIP code
+- `GET /instacart/retailers/{retailer_id}/products/search?query={query}&limit={limit}` - Searches for products at a specific retailer
 
 ### Cart Endpoints
 
-- `POST /api/instacart/carts` - Creates a new cart with items
-- `POST /api/instacart/carts/{cart_id}/items` - Adds an item to an existing cart
-- `GET /api/instacart/carts/{cart_id}` - Gets details of a cart
+- `POST /instacart/carts` - Creates a new cart with items
+- `POST /instacart/carts/{cart_id}/items` - Adds an item to an existing cart
+- `GET /instacart/carts/{cart_id}` - Gets details of a cart
 
 ### Debug Endpoints (Development Only)
 
-- `GET /api/instacart/config/test` - Tests if the Instacart API key is properly configured
-- `GET /api/instacart/environment` - Gets information about the current environment configuration
-- `GET /api/instacart/debug/retailers/nearby?zip_code={zip_code}` - Gets detailed mock data for nearby retailers
+- `GET /instacart/config/test` - Tests if the Instacart API key is properly configured
+- `GET /instacart/environment` - Gets information about the current environment configuration
+- `GET /instacart/debug/retailers/nearby?zip_code={zip_code}` - Gets detailed mock data for nearby retailers
 
 ## Environment Variables
 
