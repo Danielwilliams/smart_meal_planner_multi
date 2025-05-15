@@ -86,9 +86,7 @@ def create_app() -> FastAPI:
                     "url": "https://smartmealplannerio.com/docs#menu",
                 },
             },
-        ],
-        # Add global prefix to match frontend expectations
-        root_path="/api"
+        ]
     )
 
     # Get environment-specific settings

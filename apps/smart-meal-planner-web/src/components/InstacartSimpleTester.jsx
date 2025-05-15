@@ -34,7 +34,7 @@ const InstacartSimpleTester = () => {
   useEffect(() => {
     const getApiKeyInfo = async () => {
       try {
-        const response = await axios.get('/api/instacart/key-info');
+        const response = await axios.get('/instacart/key-info');
         if (response.data) {
           setApiKeyInfo(response.data);
         }
@@ -52,7 +52,7 @@ const InstacartSimpleTester = () => {
 
     const getBackendInfo = async () => {
       try {
-        const response = await axios.get('/api/instacart/environment');
+        const response = await axios.get('/instacart/environment');
         if (response.data) {
           setBackendInfo(response.data);
         }
@@ -81,7 +81,7 @@ const InstacartSimpleTester = () => {
 
       // Get latest API key info for the test results
       try {
-        const keyInfoResponse = await axios.get('/api/instacart/key-info');
+        const keyInfoResponse = await axios.get('/instacart/key-info');
         if (keyInfoResponse.data) {
           results.apiKeyInfo = keyInfoResponse.data;
           setApiKeyInfo(keyInfoResponse.data);
@@ -530,9 +530,9 @@ const InstacartSimpleTester = () => {
           <strong>Required Backend Endpoints:</strong>
         </Typography>
         <ul style={{ margin: 0, paddingLeft: '20px' }}>
-          <li>/api/instacart/status - To check API connection status (now with extended diagnostics)</li>
-          <li>/api/instacart/retailers - To get retailer data</li>
-          <li>/api/instacart/key-info - To get API key information (now includes full API details)</li>
+          <li>/instacart/status - To check API connection status (now with extended diagnostics)</li>
+          <li>/instacart/retailers - To get retailer data</li>
+          <li>/instacart/key-info - To get API key information (now includes full API details)</li>
         </ul>
         <Typography variant="body2" color="primary.main" sx={{ mt: 1, fontWeight: 'bold' }}>
           Note: The diagnostics now show the actual API key and request details for debugging purposes.

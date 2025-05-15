@@ -71,7 +71,7 @@ const getNearbyRetailers = async (zipCode) => {
   try {
     // First try the nearby endpoint which uses location
     try {
-      const response = await instacartBackendAxios.get('/api/instacart/retailers/nearby', {
+      const response = await instacartBackendAxios.get('/instacart/retailers/nearby', {
         params: { zip_code: zipCode }
       });
 
@@ -84,7 +84,7 @@ const getNearbyRetailers = async (zipCode) => {
     }
 
     // If nearby endpoint fails, fall back to general endpoint
-    const response = await instacartBackendAxios.get('/api/instacart/retailers');
+    const response = await instacartBackendAxios.get('/instacart/retailers');
 
     // For general retailers, we need to add mock distance based on ZIP
     if (response.data && Array.isArray(response.data)) {
@@ -130,7 +130,7 @@ const getNearbyRetailers = async (zipCode) => {
 
     // If we got a 404, it means the endpoint doesn't exist yet
     if (error.response?.status === 404) {
-      errorObj.message = 'API endpoint not implemented yet - The /api/instacart/retailers endpoint is missing';
+      errorObj.message = 'API endpoint not implemented yet - The /instacart/retailers endpoint is missing';
       errorObj.suggestion = 'Create the API endpoint on the backend server';
     }
 
@@ -147,7 +147,7 @@ const getNearbyRetailers = async (zipCode) => {
  */
 const searchProducts = async (retailerId, query, limit = 10) => {
   try {
-    const response = await instacartBackendAxios.get(`/api/instacart/retailers/${retailerId}/products/search`, {
+    const response = await instacartBackendAxios.get(`/instacart/retailers/${retailerId}/products/search`, {
       params: { query, limit }
     });
     
@@ -166,7 +166,7 @@ const searchProducts = async (retailerId, query, limit = 10) => {
  */
 const createCart = async (retailerId, items) => {
   try {
-    const response = await instacartBackendAxios.post('/api/instacart/carts', {
+    const response = await instacartBackendAxios.post('/instacart/carts', {
       retailer_id: retailerId,
       items: items.map(item => ({
         product_id: item.product_id.toString(),
@@ -201,7 +201,7 @@ const createCart = async (retailerId, items) => {
  */
 const checkInstacartStatus = async () => {
   try {
-    const response = await instacartBackendAxios.get('/api/instacart/status');
+    const response = await instacartBackendAxios.get('/instacart/status');
     return response.data;
   } catch (error) {
     console.error('Error checking Instacart status:', error);
@@ -223,7 +223,7 @@ const checkInstacartStatus = async () => {
 
     // If we got a 404, it means the endpoint doesn't exist yet
     if (error.response?.status === 404) {
-      errorData.message = 'API endpoint not implemented yet - The /api/instacart/status endpoint is missing';
+      errorData.message = 'API endpoint not implemented yet - The /instacart/status endpoint is missing';
       errorData.suggestion = 'Create the API endpoint on the backend server';
     }
 
