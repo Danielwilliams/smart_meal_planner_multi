@@ -11,18 +11,24 @@ import apiService from './apiService';
 
 // Determine the base URL for API calls
 const getBaseUrl = () => {
+  // ALWAYS use the direct Railway URL to ensure correct routing
+  return 'https://smartmealplannermulti-development.up.railway.app';
+
+  // Previous code was causing requests to go to the frontend server:
+  /*
   const isProduction = process.env.NODE_ENV === 'production';
-  const isVercel = typeof window !== 'undefined' && 
+  const isVercel = typeof window !== 'undefined' &&
                    window.location.hostname.includes('vercel.app');
-  
+
   if (isProduction || isVercel) {
     // For production or Vercel previews, use relative path
     return '';
   } else {
-    // In development, use direct URL - This is the production backend
+    // In development, use direct URL
     return 'https://smartmealplannermulti-development.up.railway.app';
     // For local testing use: return 'http://localhost:8000';
   }
+  */
 };
 
 // Initialize with the base URL
@@ -293,10 +299,48 @@ const addGroceryItemsToInstacart = async (retailerId, groceryItems) => {
   }
 };
 
+/**
+ * Get API key information
+ * @returns {Promise<Object>} API key information
+ */
+const getApiKeyInfo = async () => {
+  try {
+    const response = await instacartBackendAxios.get('/instacart/key-info');
+    return response.data;
+  } catch (error) {
+    console.error('Error retrieving API key info:', error);
+    return {
+      exists: false,
+      masked: 'Unknown',
+      length: 'Unknown',
+      format: 'Unknown',
+      error: error.message
+    };
+  }
+};
+
+/**
+ * Get backend environment info
+ * @returns {Promise<Object>} Environment information
+ */
+const getEnvironmentInfo = async () => {
+  try {
+    const response = await instacartBackendAxios.get('/instacart/environment');
+    return response.data;
+  } catch (error) {
+    console.error('Error retrieving environment info:', error);
+    return {
+      error: error.message
+    };
+  }
+};
+
 export default {
   getNearbyRetailers,
   searchProducts,
   createCart,
   checkInstacartStatus,
-  addGroceryItemsToInstacart
+  addGroceryItemsToInstacart,
+  getApiKeyInfo,
+  getEnvironmentInfo
 };

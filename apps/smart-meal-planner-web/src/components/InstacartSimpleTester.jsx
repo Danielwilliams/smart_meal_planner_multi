@@ -16,7 +16,6 @@ import {
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import instacartBackendService from '../services/instacartBackendService';
-import axios from 'axios';
 
 /**
  * Simplified component for testing Instacart API connectivity
@@ -34,9 +33,10 @@ const InstacartSimpleTester = () => {
   useEffect(() => {
     const getApiKeyInfo = async () => {
       try {
-        const response = await axios.get('/instacart/key-info');
-        if (response.data) {
-          setApiKeyInfo(response.data);
+        // Use instacartBackendService for consistent API access
+        const response = await instacartBackendService.getApiKeyInfo();
+        if (response) {
+          setApiKeyInfo(response);
         }
       } catch (err) {
         console.warn('Error fetching API key info:', err.message);
@@ -52,9 +52,9 @@ const InstacartSimpleTester = () => {
 
     const getBackendInfo = async () => {
       try {
-        const response = await axios.get('/instacart/environment');
-        if (response.data) {
-          setBackendInfo(response.data);
+        const response = await instacartBackendService.getEnvironmentInfo();
+        if (response) {
+          setBackendInfo(response);
         }
       } catch (err) {
         console.warn('Error fetching backend info:', err.message);
@@ -81,10 +81,10 @@ const InstacartSimpleTester = () => {
 
       // Get latest API key info for the test results
       try {
-        const keyInfoResponse = await axios.get('/instacart/key-info');
-        if (keyInfoResponse.data) {
-          results.apiKeyInfo = keyInfoResponse.data;
-          setApiKeyInfo(keyInfoResponse.data);
+        const keyInfo = await instacartBackendService.getApiKeyInfo();
+        if (keyInfo) {
+          results.apiKeyInfo = keyInfo;
+          setApiKeyInfo(keyInfo);
         }
       } catch (keyErr) {
         console.warn('Error getting latest API key info:', keyErr);
