@@ -32,17 +32,32 @@ class InstacartClient:
         Args:
             api_key: The Instacart API key. If not provided, will try to get from environment variable.
         """
+        # Get the API key from param or environment
         self.api_key = api_key or os.environ.get("INSTACARTAPI_DEV")
         if not self.api_key:
             logger.error("No Instacart API key provided")
             raise ValueError("Instacart API key is required")
-        
+
+        # Format the API key properly if it doesn't already have the prefix
+        if not self.api_key.startswith("InstacartAPI "):
+            logger.info("Adding 'InstacartAPI' prefix to key")
+            self.formatted_api_key = f"InstacartAPI {self.api_key}"
+        else:
+            logger.info("API key already has 'InstacartAPI' prefix")
+            self.formatted_api_key = self.api_key
+
+        # Create and configure the session
         self.session = requests.Session()
+
+        # Set the headers with properly formatted API key
         self.session.headers.update({
-            "Instacart-Connect-Api-Key": self.api_key,
+            "Instacart-Connect-Api-Key": self.formatted_api_key,
             "Content-Type": "application/json",
             "Accept": "application/json"
         })
+
+        logger.info(f"Initialized Instacart client with key: {self.formatted_api_key[:15]}...")
+        logger.info(f"Header set: {self.session.headers.get('Instacart-Connect-Api-Key', '')[:15]}...")
     
     def _make_request(
         self, 
@@ -67,6 +82,14 @@ class InstacartClient:
         logger.info(f"Making {method} request to {url}")
         
         try:
+            # Log the request details for debugging
+            logger.info(f"Making {method} request to {url}")
+            if params:
+                logger.info(f"Request params: {params}")
+            if data:
+                logger.info(f"Request data: {json.dumps(data)[:100]}...")
+
+            # Make the request
             if method.upper() == "GET":
                 response = self.session.get(url, params=params)
             elif method.upper() == "POST":
@@ -77,46 +100,59 @@ class InstacartClient:
                 response = self.session.delete(url, params=params)
             else:
                 raise ValueError(f"Unsupported HTTP method: {method}")
-                
+
+            # Log response info for debugging
+            logger.info(f"Response status: {response.status_code}")
+
             # Check for HTTP errors
             response.raise_for_status()
-            
+
             if response.status_code == 204:  # No content
                 return {}
-                
-            return response.json()
-            
+
+            # Parse and return the JSON response
+            json_data = response.json()
+            logger.info(f"Response data sample: {str(json_data)[:200]}...")
+            return json_data
+
         except requests.exceptions.HTTPError as e:
             logger.error(f"HTTP error: {str(e)}")
             error_info = {}
-            
+
             try:
                 error_info = response.json()
             except:
                 error_info = {"message": str(e)}
-                
+
             logger.error(f"Error details: {json.dumps(error_info)}")
-            
+
             status_code = response.status_code
             if status_code == 401:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Unauthorized access to Instacart API"
+                    detail="Unauthorized access to Instacart API - Check API key format and validity"
                 )
             elif status_code == 403:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Forbidden access to Instacart API"
+                    detail="Forbidden access to Instacart API - API key may not have proper permissions"
                 )
             elif status_code == 404:
+                # Provide more detailed error for 404 responses
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Resource not found on Instacart API"
+                    detail=f"Resource not found on Instacart API: {endpoint} - Check the API endpoint path"
                 )
             else:
+                # Include original response data in error for debugging
+                error_detail = {
+                    "message": f"Instacart API error: {str(e)}",
+                    "status_code": status_code,
+                    "response_data": error_info
+                }
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=f"Instacart API error: {str(e)}"
+                    detail=json.dumps(error_detail)
                 )
                 
         except requests.exceptions.ConnectionError as e:

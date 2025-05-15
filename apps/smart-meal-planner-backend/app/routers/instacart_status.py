@@ -28,6 +28,12 @@ class APIKeyInfo(BaseModel):
     masked: Optional[str] = None
     environment: str
 
+class KeyInfoResponse(BaseModel):
+    exists: bool
+    masked: Optional[str] = None
+    length: Optional[int] = None
+    format: Optional[str] = None
+
 class StatusResponse(BaseModel):
     is_connected: bool
     message: str
@@ -168,3 +174,111 @@ async def check_instacart_status(current_user: dict = Depends(get_current_user))
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to check Instacart API status: {str(e)}"
         )
+
+@router.get("/key-info", response_model=None)
+async def get_api_key_info(current_user: dict = Depends(get_current_user)):
+    """
+    Get information about the configured Instacart API key.
+    Returns details about the API key without exposing the full key.
+    """
+    try:
+        # Get API key from environment
+        api_key = os.environ.get("INSTACARTAPI_DEV")
+        environment = os.environ.get("ENVIRONMENT", "development")
+
+        # Check if API key exists
+        if not api_key:
+            logger.warning("INSTACARTAPI_DEV environment variable is not set")
+            # Show a helpful message about setting the API key
+            missing_key_guide = """
+            The INSTACARTAPI_DEV environment variable is not set.
+
+            To use the Instacart API, you need to:
+            1. Get an API key from Instacart Connect
+            2. Set it as an environment variable named INSTACARTAPI_DEV
+            3. Format it as 'InstacartAPI YOUR_KEY_HERE' (with the prefix)
+
+            Example: export INSTACARTAPI_DEV="InstacartAPI abc123def456"
+            """
+            return {
+                "exists": False,
+                "masked": None,
+                "length": 0,
+                "format": "Unknown",
+                "environment": environment,
+                "setup_guide": missing_key_guide.strip()
+            }
+
+        # Mask API key for safe display
+        key_length = len(api_key)
+        masked_key = f"{api_key[:4]}...{api_key[-4:]}" if key_length > 8 else "***masked***"
+
+        # Determine the format of the API key
+        api_format = "Unknown"
+        actual_length = key_length
+
+        if api_key.startswith("InstacartAPI "):
+            api_format = "InstacartAPI prefix format"
+            # Extract the actual key part (without prefix) for length calculation
+            actual_key = api_key[len("InstacartAPI "):]
+            actual_length = len(actual_key)  # Length of the actual key part
+        else:
+            api_format = "Raw key format"
+
+        return {
+            "exists": True,
+            "masked": masked_key,
+            "length": actual_length,
+            "format": api_format,
+            "environment": environment
+        }
+
+    except Exception as e:
+        logger.error(f"Error retrieving API key info: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve API key information: {str(e)}"
+        )
+
+@router.get("/environment", response_model=Optional[dict])
+async def get_environment_info(current_user: dict = Depends(get_current_user)):
+    """
+    Get information about the backend environment.
+    Returns relevant environment variables for debugging.
+    """
+    try:
+        # Get relevant environment variables (without exposing sensitive data)
+        environment_info = {
+            "environment": os.environ.get("ENVIRONMENT", "development"),
+            "instacart_api_configured": bool(os.environ.get("INSTACARTAPI_DEV")),
+            "python_version": os.environ.get("PYTHON_VERSION", "unknown"),
+            "node_env": os.environ.get("NODE_ENV", "development"),
+            "debug_mode": os.environ.get("DEBUG", "false").lower() == "true"
+        }
+
+        return environment_info
+
+    except Exception as e:
+        logger.error(f"Error retrieving environment info: {str(e)}")
+        return {
+            "error": str(e)
+        }
+
+@router.get("/test", response_model=None)
+async def test_endpoint():
+    """
+    Simple test endpoint to verify the router is working correctly.
+    This endpoint doesn't require authentication to facilitate testing.
+    """
+    return {
+        "status": "ok",
+        "message": "Instacart API router is working",
+        "timestamp": time.time(),
+        "routes": [
+            "/api/instacart/status",
+            "/api/instacart/key-info",
+            "/api/instacart/environment",
+            "/api/instacart/test",
+            "/api/instacart/retailers"
+        ]
+    }
