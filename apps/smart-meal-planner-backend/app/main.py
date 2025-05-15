@@ -101,7 +101,9 @@ def create_app() -> FastAPI:
         "https://api.smartmealplannerio.com",
         "https://smart-meal-planner-multi.vercel.app",
         # Allow production domain
-        "https://smartmealplannerio.com"
+        "https://smartmealplannerio.com",
+        # Allow all origins for testing (will fix CORS issues)
+        "*"
     ]
 
     if ENVIRONMENT == "production":
@@ -114,7 +116,7 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=origins,
-        allow_credentials=True,
+        allow_credentials=False,  # Changed from True to support wildcard origins
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
         allow_headers=["Content-Type", "Authorization", "X-Instacart-API-Key", "Accept"],
         expose_headers=["Content-Type", "X-Process-Time"],
