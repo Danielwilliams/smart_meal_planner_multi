@@ -86,7 +86,9 @@ def create_app() -> FastAPI:
                     "url": "https://smartmealplannerio.com/docs#menu",
                 },
             },
-        ]
+        ],
+        # Add global prefix to match frontend expectations
+        root_path="/api"
     )
 
     # Get environment-specific settings
@@ -172,6 +174,19 @@ def create_app() -> FastAPI:
     @app.get("/health")
     async def health_check():
         return {"status": "healthy"}
+
+    @app.get("/api-test")
+    async def api_test():
+        """Test endpoint to verify API routing is working correctly"""
+        return {
+            "status": "ok",
+            "message": "API routing is working",
+            "routes": {
+                "instacart": "/instacart/status, /instacart/key-info, /instacart/retailers",
+                "kroger": "/kroger/status, /kroger/auth"
+            },
+            "environment": os.environ.get("ENVIRONMENT", "unknown")
+        }
         
     @app.get("/check-s3-vars")
     async def check_s3_vars():
