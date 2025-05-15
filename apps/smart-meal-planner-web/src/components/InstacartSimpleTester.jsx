@@ -9,8 +9,12 @@ import {
   Alert,
   Divider,
   Grid,
-  Card
+  Card,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails
 } from '@mui/material';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import instacartBackendService from '../services/instacartBackendService';
 import axios from 'axios';
 
@@ -96,6 +100,9 @@ const InstacartSimpleTester = () => {
         console.log('Checking Instacart API status...');
         const statusResponse = await instacartBackendService.checkInstacartStatus();
 
+        // Log the complete response for debugging
+        console.log('Complete API status response:', statusResponse);
+
         results.tests.push({
           name: 'API Status Check',
           success: statusResponse.is_connected,
@@ -114,11 +121,22 @@ const InstacartSimpleTester = () => {
           stack: statusErr.stack
         };
 
+        // Try to extract any debug_info that might be in the error response
+        let errorData = null;
+        try {
+          if (statusErr.response && statusErr.response.data) {
+            errorData = statusErr.response.data;
+          }
+        } catch (parseErr) {
+          console.warn('Error parsing error response data:', parseErr);
+        }
+
         results.tests.push({
           name: 'API Status Check',
           success: false,
           error: statusErr.message,
-          errorDetails: errorDetails
+          errorDetails: errorDetails,
+          data: errorData
         });
       }
 
@@ -164,11 +182,22 @@ const InstacartSimpleTester = () => {
               request: searchErr.request ? 'Request was made but no response received' : null
             };
 
+            // Try to extract any debug_info that might be in the error response
+            let errorData = null;
+            try {
+              if (searchErr.response && searchErr.response.data) {
+                errorData = searchErr.response.data;
+              }
+            } catch (parseErr) {
+              console.warn('Error parsing error response data:', parseErr);
+            }
+
             results.tests.push({
               name: 'Search Products',
               success: false,
               error: searchErr.message,
-              errorDetails: errorDetails
+              errorDetails: errorDetails,
+              data: errorData
             });
           }
         }
@@ -185,11 +214,22 @@ const InstacartSimpleTester = () => {
           stack: retailersErr.stack
         };
 
+        // Try to extract any debug_info that might be in the error response
+        let errorData = null;
+        try {
+          if (retailersErr.response && retailersErr.response.data) {
+            errorData = retailersErr.response.data;
+          }
+        } catch (parseErr) {
+          console.warn('Error parsing error response data:', parseErr);
+        }
+
         results.tests.push({
           name: 'Get Retailers',
           success: false,
           error: retailersErr.message,
-          errorDetails: errorDetails
+          errorDetails: errorDetails,
+          data: errorData
         });
       }
 
@@ -338,16 +378,41 @@ const InstacartSimpleTester = () => {
                   {test.success ? (
                     <Box>
                       {test.data && (
-                        <pre style={{
-                          backgroundColor: '#f5f5f5',
-                          padding: '8px',
-                          borderRadius: '4px',
-                          fontSize: '0.8rem',
-                          overflow: 'auto',
-                          maxHeight: '200px'
-                        }}>
-                          {JSON.stringify(test.data, null, 2)}
-                        </pre>
+                        <React.Fragment>
+                          <pre style={{
+                            backgroundColor: '#f5f5f5',
+                            padding: '8px',
+                            borderRadius: '4px',
+                            fontSize: '0.8rem',
+                            overflow: 'auto',
+                            maxHeight: '200px'
+                          }}>
+                            {JSON.stringify(test.data, null, 2)}
+                          </pre>
+
+                          {/* Display debug info for successful responses too */}
+                          {test.data.debug_info && (
+                            <Box mt={2}>
+                              <Accordion>
+                                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                                  <Typography variant="subtitle2">API Diagnostic Information</Typography>
+                                </AccordionSummary>
+                                <AccordionDetails>
+                                  <pre style={{
+                                    backgroundColor: '#f8f8f8',
+                                    padding: '8px',
+                                    borderRadius: '4px',
+                                    fontSize: '0.7rem',
+                                    overflow: 'auto',
+                                    maxHeight: '400px'
+                                  }}>
+                                    {JSON.stringify(test.data.debug_info, null, 2)}
+                                  </pre>
+                                </AccordionDetails>
+                              </Accordion>
+                            </Box>
+                          )}
+                        </React.Fragment>
                       )}
                     </Box>
                   ) : (
@@ -407,6 +472,32 @@ const InstacartSimpleTester = () => {
                               </pre>
                             </Box>
                           )}
+
+                          {/* Add diagnostic section for error responses */}
+                          {test.data && test.data.debug_info && (
+                            <Box mt={2}>
+                              <Typography variant="subtitle2" color="secondary">
+                                Extended API Diagnostics
+                              </Typography>
+                              <Accordion defaultExpanded={true}>
+                                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                                  <Typography variant="subtitle2">API Configuration & Request Details</Typography>
+                                </AccordionSummary>
+                                <AccordionDetails>
+                                  <pre style={{
+                                    backgroundColor: '#f8f8f8',
+                                    padding: '8px',
+                                    borderRadius: '4px',
+                                    fontSize: '0.7rem',
+                                    overflow: 'auto',
+                                    maxHeight: '400px'
+                                  }}>
+                                    {JSON.stringify(test.data.debug_info, null, 2)}
+                                  </pre>
+                                </AccordionDetails>
+                              </Accordion>
+                            </Box>
+                          )}
                         </Box>
                       )}
                     </Box>
@@ -439,10 +530,14 @@ const InstacartSimpleTester = () => {
           <strong>Required Backend Endpoints:</strong>
         </Typography>
         <ul style={{ margin: 0, paddingLeft: '20px' }}>
-          <li>/instacart/status - To check API connection status</li>
+          <li>/instacart/status - To check API connection status (now with extended diagnostics)</li>
           <li>/instacart/retailers - To get retailer data</li>
-          <li>/instacart/key-info - To get API key information</li>
+          <li>/instacart/key-info - To get API key information (now includes full API details)</li>
         </ul>
+        <Typography variant="body2" color="primary.main" sx={{ mt: 1, fontWeight: 'bold' }}>
+          Note: The diagnostics now show the actual API key and request details for debugging purposes.
+          This is extremely valuable for troubleshooting but should be removed in production.
+        </Typography>
       </Box>
     </Paper>
   );
