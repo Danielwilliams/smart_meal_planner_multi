@@ -197,65 +197,64 @@ async def get_nearby_instacart_retailers(
 ):
     """
     Get a list of Instacart retailers near a specified ZIP code.
-    Currently uses mock proximity data since the Instacart API doesn't support location-based filtering.
+    Uses the Instacart Developer Platform API to find nearby retailers.
     """
     try:
         logger.info(f"Getting nearby retailers for ZIP code {zip_code}")
 
-        # First try to get all retailers with detailed error handling
+        # Use the new method for getting nearby retailers
         try:
             client = instacart.get_instacart_client()
-            all_retailers = client.get_retailers()
-            logger.info(f"Retrieved {len(all_retailers)} retailers from Instacart API")
+            nearby_retailers = client.get_nearby_retailers(zip_code)
+            logger.info(f"Retrieved {len(nearby_retailers) if nearby_retailers else 0} nearby retailers from Instacart API")
 
-            if not all_retailers:
-                logger.warning("No retailers returned from Instacart API")
+            if not nearby_retailers:
+                logger.warning(f"No nearby retailers found for ZIP code {zip_code}")
                 return {
                     "retailers": [],
                     "status": "success",
-                    "message": "No retailers found",
-                    "count": 0
+                    "message": f"No retailers found near ZIP code {zip_code}",
+                    "count": 0,
+                    "zip_code": zip_code
                 }
+                
+            # Format the retailers to match expected response structure
+            formatted_retailers = []
+            for retailer in nearby_retailers:
+                attributes = retailer.get("attributes", {})
+                formatted_retailers.append({
+                    "id": retailer.get("id", ""),
+                    "name": attributes.get("name", "Unknown Retailer"),
+                    "logo_url": attributes.get("logo_url", ""),
+                    "distance": attributes.get("distance", 999),
+                    "address": attributes.get("address", {
+                        "city": "Unknown",
+                        "state": "XX",
+                        "zip_code": zip_code
+                    })
+                })
+                
+            logger.info(f"Returning {len(formatted_retailers)} nearby retailers")
+            return {
+                "retailers": formatted_retailers,
+                "status": "success",
+                "count": len(formatted_retailers),
+                "zip_code": zip_code
+            }
+                
         except Exception as api_error:
-            logger.error(f"Error getting retailers: {str(api_error)}")
+            logger.error(f"Error getting nearby retailers: {str(api_error)}")
             # Return a structured error response with empty retailers list
             return {
                 "retailers": [],
                 "status": "error",
-                "message": f"Failed to retrieve retailers: {str(api_error)}",
+                "message": f"Failed to retrieve nearby retailers: {str(api_error)}",
                 "error_details": {
                     "type": type(api_error).__name__,
                     "message": str(api_error)
-                }
+                },
+                "zip_code": zip_code
             }
-
-        # Check if we have any retailers to process
-        if not all_retailers:
-            return {
-                "retailers": [],
-                "status": "success",
-                "message": "No retailers found",
-                "count": 0
-            }
-
-        # In the future, Instacart may add a native API for nearby retailers
-        # Return an error explaining that the API doesn't support location filtering
-        logger.info("Instacart API doesn't currently support location-based filtering")
-
-        return {
-            "error": "Location-based filtering not supported",
-            "status": "not_implemented",
-            "message": "The Instacart API currently doesn't support location-based filtering of retailers",
-            "details": {
-                "workaround": "The frontend should display all available retailers without filtering by location",
-                "future_plans": "This feature may be added by Instacart in future API versions",
-                "retailers_count": len(all_retailers)
-            },
-            "retailers": [], # Return an empty list instead of mock data
-            "zip_code": zip_code
-        }
-
-        # This section is removed as we're now returning an error response instead of mock data
 
     except Exception as e:
         logger.error(f"Error getting nearby Instacart retailers: {str(e)}")

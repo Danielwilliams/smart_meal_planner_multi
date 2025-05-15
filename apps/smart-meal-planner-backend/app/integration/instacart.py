@@ -19,8 +19,8 @@ from fastapi import HTTPException, status
 logger = logging.getLogger(__name__)
 
 # Constants
-BASE_URL = "https://connect.instacart.com"
-API_VERSION = "v2022-09-01"
+BASE_URL = "https://platform-api.instacart.com"
+API_VERSION = "v1"
 
 class InstacartClient:
     """Client for interacting with the Instacart API."""
@@ -38,26 +38,25 @@ class InstacartClient:
             logger.error("No Instacart API key provided")
             raise ValueError("Instacart API key is required")
 
-        # Format the API key properly if it doesn't already have the prefix
-        if not self.api_key.startswith("InstacartAPI "):
-            logger.info("Adding 'InstacartAPI' prefix to key")
-            self.formatted_api_key = f"InstacartAPI {self.api_key}"
-        else:
-            logger.info("API key already has 'InstacartAPI' prefix")
-            self.formatted_api_key = self.api_key
+        # Format the API key for the new Developer Platform API
+        self.formatted_api_key = self.api_key
+        if self.api_key.startswith("InstacartAPI "):
+            logger.info("Removing 'InstacartAPI' prefix from key for Developer Platform API")
+            self.formatted_api_key = self.api_key.replace("InstacartAPI ", "")
 
         # Create and configure the session
         self.session = requests.Session()
 
-        # Set the headers with properly formatted API key
+        # Set the headers for the Developer Platform API
         self.session.headers.update({
-            "Instacart-Connect-Api-Key": self.formatted_api_key,
+            "X-Instacart-API-Key": self.formatted_api_key,
             "Content-Type": "application/json",
             "Accept": "application/json"
         })
 
-        logger.info(f"Initialized Instacart client with key: {self.formatted_api_key[:15]}...")
-        logger.info(f"Header set: {self.session.headers.get('Instacart-Connect-Api-Key', '')[:15]}...")
+        masked_key = self.formatted_api_key[:4] + "..." + self.formatted_api_key[-4:] if len(self.formatted_api_key) > 8 else "***masked***"
+        logger.info(f"Initialized Instacart client with masked key: {masked_key}")
+        logger.info(f"Header set: X-Instacart-API-Key: {masked_key}")
     
     def _make_request(
         self, 
@@ -174,27 +173,27 @@ class InstacartClient:
     def get_retailers(self) -> List[Dict]:
         """
         Get list of available retailers on Instacart.
-        
+
         Returns:
             List of retailer objects
         """
-        response = self._make_request("GET", "retailers")
+        response = self._make_request("GET", "retailers/list")
         return response.get("data", [])
     
     def search_products(
-        self, 
-        retailer_id: str, 
-        query: str, 
+        self,
+        retailer_id: str,
+        query: str,
         limit: int = 10
     ) -> List[Dict]:
         """
         Search for products at a specific retailer.
-        
+
         Args:
             retailer_id: The Instacart retailer ID
             query: Search query string
             limit: Maximum number of results to return
-            
+
         Returns:
             List of product objects
         """
@@ -202,10 +201,29 @@ class InstacartClient:
             "query": query,
             "limit": limit
         }
-        
-        endpoint = f"retailers/{retailer_id}/products/search"
+
+        endpoint = f"retailers/{retailer_id}/products"
         response = self._make_request("GET", endpoint, params=params)
-        
+
+        return response.get("data", [])
+
+    def get_nearby_retailers(self, zip_code: str) -> List[Dict]:
+        """
+        Get retailers near a specific ZIP code.
+
+        Args:
+            zip_code: The ZIP code to search near
+
+        Returns:
+            List of nearby retailer objects
+        """
+        params = {
+            "zip_code": zip_code
+        }
+
+        endpoint = "retailers/nearby"
+        response = self._make_request("GET", endpoint, params=params)
+
         return response.get("data", [])
     
     def create_cart(self, retailer_id: str) -> Dict:
