@@ -42,8 +42,8 @@ class CartResponse(BaseModel):
     checkout_url: Optional[str] = None
     total: Optional[float] = None
 
-# Routes
-@router.post("/instacart/carts", response_model=CartResponse)
+# Routes - Update paths to match frontend expectations
+@router.post("/api/instacart/carts", response_model=CartResponse)
 async def create_instacart_cart(
     request: CartCreationRequest,
     current_user: dict = Depends(get_current_user)
@@ -54,14 +54,14 @@ async def create_instacart_cart(
     try:
         # Format items for the helper function
         items = [{"product_id": item.product_id, "quantity": item.quantity} for item in request.items]
-        
+
         # Create cart with items
         cart = instacart.create_cart_with_items(request.retailer_id, items)
-        
+
         # Transform to response model
         cart_data = {}
         cart_attributes = cart.get("attributes", {})
-        
+
         items_data = []
         for item in cart_attributes.get("items", []):
             item_attributes = item.get("attributes", {})
@@ -73,7 +73,7 @@ async def create_instacart_cart(
                 "price": item_attributes.get("price", {}).get("value"),
                 "image_url": item_attributes.get("image_url", "")
             })
-        
+
         response = {
             "id": cart.get("id", ""),
             "retailer_id": cart_attributes.get("retailer_id", ""),
@@ -81,9 +81,9 @@ async def create_instacart_cart(
             "checkout_url": cart.get("checkout_url", ""),
             "total": cart_attributes.get("total", {}).get("value")
         }
-        
+
         return response
-        
+
     except Exception as e:
         logger.error(f"Error creating Instacart cart: {str(e)}")
         raise HTTPException(
@@ -91,7 +91,7 @@ async def create_instacart_cart(
             detail=f"Failed to create Instacart cart: {str(e)}"
         )
 
-@router.post("/instacart/carts/{cart_id}/items", response_model=CartResponse)
+@router.post("/api/instacart/carts/{cart_id}/items", response_model=CartResponse)
 async def add_item_to_instacart_cart(
     cart_id: str,
     item: CartItemRequest,
@@ -102,18 +102,18 @@ async def add_item_to_instacart_cart(
     """
     try:
         client = instacart.get_instacart_client()
-        
+
         # Add item to cart
         client.add_item_to_cart(cart_id, item.product_id, item.quantity)
-        
+
         # Get updated cart
         cart = client.get_cart(cart_id)
         checkout_url = client.checkout_url(cart_id)
-        
+
         # Transform to response model
         cart_data = {}
         cart_attributes = cart.get("attributes", {})
-        
+
         items_data = []
         for item in cart_attributes.get("items", []):
             item_attributes = item.get("attributes", {})
@@ -125,7 +125,7 @@ async def add_item_to_instacart_cart(
                 "price": item_attributes.get("price", {}).get("value"),
                 "image_url": item_attributes.get("image_url", "")
             })
-        
+
         response = {
             "id": cart.get("id", ""),
             "retailer_id": cart_attributes.get("retailer_id", ""),
@@ -133,9 +133,9 @@ async def add_item_to_instacart_cart(
             "checkout_url": checkout_url,
             "total": cart_attributes.get("total", {}).get("value")
         }
-        
+
         return response
-        
+
     except Exception as e:
         logger.error(f"Error adding item to Instacart cart: {str(e)}")
         raise HTTPException(
@@ -143,7 +143,7 @@ async def add_item_to_instacart_cart(
             detail=f"Failed to add item to Instacart cart: {str(e)}"
         )
 
-@router.get("/instacart/carts/{cart_id}", response_model=CartResponse)
+@router.get("/api/instacart/carts/{cart_id}", response_model=CartResponse)
 async def get_instacart_cart(
     cart_id: str,
     current_user: dict = Depends(get_current_user)
@@ -153,15 +153,15 @@ async def get_instacart_cart(
     """
     try:
         client = instacart.get_instacart_client()
-        
+
         # Get cart
         cart = client.get_cart(cart_id)
         checkout_url = client.checkout_url(cart_id)
-        
+
         # Transform to response model
         cart_data = {}
         cart_attributes = cart.get("attributes", {})
-        
+
         items_data = []
         for item in cart_attributes.get("items", []):
             item_attributes = item.get("attributes", {})
@@ -173,7 +173,7 @@ async def get_instacart_cart(
                 "price": item_attributes.get("price", {}).get("value"),
                 "image_url": item_attributes.get("image_url", "")
             })
-        
+
         response = {
             "id": cart.get("id", ""),
             "retailer_id": cart_attributes.get("retailer_id", ""),
@@ -181,12 +181,38 @@ async def get_instacart_cart(
             "checkout_url": checkout_url,
             "total": cart_attributes.get("total", {}).get("value")
         }
-        
+
         return response
-        
+
     except Exception as e:
         logger.error(f"Error getting Instacart cart: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get Instacart cart: {str(e)}"
         )
+
+# Keep the original routes for backward compatibility
+@router.post("/instacart/carts", response_model=CartResponse)
+async def create_instacart_cart_legacy(
+    request: CartCreationRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """Legacy route - redirects to the new API path"""
+    return await create_instacart_cart(request, current_user)
+
+@router.post("/instacart/carts/{cart_id}/items", response_model=CartResponse)
+async def add_item_to_instacart_cart_legacy(
+    cart_id: str,
+    item: CartItemRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """Legacy route - redirects to the new API path"""
+    return await add_item_to_instacart_cart(cart_id, item, current_user)
+
+@router.get("/instacart/carts/{cart_id}", response_model=CartResponse)
+async def get_instacart_cart_legacy(
+    cart_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Legacy route - redirects to the new API path"""
+    return await get_instacart_cart(cart_id, current_user)

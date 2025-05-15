@@ -28,6 +28,7 @@ from app.routers.walmart_store import router as walmart_store_router
 from app.routers.instacart_store import router as instacart_store_router
 from app.routers.instacart_cart import router as instacart_cart_router
 from app.routers.instacart_debug import router as instacart_debug_router
+from app.routers.instacart_status import router as instacart_status_router
 from app.routers import saved_recipes 
 from app.routers import organizations
 from app.routers import organization_clients
@@ -137,6 +138,7 @@ def create_app() -> FastAPI:
     app.include_router(walmart_store_router)
     app.include_router(instacart_store_router)
     app.include_router(instacart_cart_router)
+    app.include_router(instacart_status_router)
 
     # Only include debug router in development environment
     if ENVIRONMENT == "development":

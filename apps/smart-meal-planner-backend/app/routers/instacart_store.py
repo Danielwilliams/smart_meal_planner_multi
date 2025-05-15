@@ -41,8 +41,8 @@ class ProductResponse(BaseModel):
     image_url: Optional[str] = None
     size: Optional[str] = None
 
-# Routes
-@router.get("/instacart/retailers", response_model=List[RetailerResponse])
+# Routes - Update paths to match frontend expectations
+@router.get("/api/instacart/retailers", response_model=List[RetailerResponse])
 async def get_instacart_retailers(current_user: dict = Depends(get_current_user)):
     """
     Get a list of available retailers on Instacart.
@@ -50,7 +50,7 @@ async def get_instacart_retailers(current_user: dict = Depends(get_current_user)
     try:
         client = instacart.get_instacart_client()
         retailers = client.get_retailers()
-        
+
         # Transform to response model
         formatted_retailers = []
         for retailer in retailers:
@@ -60,9 +60,9 @@ async def get_instacart_retailers(current_user: dict = Depends(get_current_user)
                 "name": attributes.get("name", ""),
                 "logo_url": attributes.get("logo_url", "")
             })
-            
+
         return formatted_retailers
-        
+
     except Exception as e:
         logger.error(f"Error getting Instacart retailers: {str(e)}")
         raise HTTPException(
@@ -70,7 +70,7 @@ async def get_instacart_retailers(current_user: dict = Depends(get_current_user)
             detail=f"Failed to get Instacart retailers: {str(e)}"
         )
 
-@router.get("/instacart/retailers/{retailer_id}/products/search", response_model=List[ProductResponse])
+@router.get("/api/instacart/retailers/{retailer_id}/products/search", response_model=List[ProductResponse])
 async def search_instacart_products(
     retailer_id: str,
     query: str,
@@ -83,7 +83,7 @@ async def search_instacart_products(
     try:
         client = instacart.get_instacart_client()
         products = client.search_products(retailer_id, query, limit)
-        
+
         # Transform to response model
         formatted_products = []
         for product in products:
@@ -95,9 +95,9 @@ async def search_instacart_products(
                 "image_url": attributes.get("image_url", ""),
                 "size": attributes.get("size", "")
             })
-            
+
         return formatted_products
-        
+
     except Exception as e:
         logger.error(f"Error searching Instacart products: {str(e)}")
         raise HTTPException(
@@ -105,7 +105,7 @@ async def search_instacart_products(
             detail=f"Failed to search Instacart products: {str(e)}"
         )
 
-@router.get("/instacart/retailers/nearby", response_model=List[RetailerResponse])
+@router.get("/api/instacart/retailers/nearby", response_model=List[RetailerResponse])
 async def get_nearby_instacart_retailers(
     zip_code: str = Query(..., description="ZIP code to find nearby retailers"),
     current_user: dict = Depends(get_current_user)
@@ -174,7 +174,7 @@ async def get_nearby_instacart_retailers(
             detail=f"Failed to get nearby Instacart retailers: {str(e)}"
         )
 
-@router.get("/instacart/match/{retailer_id}", response_model=Dict)
+@router.get("/api/instacart/match/{retailer_id}", response_model=Dict)
 async def match_grocery_list(
     retailer_id: str,
     menu_id: int,
@@ -187,19 +187,52 @@ async def match_grocery_list(
     try:
         # This would need to integrate with your existing grocery list endpoint
         # For now, returning a placeholder
-        
+
         # TODO: Implement grocery list matching with Instacart products
-        
+
         return {
             "menu_id": menu_id,
             "retailer_id": retailer_id,
             "matches": [],
             "unmatched": []
         }
-        
+
     except Exception as e:
         logger.error(f"Error matching grocery list: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to match grocery list: {str(e)}"
         )
+
+# Keep the original routes for backward compatibility
+@router.get("/instacart/retailers", response_model=List[RetailerResponse])
+async def get_instacart_retailers_legacy(current_user: dict = Depends(get_current_user)):
+    """Legacy route - redirects to the new API path"""
+    return await get_instacart_retailers(current_user)
+
+@router.get("/instacart/retailers/{retailer_id}/products/search", response_model=List[ProductResponse])
+async def search_instacart_products_legacy(
+    retailer_id: str,
+    query: str,
+    limit: int = Query(10, ge=1, le=50),
+    current_user: dict = Depends(get_current_user)
+):
+    """Legacy route - redirects to the new API path"""
+    return await search_instacart_products(retailer_id, query, limit, current_user)
+
+@router.get("/instacart/retailers/nearby", response_model=List[RetailerResponse])
+async def get_nearby_instacart_retailers_legacy(
+    zip_code: str = Query(..., description="ZIP code to find nearby retailers"),
+    current_user: dict = Depends(get_current_user)
+):
+    """Legacy route - redirects to the new API path"""
+    return await get_nearby_instacart_retailers(zip_code, current_user)
+
+@router.get("/instacart/match/{retailer_id}", response_model=Dict)
+async def match_grocery_list_legacy(
+    retailer_id: str,
+    menu_id: int,
+    current_user: dict = Depends(get_current_user)
+):
+    """Legacy route - redirects to the new API path"""
+    return await match_grocery_list(retailer_id, menu_id, current_user)
