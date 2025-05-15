@@ -9,30 +9,8 @@
 import axios from 'axios';
 import apiService from './apiService';
 
-// Determine the base URL for API calls
-const getBaseUrl = () => {
-  // ALWAYS use the direct Railway URL to ensure correct routing
-  return 'https://smartmealplannermulti-development.up.railway.app';
-
-  // Previous code was causing requests to go to the frontend server:
-  /*
-  const isProduction = process.env.NODE_ENV === 'production';
-  const isVercel = typeof window !== 'undefined' &&
-                   window.location.hostname.includes('vercel.app');
-
-  if (isProduction || isVercel) {
-    // For production or Vercel previews, use relative path
-    return '';
-  } else {
-    // In development, use direct URL
-    return 'https://smartmealplannermulti-development.up.railway.app';
-    // For local testing use: return 'http://localhost:8000';
-  }
-  */
-};
-
-// Initialize with the base URL
-const BASE_URL = getBaseUrl();
+// Use an empty base URL to leverage the Vercel proxy
+const BASE_URL = '';
 
 // Create an axios instance for Instacart backend requests
 const instacartBackendAxios = axios.create({
@@ -77,7 +55,7 @@ const getNearbyRetailers = async (zipCode) => {
   try {
     // First try the nearby endpoint which uses location
     try {
-      const response = await instacartBackendAxios.get('/instacart/retailers/nearby', {
+      const response = await instacartBackendAxios.get('/api/instacart/retailers/nearby', {
         params: { zip_code: zipCode }
       });
 
@@ -90,7 +68,7 @@ const getNearbyRetailers = async (zipCode) => {
     }
 
     // If nearby endpoint fails, fall back to general endpoint
-    const response = await instacartBackendAxios.get('/instacart/retailers');
+    const response = await instacartBackendAxios.get('/api/instacart/retailers');
 
     // For general retailers, we need to add mock distance based on ZIP
     if (response.data && Array.isArray(response.data)) {
@@ -136,7 +114,7 @@ const getNearbyRetailers = async (zipCode) => {
 
     // If we got a 404, it means the endpoint doesn't exist yet
     if (error.response?.status === 404) {
-      errorObj.message = 'API endpoint not implemented yet - The /instacart/retailers endpoint is missing';
+      errorObj.message = 'API endpoint not implemented yet - The /api/instacart/retailers endpoint is missing';
       errorObj.suggestion = 'Create the API endpoint on the backend server';
     }
 
@@ -153,7 +131,7 @@ const getNearbyRetailers = async (zipCode) => {
  */
 const searchProducts = async (retailerId, query, limit = 10) => {
   try {
-    const response = await instacartBackendAxios.get(`/instacart/retailers/${retailerId}/products/search`, {
+    const response = await instacartBackendAxios.get(`/api/instacart/retailers/${retailerId}/products/search`, {
       params: { query, limit }
     });
     
@@ -172,7 +150,7 @@ const searchProducts = async (retailerId, query, limit = 10) => {
  */
 const createCart = async (retailerId, items) => {
   try {
-    const response = await instacartBackendAxios.post('/instacart/carts', {
+    const response = await instacartBackendAxios.post('/api/instacart/carts', {
       retailer_id: retailerId,
       items: items.map(item => ({
         product_id: item.product_id.toString(),
@@ -207,7 +185,7 @@ const createCart = async (retailerId, items) => {
  */
 const checkInstacartStatus = async () => {
   try {
-    const response = await instacartBackendAxios.get('/instacart/status');
+    const response = await instacartBackendAxios.get('/api/instacart/status');
     return response.data;
   } catch (error) {
     console.error('Error checking Instacart status:', error);
@@ -221,7 +199,7 @@ const checkInstacartStatus = async () => {
       http_status_text: error.response?.statusText,
       response_data: error.response?.data,
       request_info: {
-        url: '/instacart/status',
+        url: '/api/instacart/status',
         method: 'GET'
       },
       timestamp: new Date().toISOString()
@@ -229,11 +207,47 @@ const checkInstacartStatus = async () => {
 
     // If we got a 404, it means the endpoint doesn't exist yet
     if (error.response?.status === 404) {
-      errorData.message = 'API endpoint not implemented yet - The /instacart/status endpoint is missing';
+      errorData.message = 'API endpoint not implemented yet - The /api/instacart/status endpoint is missing';
       errorData.suggestion = 'Create the API endpoint on the backend server';
     }
 
     return errorData;
+  }
+};
+
+/**
+ * Get API key information
+ * @returns {Promise<Object>} API key information
+ */
+const getApiKeyInfo = async () => {
+  try {
+    const response = await instacartBackendAxios.get('/api/instacart/key-info');
+    return response.data;
+  } catch (error) {
+    console.error('Error retrieving API key info:', error);
+    return {
+      exists: false,
+      masked: 'Unknown',
+      length: 'Unknown',
+      format: 'Unknown',
+      error: error.message
+    };
+  }
+};
+
+/**
+ * Get backend environment info
+ * @returns {Promise<Object>} Environment information
+ */
+const getEnvironmentInfo = async () => {
+  try {
+    const response = await instacartBackendAxios.get('/api/instacart/environment');
+    return response.data;
+  } catch (error) {
+    console.error('Error retrieving environment info:', error);
+    return {
+      error: error.message
+    };
   }
 };
 
@@ -295,42 +309,6 @@ const addGroceryItemsToInstacart = async (retailerId, groceryItems) => {
     return {
       success: false,
       message: error.message
-    };
-  }
-};
-
-/**
- * Get API key information
- * @returns {Promise<Object>} API key information
- */
-const getApiKeyInfo = async () => {
-  try {
-    const response = await instacartBackendAxios.get('/instacart/key-info');
-    return response.data;
-  } catch (error) {
-    console.error('Error retrieving API key info:', error);
-    return {
-      exists: false,
-      masked: 'Unknown',
-      length: 'Unknown',
-      format: 'Unknown',
-      error: error.message
-    };
-  }
-};
-
-/**
- * Get backend environment info
- * @returns {Promise<Object>} Environment information
- */
-const getEnvironmentInfo = async () => {
-  try {
-    const response = await instacartBackendAxios.get('/instacart/environment');
-    return response.data;
-  } catch (error) {
-    console.error('Error retrieving environment info:', error);
-    return {
-      error: error.message
     };
   }
 };

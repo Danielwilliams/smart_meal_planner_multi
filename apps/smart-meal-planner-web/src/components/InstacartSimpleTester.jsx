@@ -33,7 +33,7 @@ const InstacartSimpleTester = () => {
   useEffect(() => {
     const getApiKeyInfo = async () => {
       try {
-        // Use instacartBackendService for consistent API access
+        // Use our service with the updated paths
         const response = await instacartBackendService.getApiKeyInfo();
         if (response) {
           setApiKeyInfo(response);
