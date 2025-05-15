@@ -10,6 +10,9 @@ from dotenv import load_dotenv
 # Import S3 helper for initialization
 from app.utils.s3.s3_utils import s3_helper
 
+# Import enhanced CORS middleware
+from app.middleware.cors_middleware import setup_cors_middleware
+
 # Import regular routers
 from app.routers import (
     auth,
@@ -91,37 +94,11 @@ def create_app() -> FastAPI:
 
     # Get environment-specific settings
     ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
-    
-    # Configure CORS
-    origins = [
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "https://smartmealplannerio.vercel.app",
-        "https://www.smartmealplannerio.com",
-        "https://api.smartmealplannerio.com",
-        "https://smart-meal-planner-multi.vercel.app",
-        # Allow production domain
-        "https://smartmealplannerio.com",
-        # Allow all origins for testing (will fix CORS issues)
-        "*"
-    ]
 
-    if ENVIRONMENT == "production":
-        # Add production-specific origins if needed
-        logger.info("Configuring production CORS settings...")
-    else:
-        logger.info("Configuring development CORS settings...")
-
-    # Set up CORS middleware with explicit origin list
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=origins,
-        allow_credentials=False,  # Changed from True to support wildcard origins
-        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-        allow_headers=["Content-Type", "Authorization", "X-Instacart-API-Key", "Accept"],
-        expose_headers=["Content-Type", "X-Process-Time"],
-        max_age=600  # 10 minutes cache for preflight requests
-    )
+    # Use enhanced CORS middleware for more robust handling
+    # This matches the approach used in the Kroger integration
+    logger.info(f"Setting up enhanced CORS middleware for {ENVIRONMENT} environment")
+    setup_cors_middleware(app)
 
     # Add trusted host middleware
     app.add_middleware(
