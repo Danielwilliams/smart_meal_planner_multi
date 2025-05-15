@@ -118,16 +118,25 @@ async def check_instacart_status(current_user: dict = Depends(get_current_user))
 
             # Record request details
             request_details = {
-                "url": f"{instacart.BASE_URL}/{instacart.API_VERSION}/retailers?limit=1",
+                "url": f"{instacart.BASE_URL}/{instacart.API_VERSION}/retailers",
                 "method": "GET",
                 "headers": {k: (v if k.lower() not in ['authorization', 'instacart-connect-api-key']
                               else masked_key) for k, v in client.session.headers.items()},
-                "params": {"limit": 1}
+                "params": {
+                    "limit": 1,
+                    "postal_code": "80538",  # Default to Loveland, CO
+                    "country_code": "US"
+                }
             }
             debug_info["request"] = request_details
 
             # Make a simple request to verify the API key works
-            test_response = client._make_request("GET", "retailers", params={"limit": 1})
+            # Include required parameters for IDP API
+            test_response = client._make_request("GET", "retailers", params={
+                "limit": 1,
+                "postal_code": "80538",  # Default to Loveland, CO
+                "country_code": "US"
+            })
 
             # Record response details
             debug_info["response"] = {

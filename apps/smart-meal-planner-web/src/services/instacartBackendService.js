@@ -69,9 +69,14 @@ const getNearbyRetailers = async (zipCode) => {
       // Fall back to general retailers endpoint
     }
 
-    // Try the general retailers endpoint
+    // Try the general retailers endpoint - always include postal_code and country_code
     try {
-      const response = await instacartBackendAxios.get('/instacart/retailers');
+      const response = await instacartBackendAxios.get('/instacart/retailers', {
+        params: {
+          postal_code: zipCode || '80538',  // Default to Loveland, CO
+          country_code: 'US'
+        }
+      });
 
       // Handle different response formats
       if (response.data) {
@@ -303,7 +308,13 @@ const createCart = async (retailerId, items) => {
  */
 const checkInstacartStatus = async () => {
   try {
-    const response = await instacartBackendAxios.get('/instacart/status');
+    // The status endpoint will make test API calls, make sure we include required parameters
+    const response = await instacartBackendAxios.get('/instacart/status', {
+      params: {
+        postal_code: '80538',  // Default to Loveland, CO
+        country_code: 'US'
+      }
+    });
     return response.data;
   } catch (error) {
     console.error('Error checking Instacart status:', error);

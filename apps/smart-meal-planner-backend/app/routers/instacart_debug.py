@@ -71,7 +71,12 @@ async def test_api_key_configuration(current_user: dict = Depends(get_current_us
             client = instacart.InstacartClient(api_key)
 
             # Make a simple request to verify the key works
-            test_response = client._make_request("GET", "retailers", params={"limit": 1})
+            # Include required parameters for IDP API
+            test_response = client._make_request("GET", "retailers", params={
+                "limit": 1,
+                "postal_code": "80538",  # Default to Loveland, CO
+                "country_code": "US"
+            })
 
             return {
                 "api_key_configured": True,
@@ -228,18 +233,27 @@ async def get_api_key_info(current_user: dict = Depends(get_current_user)):
 
                 # Record the request details
                 test_request_info = {
-                    "url": f"{instacart.BASE_URL}/{instacart.API_VERSION}/retailers?limit=1",
+                    "url": f"{instacart.BASE_URL}/{instacart.API_VERSION}/retailers",
                     "headers": {
-                        "Instacart-Connect-Api-Key": masked_key if 'masked_key' in locals() else "***masked***",
+                        "Authorization": f"Bearer {masked_key}" if 'masked_key' in locals() else "Bearer ***masked***",
                         "Content-Type": "application/json",
                         "Accept": "application/json"
                     },
                     "method": "GET",
+                    "params": {
+                        "limit": 1,
+                        "postal_code": "80538",  # Default to Loveland, CO
+                        "country_code": "US"
+                    },
                     "timestamp": time.time()
                 }
 
                 # Make a test request
-                test_response = client._make_request("GET", "retailers", params={"limit": 1})
+                test_response = client._make_request("GET", "retailers", params={
+                    "limit": 1,
+                    "postal_code": "80538",  # Default to Loveland, CO
+                    "country_code": "US"
+                })
 
                 # Record response details
                 test_request_info["success"] = True
