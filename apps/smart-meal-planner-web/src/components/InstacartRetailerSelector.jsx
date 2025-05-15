@@ -44,10 +44,18 @@ const InstacartRetailerSelector = ({
   const [zipCode, setZipCode] = useState(initialZipCode);
   const [showZipCodeDialog, setShowZipCodeDialog] = useState(false);
 
-  // Open ZIP code dialog if we don't have a ZIP code yet
+  // Handle dialog open/close state
   useEffect(() => {
-    if (open && !zipCode) {
-      setShowZipCodeDialog(true);
+    if (open) {
+      // Open ZIP code dialog if we don't have a ZIP code yet
+      if (!zipCode) {
+        setShowZipCodeDialog(true);
+      }
+    } else {
+      // Clean up states when dialog closes
+      setLoading(false);
+      setError('');
+      // Don't reset the retailer data to avoid flashing when reopening
     }
   }, [open, zipCode]);
 

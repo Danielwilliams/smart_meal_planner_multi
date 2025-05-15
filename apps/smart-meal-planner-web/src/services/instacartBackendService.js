@@ -53,8 +53,67 @@ instacartBackendAxios.interceptors.response.use(
  * @param {string} zipCode - ZIP code to search for nearby retailers
  * @returns {Promise<Array>} List of retailers
  */
+/**
+ * Get user ZIP code from local storage or sessionStorage
+ * @returns {string|null} ZIP code if found, null otherwise
+ */
+const getUserZipCode = () => {
+  try {
+    // Try different storage options where ZIP code might be saved
+    // 1. Check localStorage for user profile
+    const userProfileStr = localStorage.getItem('userProfile');
+    if (userProfileStr) {
+      try {
+        const userProfile = JSON.parse(userProfileStr);
+        if (userProfile && userProfile.zip_code) {
+          console.log('Using ZIP code from localStorage userProfile:', userProfile.zip_code);
+          return userProfile.zip_code;
+        }
+      } catch (e) {
+        console.warn('Error parsing user profile from localStorage:', e);
+      }
+    }
+
+    // 2. Check localStorage for specific zip code entry
+    const zipCode = localStorage.getItem('zipCode');
+    if (zipCode) {
+      console.log('Using ZIP code from localStorage:', zipCode);
+      return zipCode;
+    }
+
+    // 3. Check sessionStorage
+    const sessionZipCode = sessionStorage.getItem('zipCode');
+    if (sessionZipCode) {
+      console.log('Using ZIP code from sessionStorage:', sessionZipCode);
+      return sessionZipCode;
+    }
+
+    return null;
+  } catch (e) {
+    console.warn('Error retrieving user ZIP code:', e);
+    return null;
+  }
+};
+
+/**
+ * Get nearby retailers based on ZIP code
+ * @param {string} zipCode - ZIP code to search for nearby retailers
+ * @returns {Promise<Array>} List of retailers
+ */
 const getNearbyRetailers = async (zipCode) => {
   try {
+    // If zipCode is not provided, try to get it from user profile
+    if (!zipCode) {
+      const userZipCode = getUserZipCode();
+      if (userZipCode) {
+        zipCode = userZipCode;
+      } else {
+        // Default to Loveland, CO if no ZIP code available
+        zipCode = '80538';
+      }
+      console.log('Using ZIP code for retailers:', zipCode);
+    }
+
     // First try the nearby endpoint which uses location
     try {
       const response = await instacartBackendAxios.get('/instacart/retailers/nearby', {
@@ -308,10 +367,13 @@ const createCart = async (retailerId, items) => {
  */
 const checkInstacartStatus = async () => {
   try {
+    // Try to get the user's ZIP code
+    const userZipCode = getUserZipCode() || '80538';
+
     // The status endpoint will make test API calls, make sure we include required parameters
     const response = await instacartBackendAxios.get('/instacart/status', {
       params: {
-        postal_code: '80538',  // Default to Loveland, CO
+        postal_code: userZipCode,
         country_code: 'US'
       }
     });

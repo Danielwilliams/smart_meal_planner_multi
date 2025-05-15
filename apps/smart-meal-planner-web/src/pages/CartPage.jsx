@@ -308,6 +308,9 @@ function CartPage() {
   const handleStoreSearch = async (store) => {
     console.log("⚠️ DEBUG: handleStoreSearch called", store);
     try {
+      // Make sure to reset search loading state
+      setLoading(prev => ({ ...prev, search: false }));
+
       // Only check Kroger credentials if this is a Kroger search
       if (store === 'kroger') {
         // First, check if we have any items to search
@@ -316,15 +319,15 @@ function CartPage() {
           setError(`No items assigned to ${store}`);
           return;
         }
-        
+
         // Pre-emptively set all store selection flags for better persistence
-        const clientStoreLocation = localStorage.getItem('kroger_store_location') || 
+        const clientStoreLocation = localStorage.getItem('kroger_store_location') ||
                                    localStorage.getItem('kroger_store_location_id');
-                                   
+
         if (clientStoreLocation) {
           console.log('Found store location in client storage:', clientStoreLocation);
           console.log('Setting all store selection flags for consistency');
-          
+
           // Set all possible flags to ensure consistent experience
           localStorage.setItem('kroger_store_location', clientStoreLocation);
           localStorage.setItem('kroger_store_location_id', clientStoreLocation);
@@ -333,7 +336,7 @@ function CartPage() {
           localStorage.setItem('kroger_store_selection_done', 'true');
           sessionStorage.setItem('kroger_store_selection_complete', 'true');
           sessionStorage.removeItem('kroger_needs_store_selection');
-          
+
           // Also update backend with this store location to ensure consistency
           console.log('Updating backend with client store location');
           apiService.updateKrogerLocation(clientStoreLocation)
@@ -345,21 +348,21 @@ function CartPage() {
               // Continue despite errors - we've already set local flags
             });
         }
-        
+
         // First try the backend for connection status
         try {
           console.log('Checking Kroger connection status with backend...');
           const status = await krogerAuthService.checkKrogerStatus();
           console.log('Backend connection status check result:', status);
-          
+
           // If we have a valid connection with a store location, we can proceed
           if (status.is_connected && (status.store_location || status.store_location_id)) {
-            console.log('Backend reports valid connection with store location:', 
+            console.log('Backend reports valid connection with store location:',
               status.store_location || status.store_location_id);
-            
+
             // Get the store location from the response
             const backendStoreLocation = status.store_location || status.store_location_id;
-            
+
             // Update local storage with backend data for consistency
             localStorage.setItem('kroger_store_location', backendStoreLocation);
             localStorage.setItem('kroger_store_location_id', backendStoreLocation);
@@ -368,21 +371,21 @@ function CartPage() {
             localStorage.setItem('kroger_connected', 'true');
             localStorage.setItem('kroger_store_selection_done', 'true');
             sessionStorage.setItem('kroger_store_selection_complete', 'true');
-            
+
             // Clear any flags that would trigger store selection
             sessionStorage.removeItem('kroger_needs_store_selection');
-            
+
             // Proceed with search (handled after this if block)
-          } 
+          }
           // If connected but no store location in backend BUT we have one in localStorage
           else if (status.is_connected && !status.store_location && !status.store_location_id && clientStoreLocation) {
             console.log('Backend connected but missing store location, using client location:', clientStoreLocation);
-            
+
             // Try to update the backend with our local store location
             try {
               const updateResult = await apiService.updateKrogerLocation(clientStoreLocation);
               console.log('Updated backend with client store location:', updateResult);
-              
+
               // No need to show store selector, proceed with the search
               console.log('Using client-side store location for search');
             } catch (updateError) {
@@ -395,6 +398,7 @@ function CartPage() {
             console.log('No store location in backend or client, showing store selector');
             setCurrentStore(store);
             setShowStoreSelector(true);
+            setLoading(prev => ({ ...prev, search: false }));
             return;
           }
           // If not connected at all, show reconnect dialog
@@ -405,28 +409,29 @@ function CartPage() {
               "You need to connect your Kroger account before searching for items.",
               true
             );
+            setLoading(prev => ({ ...prev, search: false }));
             return;
           }
         } catch (statusError) {
           console.error('Error checking backend connection status:', statusError);
-          
+
           // Fall back to client-side checks if backend check fails
           console.log('Falling back to client-side state checks...');
-          
+
           // Check if store selection is needed
           const needsStoreSelection = sessionStorage.getItem('kroger_needs_store_selection') === 'true';
-          
+
           // Check for store selection status
-          const storeLocation = localStorage.getItem('kroger_store_location') || 
+          const storeLocation = localStorage.getItem('kroger_store_location') ||
                               localStorage.getItem('kroger_store_location_id');
-          const storeSelected = localStorage.getItem('kroger_store_selected') === 'true' || 
+          const storeSelected = localStorage.getItem('kroger_store_selected') === 'true' ||
                               localStorage.getItem('kroger_store_configured') === 'true' ||
                               sessionStorage.getItem('kroger_store_selection_complete') === 'true' ||
                               localStorage.getItem('kroger_store_selection_done') === 'true';
-          
+
           // Check connection status from client-side flags
           const isConnected = localStorage.getItem('kroger_connected') === 'true';
-          
+
           // If not connected, show reconnect dialog
           if (!isConnected) {
             console.log('Not connected according to client-side data, showing connect dialog');
@@ -435,31 +440,35 @@ function CartPage() {
               "You need to connect your Kroger account before searching for items.",
               true
             );
+            setLoading(prev => ({ ...prev, search: false }));
             return;
           }
-          
+
           // If connected but needs store selection or no store selected, show selector
           if (needsStoreSelection && (!storeLocation || !storeSelected)) {
             console.log('Store selection needed, showing store selector');
             setCurrentStore(store);
             setShowStoreSelector(true);
+            setLoading(prev => ({ ...prev, search: false }));
             return;
           }
-          
+
           console.log('Connected and store selected according to client-side data, proceeding with search');
         }
       }
-      
+
       // Start the search process
+      // Set loading state at the beginning of search
       setLoading(prev => ({ ...prev, search: true }));
       setError(null);
-      
+
       // Get store items to search
       const storeItems = internalCart[store].map(item => item.name);
       setLastSearchedItems(storeItems);
-      
+
       if (storeItems.length === 0) {
         setError(`No items assigned to ${store}`);
+        setLoading(prev => ({ ...prev, search: false }));
         return;
       }
 
@@ -590,6 +599,7 @@ function CartPage() {
             }))
           }));
         } finally {
+          // Always make sure loading states are reset
           setLoading(prev => ({ ...prev, instacart: false, search: false }));
         }
         return;
@@ -607,20 +617,20 @@ function CartPage() {
       if (!response.success) {
         if (response.needs_setup || response.client_side_error) {
           // Before showing store selector, check if we already have a location in localStorage
-          const savedStoreLocation = localStorage.getItem('kroger_store_location') || 
+          const savedStoreLocation = localStorage.getItem('kroger_store_location') ||
                                    localStorage.getItem('kroger_store_location_id');
-          
+
           if (savedStoreLocation) {
             console.log('Store selection needed but found saved location:', savedStoreLocation);
             // Try updating backend and retrying search
             try {
               // Update backend with our saved location
               await apiService.updateKrogerLocation(savedStoreLocation);
-              
+
               // Retry the search
               console.log('Retrying search with saved location');
               const retryResponse = await searchFunction(storeItems);
-              
+
               if (retryResponse.success) {
                 console.log('Retry search succeeded');
                 // Update search results on success
@@ -635,11 +645,12 @@ function CartPage() {
               console.error('Error retrying search with saved location:', retryError);
             }
           }
-          
+
           // If we get here, we need to show the store selector
           console.log('Still need store selection, showing selector');
           setCurrentStore(store);
           setShowStoreSelector(true);
+          setLoading(prev => ({ ...prev, search: false }));
           return;
         } else if (response.needs_reconnect) {
           showKrogerError(
@@ -647,13 +658,15 @@ function CartPage() {
             "Your Kroger session has expired. Please reconnect your account to continue.",
             true
           );
+          setLoading(prev => ({ ...prev, search: false }));
           return;
         } else if (response.redirect) {
           window.location.href = response.redirect;
           return;
         }
-        
+
         setError(response.message || `Failed to search ${store} items`);
+        setLoading(prev => ({ ...prev, search: false }));
         return;
       }
 
@@ -662,20 +675,20 @@ function CartPage() {
         ...prev,
         [store]: response.results
       }));
-      
+
       // Clear any store selection flags now that we've successfully searched
       sessionStorage.removeItem('kroger_needs_store_selection');
 
     } catch (err) {
       console.error(`⚠️ DEBUG: Failed to search ${store} items:`, err);
-      
+
       // Always set database schema issue flag on errors
       localStorage.setItem('database_schema_issue', 'true');
-      
+
       // For Kroger, check if we need to reconnect
       if (store === 'kroger') {
         const isConnected = localStorage.getItem('kroger_connected') === 'true';
-        
+
         if (isConnected) {
           setError("Error searching items. Please try again or reconnect your Kroger account.");
         } else {
@@ -689,7 +702,13 @@ function CartPage() {
         setError(`Failed to search ${store} items: ${err.message || 'Unknown error'}`);
       }
     } finally {
-      setLoading(prev => ({ ...prev, search: false }));
+      // Always reset all loading states in finally block
+      setLoading(prev => ({
+        ...prev,
+        search: false,
+        instacart: false,
+        kroger: false
+      }));
     }
   };
 
@@ -1859,7 +1878,16 @@ function CartPage() {
           open={showStoreSelector}
           storeType={currentStore}
           onStoreSelect={handleStoreSelect}
-          onClose={() => setShowStoreSelector(false)}
+          onClose={() => {
+            setShowStoreSelector(false);
+            // Reset loading state when closing the store selector
+            setLoading(prev => ({
+              ...prev,
+              search: false,
+              kroger: false,
+              instacart: false
+            }));
+          }}
         />
       </ErrorBoundary>
 
@@ -1867,7 +1895,16 @@ function CartPage() {
       <ErrorBoundary>
         <InstacartRetailerSelector
           open={showInstacartRetailerSelector}
-          onClose={() => setShowInstacartRetailerSelector(false)}
+          onClose={() => {
+            setShowInstacartRetailerSelector(false);
+            // Reset loading state when closing the retailer selector
+            // This ensures the search button will be responsive again
+            setLoading(prev => ({
+              ...prev,
+              search: false,
+              instacart: false
+            }));
+          }}
           onRetailerSelect={(retailerId, retailerObj) => {
             console.log('Selected Instacart retailer:', retailerId, retailerObj);
             // Ensure we have a valid object
@@ -1890,6 +1927,12 @@ function CartPage() {
               setInstacartRetailer({ id: retailerId || 'publix', name: 'Retailer' });
             }
             setShowInstacartRetailerSelector(false);
+            // Reset loading state after selecting a retailer
+            setLoading(prev => ({
+              ...prev,
+              search: false,
+              instacart: false
+            }));
           }}
           defaultRetailerId={instacartRetailer?.id}
           initialZipCode={zipCode}
@@ -1975,7 +2018,7 @@ function CartPage() {
       
       {/* Search loading overlay */}
       {loading.search && (
-        <Box 
+        <Box
           position="fixed"
           top={0}
           left={0}
@@ -1986,20 +2029,34 @@ function CartPage() {
           justifyContent="center"
           bgcolor="rgba(255, 255, 255, 0.7)"
           zIndex={9999}
+          onClick={() => {
+            // Allow closing the overlay by clicking on it
+            // This fixes the issue where the button becomes unresponsive after dialog close
+            setLoading(prev => ({ ...prev, search: false }));
+          }}
         >
-          <Box 
-            display="flex" 
-            flexDirection="column" 
-            alignItems="center" 
-            bgcolor="white" 
-            p={3} 
+          <Box
+            display="flex"
+            flexDirection="column"
+            alignItems="center"
+            bgcolor="white"
+            p={3}
             borderRadius={2}
             boxShadow={3}
+            onClick={(e) => e.stopPropagation()} // Prevent clicks on inner box from closing
           >
             <CircularProgress size={60} />
             <Typography variant="h6" sx={{ mt: 2 }}>
               Searching for products...
             </Typography>
+            <Button
+              variant="outlined"
+              size="small"
+              sx={{ mt: 2 }}
+              onClick={() => setLoading(prev => ({ ...prev, search: false }))}
+            >
+              Cancel Search
+            </Button>
           </Box>
         </Box>
       )}

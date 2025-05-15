@@ -172,17 +172,21 @@ class InstacartClient:
     
     # API Functions
     
-    def get_retailers(self) -> List[Dict]:
+    def get_retailers(self, postal_code: str = "80538", country_code: str = "US") -> List[Dict]:
         """
         Get list of available retailers on Instacart.
+
+        Args:
+            postal_code: The postal code to find retailers for
+            country_code: The country code (default: US)
 
         Returns:
             List of retailer objects
         """
         # Based on docs, we need to pass a postal code and country code
         params = {
-            "postal_code": "80538",  # Default to Loveland, CO
-            "country_code": "US"
+            "postal_code": postal_code,
+            "country_code": country_code
         }
         response = self._make_request("GET", "retailers", params=params)
 
@@ -237,19 +241,20 @@ class InstacartClient:
 
         return []
 
-    def get_nearby_retailers(self, zip_code: str) -> List[Dict]:
+    def get_nearby_retailers(self, postal_code: str = "80538", country_code: str = "US") -> List[Dict]:
         """
-        Get retailers near a specific ZIP code.
+        Get retailers near a specific postal code.
 
         Args:
-            zip_code: The ZIP code to search near (postal code)
+            postal_code: The postal code to search near
+            country_code: The country code (default: US)
 
         Returns:
             List of nearby retailer objects
         """
         params = {
-            "postal_code": zip_code,
-            "country_code": "US"  # Assuming US for now
+            "postal_code": postal_code,
+            "country_code": country_code
         }
 
         # Use same retailers endpoint with postal_code

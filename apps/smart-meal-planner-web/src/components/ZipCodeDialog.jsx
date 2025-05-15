@@ -32,7 +32,7 @@ const ZipCodeDialog = ({
   const [autoSubmitted, setAutoSubmitted] = useState(false);
 
   useEffect(() => {
-    // Reset state when dialog opens
+    // Reset state when dialog opens or closes
     if (open) {
       setError('');
       setAutoSubmitted(false);
@@ -68,6 +68,10 @@ const ZipCodeDialog = ({
           }
         }
       }
+    } else {
+      // Reset error and loading state when dialog closes
+      setError('');
+      setLoading(false);
     }
   }, [open, user, zipCodeFieldName, autoSubmitted]);
 

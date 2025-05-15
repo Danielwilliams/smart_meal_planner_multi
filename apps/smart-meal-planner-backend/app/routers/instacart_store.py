@@ -43,11 +43,24 @@ class ProductResponse(BaseModel):
 
 # Routes - Update paths to match frontend expectations
 @router.get("/retailers", response_model=None)
-async def get_instacart_retailers(current_user: dict = Depends(get_current_user)):
+async def get_instacart_retailers(
+    zip_code: str = Query(None, description="Optional ZIP code to find retailers"),
+    current_user: dict = Depends(get_current_user)
+):
     """
     Get a list of available retailers on Instacart.
     Returns a list of retailer objects with id, name, and logo_url.
+    If zip_code is not provided, it will try to use the user's profile ZIP code.
     """
+    # Check if zip_code was not provided but exists in user profile
+    if not zip_code or zip_code == "undefined" or zip_code == "null":
+        if current_user and "zip_code" in current_user and current_user["zip_code"]:
+            logger.info(f"Using user profile ZIP code: {current_user['zip_code']}")
+            zip_code = current_user["zip_code"]
+        else:
+            # Default to Loveland, CO if no ZIP code available
+            logger.info("No ZIP code provided or found in user profile, using default")
+            zip_code = "80538"
     try:
         logger.info("Starting request to get Instacart retailers")
 
@@ -68,7 +81,7 @@ async def get_instacart_retailers(current_user: dict = Depends(get_current_user)
         try:
             client = instacart.get_instacart_client()
             logger.info("Client created successfully, getting retailers...")
-            retailers = client.get_retailers()
+            retailers = client.get_retailers(postal_code=zip_code, country_code="US")
             logger.info(f"Retrieved {len(retailers)} retailers from Instacart API")
 
             # Transform to response model
@@ -208,14 +221,24 @@ async def get_nearby_instacart_retailers(
     """
     Get a list of Instacart retailers near a specified ZIP code.
     Uses the Instacart Developer Platform API to find nearby retailers.
+    If no zip_code is provided but user has one in their profile, use that.
     """
+    # Check if zip_code was not provided but exists in user profile
+    if not zip_code or zip_code == "undefined" or zip_code == "null":
+        if current_user and "zip_code" in current_user and current_user["zip_code"]:
+            logger.info(f"Using user profile ZIP code: {current_user['zip_code']}")
+            zip_code = current_user["zip_code"]
+        else:
+            # Default to Loveland, CO if no ZIP code available
+            logger.info("No ZIP code provided or found in user profile, using default")
+            zip_code = "80538"
     try:
         logger.info(f"Getting nearby retailers for ZIP code {zip_code}")
 
         # Use the new method for getting nearby retailers
         try:
             client = instacart.get_instacart_client()
-            nearby_retailers = client.get_nearby_retailers(zip_code)
+            nearby_retailers = client.get_nearby_retailers(postal_code=zip_code, country_code="US")
             logger.info(f"Retrieved {len(nearby_retailers) if nearby_retailers else 0} nearby retailers from Instacart API")
 
             if not nearby_retailers:
