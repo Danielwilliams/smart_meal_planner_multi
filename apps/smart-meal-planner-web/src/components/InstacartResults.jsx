@@ -18,7 +18,8 @@ import {
   Alert,
   Chip,
   Switch,
-  FormControlLabel
+  FormControlLabel,
+  useTheme
 } from '@mui/material';
 import {
   ShoppingBasket as BasketIcon,
@@ -28,16 +29,28 @@ import {
   Sync as SyncIcon
 } from '@mui/icons-material';
 import instacartBackendService from '../services/instacartBackendService';
+import instacartLogo from '../assets/instacart/Instacart_Logo.png';
+import instacartCarrot from '../assets/instacart/Instacart_Carrot.png';
+
+// Instacart brand colors as per their guidelines
+const INSTACART_COLORS = {
+  carrot: '#F36D00', // Instacart's carrot orange color
+  brand: '#43B02A',  // Instacart's brand green color
+  white: '#FFFFFF',
+  dark: '#343538'
+};
 
 /**
  * Component to display Instacart search results and cart management
+ * Following Instacart's design guidelines: https://docs.instacart.com/developer_platform_api/guide/design/overview
  */
-const InstacartResults = ({ 
+const InstacartResults = ({
   groceryItems,
   retailerId,
   onSuccess,
   onError
 }) => {
+  const theme = useTheme();
   const [loading, setLoading] = useState(false);
   const [searchResults, setSearchResults] = useState({});
   const [cartItems, setCartItems] = useState([]);
@@ -651,31 +664,49 @@ const InstacartResults = ({
   
   const renderCartStep = () => (
     <Box>
-      <Typography variant="h6" gutterBottom>
-        Instacart Cart Created!
-      </Typography>
-      
-      <Alert severity="success" sx={{ mb: 3 }}>
+      {/* Instacart logo display */}
+      <Box display="flex" alignItems="center" justifyContent="center" mb={3}>
+        <Box
+          component="img"
+          src={instacartLogo}
+          alt="Instacart"
+          sx={{ height: 40, mb: 1 }}
+        />
+      </Box>
+
+      <Alert
+        severity="success"
+        sx={{
+          mb: 3,
+          '& .MuiAlert-icon': {
+            color: INSTACART_COLORS.brand
+          }
+        }}
+      >
         Your Instacart cart has been created with {cartItems.length} items.
       </Alert>
-      
+
       <Typography variant="body1" paragraph>
         Your items have been added to an Instacart cart. You can now proceed to checkout
         to complete your purchase.
       </Typography>
-      
+
       <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center' }}>
-        <Button
-          variant="contained"
-          color="primary"
-          href={checkoutUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          startIcon={<OpenInNewIcon />}
-        >
-          Proceed to Instacart Checkout
-        </Button>
+        <InstacartButton href={checkoutUrl}>
+          Shop with Instacart
+        </InstacartButton>
       </Box>
+
+      {/* Attribution required by guidelines */}
+      <Typography
+        variant="caption"
+        align="center"
+        display="block"
+        mt={1}
+        color="text.secondary"
+      >
+        Powered by Instacart
+      </Typography>
     </Box>
   );
   
@@ -683,13 +714,63 @@ const InstacartResults = ({
    * Render the shopping list step
    * This shows the direct URL to the Instacart shopping list
    */
+  /**
+   * Creates a branded Instacart button according to design guidelines
+   * https://docs.instacart.com/developer_platform_api/guide/design/cta_design
+   */
+  const InstacartButton = ({ href, children }) => (
+    <Button
+      variant="contained"
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      sx={{
+        bgcolor: INSTACART_COLORS.carrot,
+        color: INSTACART_COLORS.white,
+        fontWeight: 600,
+        px: 3,
+        py: 1.2,
+        borderRadius: 2,
+        textTransform: 'none',
+        fontSize: '1rem',
+        '&:hover': {
+          bgcolor: '#E05D00', // Darker orange on hover
+        }
+      }}
+      startIcon={
+        <Box
+          component="img"
+          src={instacartCarrot}
+          alt="Instacart"
+          sx={{ width: 24, height: 24, mr: 1 }}
+        />
+      }
+    >
+      {children}
+    </Button>
+  );
+
   const renderShoppingListStep = () => (
     <Box>
-      <Typography variant="h6" gutterBottom>
-        Instacart Shopping List Created!
-      </Typography>
+      {/* Instacart logo display */}
+      <Box display="flex" alignItems="center" justifyContent="center" mb={3}>
+        <Box
+          component="img"
+          src={instacartLogo}
+          alt="Instacart"
+          sx={{ height: 40, mb: 1 }}
+        />
+      </Box>
 
-      <Alert severity="success" sx={{ mb: 3 }}>
+      <Alert
+        severity="success"
+        sx={{
+          mb: 3,
+          '& .MuiAlert-icon': {
+            color: INSTACART_COLORS.brand
+          }
+        }}
+      >
         Your Instacart shopping list has been created with {groceryItems.length} items.
       </Alert>
 
@@ -718,27 +799,35 @@ const InstacartResults = ({
               <Chip
                 label={`+${groceryItems.length - 6} more`}
                 size="small"
-                color="primary"
-                variant="outlined"
+                sx={{
+                  bgcolor: INSTACART_COLORS.brand + '20', // 20% opacity
+                  color: INSTACART_COLORS.brand,
+                  maxWidth: '100%',
+                  overflow: 'hidden'
+                }}
               />
             </Grid>
           )}
         </Grid>
       </Box>
 
+      {/* Branded Instacart button following design guidelines */}
       <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center' }}>
-        <Button
-          variant="contained"
-          color="primary"
-          href={shoppingListUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          startIcon={<OpenInNewIcon />}
-          sx={{ px: 3, py: 1 }}
-        >
-          Open Shopping List in Instacart
-        </Button>
+        <InstacartButton href={shoppingListUrl}>
+          Shop with Instacart
+        </InstacartButton>
       </Box>
+
+      {/* Attribution required by guidelines */}
+      <Typography
+        variant="caption"
+        align="center"
+        display="block"
+        mt={1}
+        color="text.secondary"
+      >
+        Powered by Instacart
+      </Typography>
 
       <Box sx={{ mt: 3, textAlign: 'center' }}>
         <FormControlLabel
@@ -882,19 +971,44 @@ const InstacartResults = ({
         onClose={handleClose}
         maxWidth="md"
         fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 2,
+            overflow: 'hidden'
+          }
+        }}
       >
-        <DialogTitle>
-          <Box display="flex" alignItems="center">
-            <BasketIcon sx={{ mr: 1 }} />
-            Instacart
-          </Box>
+        <DialogTitle
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            backgroundColor: INSTACART_COLORS.brand,
+            color: INSTACART_COLORS.white
+          }}
+        >
+          <Box
+            component="img"
+            src={instacartCarrot}
+            alt=""
+            sx={{ width: 24, height: 24, mr: 1 }}
+          />
+          <Typography variant="h6" component="div" sx={{ fontWeight: 600 }}>
+            Shop with Instacart
+          </Typography>
         </DialogTitle>
         <DialogContent>
           {renderDialogContent()}
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ borderTop: '1px solid', borderColor: 'divider', px: 3 }}>
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ flexGrow: 1 }}
+          >
+            Powered by Instacart
+          </Typography>
           <Button onClick={handleClose} color="secondary">
-            {dialogStep === 'cart' ? 'Close' : 'Cancel'}
+            {dialogStep === 'cart' || dialogStep === 'shopping-list' ? 'Close' : 'Cancel'}
           </Button>
         </DialogActions>
       </Dialog>

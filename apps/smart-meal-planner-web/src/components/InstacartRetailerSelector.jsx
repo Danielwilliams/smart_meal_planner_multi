@@ -25,6 +25,16 @@ import {
 } from '@mui/icons-material';
 import instacartBackendService from '../services/instacartBackendService';
 import ZipCodeDialog from './ZipCodeDialog';
+import instacartLogo from '../assets/instacart/Instacart_Logo.png';
+import instacartCarrot from '../assets/instacart/Instacart_Carrot.png';
+
+// Instacart brand colors as per their guidelines
+const INSTACART_COLORS = {
+  carrot: '#F36D00', // Instacart's carrot orange color
+  brand: '#43B02A',  // Instacart's brand green color
+  white: '#FFFFFF',
+  dark: '#343538'
+};
 
 /**
  * Component for selecting an Instacart retailer
@@ -149,22 +159,67 @@ const InstacartRetailerSelector = ({
 
   return (
     <>
-      <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
-        <DialogTitle sx={{ display: 'flex', alignItems: 'center' }}>
-          <StoreIcon sx={{ mr: 1 }} />
-          Select Instacart Retailer
+      <Dialog
+        open={open}
+        onClose={onClose}
+        fullWidth
+        maxWidth="md"
+        PaperProps={{
+          sx: {
+            borderRadius: 2,
+            overflow: 'hidden'
+          }
+        }}
+      >
+        <DialogTitle
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            backgroundColor: INSTACART_COLORS.brand,
+            color: INSTACART_COLORS.white,
+            py: 2
+          }}
+        >
+          <Box
+            component="img"
+            src={instacartCarrot}
+            alt=""
+            sx={{ width: 24, height: 24, mr: 1 }}
+          />
+          <Typography variant="h6" component="div" sx={{ fontWeight: 600 }}>
+            Select Instacart Retailer
+          </Typography>
         </DialogTitle>
-        
+
         <DialogContent>
+          {/* Instacart logo display */}
+          <Box display="flex" alignItems="center" justifyContent="center" my={2}>
+            <Box
+              component="img"
+              src={instacartLogo}
+              alt="Instacart"
+              sx={{ height: 35 }}
+            />
+          </Box>
+
           {error && (
-            <Alert severity="error" sx={{ mb: 2 }}>
+            <Alert
+              severity="error"
+              sx={{ mb: 2 }}
+            >
               {error}
             </Alert>
           )}
-          
+
           {loading ? (
             <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 4 }}>
-              <CircularProgress size={60} sx={{ mb: 2 }} />
+              <CircularProgress
+                size={60}
+                sx={{
+                  mb: 2,
+                  color: INSTACART_COLORS.brand
+                }}
+              />
               <Typography variant="body1">
                 Finding Instacart retailers near {zipCode}...
               </Typography>
@@ -177,13 +232,22 @@ const InstacartRetailerSelector = ({
                 </Typography>
                 <Button
                   size="small"
+                  variant="outlined"
                   startIcon={<LocationIcon />}
                   onClick={handleChangeZipCode}
+                  sx={{
+                    borderColor: INSTACART_COLORS.brand,
+                    color: INSTACART_COLORS.brand,
+                    '&:hover': {
+                      borderColor: INSTACART_COLORS.brand,
+                      backgroundColor: `${INSTACART_COLORS.brand}10`
+                    }
+                  }}
                 >
                   Change ZIP Code
                 </Button>
               </Box>
-              
+
               {retailers.length === 0 ? (
                 <Paper variant="outlined" sx={{ p: 3, textAlign: 'center' }}>
                   <Typography variant="body1" color="error" sx={{ mb: 2 }}>
@@ -202,7 +266,15 @@ const InstacartRetailerSelector = ({
                     variant="outlined"
                     startIcon={<LocationIcon />}
                     onClick={handleChangeZipCode}
-                    sx={{ mt: 2 }}
+                    sx={{
+                      mt: 2,
+                      borderColor: INSTACART_COLORS.brand,
+                      color: INSTACART_COLORS.brand,
+                      '&:hover': {
+                        borderColor: INSTACART_COLORS.brand,
+                        backgroundColor: `${INSTACART_COLORS.brand}10`
+                      }
+                    }}
                   >
                     Try a Different ZIP Code
                   </Button>
@@ -215,17 +287,22 @@ const InstacartRetailerSelector = ({
                         button
                         selected={selectedRetailerId === retailer.id}
                         onClick={() => setSelectedRetailerId(retailer.id)}
-                        sx={{ 
+                        sx={{
                           borderRadius: 1,
-                          '&.Mui-selected': { bgcolor: 'action.selected' }
+                          '&.Mui-selected': {
+                            bgcolor: `${INSTACART_COLORS.brand}15`
+                          },
+                          '&:hover': {
+                            bgcolor: `${INSTACART_COLORS.brand}05`
+                          }
                         }}
                       >
                         <ListItemAvatar>
                           {retailer.logo_url ? (
                             <Avatar src={retailer.logo_url} alt={retailer.name} />
                           ) : (
-                            <Avatar>
-                              <StoreIcon />
+                            <Avatar sx={{ bgcolor: INSTACART_COLORS.brand + '20' }}>
+                              <StoreIcon sx={{ color: INSTACART_COLORS.brand }} />
                             </Avatar>
                           )}
                         </ListItemAvatar>
@@ -238,9 +315,13 @@ const InstacartRetailerSelector = ({
                                   size="small"
                                   icon={<CheckIcon />}
                                   label="Selected"
-                                  color="primary"
+                                  sx={{
+                                    ml: 1,
+                                    color: INSTACART_COLORS.brand,
+                                    borderColor: INSTACART_COLORS.brand,
+                                    bgcolor: INSTACART_COLORS.brand + '10'
+                                  }}
                                   variant="outlined"
-                                  sx={{ ml: 1 }}
                                 />
                               )}
                             </Box>
@@ -267,15 +348,33 @@ const InstacartRetailerSelector = ({
             </>
           )}
         </DialogContent>
-        
-        <DialogActions>
+
+        <DialogActions sx={{ borderTop: '1px solid', borderColor: 'divider', px: 3 }}>
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ flexGrow: 1 }}
+          >
+            Powered by Instacart
+          </Typography>
           <Button onClick={onClose}>
             Cancel
           </Button>
-          <Button 
-            onClick={handleRetailerSelect} 
-            variant="contained" 
-            color="primary"
+          <Button
+            onClick={handleRetailerSelect}
+            variant="contained"
+            sx={{
+              bgcolor: INSTACART_COLORS.carrot,
+              color: INSTACART_COLORS.white,
+              fontWeight: 600,
+              '&:hover': {
+                bgcolor: '#E05D00', // Darker orange on hover
+              },
+              '&.Mui-disabled': {
+                bgcolor: '#F2F2F2',
+                color: '#AAAAAA'
+              }
+            }}
             disabled={!selectedRetailerId || loading}
           >
             Select Retailer
