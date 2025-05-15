@@ -19,8 +19,8 @@ from fastapi import HTTPException, status
 logger = logging.getLogger(__name__)
 
 # Constants
-BASE_URL = "https://platform-api.instacart.com"
-API_VERSION = "v1"
+BASE_URL = "https://connect.dev.instacart.tools"  # Development server URL
+API_VERSION = "idp/v1"  # IDP API version according to docs
 
 class InstacartClient:
     """Client for interacting with the Instacart API."""
@@ -38,25 +38,27 @@ class InstacartClient:
             logger.error("No Instacart API key provided")
             raise ValueError("Instacart API key is required")
 
-        # Format the API key for the new Developer Platform API
-        self.formatted_api_key = self.api_key
+        # Format the API key using Bearer token format per documentation
         if self.api_key.startswith("InstacartAPI "):
-            logger.info("Removing 'InstacartAPI' prefix from key for Developer Platform API")
+            logger.info("Removing 'InstacartAPI ' prefix for Bearer token")
             self.formatted_api_key = self.api_key.replace("InstacartAPI ", "")
+        else:
+            logger.info("Using API key as Bearer token")
+            self.formatted_api_key = self.api_key
 
         # Create and configure the session
         self.session = requests.Session()
 
-        # Set the headers for the Developer Platform API
+        # Set the headers with Bearer token authentication
         self.session.headers.update({
-            "X-Instacart-API-Key": self.formatted_api_key,
+            "Authorization": f"Bearer {self.formatted_api_key}",
             "Content-Type": "application/json",
             "Accept": "application/json"
         })
 
         masked_key = self.formatted_api_key[:4] + "..." + self.formatted_api_key[-4:] if len(self.formatted_api_key) > 8 else "***masked***"
         logger.info(f"Initialized Instacart client with masked key: {masked_key}")
-        logger.info(f"Header set: X-Instacart-API-Key: {masked_key}")
+        logger.info(f"Header set: Authorization: Bearer {masked_key}")
     
     def _make_request(
         self, 
@@ -177,8 +179,23 @@ class InstacartClient:
         Returns:
             List of retailer objects
         """
-        response = self._make_request("GET", "retailers/list")
-        return response.get("data", [])
+        # Based on docs, we need to pass a postal code and country code
+        params = {
+            "postal_code": "80538",  # Default to Loveland, CO
+            "country_code": "US"
+        }
+        response = self._make_request("GET", "retailers", params=params)
+
+        # Handle the response format from IDP API - retailers are in a "retailers" key
+        if isinstance(response, dict):
+            if "data" in response:
+                return response.get("data", [])
+            elif "retailers" in response:
+                return response.get("retailers", [])
+        elif isinstance(response, list):
+            return response
+
+        return []
     
     def search_products(
         self,
@@ -189,8 +206,11 @@ class InstacartClient:
         """
         Search for products at a specific retailer.
 
+        Note: Based on documentation, we're using the products/search endpoint
+        with a retailer_key parameter
+
         Args:
-            retailer_id: The Instacart retailer ID
+            retailer_id: The Instacart retailer ID (retailer_key)
             query: Search query string
             limit: Maximum number of results to return
 
@@ -198,33 +218,54 @@ class InstacartClient:
             List of product objects
         """
         params = {
-            "query": query,
+            "q": query,  # Use 'q' as the query parameter
+            "retailer_key": retailer_id,
             "limit": limit
         }
 
-        endpoint = f"retailers/{retailer_id}/products"
+        endpoint = "products/search"  # Use the products/search endpoint
         response = self._make_request("GET", endpoint, params=params)
 
-        return response.get("data", [])
+        # Handle the response format from IDP API
+        if isinstance(response, dict):
+            if "data" in response:
+                return response.get("data", [])
+            elif "products" in response:  # Products may be in a "products" key
+                return response.get("products", [])
+        elif isinstance(response, list):
+            return response
+
+        return []
 
     def get_nearby_retailers(self, zip_code: str) -> List[Dict]:
         """
         Get retailers near a specific ZIP code.
 
         Args:
-            zip_code: The ZIP code to search near
+            zip_code: The ZIP code to search near (postal code)
 
         Returns:
             List of nearby retailer objects
         """
         params = {
-            "zip_code": zip_code
+            "postal_code": zip_code,
+            "country_code": "US"  # Assuming US for now
         }
 
-        endpoint = "retailers/nearby"
+        # Use same retailers endpoint with postal_code
+        endpoint = "retailers"
         response = self._make_request("GET", endpoint, params=params)
 
-        return response.get("data", [])
+        # Handle the response format from IDP API
+        if isinstance(response, dict):
+            if "data" in response:
+                return response.get("data", [])
+            elif "retailers" in response:  # Retailers response format
+                return response.get("retailers", [])
+        elif isinstance(response, list):
+            return response
+
+        return []
     
     def create_cart(self, retailer_id: str) -> Dict:
         """

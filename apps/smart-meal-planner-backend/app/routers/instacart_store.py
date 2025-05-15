@@ -74,12 +74,22 @@ async def get_instacart_retailers(current_user: dict = Depends(get_current_user)
             # Transform to response model
             formatted_retailers = []
             for retailer in retailers:
-                attributes = retailer.get("attributes", {})
-                formatted_retailers.append({
-                    "id": retailer.get("id", ""),
-                    "name": attributes.get("name", ""),
-                    "logo_url": attributes.get("logo_url", "")
-                })
+                # Handle different response formats depending on API version
+                if "attributes" in retailer:
+                    # Connect API format
+                    attributes = retailer.get("attributes", {})
+                    formatted_retailers.append({
+                        "id": retailer.get("id", ""),
+                        "name": attributes.get("name", ""),
+                        "logo_url": attributes.get("logo_url", "")
+                    })
+                else:
+                    # IDP API format
+                    formatted_retailers.append({
+                        "id": retailer.get("retailer_key", ""),
+                        "name": retailer.get("name", ""),
+                        "logo_url": retailer.get("retailer_logo_url", "")
+                    })
 
             return formatted_retailers
 
@@ -221,18 +231,36 @@ async def get_nearby_instacart_retailers(
             # Format the retailers to match expected response structure
             formatted_retailers = []
             for retailer in nearby_retailers:
-                attributes = retailer.get("attributes", {})
-                formatted_retailers.append({
-                    "id": retailer.get("id", ""),
-                    "name": attributes.get("name", "Unknown Retailer"),
-                    "logo_url": attributes.get("logo_url", ""),
-                    "distance": attributes.get("distance", 999),
-                    "address": attributes.get("address", {
-                        "city": "Unknown",
-                        "state": "XX",
-                        "zip_code": zip_code
+                # Handle different response formats depending on API version
+                if "attributes" in retailer:
+                    # Connect API format
+                    attributes = retailer.get("attributes", {})
+                    formatted_retailers.append({
+                        "id": retailer.get("id", ""),
+                        "name": attributes.get("name", "Unknown Retailer"),
+                        "logo_url": attributes.get("logo_url", ""),
+                        "distance": attributes.get("distance", 999),
+                        "address": attributes.get("address", {
+                            "city": "Unknown",
+                            "state": "XX",
+                            "zip_code": zip_code
+                        })
                     })
-                })
+                else:
+                    # IDP API format
+                    # For IDP API, we don't get distance directly, so we simulate it
+                    # This is just for compatibility with the frontend
+                    formatted_retailers.append({
+                        "id": retailer.get("retailer_key", ""),
+                        "name": retailer.get("name", "Unknown Retailer"),
+                        "logo_url": retailer.get("retailer_logo_url", ""),
+                        "distance": 0.1,  # Default close distance
+                        "address": {
+                            "city": "Nearby",
+                            "state": "CO",
+                            "zip_code": zip_code
+                        }
+                    })
                 
             logger.info(f"Returning {len(formatted_retailers)} nearby retailers")
             return {

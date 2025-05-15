@@ -1,0 +1,114 @@
+[
+  {
+    "url": "https://platform-api.instacart.com/v1/retailers/list",
+    "method": "GET",
+    "headers": {
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+      "X-Instacart-API-Key": "keys.f9-8K..."
+    },
+    "params": {},
+    "status_code": null,
+    "response": null,
+    "error": "HTTPSConnectionPool(host='platform-api.instacart.com', port=443): Max retries exceeded with url: /v1/retailers/list (Caused by NameResolutionError(\"<urllib3.connection.HTTPSConnection object at 0x7f1d1f334cb0>: Failed to resolve 'platform-api.instacart.com' ([Errno -2] Name or service not known)\"))",
+    "test_info": {
+      "api_config": "Developer Platform API (New)",
+      "key_variant": "as_provided",
+      "endpoint": "retailers/list"
+    }
+  },
+  {
+    "url": "https://platform-api.instacart.com/v1/retailers/nearby",
+    "method": "GET",
+    "headers": {
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+      "X-Instacart-API-Key": "keys.f9-8K..."
+    },
+    "params": {
+      "zip_code": "80538"
+    },
+    "status_code": null,
+    "response": null,
+    "error": "HTTPSConnectionPool(host='platform-api.instacart.com', port=443): Max retries exceeded with url: /v1/retailers/nearby?zip_code=80538 (Caused by NameResolutionError(\"<urllib3.connection.HTTPSConnection object at 0x7f1d1f335370>: Failed to resolve 'platform-api.instacart.com' ([Errno -2] Name or service not known)\"))",
+    "test_info": {
+      "api_config": "Developer Platform API (New)",
+      "key_variant": "as_provided",
+      "endpoint": "retailers/nearby"
+    }
+  },
+  {
+    "url": "https://platform-api.instacart.com/v1/retailers/list",
+    "method": "GET",
+    "headers": {
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+      "X-Instacart-API-Key": "InstacartA..."
+    },
+    "params": {},
+    "status_code": null,
+    "response": null,
+    "error": "HTTPSConnectionPool(host='platform-api.instacart.com', port=443): Max retries exceeded with url: /v1/retailers/list (Caused by NameResolutionError(\"<urllib3.connection.HTTPSConnection object at 0x7f1d1f335a00>: Failed to resolve 'platform-api.instacart.com' ([Errno -2] Name or service not known)\"))",
+    "test_info": {
+      "api_config": "Developer Platform API (New)",
+      "key_variant": "with_prefix",
+      "endpoint": "retailers/list"
+    }
+  },
+  {
+    "url": "https://platform-api.instacart.com/v1/retailers/nearby",
+    "method": "GET",
+    "headers": {
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+      "X-Instacart-API-Key": "InstacartA..."
+    },
+    "params": {
+      "zip_code": "80538"
+    },
+    "status_code": null,
+    "response": null,
+    "error": "HTTPSConnectionPool(host='platform-api.instacart.com', port=443): Max retries exceeded with url: /v1/retailers/nearby?zip_code=80538 (Caused by NameResolutionError(\"<urllib3.connection.HTTPSConnection object at 0x7f1d1f336090>: Failed to resolve 'platform-api.instacart.com' ([Errno -2] Name or service not known)\"))",
+    "test_info": {
+      "api_config": "Developer Platform API (New)",
+      "key_variant": "with_prefix",
+      "endpoint": "retailers/nearby"
+    }
+  },
+  {
+    "url": "https://connect.instacart.com/v2022-09-01/retailers",
+    "method": "GET",
+    "headers": {
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+      "Instacart-Connect-Api-Key": "InstacartA..."
+    },
+    "params": {},
+    "status_code": 404,
+    "response": "Not Found",
+    "error": null,
+    "test_info": {
+      "api_config": "Connect API (Retailers Only)",
+      "key_variant": "as_provided",
+      "endpoint": "retailers"
+    }
+  },
+  {
+    "url": "https://connect.instacart.com/v2022-09-01/retailers",
+    "method": "GET",
+    "headers": {
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+      "Instacart-Connect-Api-Key": "InstacartA..."
+    },
+    "params": {},
+    "status_code": 404,
+    "response": "Not Found",
+    "error": null,
+    "test_info": {
+      "api_config": "Connect API (Retailers Only)",
+      "key_variant": "with_prefix",
+      "endpoint": "retailers"
+    }
+  }
+]
