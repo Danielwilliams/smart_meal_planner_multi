@@ -19,8 +19,9 @@ const getBaseUrl = () => {
     // For production or Vercel previews, use relative path
     return '';
   } else {
-    // In development, use direct URL
+    // In development, use direct URL - This is the production backend
     return 'https://smartmealplannermulti-development.up.railway.app';
+    // For local testing use: return 'http://localhost:8000';
   }
 };
 
