@@ -168,7 +168,14 @@ const getNearbyRetailers = async (zipCode) => {
       errorObj.suggestion = 'Create the API endpoint on the backend server';
     }
 
-    throw errorObj;
+    // Instead of throwing the error, return a structured error object
+    // that won't cause TypeErrors when used
+    return {
+      error: errorObj.message,
+      errorType: 'fetchError',
+      status: errorObj.status || 500,
+      timestamp: new Date().toISOString()
+    };
   }
 };
 

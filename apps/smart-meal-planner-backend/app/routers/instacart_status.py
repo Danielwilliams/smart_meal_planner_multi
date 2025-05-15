@@ -249,10 +249,10 @@ async def get_environment_info(current_user: dict = Depends(get_current_user)):
     try:
         # Get relevant environment variables (without exposing sensitive data)
         environment_info = {
-            "environment": os.environ.get("ENVIRONMENT", "development"),
+            "environment": os.environ.get("RAILWAY_ENVIRONMENT", "production"),
             "instacart_api_configured": bool(os.environ.get("INSTACARTAPI_DEV")),
             "python_version": os.environ.get("PYTHON_VERSION", "unknown"),
-            "node_env": os.environ.get("NODE_ENV", "development"),
+            "node_env": os.environ.get("NODE_ENV", "production"),
             "debug_mode": os.environ.get("DEBUG", "false").lower() == "true"
         }
 

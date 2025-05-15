@@ -55,10 +55,11 @@ async def get_instacart_retailers(current_user: dict = Depends(get_current_user)
         api_key = os.environ.get("INSTACARTAPI_DEV")
         if not api_key:
             logger.error("No Instacart API key configured")
+            # Return a proper error response
             return {
                 "error": "Instacart API key is not configured",
                 "status": "error",
-                "retailers": []
+                "details": "The INSTACARTAPI_DEV environment variable must be set with format 'InstacartAPI YOUR_API_KEY'"
             }
 
         logger.info(f"Using API key: {api_key[:4]}...{api_key[-4:] if len(api_key) > 8 else '***'}")
@@ -84,31 +85,32 @@ async def get_instacart_retailers(current_user: dict = Depends(get_current_user)
 
         except Exception as api_error:
             logger.error(f"Error in API request: {str(api_error)}")
-            error_details = {
-                "message": str(api_error),
-                "type": type(api_error).__name__
-            }
 
-            if hasattr(api_error, "response") and hasattr(api_error.response, "status_code"):
-                error_details["status_code"] = api_error.response.status_code
-
+            # Return a proper error response
+            logger.info("Returning error response for API error")
             return {
-                "error": f"Instacart API request failed: {str(api_error)}",
-                "error_details": error_details,
-                "retailers": []
+                "error": f"Error in Instacart API request: {str(api_error)}",
+                "status": "error",
+                "details": {
+                    "type": type(api_error).__name__,
+                    "message": str(api_error)
+                }
             }
 
     except Exception as e:
         logger.error(f"Error getting Instacart retailers: {str(e)}")
-        # Return a structured error response instead of raising an exception
-        # This helps the frontend handle the error more gracefully
+        # Return a proper error response
+        logger.info("Returning error response for general error")
         return {
             "error": f"Failed to get Instacart retailers: {str(e)}",
             "status": "error",
-            "retailers": []
+            "details": {
+                "type": type(e).__name__,
+                "message": str(e)
+            }
         }
 
-@router.get("/retailers/{retailer_id}/products/search", response_model=List[ProductResponse])
+@router.get("/retailers/{retailer_id}/products/search", response_model=None)
 async def search_instacart_products(
     retailer_id: str,
     query: str,
@@ -119,29 +121,74 @@ async def search_instacart_products(
     Search for products at a specific Instacart retailer.
     """
     try:
-        client = instacart.get_instacart_client()
-        products = client.search_products(retailer_id, query, limit)
+        # Get API key information for debugging
+        api_key = os.environ.get("INSTACARTAPI_DEV")
+        if not api_key:
+            logger.error("No Instacart API key configured")
+            # Return a proper error response
+            return {
+                "error": "Instacart API key is not configured",
+                "status": "error",
+                "details": "The INSTACARTAPI_DEV environment variable must be set with format 'InstacartAPI YOUR_API_KEY'",
+                "query_info": {
+                    "retailer_id": retailer_id,
+                    "query": query,
+                    "limit": limit
+                }
+            }
 
-        # Transform to response model
-        formatted_products = []
-        for product in products:
-            attributes = product.get("attributes", {})
-            formatted_products.append({
-                "id": product.get("id", ""),
-                "name": attributes.get("name", ""),
-                "price": attributes.get("price", {}).get("value"),
-                "image_url": attributes.get("image_url", ""),
-                "size": attributes.get("size", "")
-            })
+        try:
+            client = instacart.get_instacart_client()
+            products = client.search_products(retailer_id, query, limit)
 
-        return formatted_products
+            # Transform to response model
+            formatted_products = []
+            for product in products:
+                attributes = product.get("attributes", {})
+                formatted_products.append({
+                    "id": product.get("id", ""),
+                    "name": attributes.get("name", ""),
+                    "price": attributes.get("price", {}).get("value"),
+                    "image_url": attributes.get("image_url", ""),
+                    "size": attributes.get("size", "")
+                })
+
+            return formatted_products
+
+        except Exception as api_error:
+            logger.error(f"Error in API product search: {str(api_error)}")
+
+            # Return a proper error response
+            return {
+                "error": f"Error searching Instacart products: {str(api_error)}",
+                "status": "error",
+                "details": {
+                    "type": type(api_error).__name__,
+                    "message": str(api_error)
+                },
+                "query_info": {
+                    "retailer_id": retailer_id,
+                    "query": query,
+                    "limit": limit
+                }
+            }
 
     except Exception as e:
         logger.error(f"Error searching Instacart products: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to search Instacart products: {str(e)}"
-        )
+        # Return a proper error response
+        return {
+            "error": f"General error searching Instacart products: {str(e)}",
+            "status": "error",
+            "details": {
+                "type": type(e).__name__,
+                "message": str(e)
+            },
+            "query_info": {
+                "retailer_id": retailer_id,
+                "query": query,
+                "limit": limit
+            }
+        }
 
 @router.get("/retailers/nearby", response_model=None)
 async def get_nearby_instacart_retailers(
@@ -182,112 +229,46 @@ async def get_nearby_instacart_retailers(
                 }
             }
 
+        # Check if we have any retailers to process
+        if not all_retailers:
+            return {
+                "retailers": [],
+                "status": "success",
+                "message": "No retailers found",
+                "count": 0
+            }
+
         # In the future, Instacart may add a native API for nearby retailers
-        # For now, we'll return all available retailers with mock proximity data
-        logger.info(f"Generating proximity data for {len(all_retailers)} retailers")
+        # Return an error explaining that the API doesn't support location filtering
+        logger.info("Instacart API doesn't currently support location-based filtering")
 
-        # Generate mock distance data based on the zip code
-        # This is just a placeholder until Instacart API supports location-based filtering
-        retailers_with_proximity = []
-
-        # Sanitize zip code input
-        if not zip_code or not isinstance(zip_code, str) or len(zip_code) == 0:
-            zip_code = "80538"  # Use default if invalid
-
-        zip_prefix = zip_code[0] if len(zip_code) > 0 else "8"
-
-        for i, retailer in enumerate(all_retailers):
-            try:
-                # Create a copy to avoid modifying the original
-                enhanced_retailer = retailer.copy() if retailer else {}
-                retailer_id = enhanced_retailer.get("id", f"unknown-{i}")
-
-                # Add attributes dict if missing
-                if "attributes" not in enhanced_retailer:
-                    enhanced_retailer["attributes"] = {}
-
-                attributes = enhanced_retailer.get("attributes", {})
-
-                # Create a deterministic "distance" based on ZIP code and retailer ID
-                # (This is just for demonstration until real proximity data is available)
-                try:
-                    # Use a hash-based approach that creates consistent but varied distances
-                    # based on the retailer ID and ZIP code
-                    combined_hash = hash(f"{retailer_id}-{zip_code}")
-                    distance = abs(combined_hash % 500) / 10  # Generate a distance between 0 and 50 miles
-                except Exception as hash_error:
-                    logger.warning(f"Error generating hash-based distance: {str(hash_error)}")
-                    # Fallback to simpler approach
-                    distance = ((ord(zip_prefix) * 3) + (i % 100)) % 50
-
-                # Add distance information
-                enhanced_retailer["attributes"]["distance"] = float(distance)
-
-                # Add mock address data if missing
-                if "address" not in enhanced_retailer["attributes"]:
-                    enhanced_retailer["attributes"]["address"] = {
-                        "city": f"City {(i % 10) + 1}",
-                        "state": "CO",
-                        "zip_code": zip_code,
-                        "street": f"{(i * 100) + 100} Main St"
-                    }
-
-                retailers_with_proximity.append(enhanced_retailer)
-            except Exception as retailer_error:
-                logger.warning(f"Error processing retailer {i}: {str(retailer_error)}")
-                # Skip this retailer and continue
-                continue
-
-        # Sort by the mock distance
-        logger.info(f"Sorting {len(retailers_with_proximity)} retailers by distance")
-        try:
-            retailers_with_proximity.sort(key=lambda r: r.get("attributes", {}).get("distance", 999))
-        except Exception as sort_error:
-            logger.error(f"Error sorting retailers: {str(sort_error)}")
-            # Continue with unsorted list rather than failing
-
-        # Format for response - limit to 10 nearest
-        formatted_retailers = []
-        nearby_limit = min(10, len(retailers_with_proximity))
-
-        for retailer in retailers_with_proximity[:nearby_limit]:
-            try:
-                attributes = retailer.get("attributes", {})
-                formatted_retailers.append({
-                    "id": retailer.get("id", ""),
-                    "name": attributes.get("name", "Unknown Retailer"),
-                    "logo_url": attributes.get("logo_url", ""),
-                    "distance": attributes.get("distance", 999),
-                    "address": attributes.get("address", {
-                        "city": "Unknown",
-                        "state": "XX",
-                        "zip_code": zip_code
-                    })
-                })
-            except Exception as format_error:
-                logger.warning(f"Error formatting retailer: {str(format_error)}")
-                # Skip this retailer and continue
-                continue
-
-        logger.info(f"Returning {len(formatted_retailers)} nearby retailers")
         return {
-            "retailers": formatted_retailers,
-            "status": "success",
-            "count": len(formatted_retailers),
+            "error": "Location-based filtering not supported",
+            "status": "not_implemented",
+            "message": "The Instacart API currently doesn't support location-based filtering of retailers",
+            "details": {
+                "workaround": "The frontend should display all available retailers without filtering by location",
+                "future_plans": "This feature may be added by Instacart in future API versions",
+                "retailers_count": len(all_retailers)
+            },
+            "retailers": [], # Return an empty list instead of mock data
             "zip_code": zip_code
         }
 
+        # This section is removed as we're now returning an error response instead of mock data
+
     except Exception as e:
         logger.error(f"Error getting nearby Instacart retailers: {str(e)}")
-        # Return a structured error response instead of raising an exception
+        # Return a structured error response
         return {
-            "retailers": [],
+            "error": f"Failed to get nearby Instacart retailers: {str(e)}",
             "status": "error",
-            "message": f"Failed to get nearby Instacart retailers: {str(e)}",
-            "error_details": {
+            "details": {
                 "type": type(e).__name__,
                 "message": str(e)
-            }
+            },
+            "retailers": [],  # Consistent empty list
+            "zip_code": zip_code if 'zip_code' in locals() else "unknown"
         }
 
 @router.get("/match/{retailer_id}", response_model=Dict)

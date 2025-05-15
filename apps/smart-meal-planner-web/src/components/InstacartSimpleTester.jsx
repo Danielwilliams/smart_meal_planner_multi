@@ -145,17 +145,35 @@ const InstacartSimpleTester = () => {
         console.log(`Getting retailers for ZIP code ${zipCode}...`);
         const retailers = await instacartBackendService.getNearbyRetailers(zipCode);
 
-        results.tests.push({
-          name: 'Get Retailers',
-          success: Array.isArray(retailers) && retailers.length > 0,
-          data: {
-            count: retailers.length,
-            sample: retailers.slice(0, 2)
-          }
-        });
+        // Check if the response is an error object
+        if (retailers && retailers.errorType === 'fetchError') {
+          // Handle the error
+          const errorDetails = {
+            message: retailers.error,
+            status: retailers.status,
+            timestamp: retailers.timestamp
+          };
 
-        // If retailers found, test product search
-        if (Array.isArray(retailers) && retailers.length > 0) {
+          results.tests.push({
+            name: 'Get Retailers',
+            success: false,
+            error: retailers.error,
+            errorDetails: errorDetails
+          });
+        } else {
+          // Handle successful response
+          results.tests.push({
+            name: 'Get Retailers',
+            success: Array.isArray(retailers) && retailers.length > 0,
+            data: {
+              count: Array.isArray(retailers) ? retailers.length : 0,
+              sample: Array.isArray(retailers) ? retailers.slice(0, 2) : []
+            }
+          });
+        }
+
+        // If retailers found and it's not an error object, test product search
+        if (Array.isArray(retailers) && retailers.length > 0 && !retailers.errorType) {
           const retailerId = retailers[0].id;
 
           try {
@@ -166,8 +184,8 @@ const InstacartSimpleTester = () => {
               name: 'Search Products',
               success: Array.isArray(products) && products.length > 0,
               data: {
-                count: products.length,
-                sample: products.slice(0, 2)
+                count: Array.isArray(products) ? products.length : 0,
+                sample: Array.isArray(products) ? products.slice(0, 2) : []
               }
             });
           } catch (searchErr) {
