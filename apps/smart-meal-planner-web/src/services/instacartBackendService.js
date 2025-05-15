@@ -131,8 +131,9 @@ const getNearbyRetailers = async (zipCode) => {
             };
           });
 
-        // Sort by distance
-        return enhancedRetailers.sort((a, b) => a.distance - b.distance);
+          // Sort by distance
+          return enhancedRetailers.sort((a, b) => a.distance - b.distance);
+        }
       }
 
       return response.data || [];
@@ -141,47 +142,11 @@ const getNearbyRetailers = async (zipCode) => {
       // Fall back to mock endpoint
     }
 
-    // If both endpoints fail, try the mock endpoint as a last resort
-    try {
-      console.log('Falling back to mock retailers endpoint');
-      const mockResponse = await instacartBackendAxios.get('/instacart/mock-retailers/nearby', {
-        params: { zip_code: zipCode }
-      });
+    // Instead of falling back to mock endpoints, return an error that the UI can handle
+    console.log('All retailer endpoints failed');
 
-      if (mockResponse.data && Array.isArray(mockResponse.data) && mockResponse.data.length > 0) {
-        console.log('Mock nearby retailers endpoint succeeded');
-        return mockResponse.data;
-      }
-
-      // If nearby mock fails, try general mock retailers
-      const generalMockResponse = await instacartBackendAxios.get('/instacart/mock-retailers');
-
-      if (generalMockResponse.data && Array.isArray(generalMockResponse.data)) {
-        console.log('General mock retailers endpoint succeeded');
-
-        // Add mock proximity data
-        const enhancedRetailers = generalMockResponse.data.map((retailer, index) => {
-          const distance = index + 1; // Simple distance based on index
-
-          return {
-            ...retailer,
-            distance: distance,
-            address: {
-              city: `City ${index % 5 + 1}`,
-              state: 'ST',
-              zip_code: zipCode
-            }
-          };
-        });
-
-        return enhancedRetailers;
-      }
-    } catch (mockError) {
-      console.error('Mock endpoints also failed:', mockError.message);
-      // All endpoints have failed, throw an error
-    }
-
-    throw new Error('All retailer endpoints failed, including fallbacks');
+    // Return structured error object
+    throw new Error('Failed to retrieve retailers');
 
   } catch (error) {
     console.error('Error getting nearby retailers:', error);
