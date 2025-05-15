@@ -73,33 +73,63 @@ const getNearbyRetailers = async (zipCode) => {
     try {
       const response = await instacartBackendAxios.get('/instacart/retailers');
 
-      // For general retailers, we need to add mock distance based on ZIP
-      if (response.data && Array.isArray(response.data)) {
-        const enhancedRetailers = response.data.map((retailer, index) => {
-          // Generate a pseudo-random distance based on ZIP code and index
-          // Extra safety check for zipCode
-          let zipPrefix = 8; // Default value
-          if (zipCode && typeof zipCode === 'string' && zipCode.length > 0) {
-            try {
-              zipPrefix = parseInt(zipCode.charAt(0)) || 8;
-            } catch (err) {
-              console.warn('Error parsing ZIP code:', err);
-            }
-          }
+      // Handle different response formats
+      if (response.data) {
+        // First check if it's an object with a retailers array (new IDP API format)
+        if (typeof response.data === 'object' && !Array.isArray(response.data) && response.data.retailers) {
+          console.log('Found retailers array in response.data.retailers');
+          response.data = response.data.retailers;
+        }
 
-          const distanceSeed = (zipPrefix + index) % 10;
-          const distance = Math.round((distanceSeed + Math.random() * 5) * 10) / 10;
-
-          return {
-            ...retailer,
-            distance: retailer.distance || distance,
-            address: retailer.address || {
-              city: `City ${index % 5 + 1}`,
-              state: 'ST',
-              zip_code: zipCode
+        // Now check if we have an array to process
+        if (Array.isArray(response.data)) {
+          const enhancedRetailers = response.data.map((retailer, index) => {
+            // Generate a pseudo-random distance based on ZIP code and index
+            // Extra safety check for zipCode
+            let zipPrefix = 8; // Default value
+            if (zipCode && typeof zipCode === 'string' && zipCode.length > 0) {
+              try {
+                zipPrefix = parseInt(zipCode.substring(0, 1)) || 8;
+              } catch (err) {
+                console.warn('Error parsing ZIP code:', err);
+              }
             }
-          };
-        });
+
+            const distanceSeed = (zipPrefix + index) % 10;
+            const distance = Math.round((distanceSeed + Math.random() * 5) * 10) / 10;
+
+            // Handle different retailer formats
+            let retailerId, retailerName, logoUrl;
+
+            if (retailer.retailer_key) {
+              // IDP API format
+              retailerId = retailer.retailer_key;
+              retailerName = retailer.name;
+              logoUrl = retailer.retailer_logo_url;
+            } else if (retailer.attributes) {
+              // Connect API format
+              retailerId = retailer.id;
+              retailerName = retailer.attributes.name;
+              logoUrl = retailer.attributes.logo_url;
+            } else {
+              // Generic format
+              retailerId = retailer.id;
+              retailerName = retailer.name;
+              logoUrl = retailer.logo_url;
+            }
+
+            return {
+              id: retailerId,
+              name: retailerName,
+              logo_url: logoUrl,
+              distance: retailer.distance || distance,
+              address: retailer.address || {
+                city: `City ${index % 5 + 1}`,
+                state: 'ST',
+                zip_code: zipCode
+              }
+            };
+          });
 
         // Sort by distance
         return enhancedRetailers.sort((a, b) => a.distance - b.distance);
@@ -188,38 +218,51 @@ const getNearbyRetailers = async (zipCode) => {
  */
 const searchProducts = async (retailerId, query, limit = 10) => {
   try {
+    console.log(`Searching for "${query}" at retailer ${retailerId}`);
+
     // First try the regular search endpoint
     try {
       const response = await instacartBackendAxios.get(`/instacart/retailers/${retailerId}/products/search`, {
         params: { query, limit }
       });
 
-      if (response.data && Array.isArray(response.data)) {
-        return response.data;
+      console.log('Product search response:', response.data);
+
+      // Handle different response formats
+      if (response.data) {
+        // Check if it's an object with a products array (new IDP API format)
+        if (typeof response.data === 'object' && !Array.isArray(response.data)) {
+          if (response.data.products) {
+            console.log('Found products array in response.data.products');
+            return response.data.products.map(product => ({
+              id: product.product_id || product.id,
+              name: product.name,
+              price: product.price,
+              image_url: product.image_url,
+              size: product.size || ''
+            }));
+          } else if (response.data.error) {
+            // This is an error response, log and continue to next attempt
+            console.warn('Error response from product search:', response.data.error);
+            throw new Error(response.data.error);
+          }
+        }
+
+        // If it's already an array, use it directly
+        if (Array.isArray(response.data)) {
+          return response.data;
+        }
       }
+
+      // If no valid data format was found, throw an error
+      throw new Error('Invalid response format from product search endpoint');
     } catch (searchError) {
       console.warn(`Regular product search failed for "${query}":`, searchError.message);
-      // Fall back to mock endpoint
+      // Fall back to next attempt
     }
 
-    // If regular endpoint fails, try the mock endpoint
-    try {
-      console.log(`Falling back to mock product search for "${query}"`);
-      const mockResponse = await instacartBackendAxios.get(`/instacart/mock-products/search`, {
-        params: { retailer_id: retailerId, query, limit }
-      });
-
-      if (mockResponse.data && Array.isArray(mockResponse.data)) {
-        console.log('Mock product search succeeded');
-        return mockResponse.data;
-      }
-    } catch (mockError) {
-      console.error(`Mock product search also failed for "${query}":`, mockError.message);
-      // All endpoints have failed
-    }
-
-    // If all endpoints fail, return a mock product for the query
-    console.log(`Creating fallback mock product for "${query}"`);
+    // Return a single product to show instead of completely failing the UI
+    console.log(`Creating fallback product for "${query}"`);
     return [
       {
         id: `mock-${Date.now()}`,
@@ -231,17 +274,24 @@ const searchProducts = async (retailerId, query, limit = 10) => {
     ];
   } catch (error) {
     console.error(`Error searching products for "${query}":`, error);
-    // Instead of throwing, return a mock product
-    return [
-      {
-        id: `error-${Date.now()}`,
-        name: query,
-        price: 0.99,
-        image_url: "https://placehold.co/200x200?text=NotFound",
-        size: "1 item",
-        error: error.message
-      }
-    ];
+    // Return a structured error object that the UI can handle
+    return {
+      error: error.message,
+      errorType: 'searchError',
+      status: error.response?.status || 500,
+      timestamp: new Date().toISOString(),
+      // Include a fallback product to avoid UI errors
+      fallbackProducts: [
+        {
+          id: `error-${Date.now()}`,
+          name: query,
+          price: 0.99,
+          image_url: "https://placehold.co/200x200?text=Error",
+          size: "1 item",
+          error: error.message
+        }
+      ]
+    };
   }
 };
 

@@ -174,7 +174,13 @@ const InstacartSimpleTester = () => {
 
         // If retailers found and it's not an error object, test product search
         if (Array.isArray(retailers) && retailers.length > 0 && !retailers.errorType) {
-          const retailerId = retailers[0].id;
+          // Make sure retailer has an ID
+          const retailerId = retailers[0].id || retailers[0].retailer_key;
+
+          if (!retailerId) {
+            console.error('No valid retailer ID found in first retailer:', retailers[0]);
+            throw new Error('No valid retailer ID found');
+          }
 
           try {
             console.log(`Searching products for retailer ${retailerId}...`);
