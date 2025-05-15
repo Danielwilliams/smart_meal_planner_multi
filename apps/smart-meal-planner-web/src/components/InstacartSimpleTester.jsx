@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Paper,
@@ -8,9 +8,11 @@ import {
   CircularProgress,
   Alert,
   Divider,
-  Grid
+  Grid,
+  Card
 } from '@mui/material';
 import instacartBackendService from '../services/instacartBackendService';
+import axios from 'axios';
 
 /**
  * Simplified component for testing Instacart API connectivity
@@ -21,6 +23,46 @@ const InstacartSimpleTester = () => {
   const [error, setError] = useState('');
   const [testResults, setTestResults] = useState(null);
   const [zipCode, setZipCode] = useState('80538');
+  const [apiKeyInfo, setApiKeyInfo] = useState(null);
+  const [backendInfo, setBackendInfo] = useState(null);
+
+  // Get API key info from backend when component mounts
+  useEffect(() => {
+    const getApiKeyInfo = async () => {
+      try {
+        const response = await axios.get('/api/instacart/key-info');
+        if (response.data) {
+          setApiKeyInfo(response.data);
+        }
+      } catch (err) {
+        console.warn('Error fetching API key info:', err.message);
+        // Create a fallback object with error info
+        setApiKeyInfo({
+          exists: false,
+          masked: 'Unknown',
+          length: 'Unknown',
+          error: err.message
+        });
+      }
+    };
+
+    const getBackendInfo = async () => {
+      try {
+        const response = await axios.get('/api/instacart/environment');
+        if (response.data) {
+          setBackendInfo(response.data);
+        }
+      } catch (err) {
+        console.warn('Error fetching backend info:', err.message);
+        setBackendInfo({
+          error: err.message
+        });
+      }
+    };
+
+    getApiKeyInfo();
+    getBackendInfo();
+  }, []);
 
   const runApiTest = async () => {
     setLoading(true);
@@ -33,29 +75,58 @@ const InstacartSimpleTester = () => {
         tests: []
       };
 
-      // Test 1: Check API Status
+      // Get latest API key info for the test results
+      try {
+        const keyInfoResponse = await axios.get('/api/instacart/key-info');
+        if (keyInfoResponse.data) {
+          results.apiKeyInfo = keyInfoResponse.data;
+          setApiKeyInfo(keyInfoResponse.data);
+        }
+      } catch (keyErr) {
+        console.warn('Error getting latest API key info:', keyErr);
+        results.apiKeyInfo = apiKeyInfo || {
+          error: keyErr.message,
+          exists: false,
+          masked: 'Error fetching'
+        };
+      }
+
+      // Test 1: Check API Status with detailed error handling
       try {
         console.log('Checking Instacart API status...');
         const statusResponse = await instacartBackendService.checkInstacartStatus();
-        
+
         results.tests.push({
           name: 'API Status Check',
           success: statusResponse.is_connected,
           data: statusResponse
         });
       } catch (statusErr) {
+        // Capture complete error details
+        const errorDetails = {
+          message: statusErr.message,
+          response: statusErr.response ? {
+            status: statusErr.response.status,
+            statusText: statusErr.response.statusText,
+            data: statusErr.response.data
+          } : null,
+          request: statusErr.request ? 'Request was made but no response received' : null,
+          stack: statusErr.stack
+        };
+
         results.tests.push({
           name: 'API Status Check',
           success: false,
-          error: statusErr.message
+          error: statusErr.message,
+          errorDetails: errorDetails
         });
       }
 
-      // Test 2: Get retailers by ZIP code
+      // Test 2: Get retailers by ZIP code with detailed error handling
       try {
         console.log(`Getting retailers for ZIP code ${zipCode}...`);
         const retailers = await instacartBackendService.getNearbyRetailers(zipCode);
-        
+
         results.tests.push({
           name: 'Get Retailers',
           success: Array.isArray(retailers) && retailers.length > 0,
@@ -68,11 +139,11 @@ const InstacartSimpleTester = () => {
         // If retailers found, test product search
         if (Array.isArray(retailers) && retailers.length > 0) {
           const retailerId = retailers[0].id;
-          
+
           try {
             console.log(`Searching products for retailer ${retailerId}...`);
             const products = await instacartBackendService.searchProducts(retailerId, 'milk', 3);
-            
+
             results.tests.push({
               name: 'Search Products',
               success: Array.isArray(products) && products.length > 0,
@@ -82,18 +153,43 @@ const InstacartSimpleTester = () => {
               }
             });
           } catch (searchErr) {
+            // Capture detailed error info
+            const errorDetails = {
+              message: searchErr.message,
+              response: searchErr.response ? {
+                status: searchErr.response.status,
+                statusText: searchErr.response.statusText,
+                data: searchErr.response.data
+              } : null,
+              request: searchErr.request ? 'Request was made but no response received' : null
+            };
+
             results.tests.push({
               name: 'Search Products',
               success: false,
-              error: searchErr.message
+              error: searchErr.message,
+              errorDetails: errorDetails
             });
           }
         }
       } catch (retailersErr) {
+        // Capture detailed error info
+        const errorDetails = {
+          message: retailersErr.message,
+          response: retailersErr.response ? {
+            status: retailersErr.response.status,
+            statusText: retailersErr.response.statusText,
+            data: retailersErr.response.data
+          } : null,
+          request: retailersErr.request ? 'Request was made but no response received' : null,
+          stack: retailersErr.stack
+        };
+
         results.tests.push({
           name: 'Get Retailers',
           success: false,
-          error: retailersErr.message
+          error: retailersErr.message,
+          errorDetails: errorDetails
         });
       }
 
@@ -117,7 +213,66 @@ const InstacartSimpleTester = () => {
       <Typography variant="body2" color="text.secondary" paragraph>
         This tool tests the connection to the Instacart API through our backend server.
       </Typography>
-      
+
+      {/* API Key Information */}
+      <Card variant="outlined" sx={{ p: 2, mb: 3, bgcolor: '#f8f8f8' }}>
+        <Typography variant="subtitle1" gutterBottom fontWeight="bold">
+          API Key Information
+        </Typography>
+
+        {apiKeyInfo ? (
+          <Grid container spacing={2}>
+            <Grid item xs={12} sm={6}>
+              <Typography variant="body2">
+                <strong>API Key Present:</strong> {apiKeyInfo.exists ? 'Yes' : 'No'}
+              </Typography>
+              <Typography variant="body2">
+                <strong>API Key:</strong> {apiKeyInfo.masked || 'Unknown'}
+              </Typography>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <Typography variant="body2">
+                <strong>Length:</strong> {apiKeyInfo.length || 'Unknown'} characters
+              </Typography>
+              <Typography variant="body2">
+                <strong>Format:</strong> {apiKeyInfo.format || 'Unknown'}
+              </Typography>
+            </Grid>
+            {apiKeyInfo.error && (
+              <Grid item xs={12}>
+                <Alert severity="error" sx={{ mt: 1 }}>
+                  <Typography variant="caption">
+                    Error fetching API key info: {apiKeyInfo.error}
+                  </Typography>
+                </Alert>
+              </Grid>
+            )}
+          </Grid>
+        ) : (
+          <Typography variant="body2" color="text.secondary">
+            Loading API key information...
+          </Typography>
+        )}
+
+        {backendInfo && (
+          <Box mt={2}>
+            <Typography variant="subtitle2" gutterBottom>
+              Backend Environment:
+            </Typography>
+            <pre style={{
+              backgroundColor: '#f5f5f5',
+              padding: '8px',
+              borderRadius: '4px',
+              fontSize: '0.8rem',
+              maxHeight: '100px',
+              overflow: 'auto'
+            }}>
+              {JSON.stringify(backendInfo, null, 2)}
+            </pre>
+          </Box>
+        )}
+      </Card>
+
       <Divider sx={{ my: 2 }} />
 
       <Box sx={{ mb: 3 }}>
@@ -140,7 +295,7 @@ const InstacartSimpleTester = () => {
           Test API Connection
         </Button>
       </Box>
-      
+
       {error && (
         <Alert severity="error" sx={{ mb: 3 }}>
           {error}
@@ -183,7 +338,7 @@ const InstacartSimpleTester = () => {
                   {test.success ? (
                     <Box>
                       {test.data && (
-                        <pre style={{ 
+                        <pre style={{
                           backgroundColor: '#f5f5f5',
                           padding: '8px',
                           borderRadius: '4px',
@@ -196,9 +351,65 @@ const InstacartSimpleTester = () => {
                       )}
                     </Box>
                   ) : (
-                    <Typography color="error.main">
-                      Error: {test.error}
-                    </Typography>
+                    <Box>
+                      <Typography color="error.main" gutterBottom>
+                        Error: {test.error}
+                      </Typography>
+
+                      {test.errorDetails && (
+                        <Box mt={1}>
+                          <Typography variant="subtitle2" gutterBottom>
+                            Detailed Error Information:
+                          </Typography>
+
+                          {test.errorDetails.response && (
+                            <Box mb={1}>
+                              <Typography variant="body2">
+                                <strong>Status Code:</strong> {test.errorDetails.response.status} {test.errorDetails.response.statusText}
+                              </Typography>
+
+                              {test.errorDetails.response.data && (
+                                <Box mt={1}>
+                                  <Typography variant="caption">Response Data:</Typography>
+                                  <pre style={{
+                                    backgroundColor: '#fff0f0',
+                                    padding: '8px',
+                                    borderRadius: '4px',
+                                    fontSize: '0.8rem',
+                                    overflow: 'auto',
+                                    maxHeight: '150px'
+                                  }}>
+                                    {JSON.stringify(test.errorDetails.response.data, null, 2)}
+                                  </pre>
+                                </Box>
+                              )}
+                            </Box>
+                          )}
+
+                          {!test.errorDetails.response && test.errorDetails.request && (
+                            <Alert severity="warning" sx={{ mt: 1 }}>
+                              {test.errorDetails.request}
+                            </Alert>
+                          )}
+
+                          {test.errorDetails.stack && (
+                            <Box mt={1}>
+                              <Typography variant="caption">Stack Trace:</Typography>
+                              <pre style={{
+                                backgroundColor: '#f5f5f5',
+                                padding: '8px',
+                                borderRadius: '4px',
+                                fontSize: '0.7rem',
+                                overflow: 'auto',
+                                maxHeight: '100px'
+                              }}>
+                                {test.errorDetails.stack}
+                              </pre>
+                            </Box>
+                          )}
+                        </Box>
+                      )}
+                    </Box>
                   )}
                 </Paper>
               </Grid>
@@ -216,8 +427,22 @@ const InstacartSimpleTester = () => {
           • You won't see CORS errors because all requests go through our server
         </Typography>
         <Typography variant="body2">
-          • The backend server is configured with the proper API key and authentication
+          • If you see 404 errors, it likely means the backend API endpoints are not implemented yet
         </Typography>
+        <Typography variant="body2">
+          • The Instacart API key must be properly configured on the backend server with format:
+          <code style={{ backgroundColor: '#f5f5f5', padding: '0 4px', marginLeft: '4px' }}>
+            InstacartAPI YOUR_API_KEY
+          </code>
+        </Typography>
+        <Typography variant="body2" sx={{ mt: 1 }}>
+          <strong>Required Backend Endpoints:</strong>
+        </Typography>
+        <ul style={{ margin: 0, paddingLeft: '20px' }}>
+          <li>/api/instacart/status - To check API connection status</li>
+          <li>/api/instacart/retailers - To get retailer data</li>
+          <li>/api/instacart/key-info - To get API key information</li>
+        </ul>
       </Box>
     </Paper>
   );
