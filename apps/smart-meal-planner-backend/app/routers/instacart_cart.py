@@ -191,5 +191,89 @@ async def get_instacart_cart(
             detail=f"Failed to get Instacart cart: {str(e)}"
         )
 
+# Shopping List Routes
+class ShoppingListRequest(BaseModel):
+    retailer_id: str
+    items: List[str]
+    postal_code: Optional[str] = "80538"
+    country_code: Optional[str] = "US"
+
+class ShoppingListResponse(BaseModel):
+    url: str
+    item_count: int
+
+@router.post("/shopping-list", response_model=ShoppingListResponse)
+async def create_shopping_list(
+    request: ShoppingListRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Create a shopping list URL that will open directly in Instacart.
+
+    This uses the 'Create Shopping List Page' endpoint from Instacart's API.
+    It takes a list of item names/descriptions and creates a URL that will
+    open a pre-populated shopping list in Instacart.
+
+    This is more efficient than searching for each item individually.
+
+    Example request:
+    ```json
+    {
+        "retailer_id": "publix",
+        "items": ["Milk", "Eggs", "Bread", "Chicken breast", "Apples"],
+        "postal_code": "33101",
+        "country_code": "US"
+    }
+    ```
+    """
+    try:
+        # Extract request parameters with fallbacks
+        retailer_id = request.retailer_id
+        items = request.items
+        postal_code = request.postal_code or "80538"
+        country_code = request.country_code or "US"
+
+        # Try to get user's postal code from their profile if available
+        if current_user and "zip_code" in current_user and not request.postal_code:
+            postal_code = current_user["zip_code"]
+            logger.info(f"Using user profile ZIP code: {postal_code}")
+
+        # Basic validation
+        if not retailer_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Retailer ID is required"
+            )
+
+        if not items or len(items) == 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="At least one item is required"
+            )
+
+        # Create shopping list URL
+        url = instacart.create_shopping_list_url_from_items(
+            retailer_id=retailer_id,
+            item_names=items,
+            postal_code=postal_code,
+            country_code=country_code
+        )
+
+        # Return the URL and item count
+        return {
+            "url": url,
+            "item_count": len(items)
+        }
+
+    except HTTPException as e:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        logger.error(f"Error creating shopping list URL: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create shopping list URL: {str(e)}"
+        )
+
 # No need for legacy routes with the prefix approach
 # The framework will handle the /instacart prefix

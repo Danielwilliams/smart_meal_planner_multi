@@ -344,10 +344,10 @@ class InstacartClient:
     def checkout_url(self, cart_id: str) -> str:
         """
         Get checkout URL for a cart.
-        
+
         Args:
             cart_id: The Instacart cart ID
-            
+
         Returns:
             URL to checkout the cart on Instacart website
         """
@@ -357,11 +357,60 @@ class InstacartClient:
                 "attributes": {}
             }
         }
-        
+
         endpoint = f"carts/{cart_id}/checkout_url"
         response = self._make_request("POST", endpoint, data=data)
-        
+
         return response.get("data", {}).get("attributes", {}).get("url", "")
+
+    def create_shopping_list_url(
+        self,
+        retailer_id: str,
+        items: List[str],
+        postal_code: str = "80538",
+        country_code: str = "US"
+    ) -> str:
+        """
+        Create a shopping list page URL that opens directly in Instacart.
+
+        This uses the Create Shopping List Page endpoint to generate a URL that
+        users can click to open a pre-populated shopping list in Instacart.
+
+        https://docs.instacart.com/developer_platform_api/api/products/create_shopping_list_page
+
+        Args:
+            retailer_id: The Instacart retailer ID/key
+            items: List of item names/descriptions
+            postal_code: User's postal code
+            country_code: User's country code (default US)
+
+        Returns:
+            URL to a pre-populated shopping list on Instacart
+        """
+        # Prepare the request data
+        data = {
+            "data": {
+                "type": "shopping_list_page",
+                "attributes": {
+                    "retailer_key": retailer_id,
+                    "postal_code": postal_code,
+                    "country_code": country_code,
+                    "line_items": [{"name": item} for item in items]
+                }
+            }
+        }
+
+        endpoint = "shopping_list_pages"
+        logger.info(f"Creating shopping list URL for retailer {retailer_id} with {len(items)} items")
+
+        try:
+            response = self._make_request("POST", endpoint, data=data)
+            url = response.get("data", {}).get("attributes", {}).get("url", "")
+            logger.info(f"Successfully created shopping list URL: {url[:60]}...")
+            return url
+        except Exception as e:
+            logger.error(f"Error creating shopping list URL: {str(e)}")
+            raise
 
 # Create a singleton instance to reuse
 _instacart_client = None
@@ -398,32 +447,32 @@ def search_for_grocery_item(retailer_id: str, item_name: str, limit: int = 5) ->
     return client.search_products(retailer_id, item_name, limit)
 
 def create_cart_with_items(
-    retailer_id: str, 
+    retailer_id: str,
     items: List[Dict[str, Union[str, int]]]
 ) -> Dict:
     """
     Create a cart and add multiple items to it.
-    
+
     Args:
         retailer_id: The Instacart retailer ID
         items: List of items to add, each with 'product_id' and 'quantity'
-        
+
     Returns:
         Cart object with checkout URL
     """
     client = get_instacart_client()
-    
+
     # Create the cart
     cart = client.create_cart(retailer_id)
     cart_id = cart.get("id")
-    
+
     if not cart_id:
         logger.error("Failed to create cart")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create Instacart cart"
         )
-    
+
     # Add items to the cart
     for item in items:
         client.add_item_to_cart(
@@ -431,12 +480,50 @@ def create_cart_with_items(
             product_id=item["product_id"],
             quantity=item.get("quantity", 1)
         )
-    
+
     # Get checkout URL
     checkout_url = client.checkout_url(cart_id)
-    
+
     # Get updated cart
     updated_cart = client.get_cart(cart_id)
     updated_cart["checkout_url"] = checkout_url
-    
+
     return updated_cart
+
+def create_shopping_list_url_from_items(
+    retailer_id: str,
+    item_names: List[str],
+    postal_code: str = "80538",
+    country_code: str = "US"
+) -> str:
+    """
+    Create a direct URL to an Instacart shopping list page with items.
+    This is a simplified way to send users directly to Instacart with
+    their items pre-populated, without needing to search for each item.
+
+    Args:
+        retailer_id: The Instacart retailer ID
+        item_names: List of item names/descriptions (not IDs)
+        postal_code: User's postal code
+        country_code: Country code (default: US)
+
+    Returns:
+        URL to a pre-populated shopping list on Instacart
+    """
+    client = get_instacart_client()
+
+    try:
+        url = client.create_shopping_list_url(
+            retailer_id=retailer_id,
+            items=item_names,
+            postal_code=postal_code,
+            country_code=country_code
+        )
+
+        return url
+    except Exception as e:
+        logger.error(f"Error creating shopping list URL: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create Instacart shopping list URL: {str(e)}"
+        )

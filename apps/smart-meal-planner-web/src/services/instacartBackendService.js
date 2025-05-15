@@ -504,6 +504,49 @@ const addGroceryItemsToInstacart = async (retailerId, groceryItems) => {
   }
 };
 
+/**
+ * Create a direct shopping list URL from item names
+ *
+ * This uses the Instacart "Create Shopping List Page" API endpoint which is
+ * much more efficient than the traditional cart approach. It generates a
+ * direct URL that opens Instacart with pre-populated items.
+ *
+ * @param {string} retailerId - Instacart retailer ID
+ * @param {Array<string>} itemNames - Array of ingredient names/descriptions
+ * @param {string} postalCode - Optional postal code (defaults to user zip code)
+ * @returns {Promise<Object>} Result with success flag and shopping list URL
+ */
+const createShoppingListUrl = async (retailerId, itemNames, postalCode = null) => {
+  try {
+    // Use user's ZIP code if not provided
+    if (!postalCode) {
+      postalCode = getUserZipCode() || '80538';
+    }
+
+    // Make the API request
+    const response = await instacartBackendAxios.post('/instacart/shopping-list', {
+      retailer_id: retailerId,
+      items: itemNames,
+      postal_code: postalCode,
+      country_code: 'US'
+    });
+
+    return {
+      success: true,
+      url: response.data.url,
+      item_count: response.data.item_count
+    };
+  } catch (error) {
+    console.error('Error creating shopping list URL:', error);
+    return {
+      success: false,
+      error: error.message,
+      status: error.response?.status,
+      data: error.response?.data
+    };
+  }
+};
+
 export default {
   getNearbyRetailers,
   searchProducts,
@@ -511,5 +554,6 @@ export default {
   checkInstacartStatus,
   addGroceryItemsToInstacart,
   getApiKeyInfo,
-  getEnvironmentInfo
+  getEnvironmentInfo,
+  createShoppingListUrl
 };

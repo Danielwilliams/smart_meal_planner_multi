@@ -16,13 +16,16 @@ import {
   DialogContent,
   DialogActions,
   Alert,
-  Chip
+  Chip,
+  Switch,
+  FormControlLabel
 } from '@mui/material';
 import {
   ShoppingBasket as BasketIcon,
   CheckCircle as CheckCircleIcon,
   Error as ErrorIcon,
-  OpenInNew as OpenInNewIcon
+  OpenInNew as OpenInNewIcon,
+  Sync as SyncIcon
 } from '@mui/icons-material';
 import instacartBackendService from '../services/instacartBackendService';
 
@@ -42,7 +45,9 @@ const InstacartResults = ({
   const [checkoutUrl, setCheckoutUrl] = useState(null);
   const [error, setError] = useState(null);
   const [showDialog, setShowDialog] = useState(false);
-  const [dialogStep, setDialogStep] = useState('searching'); // searching, results, cart
+  const [dialogStep, setDialogStep] = useState('searching'); // searching, results, cart, shopping-list
+  const [useDirectShoppingList, setUseDirectShoppingList] = useState(true); // Default to new method
+  const [shoppingListUrl, setShoppingListUrl] = useState(null);
   
   // Set dialog to be open by default so user sees the search immediately
   useEffect(() => {
@@ -169,6 +174,23 @@ const InstacartResults = ({
                 </ul>
               </small>
             </div>
+            <Box mt={2}>
+              <Button
+                variant="outlined"
+                size="small"
+                color="primary"
+                startIcon={<SyncIcon />}
+                onClick={() => {
+                  setUseDirectShoppingList(true);
+                  createShoppingList();
+                }}
+              >
+                Try Direct Shopping List Instead
+              </Button>
+              <Typography variant="caption" display="block" color="text.secondary" mt={1}>
+                Our new direct shopping list feature may work even when search doesn't.
+              </Typography>
+            </Box>
           </div>
         );
       } else if (searchErrors.length > 0) {
@@ -657,6 +679,96 @@ const InstacartResults = ({
     </Box>
   );
   
+  /**
+   * Render the shopping list step
+   * This shows the direct URL to the Instacart shopping list
+   */
+  const renderShoppingListStep = () => (
+    <Box>
+      <Typography variant="h6" gutterBottom>
+        Instacart Shopping List Created!
+      </Typography>
+
+      <Alert severity="success" sx={{ mb: 3 }}>
+        Your Instacart shopping list has been created with {groceryItems.length} items.
+      </Alert>
+
+      <Typography variant="body1" paragraph>
+        We've created a direct link to Instacart with all your items pre-populated.
+        This is more efficient than creating a cart and doesn't require product searches.
+      </Typography>
+
+      <Box sx={{ mt: 2, mb: 3, p: 2, bgcolor: 'background.paper', borderRadius: 1, border: '1px dashed' }}>
+        <Typography variant="body2" color="text.secondary" mb={1}>
+          Items included in your shopping list:
+        </Typography>
+        <Grid container spacing={1}>
+          {groceryItems.slice(0, 6).map((item, index) => (
+            <Grid item key={index} xs={6} sm={4}>
+              <Chip
+                label={item}
+                size="small"
+                variant="outlined"
+                sx={{ maxWidth: '100%', overflow: 'hidden' }}
+              />
+            </Grid>
+          ))}
+          {groceryItems.length > 6 && (
+            <Grid item xs={6} sm={4}>
+              <Chip
+                label={`+${groceryItems.length - 6} more`}
+                size="small"
+                color="primary"
+                variant="outlined"
+              />
+            </Grid>
+          )}
+        </Grid>
+      </Box>
+
+      <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center' }}>
+        <Button
+          variant="contained"
+          color="primary"
+          href={shoppingListUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          startIcon={<OpenInNewIcon />}
+          sx={{ px: 3, py: 1 }}
+        >
+          Open Shopping List in Instacart
+        </Button>
+      </Box>
+
+      <Box sx={{ mt: 3, textAlign: 'center' }}>
+        <FormControlLabel
+          control={
+            <Switch
+              checked={useDirectShoppingList}
+              onChange={() => {
+                const newValue = !useDirectShoppingList;
+                setUseDirectShoppingList(newValue);
+                if (newValue) {
+                  createShoppingList();
+                } else {
+                  searchAllItems();
+                }
+              }}
+            />
+          }
+          label={
+            <Typography variant="caption">
+              Use direct shopping list (recommended)
+            </Typography>
+          }
+        />
+        <Typography variant="caption" display="block" color="text.secondary" mt={1}>
+          If you prefer the traditional search-and-add approach, toggle this switch off.
+        </Typography>
+      </Box>
+    </Box>
+  );
+
   const renderDialogContent = () => {
     switch (dialogStep) {
       case 'searching':
@@ -665,17 +777,101 @@ const InstacartResults = ({
         return renderResultsStep();
       case 'cart':
         return renderCartStep();
+      case 'shopping-list':
+        return renderShoppingListStep();
       default:
         return null;
     }
   };
   
-  // Auto-start the search when the component mounts
+  /**
+   * Create a shopping list URL directly from item names
+   * This uses the Instacart "Create Shopping List Page" API endpoint
+   * which is more efficient than the traditional cart approach
+   */
+  const createShoppingList = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      // Input validation
+      if (!groceryItems || groceryItems.length === 0) {
+        setError('No items to add to shopping list');
+        return;
+      }
+
+      if (!retailerId) {
+        setError('No retailer selected. Please select a retailer first.');
+        return;
+      }
+
+      console.log(`Creating shopping list for ${groceryItems.length} items at retailer ${retailerId}...`);
+
+      // Use the new backend service method
+      const result = await instacartBackendService.createShoppingListUrl(
+        retailerId,
+        groceryItems
+      );
+
+      if (!result.success || !result.url) {
+        console.error('Error creating shopping list URL:', result);
+        throw new Error(result.error || 'Unable to create shopping list URL');
+      }
+
+      console.log('Shopping list URL created successfully:', result);
+
+      // Update state with result
+      setShoppingListUrl(result.url);
+      setDialogStep('shopping-list');
+
+      // Store successful creation in localStorage for diagnostics
+      localStorage.setItem('instacart_last_shopping_list_created', Date.now().toString());
+
+      // Call success callback
+      if (onSuccess) {
+        onSuccess({ url: result.url, item_count: result.item_count });
+      }
+    } catch (err) {
+      console.error('Error creating Instacart shopping list:', err);
+
+      // Format a detailed error message
+      setError(
+        <div>
+          <div><strong>Error Creating Shopping List</strong></div>
+          <div>{err.message || 'An unknown error occurred'}</div>
+          <div>
+            <small>
+              This new feature requires the backend to support the Instacart
+              "Create Shopping List Page" API. Please check that your backend
+              is up to date.
+            </small>
+          </div>
+        </div>
+      );
+
+      // Call error callback
+      if (onError) {
+        onError({
+          ...err,
+          userMessage: err.message || 'Error creating Instacart shopping list'
+        });
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Start the process when the component mounts
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (groceryItems && groceryItems.length > 0) {
-      // Start search automatically when component renders
-      searchAllItems();
+      // If using direct shopping list mode, create it directly
+      if (useDirectShoppingList) {
+        createShoppingList();
+      } else {
+        // Otherwise use the traditional search -> cart flow
+        searchAllItems();
+      }
     }
   }, []);
 
