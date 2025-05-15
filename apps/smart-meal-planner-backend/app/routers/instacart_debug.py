@@ -35,6 +35,12 @@ class EnvironmentResponse(BaseModel):
     api_version: str
     base_url: str
 
+class KeyInfoResponse(BaseModel):
+    exists: bool
+    masked: Optional[str] = None
+    length: Optional[int] = None
+    format: Optional[str] = None
+
 # Routes - Update paths to match frontend expectations
 @router.get("/config/test", response_model=ConfigTestResponse)
 async def test_api_key_configuration(current_user: dict = Depends(get_current_user)):
@@ -179,5 +185,45 @@ async def get_nearby_retailers(
             detail=f"Failed to get nearby retailers: {str(e)}"
         )
 
-# No need for legacy routes with the prefix approach
-# The framework will handle the /instacart prefix
+# Add an endpoint to get key info for the frontend
+@router.get("/key-info", response_model=KeyInfoResponse)
+async def get_api_key_info(current_user: dict = Depends(get_current_user)):
+    """
+    Get information about the Instacart API key.
+    Returns masked version and other metadata for verification.
+    """
+    try:
+        # Get API key from environment
+        api_key = os.environ.get("INSTACARTAPI_DEV")
+
+        if not api_key:
+            return {
+                "exists": False,
+                "masked": None,
+                "length": None,
+                "format": None
+            }
+
+        # Mask the API key for safe display
+        key_length = len(api_key)
+        masked_key = f"{api_key[:4]}...{api_key[-4:]}" if key_length > 8 else "***masked***"
+
+        # Determine the format
+        format_type = "Unknown"
+        if api_key.startswith("InstacartAPI "):
+            format_type = "InstacartAPI prefix format"
+            # Remove prefix for length calculation
+            key_length = len(api_key) - len("InstacartAPI ")
+
+        return {
+            "exists": True,
+            "masked": masked_key,
+            "length": key_length,
+            "format": format_type
+        }
+    except Exception as e:
+        logger.error(f"Error getting API key info: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get API key info: {str(e)}"
+        )
