@@ -49,12 +49,20 @@ class InstacartClient:
         # Create and configure the session
         self.session = requests.Session()
 
-        # Set the headers with Bearer token authentication
+        # Set the headers according to the official documentation
+        # Per https://docs.instacart.com/developer_platform_api/api/products/create_shopping_list_page
         self.session.headers.update({
             "Authorization": f"Bearer {self.formatted_api_key}",
             "Content-Type": "application/json",
             "Accept": "application/json"
         })
+
+        # Also include InstacartAPI format for compatibility with some endpoints
+        if not self.formatted_api_key.startswith("InstacartAPI "):
+            logger.info("Adding additional InstacartAPI format header for compatibility")
+            self.session.headers.update({
+                "X-Instacart-API-Key": f"InstacartAPI {self.formatted_api_key}"
+            })
 
         masked_key = self.formatted_api_key[:4] + "..." + self.formatted_api_key[-4:] if len(self.formatted_api_key) > 8 else "***masked***"
         logger.info(f"Initialized Instacart client with masked key: {masked_key}")
@@ -406,24 +414,22 @@ class InstacartClient:
                     logger.warning(f"Unable to convert item to string: {item}")
                     continue
 
-        # Prepare the request data according to updated Instacart documentation
-        # Per latest API docs at https://docs.instacart.com/
+        # Prepare the request data according to official Instacart documentation
+        # Per https://docs.instacart.com/developer_platform_api/api/products/create_shopping_list_page
         data = {
-            "title": "Shopping List",
-            "retailer_key": retailer_id,
-            "postal_code": postal_code,
-            "country_code": country_code,
-            "line_items": [
-                {
-                    "name": item,
-                    "quantity": 1  # Default quantity
+            "data": {
+                "type": "shopping_list_page",
+                "attributes": {
+                    "retailer_key": retailer_id,
+                    "postal_code": postal_code,
+                    "country_code": country_code,
+                    "line_items": [{"name": item} for item in cleaned_items]
                 }
-                for item in cleaned_items
-            ]
+            }
         }
 
-        # Use the official documented endpoint
-        endpoint = "products/products_link"  # Updated endpoint from latest documentation
+        # Use the official documented endpoint directly from documentation
+        endpoint = "shopping_list_pages"  # Per official docs
         logger.info(f"Creating shopping list URL for retailer {retailer_id} with {len(cleaned_items)} items")
         logger.info(f"First few items: {cleaned_items[:3]}")
 
@@ -437,23 +443,49 @@ class InstacartClient:
             # Log the full response for debugging
             logger.info(f"API Response: {json.dumps(response)[:1000] if response else 'None'}")
 
-            # Different responses may have different structures
-            # Try to get URL from different possible response structures
+            # According to the official documentation, the URL should be in data.attributes.url
+            # Add extensive logging to diagnose the actual structure
+            logger.info(f"Response structure: {list(response.keys()) if response else 'None'}")
+
+            # If "data" is present, log its structure
+            if response and "data" in response:
+                logger.info(f"Data structure: {list(response['data'].keys()) if isinstance(response['data'], dict) else 'Not a dict'}")
+
+                # If "attributes" is present, log its structure
+                if isinstance(response['data'], dict) and "attributes" in response['data']:
+                    logger.info(f"Attributes structure: {list(response['data']['attributes'].keys())}")
+
+            # Extract URL using the official structure and fallbacks
             url = ""
             if response:
-                if "data" in response and "attributes" in response.get("data", {}):
-                    url = response.get("data", {}).get("attributes", {}).get("url", "")
-                elif "url" in response:
-                    url = response.get("url", "")
-                elif "link" in response:
-                    url = response.get("link", "")
+                # Primary path per documentation: data.attributes.url
+                if "data" in response and isinstance(response["data"], dict):
+                    if "attributes" in response["data"] and isinstance(response["data"]["attributes"], dict):
+                        if "url" in response["data"]["attributes"]:
+                            url = response["data"]["attributes"]["url"]
+
+                # Fallback paths
+                if not url and "url" in response:
+                    url = response["url"]
+                elif not url and "link" in response:
+                    url = response["link"]
             
             if url:
                 logger.info(f"Successfully created shopping list URL: {url[:60]}...")
             else:
                 logger.warning("API response didn't contain a URL")
                 logger.info(f"Full response: {json.dumps(response)}")
-                raise ValueError("API response did not include a URL")
+
+                # Detailed error to help troubleshoot the problem
+                error_msg = (
+                    "API response did not include a URL. This could be due to:\n"
+                    "1. Invalid retailer_id format\n"
+                    "2. Incorrect API endpoint path\n"
+                    "3. Improper request body format\n"
+                    "4. API permissions issue\n"
+                    f"5. Unexpected response format: {list(response.keys()) if response else 'empty response'}"
+                )
+                raise ValueError(error_msg)
 
             return url
         except Exception as e:
@@ -602,7 +634,7 @@ def create_shopping_list_url_from_items(
         client = get_instacart_client()
 
         # Log API request details
-        logger.info(f"Calling official products/products_link API for retailer: {retailer_id}")
+        logger.info(f"Calling official shopping_list_pages API for retailer: {retailer_id}")
         logger.info(f"Using postal_code: {postal_code}, country_code: {country_code}")
         logger.info(f"First few items: {cleaned_items[:3] if cleaned_items else []}")
         
