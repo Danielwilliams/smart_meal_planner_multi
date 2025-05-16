@@ -1224,9 +1224,18 @@ function CartPage() {
       console.log(`Creating shopping list with ${cartItems.length} items for retailer ${instacartRetailer.id}`);
       console.log('First few items:', cartItems.slice(0, 3));
 
-      // Call the backend service
+      // Clean retailer ID
+      let retailerId = instacartRetailer.id;
+
+      // Ensure retailer ID is a valid format (not numeric or containing special characters)
+      if (!retailerId || retailerId.startsWith('retailer_') || /^\d+$/.test(retailerId)) {
+        console.warn(`Invalid retailer ID detected: "${retailerId}", using "kroger" as fallback`);
+        retailerId = 'kroger';  // Default to a known working retailer
+      }
+
+      // Call the backend service with the validated retailer ID
       const result = await instacartBackendService.createShoppingListUrl(
-        instacartRetailer.id,
+        retailerId,
         cartItems
       );
 

@@ -607,14 +607,24 @@ def create_shopping_list_url_from_items(
         # Prepare formatted URL items
         url_items = []
         for item in items_to_include:
-            # Special format for Instacart urls - use "+" for spaces
-            item_formatted = item.replace(' ', '+')
-            # Encode other special characters
-            item_encoded = urllib.parse.quote_plus(item_formatted)
+            # Clean item name - remove any colons, parentheses, or special characters that cause problems
+            item_cleaned = item.replace(':', ' ').replace('(', '').replace(')', '')
+
+            # Remove any double spaces that might have been created
+            while '  ' in item_cleaned:
+                item_cleaned = item_cleaned.replace('  ', ' ')
+
+            # Simple URL encoding - spaces become %20, but don't use + as it causes issues
+            item_encoded = urllib.parse.quote(item_cleaned)
             url_items.append(item_encoded)
 
         # Build query string with all items
         items_query = "&".join([f"items[]={item}" for item in url_items])
+
+        # Verify retailer_id format - if it looks invalid, use a default
+        if retailer_id.startswith('retailer_') or not isinstance(retailer_id, str) or len(retailer_id) < 2:
+            logger.warning(f"Invalid retailer_id format detected: {retailer_id}, defaulting to 'kroger'")
+            retailer_id = 'kroger'  # Default to a known working retailer
 
         # Create the final URL
         url = f"{base_url}/store/{retailer_id}?{items_query}"
