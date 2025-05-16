@@ -387,6 +387,25 @@ class InstacartClient:
         Returns:
             URL to a pre-populated shopping list on Instacart
         """
+        # Clean the items list to ensure all elements are strings
+        cleaned_items = []
+        for item in items:
+            if not item:
+                continue
+
+            # Handle different item formats
+            if isinstance(item, str):
+                cleaned_items.append(item)
+            elif isinstance(item, dict) and "name" in item:
+                cleaned_items.append(item["name"])
+            else:
+                # Convert to string representation as fallback
+                try:
+                    cleaned_items.append(str(item))
+                except:
+                    logger.warning(f"Unable to convert item to string: {item}")
+                    continue
+
         # Prepare the request data
         data = {
             "data": {
@@ -395,13 +414,14 @@ class InstacartClient:
                     "retailer_key": retailer_id,
                     "postal_code": postal_code,
                     "country_code": country_code,
-                    "line_items": [{"name": item} for item in items]
+                    "line_items": [{"name": item} for item in cleaned_items]
                 }
             }
         }
 
         endpoint = "shopping_list_pages"
-        logger.info(f"Creating shopping list URL for retailer {retailer_id} with {len(items)} items")
+        logger.info(f"Creating shopping list URL for retailer {retailer_id} with {len(cleaned_items)} items")
+        logger.info(f"First few items: {cleaned_items[:3]}")
 
         try:
             response = self._make_request("POST", endpoint, data=data)
@@ -410,6 +430,7 @@ class InstacartClient:
             return url
         except Exception as e:
             logger.error(f"Error creating shopping list URL: {str(e)}")
+            logger.error(f"Request data was: {json.dumps(data)[:500]}...")
             raise
 
 # Create a singleton instance to reuse
@@ -512,7 +533,22 @@ def create_shopping_list_url_from_items(
     """
     client = get_instacart_client()
 
+    # Log the input data
+    logger.info(f"Creating shopping list for retailer: {retailer_id}")
+    logger.info(f"Item count: {len(item_names) if item_names else 0}")
+    if item_names and len(item_names) > 0:
+        sample_items = item_names[:3]
+        logger.info(f"Sample items: {sample_items}")
+
+        # Check for non-string items (this happens when item objects are passed instead of strings)
+        non_string_items = [item for item in item_names[:10] if not isinstance(item, str)]
+        if non_string_items:
+            logger.warning(f"Found {len(non_string_items)} non-string items in the first 10 items")
+            for i, item in enumerate(non_string_items[:3]):
+                logger.warning(f"Non-string item {i}: {type(item).__name__} - {item}")
+
     try:
+        # Create the shopping list URL
         url = client.create_shopping_list_url(
             retailer_id=retailer_id,
             items=item_names,
@@ -520,9 +556,32 @@ def create_shopping_list_url_from_items(
             country_code=country_code
         )
 
+        # Validate the returned URL
+        if not url or not isinstance(url, str) or len(url) < 10:
+            logger.error(f"Invalid URL returned from Instacart API: {url}")
+            raise ValueError(f"Invalid URL returned from Instacart API: {url}")
+
+        logger.info(f"Successfully created shopping list URL: {url[:50]}...")
         return url
+
+    except requests.exceptions.RequestException as e:
+        # Handle network/API errors
+        logger.error(f"Request error creating shopping list URL: {str(e)}")
+        if hasattr(e, 'response') and e.response:
+            logger.error(f"Response status: {e.response.status_code}")
+            logger.error(f"Response content: {e.response.text[:500]}")
+
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Error communicating with Instacart API: {str(e)}"
+        )
+    except HTTPException as e:
+        # Pass through HTTP exceptions
+        logger.error(f"HTTP error creating shopping list URL: {e.status_code} - {e.detail}")
+        raise
     except Exception as e:
-        logger.error(f"Error creating shopping list URL: {str(e)}")
+        # Handle all other errors
+        logger.error(f"Unexpected error creating shopping list URL: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to create Instacart shopping list URL: {str(e)}"

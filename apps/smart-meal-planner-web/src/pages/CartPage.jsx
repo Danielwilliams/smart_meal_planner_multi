@@ -1172,14 +1172,34 @@ function CartPage() {
 
       // Extract item names with quantities from the cart
       const cartItems = internalCart.instacart.map(item => {
-        // Handle item with quantity
-        if (item.quantity && item.quantity > 1) {
-          return `${item.name} (${item.quantity})`;
+        // Ensure each item is properly formatted as a string
+        if (!item) return null;
+
+        // Convert object items to strings
+        if (typeof item === 'object') {
+          // Handle item with quantity
+          if (item.name) {
+            if (item.quantity && item.quantity > 1) {
+              return `${item.name} (${item.quantity})`;
+            }
+            return item.name;
+          }
+          return null;
         }
-        return item.name;
-      }).filter(Boolean);
+
+        // For simple string items
+        return item;
+      }).filter(Boolean); // Remove any null/undefined items
+
+      // Double check we have items after filtering
+      if (cartItems.length === 0) {
+        setError('No valid items found in your Instacart cart');
+        setCreatingShoppingList(false);
+        return;
+      }
 
       console.log(`Creating shopping list with ${cartItems.length} items for retailer ${instacartRetailer.id}`);
+      console.log('First few items:', cartItems.slice(0, 3));
 
       // Call the backend service
       const result = await instacartBackendService.createShoppingListUrl(
@@ -1194,11 +1214,51 @@ function CartPage() {
         setSnackbarMessage(`Shopping list created with ${result.item_count} items`);
         setSnackbarOpen(true);
       } else {
-        throw new Error(result.error || 'Failed to create shopping list');
+        // Better error handling
+        let errorMessage = 'Failed to create shopping list';
+
+        if (result.error) {
+          errorMessage = result.error;
+        }
+
+        // Check for specific status codes
+        if (result.status === 502) {
+          errorMessage = 'Unable to connect to Instacart API. Please try again later.';
+        } else if (result.status === 500) {
+          // For 500 errors, check if there's a more detailed message in the response data
+          if (result.data && result.data.detail) {
+            errorMessage = `Server error: ${result.data.detail}`;
+          } else {
+            errorMessage = 'Server error while creating shopping list. Please try again.';
+          }
+        }
+
+        throw new Error(errorMessage);
       }
     } catch (error) {
       console.error('Error creating Instacart shopping list:', error);
-      setError(`Error creating shopping list: ${error.message || 'Unknown error'}`);
+
+      // Create a user-friendly error message
+      let userMessage = error.message || 'Unknown error';
+
+      // Add specific advice for common error patterns
+      if (userMessage.includes('API key')) {
+        userMessage = 'Instacart API configuration error. Please contact support.';
+      } else if (userMessage.includes('timeout') || userMessage.includes('network')) {
+        userMessage = 'Network timeout while connecting to Instacart. Please try again.';
+      } else if (userMessage.includes('retailer')) {
+        userMessage = 'Invalid retailer selection. Please try selecting a different retailer.';
+      }
+
+      setError(`Error creating shopping list: ${userMessage}`);
+
+      // Show try again message after a short delay for serious errors
+      if (error.response?.status >= 500 || error.message.includes('network')) {
+        setTimeout(() => {
+          setSnackbarMessage('Please try again or check with different items');
+          setSnackbarOpen(true);
+        }, 3000);
+      }
     } finally {
       setCreatingShoppingList(false);
       setLoading(prev => ({ ...prev, instacart: false }));

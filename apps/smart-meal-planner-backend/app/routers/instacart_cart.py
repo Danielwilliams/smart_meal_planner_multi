@@ -233,6 +233,15 @@ async def create_shopping_list(
         postal_code = request.postal_code or "80538"
         country_code = request.country_code or "US"
 
+        # Enhanced request logging
+        logger.info(f"Shopping list request received: retailer_id={retailer_id}, items_count={len(items) if items else 0}")
+        if items and len(items) > 0:
+            logger.info(f"First few items: {items[:3]}")
+
+            # Check item types
+            item_types = [type(item).__name__ for item in items[:5]]
+            logger.info(f"Item types: {item_types}")
+
         # Try to get user's postal code from their profile if available
         if current_user and "zip_code" in current_user and not request.postal_code:
             postal_code = current_user["zip_code"]
@@ -252,27 +261,46 @@ async def create_shopping_list(
             )
 
         # Create shopping list URL
-        url = instacart.create_shopping_list_url_from_items(
-            retailer_id=retailer_id,
-            item_names=items,
-            postal_code=postal_code,
-            country_code=country_code
-        )
+        try:
+            url = instacart.create_shopping_list_url_from_items(
+                retailer_id=retailer_id,
+                item_names=items,
+                postal_code=postal_code,
+                country_code=country_code
+            )
 
-        # Return the URL and item count
-        return {
-            "url": url,
-            "item_count": len(items)
-        }
+            if not url:
+                raise ValueError("Received empty URL from Instacart API")
+
+            # Return the URL and item count
+            return {
+                "url": url,
+                "item_count": len(items)
+            }
+
+        except Exception as api_error:
+            logger.error(f"Error in Instacart API call: {str(api_error)}")
+            # Include more diagnostic information in the error
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to create shopping list with Instacart API: {str(api_error)}"
+            )
 
     except HTTPException as e:
         # Re-raise HTTP exceptions
+        logger.error(f"HTTP Exception in shopping list creation: {e.status_code} - {e.detail}")
         raise
     except Exception as e:
-        logger.error(f"Error creating shopping list URL: {str(e)}")
+        logger.error(f"Unexpected error creating shopping list URL: {str(e)}", exc_info=True)
+        # Use exc_info=True to get full traceback in logs
+
+        # Return a more specific error message
+        error_detail = f"Failed to create shopping list URL: {str(e)}"
+        logger.error(error_detail)
+
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create shopping list URL: {str(e)}"
+            detail=error_detail
         )
 
 # No need for legacy routes with the prefix approach
