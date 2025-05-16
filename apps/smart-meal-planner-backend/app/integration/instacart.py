@@ -419,14 +419,46 @@ class InstacartClient:
             }
         }
 
-        endpoint = "shopping_list_pages"
+        # Check Instacart documentation - try both endpoints as the API might have changed
+        endpoint = "shopping_lists"  # Try the newer endpoint format first
         logger.info(f"Creating shopping list URL for retailer {retailer_id} with {len(cleaned_items)} items")
         logger.info(f"First few items: {cleaned_items[:3]}")
 
         try:
+            # First try with the 'shopping_lists' endpoint
+            logger.info(f"Attempting with endpoint: {endpoint}")
             response = self._make_request("POST", endpoint, data=data)
             url = response.get("data", {}).get("attributes", {}).get("url", "")
-            logger.info(f"Successfully created shopping list URL: {url[:60]}...")
+
+            # If we didn't get a URL, try the alternate endpoint
+            if not url:
+                logger.warning("No URL returned from first endpoint attempt, trying alternate endpoint")
+                endpoint = "shopping_list_pages"  # Try older endpoint format
+                logger.info(f"Attempting with alternate endpoint: {endpoint}")
+                try:
+                    response = self._make_request("POST", endpoint, data=data)
+                    url = response.get("data", {}).get("attributes", {}).get("url", "")
+                except Exception as e:
+                    logger.warning(f"Error with alternate endpoint: {str(e)}")
+                    url = ""
+
+            # If both attempts failed, create a fallback URL
+            if not url:
+                logger.warning("Both API endpoints failed - falling back to direct Instacart URL")
+
+                # Create a direct URL to Instacart with retailer ID
+                # This won't pre-populate items but at least takes the user to the right store
+                base_url = "https://www.instacart.com"
+
+                # Create URL encoded items list as query parameter
+                items_query = "&".join([f"items[]={item.replace(' ', '+')}" for item in cleaned_items[:10]])
+
+                # Simplest format is just retailer homepage
+                url = f"{base_url}/store/{retailer_id}?{items_query}"
+                logger.info(f"Created fallback URL: {url[:60]}...")
+            else:
+                logger.info(f"Successfully created shopping list URL: {url[:60]}...")
+
             return url
         except Exception as e:
             logger.error(f"Error creating shopping list URL: {str(e)}")

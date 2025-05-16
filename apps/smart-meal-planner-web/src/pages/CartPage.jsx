@@ -1179,8 +1179,31 @@ function CartPage() {
         if (typeof item === 'object') {
           // Handle item with quantity
           if (item.name) {
-            if (item.quantity && item.quantity > 1) {
-              return `${item.name} (${item.quantity})`;
+            // Format quantity correctly - avoid redundancy between quantity, unit, and unitOfMeasure
+            let formattedQuantity = '';
+
+            if (item.quantity) {
+              // If quantity already includes the unit (e.g., "2 cups"), use it directly
+              if (typeof item.quantity === 'string' &&
+                  (item.quantity.includes(' ') ||
+                   item.quantity.toLowerCase() === 'to taste')) {
+                formattedQuantity = item.quantity;
+              }
+              // Otherwise use quantity with appropriate unit (avoid redundancy)
+              else if (item.unitOfMeasure || item.unit) {
+                // Use one unit source, not both
+                const unit = item.unitOfMeasure || item.unit;
+                formattedQuantity = `${item.quantity} ${unit}`;
+              }
+              // If no unit but has quantity, just use the quantity
+              else if (item.quantity !== 1) {
+                formattedQuantity = `${item.quantity}`;
+              }
+            }
+
+            // Return properly formatted item with quantity in parentheses if available
+            if (formattedQuantity && formattedQuantity !== '1') {
+              return `${item.name} (${formattedQuantity})`;
             }
             return item.name;
           }
