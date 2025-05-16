@@ -1,14 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
-import { 
-  Container, 
-  Typography, 
-  Select, 
-  MenuItem, 
-  FormControl, 
-  InputLabel, 
-  Box, 
-  Paper, 
+import {
+  Container,
+  Typography,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Box,
+  Paper,
   Grid,
   Button,
   CircularProgress,
@@ -31,19 +31,21 @@ import {
   Tab,
   Accordion,
   AccordionSummary,
-  AccordionDetails
+  AccordionDetails,
+  Tooltip
 } from '@mui/material';
 import StoreSelector from '../components/StoreSelector';
 import { useAuth } from '../context/AuthContext';
 import apiService from '../services/apiService';
 import instacartService from '../services/instacartService';
+import instacartBackendService from '../services/instacartBackendService';
 import CATEGORY_MAPPING from '../data/categoryMapping';
 import ShoppingList from '../components/ShoppingList';
 import SmartShoppingList from '../components/SmartShoppingList';
 import CategorizedShoppingList from '../components/CategorizedShoppingList';
 import InstacartResults from '../components/InstacartResults';
 import { adaptShoppingListResponse } from '../utils/aiShoppingListAdapter';
-import { 
+import {
   AutoAwesome as AiIcon,
   ExpandMore as ExpandMoreIcon,
   ShoppingBasket as BasketIcon,
@@ -52,7 +54,8 @@ import {
   Kitchen as KitchenIcon,
   Category as CategoryIcon,
   AutoAwesome,
-  ExpandMore
+  ExpandMore,
+  ShoppingCart as ShoppingCartIcon
 } from '@mui/icons-material';
 
 function ShoppingListPage() {
@@ -114,6 +117,9 @@ function ShoppingListPage() {
   // For entertaining messages while loading
   const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
   const [instacartRetailerId, setInstacartRetailerId] = useState('');
+  const [creatingShoppingList, setCreatingShoppingList] = useState(false);
+  const [shoppingListUrl, setShoppingListUrl] = useState(null);
+  const [showShoppingListDialog, setShowShoppingListDialog] = useState(false);
   const loadingMessages = [
     "AI chef is chopping ingredients into categories...",
     "Sorting your tomatoes from your potatoes...",
@@ -3995,6 +4001,46 @@ const categorizeItems = (mealPlanData) => {
     }
   }, [selectedStore, instacartRetailerId]);
 
+  // Function to create an Instacart shopping list directly
+  const createInstacartShoppingList = async () => {
+    try {
+      // If we don't have a retailer ID yet, get one first
+      if (!instacartRetailerId) {
+        await handleSelectInstacartRetailer();
+        // If we still don't have one, exit
+        if (!instacartRetailerId) {
+          showSnackbar('Please select an Instacart retailer first');
+          return;
+        }
+      }
+
+      setCreatingShoppingList(true);
+      showSnackbar('Creating Instacart shopping list...');
+
+      // Extract all grocery items as flat list
+      const groceryItems = extractGroceryItems();
+
+      // Create direct shopping list URL using the backend service
+      const result = await instacartBackendService.createShoppingListUrl(
+        instacartRetailerId,
+        groceryItems
+      );
+
+      if (result.success && result.url) {
+        setShoppingListUrl(result.url);
+        setShowShoppingListDialog(true);
+        showSnackbar(`Shopping list created with ${result.item_count} items`);
+      } else {
+        throw new Error(result.error || 'Failed to create shopping list');
+      }
+    } catch (error) {
+      console.error('Error creating Instacart shopping list:', error);
+      showSnackbar(`Error: ${error.message || 'Failed to create shopping list'}`);
+    } finally {
+      setCreatingShoppingList(false);
+    }
+  };
+
   // Helper function to extract grocery items for Instacart
   const extractGroceryItems = () => {
     // Check if we have a flat or categorized grocery list
@@ -4028,9 +4074,31 @@ const categorizeItems = (mealPlanData) => {
 
   return (
     <Container maxWidth="md">
-      <Typography variant="h4" gutterBottom>
-        Shopping List
-      </Typography>
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+        <Typography variant="h4">
+          Shopping List
+        </Typography>
+
+        {groceryList && groceryList.length > 0 && (
+          <Tooltip title="Create an Instacart shopping list with all your ingredients">
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={createInstacartShoppingList}
+              disabled={creatingShoppingList || loading}
+              startIcon={creatingShoppingList ? <CircularProgress size={24} /> : <ShoppingCartIcon />}
+              sx={{
+                bgcolor: '#F36D00', // Instacart orange
+                '&:hover': {
+                  bgcolor: '#E05D00' // Darker orange
+                }
+              }}
+            >
+              Shop with Instacart
+            </Button>
+          </Tooltip>
+        )}
+      </Box>
 
       {loading && (
         <Box display="flex" justifyContent="center" my={2}>
@@ -4795,12 +4863,99 @@ const categorizeItems = (mealPlanData) => {
       </Dialog>
       
       {/* Kroger Store Selection Dialog */}
-      <StoreSelector 
+      <StoreSelector
         open={showKrogerStoreSelector}
         onClose={() => setShowKrogerStoreSelector(false)}
         onStoreSelect={handleKrogerStoreSelect}
         storeType="kroger"
       />
+
+      {/* Instacart Shopping List Dialog */}
+      <Dialog
+        open={showShoppingListDialog}
+        onClose={() => setShowShoppingListDialog(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 2,
+            overflow: 'hidden'
+          }
+        }}
+      >
+        <DialogTitle
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            backgroundColor: '#43B02A', // Instacart green
+            color: 'white',
+            py: 2
+          }}
+        >
+          <ShoppingCartIcon sx={{ mr: 1 }} />
+          <Typography variant="h6" component="div" sx={{ fontWeight: 600 }}>
+            Shop with Instacart
+          </Typography>
+        </DialogTitle>
+        <DialogContent>
+          <Alert severity="success" sx={{ mb: 3, mt: 2 }}>
+            Your Instacart shopping list has been created successfully!
+          </Alert>
+
+          <Typography variant="body1" paragraph>
+            We've created a direct link to Instacart with all your grocery items pre-populated.
+            Click the button below to open your shopping list on Instacart.
+          </Typography>
+
+          <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center' }}>
+            <Button
+              variant="contained"
+              href={shoppingListUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              sx={{
+                bgcolor: '#F36D00', // Instacart orange
+                color: 'white',
+                fontWeight: 600,
+                px: 3,
+                py: 1.2,
+                borderRadius: 2,
+                textTransform: 'none',
+                fontSize: '1rem',
+                '&:hover': {
+                  bgcolor: '#E05D00', // Darker orange on hover
+                }
+              }}
+              startIcon={<ShoppingCartIcon />}
+            >
+              Shop with Instacart
+            </Button>
+          </Box>
+
+          {/* Attribution required by guidelines */}
+          <Typography
+            variant="caption"
+            align="center"
+            display="block"
+            mt={1}
+            color="text.secondary"
+          >
+            Powered by Instacart
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ borderTop: '1px solid', borderColor: 'divider', px: 3 }}>
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ flexGrow: 1 }}
+          >
+            Powered by Instacart
+          </Typography>
+          <Button onClick={() => setShowShoppingListDialog(false)}>
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 }
