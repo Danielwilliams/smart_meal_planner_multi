@@ -406,22 +406,24 @@ class InstacartClient:
                     logger.warning(f"Unable to convert item to string: {item}")
                     continue
 
-        # Prepare the request data according to Instacart's official documentation
-        # Per https://docs.instacart.com/developer_platform_api/api/products/create_shopping_list_page/
+        # Prepare the request data according to updated Instacart documentation
+        # Per latest API docs at https://docs.instacart.com/
         data = {
-            "data": {
-                "type": "shopping_list_page",
-                "attributes": {
-                    "retailer_key": retailer_id,
-                    "postal_code": postal_code,
-                    "country_code": country_code,
-                    "line_items": [{"name": item} for item in cleaned_items]
+            "title": "Shopping List",
+            "retailer_key": retailer_id,
+            "postal_code": postal_code,
+            "country_code": country_code,
+            "line_items": [
+                {
+                    "name": item,
+                    "quantity": 1  # Default quantity
                 }
-            }
+                for item in cleaned_items
+            ]
         }
 
         # Use the official documented endpoint
-        endpoint = "shopping_list_pages"  # This is the correct endpoint per documentation
+        endpoint = "products/products_link"  # Updated endpoint from latest documentation
         logger.info(f"Creating shopping list URL for retailer {retailer_id} with {len(cleaned_items)} items")
         logger.info(f"First few items: {cleaned_items[:3]}")
 
@@ -434,9 +436,17 @@ class InstacartClient:
             
             # Log the full response for debugging
             logger.info(f"API Response: {json.dumps(response)[:1000] if response else 'None'}")
-            
-            # Extract URL from the response
-            url = response.get("data", {}).get("attributes", {}).get("url", "")
+
+            # Different responses may have different structures
+            # Try to get URL from different possible response structures
+            url = ""
+            if response:
+                if "data" in response and "attributes" in response.get("data", {}):
+                    url = response.get("data", {}).get("attributes", {}).get("url", "")
+                elif "url" in response:
+                    url = response.get("url", "")
+                elif "link" in response:
+                    url = response.get("link", "")
             
             if url:
                 logger.info(f"Successfully created shopping list URL: {url[:60]}...")
@@ -574,7 +584,7 @@ def create_shopping_list_url_from_items(
         for item in item_names:
             if not item:
                 continue
-                
+
             # Handle different item formats
             if isinstance(item, str):
                 cleaned_items.append(item)
@@ -587,12 +597,12 @@ def create_shopping_list_url_from_items(
                 except:
                     logger.warning(f"Unable to convert item to string: {item}")
                     continue
-                    
+
         # Get client instance
         client = get_instacart_client()
-        
+
         # Log API request details
-        logger.info(f"Calling official shopping_list_pages API for retailer: {retailer_id}")
+        logger.info(f"Calling official products/products_link API for retailer: {retailer_id}")
         logger.info(f"Using postal_code: {postal_code}, country_code: {country_code}")
         logger.info(f"First few items: {cleaned_items[:3] if cleaned_items else []}")
         
