@@ -151,6 +151,11 @@ function CartPage() {
     needsReconnect: false
   });
 
+  // Instacart Shopping List state
+  const [creatingShoppingList, setCreatingShoppingList] = useState(false);
+  const [shoppingListUrl, setShoppingListUrl] = useState(null);
+  const [showShoppingListDialog, setShowShoppingListDialog] = useState(false);
+
   console.log("⚠️ DEBUG: All hooks initialized");
 
   // Define all helper functions before they're used in any hooks
@@ -1128,7 +1133,7 @@ function CartPage() {
     try {
       setLoading(prev => ({ ...prev, cart: true }));
       const response = await apiService.removeCartItem(user.userId, item.name, store);
-      
+
       if (response.status === 'success') {
         await loadInternalCart();
         setSnackbarMessage('Item removed from cart');
@@ -1139,6 +1144,64 @@ function CartPage() {
       handleError(err);
     } finally {
       setLoading(prev => ({ ...prev, cart: false }));
+    }
+  };
+
+  /**
+   * Creates a direct Instacart shopping list from cart items
+   * Using the Create Shopping List Page API
+   */
+  const createInstacartShoppingList = async () => {
+    try {
+      // Validate we have retailer ID and items
+      if (!instacartRetailer?.id) {
+        setError('Please select an Instacart retailer first');
+        setShowInstacartRetailerSelector(true);
+        return;
+      }
+
+      if (!internalCart.instacart || !Array.isArray(internalCart.instacart) || internalCart.instacart.length === 0) {
+        setError('No items in your Instacart cart');
+        return;
+      }
+
+      // Start creating shopping list
+      setCreatingShoppingList(true);
+      setSnackbarMessage('Creating Instacart shopping list...');
+      setSnackbarOpen(true);
+
+      // Extract item names with quantities from the cart
+      const cartItems = internalCart.instacart.map(item => {
+        // Handle item with quantity
+        if (item.quantity && item.quantity > 1) {
+          return `${item.name} (${item.quantity})`;
+        }
+        return item.name;
+      }).filter(Boolean);
+
+      console.log(`Creating shopping list with ${cartItems.length} items for retailer ${instacartRetailer.id}`);
+
+      // Call the backend service
+      const result = await instacartBackendService.createShoppingListUrl(
+        instacartRetailer.id,
+        cartItems
+      );
+
+      if (result.success && result.url) {
+        // Set the URL and show dialog
+        setShoppingListUrl(result.url);
+        setShowShoppingListDialog(true);
+        setSnackbarMessage(`Shopping list created with ${result.item_count} items`);
+        setSnackbarOpen(true);
+      } else {
+        throw new Error(result.error || 'Failed to create shopping list');
+      }
+    } catch (error) {
+      console.error('Error creating Instacart shopping list:', error);
+      setError(`Error creating shopping list: ${error.message || 'Unknown error'}`);
+    } finally {
+      setCreatingShoppingList(false);
+      setLoading(prev => ({ ...prev, instacart: false }));
     }
   };
 
@@ -1778,6 +1841,28 @@ function CartPage() {
                 Search Instacart
               </Button>
 
+              {/* Direct Shop with Instacart button */}
+              <Button
+                variant="contained"
+                onClick={createInstacartShoppingList}
+                disabled={creatingShoppingList ||
+                  !internalCart.instacart || !Array.isArray(internalCart.instacart) ||
+                  internalCart.instacart.length === 0 ||
+                  !instacartRetailer?.id}
+                startIcon={creatingShoppingList ? <CircularProgress size={20} /> : <ShoppingCartIcon />}
+                sx={{
+                  mr: 1,
+                  mb: 1,
+                  bgcolor: '#F36D00', // Instacart orange
+                  color: 'white',
+                  '&:hover': {
+                    bgcolor: '#E05D00' // Darker orange
+                  }
+                }}
+              >
+                Shop with Instacart
+              </Button>
+
               {searchResults.instacart && searchResults.instacart.length > 0 ? (
                 <Box sx={{ width: '100%', mt: 2 }}>
                   <Typography variant="subtitle2" gutterBottom>
@@ -2068,6 +2153,93 @@ function CartPage() {
         onClose={() => setSnackbarOpen(false)}
         message={snackbarMessage}
       />
+
+      {/* Instacart Shopping List Dialog */}
+      <Dialog
+        open={showShoppingListDialog}
+        onClose={() => setShowShoppingListDialog(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 2,
+            overflow: 'hidden'
+          }
+        }}
+      >
+        <DialogTitle
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            backgroundColor: '#43B02A', // Instacart green
+            color: 'white',
+            py: 2
+          }}
+        >
+          <ShoppingCartIcon sx={{ mr: 1 }} />
+          <Typography variant="h6" component="div" sx={{ fontWeight: 600 }}>
+            Shop with Instacart
+          </Typography>
+        </DialogTitle>
+        <DialogContent>
+          <Alert severity="success" sx={{ mb: 3, mt: 2 }}>
+            Your Instacart shopping list has been created successfully!
+          </Alert>
+
+          <Typography variant="body1" paragraph>
+            We've created a direct link to Instacart with all your items pre-populated.
+            Click the button below to open your shopping list on Instacart.
+          </Typography>
+
+          <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center' }}>
+            <Button
+              variant="contained"
+              href={shoppingListUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              sx={{
+                bgcolor: '#F36D00', // Instacart orange
+                color: 'white',
+                fontWeight: 600,
+                px: 3,
+                py: 1.2,
+                borderRadius: 2,
+                textTransform: 'none',
+                fontSize: '1rem',
+                '&:hover': {
+                  bgcolor: '#E05D00', // Darker orange on hover
+                }
+              }}
+              startIcon={<ShoppingCartIcon />}
+            >
+              Shop with Instacart
+            </Button>
+          </Box>
+
+          {/* Attribution required by guidelines */}
+          <Typography
+            variant="caption"
+            align="center"
+            display="block"
+            mt={1}
+            color="text.secondary"
+          >
+            Powered by Instacart
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ borderTop: '1px solid', borderColor: 'divider', px: 3 }}>
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ flexGrow: 1 }}
+          >
+            Powered by Instacart
+          </Typography>
+          <Button onClick={() => setShowShoppingListDialog(false)}>
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 }

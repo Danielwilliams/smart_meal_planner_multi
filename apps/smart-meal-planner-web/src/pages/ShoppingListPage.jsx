@@ -4041,26 +4041,62 @@ const categorizeItems = (mealPlanData) => {
     }
   };
 
-  // Helper function to extract grocery items for Instacart
+  // Helper function to extract grocery items for Instacart with quantity information
   const extractGroceryItems = () => {
     // Check if we have a flat or categorized grocery list
     if (Array.isArray(groceryList)) {
-      // If it's a flat array, extract names
-      return groceryList.map(item =>
-        typeof item === 'string' ? item : (item.name || '')
-      ).filter(name => name.trim() !== '');
+      // If it's a flat array, extract names and quantities
+      return groceryList.map(item => {
+        if (typeof item === 'string') {
+          // Check if there's quantity information in the format "item: quantity"
+          const parts = item.split(':');
+          if (parts.length > 1) {
+            const name = parts[0].trim();
+            const quantity = parts[1].trim();
+            return quantity ? `${name} (${quantity})` : name;
+          }
+          return item;
+        } else if (typeof item === 'object' && item) {
+          // Handle object format with name and quantity
+          const name = item.name || '';
+          const quantity = item.quantity || item.amount || '';
+          return quantity ? `${name} (${quantity})` : name;
+        }
+        return '';
+      }).filter(name => name.trim() !== '');
     } else if (groceryList && typeof groceryList === 'object') {
-      // If it's categorized, flatten all categories
+      // If it's categorized, flatten all categories and preserve quantity info
       const items = [];
       Object.values(groceryList).forEach(categoryItems => {
         if (Array.isArray(categoryItems)) {
           categoryItems.forEach(item => {
-            const itemName = typeof item === 'string'
-              ? item.split(':')[0].trim() // Handle "item: quantity" format
-              : (item.name || '');
-
-            if (itemName.trim() !== '') {
-              items.push(itemName);
+            if (typeof item === 'string') {
+              // Check for quantity format "item: quantity"
+              const parts = item.split(':');
+              if (parts.length > 1) {
+                const name = parts[0].trim();
+                const quantity = parts[1].trim();
+                if (name) {
+                  items.push(quantity ? `${name} (${quantity})` : name);
+                }
+              } else if (item.trim()) {
+                items.push(item.trim());
+              }
+            } else if (typeof item === 'object' && item) {
+              // Handle object format with possibly name, quantity and unit properties
+              const name = item.name || '';
+              if (name.trim()) {
+                const quantity = item.quantity || item.amount || '';
+                const unit = item.unit || '';
+                // Format: "Milk (2 gallons)" or "Eggs (12)"
+                if (quantity && unit) {
+                  items.push(`${name} (${quantity} ${unit})`);
+                } else if (quantity) {
+                  items.push(`${name} (${quantity})`);
+                } else {
+                  items.push(name);
+                }
+              }
             }
           });
         }
@@ -4074,31 +4110,9 @@ const categorizeItems = (mealPlanData) => {
 
   return (
     <Container maxWidth="md">
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-        <Typography variant="h4">
-          Shopping List
-        </Typography>
-
-        {groceryList && groceryList.length > 0 && (
-          <Tooltip title="Create an Instacart shopping list with all your ingredients">
-            <Button
-              variant="contained"
-              color="primary"
-              onClick={createInstacartShoppingList}
-              disabled={creatingShoppingList || loading}
-              startIcon={creatingShoppingList ? <CircularProgress size={24} /> : <ShoppingCartIcon />}
-              sx={{
-                bgcolor: '#F36D00', // Instacart orange
-                '&:hover': {
-                  bgcolor: '#E05D00' // Darker orange
-                }
-              }}
-            >
-              Shop with Instacart
-            </Button>
-          </Tooltip>
-        )}
-      </Box>
+      <Typography variant="h4" gutterBottom>
+        Shopping List
+      </Typography>
 
       {loading && (
         <Box display="flex" justifyContent="center" my={2}>
