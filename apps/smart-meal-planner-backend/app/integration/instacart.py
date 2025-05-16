@@ -551,70 +551,86 @@ def create_shopping_list_url_from_items(
 ) -> str:
     """
     Create a direct URL to an Instacart shopping list page with items.
-    This is a simplified way to send users directly to Instacart with
-    their items pre-populated, without needing to search for each item.
+
+    This function creates a direct Instacart URL with retailer ID and items
+    as URL parameters. This approach doesn't use the Instacart API endpoints
+    which are currently returning 404 errors.
 
     Args:
         retailer_id: The Instacart retailer ID
         item_names: List of item names/descriptions (not IDs)
-        postal_code: User's postal code
-        country_code: Country code (default: US)
+        postal_code: User's postal code (used for display but not in URL)
+        country_code: Country code (used for display but not in URL)
 
     Returns:
-        URL to a pre-populated shopping list on Instacart
+        URL to Instacart store with items in URL parameters
     """
-    client = get_instacart_client()
-
     # Log the input data
-    logger.info(f"Creating shopping list for retailer: {retailer_id}")
+    logger.info(f"Creating direct shopping list URL for retailer: {retailer_id}")
     logger.info(f"Item count: {len(item_names) if item_names else 0}")
-    if item_names and len(item_names) > 0:
-        sample_items = item_names[:3]
-        logger.info(f"Sample items: {sample_items}")
-
-        # Check for non-string items (this happens when item objects are passed instead of strings)
-        non_string_items = [item for item in item_names[:10] if not isinstance(item, str)]
-        if non_string_items:
-            logger.warning(f"Found {len(non_string_items)} non-string items in the first 10 items")
-            for i, item in enumerate(non_string_items[:3]):
-                logger.warning(f"Non-string item {i}: {type(item).__name__} - {item}")
 
     try:
-        # Create the shopping list URL
-        url = client.create_shopping_list_url(
-            retailer_id=retailer_id,
-            items=item_names,
-            postal_code=postal_code,
-            country_code=country_code
-        )
+        # Clean and normalize the items
+        cleaned_items = []
+        for item in item_names:
+            if not item:
+                continue
 
-        # Validate the returned URL
-        if not url or not isinstance(url, str) or len(url) < 10:
-            logger.error(f"Invalid URL returned from Instacart API: {url}")
-            raise ValueError(f"Invalid URL returned from Instacart API: {url}")
+            # Handle different item formats
+            if isinstance(item, str):
+                cleaned_items.append(item)
+            elif isinstance(item, dict) and "name" in item:
+                cleaned_items.append(item["name"])
+            else:
+                # Convert to string representation as fallback
+                try:
+                    cleaned_items.append(str(item))
+                except:
+                    logger.warning(f"Unable to convert item to string: {item}")
+                    continue
 
-        logger.info(f"Successfully created shopping list URL: {url[:50]}...")
+        # Log sample items
+        if cleaned_items and len(cleaned_items) > 0:
+            sample_items = cleaned_items[:3]
+            logger.info(f"Sample items: {sample_items}")
+
+        # Create a direct URL to Instacart with retailer ID and items
+        base_url = "https://www.instacart.com"
+
+        # Process items for URL encoding - properly handle spaces and special characters
+        import urllib.parse
+
+        # Limit items to avoid overly long URLs
+        items_to_include = cleaned_items[:30]
+        logger.info(f"Including {len(items_to_include)} items in URL")
+
+        # Prepare formatted URL items
+        url_items = []
+        for item in items_to_include:
+            # Special format for Instacart urls - use "+" for spaces
+            item_formatted = item.replace(' ', '+')
+            # Encode other special characters
+            item_encoded = urllib.parse.quote_plus(item_formatted)
+            url_items.append(item_encoded)
+
+        # Build query string with all items
+        items_query = "&".join([f"items[]={item}" for item in url_items])
+
+        # Create the final URL
+        url = f"{base_url}/store/{retailer_id}?{items_query}"
+
+        # Log the generated URL (truncated for security)
+        logger.info(f"Created direct Instacart URL: {url[:60]}...")
+
         return url
 
-    except requests.exceptions.RequestException as e:
-        # Handle network/API errors
-        logger.error(f"Request error creating shopping list URL: {str(e)}")
-        if hasattr(e, 'response') and e.response:
-            logger.error(f"Response status: {e.response.status_code}")
-            logger.error(f"Response content: {e.response.text[:500]}")
-
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Error communicating with Instacart API: {str(e)}"
-        )
-    except HTTPException as e:
-        # Pass through HTTP exceptions
-        logger.error(f"HTTP error creating shopping list URL: {e.status_code} - {e.detail}")
-        raise
     except Exception as e:
-        # Handle all other errors
-        logger.error(f"Unexpected error creating shopping list URL: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create Instacart shopping list URL: {str(e)}"
-        )
+        # Handle all errors
+        logger.error(f"Error creating direct shopping list URL: {str(e)}", exc_info=True)
+
+        # Create a minimal fallback URL if everything fails
+        fallback_url = f"https://www.instacart.com/store/{retailer_id}"
+        logger.warning(f"Using minimal fallback URL: {fallback_url}")
+
+        # Return a simple URL rather than failing completely
+        return fallback_url
