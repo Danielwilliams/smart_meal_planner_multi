@@ -426,65 +426,24 @@ class InstacartClient:
         logger.info(f"First few items: {cleaned_items[:3]}")
 
         try:
-            # Make request to the official endpoint
+            # Make request to the official endpoint with detailed logging
             logger.info(f"Using official endpoint: {endpoint}")
             logger.info(f"API Request Data: {json.dumps(data)[:1000]}")
-
-            # Force debug information for requests/responses
-            old_level = logging.getLogger().level
-            logging.getLogger().setLevel(logging.DEBUG)
-
-            try:
-                response = self._make_request("POST", endpoint, data=data)
-
-                # Log the full response for debugging
-                logger.info(f"API Response: {json.dumps(response)[:1000] if response else 'None'}")
-
-                # Extract URL from the response
-                url = response.get("data", {}).get("attributes", {}).get("url", "")
-
-                if url:
-                    logger.info(f"Successfully got URL from API: {url[:60]}...")
-                else:
-                    logger.warning("API response didn't contain a URL")
-            finally:
-                # Restore original logging level
-                logging.getLogger().setLevel(old_level)
-
-            # If the official API endpoint didn't return a URL, create a fallback URL
-            if not url:
-                logger.warning("No URL returned from the API - falling back to direct Instacart URL")
-
-                # Create a direct URL to Instacart with retailer ID and items
-                base_url = "https://www.instacart.com"
-
-                # Process items for URL encoding - properly handle spaces and special characters
-                import urllib.parse
-
-                # Clean item names to remove problematic characters
-                cleaned_url_items = []
-                for item in cleaned_items:
-                    # Remove colons, parentheses, and other problematic characters
-                    item_cleaned = item.replace(':', ' ').replace('(', '').replace(')', '')
-
-                    # Remove double spaces
-                    while '  ' in item_cleaned:
-                        item_cleaned = item_cleaned.replace('  ', ' ')
-
-                    # Encode the item for URL
-                    item_encoded = urllib.parse.quote(item_cleaned)
-                    cleaned_url_items.append(item_encoded)
-
-                # Only use the first item for better search results
-                # Multiple search_term parameters don't work well with Instacart
-                first_item = cleaned_url_items[0] if cleaned_url_items else "groceries"
-                items_query = f"search_term={first_item}"
-
-                # Create the final URL with correct path for product search
-                url = f"{base_url}/store/{retailer_id}/product_index?{items_query}"
-                logger.info(f"Created fallback URL: {url[:60]}...")
-            else:
+            
+            response = self._make_request("POST", endpoint, data=data)
+            
+            # Log the full response for debugging
+            logger.info(f"API Response: {json.dumps(response)[:1000] if response else 'None'}")
+            
+            # Extract URL from the response
+            url = response.get("data", {}).get("attributes", {}).get("url", "")
+            
+            if url:
                 logger.info(f"Successfully created shopping list URL: {url[:60]}...")
+            else:
+                logger.warning("API response didn't contain a URL")
+                logger.info(f"Full response: {json.dumps(response)}")
+                raise ValueError("API response did not include a URL")
 
             return url
         except Exception as e:
@@ -578,61 +537,44 @@ def create_shopping_list_url_from_items(
 ) -> str:
     """
     Create a shopping list URL using Instacart's official API.
-
-    This function first tries to use Instacart's official shopping_list_pages API endpoint.
-    If that fails, it falls back to creating a direct URL with items as parameters.
-
+    
+    This function uses Instacart's official shopping_list_pages API endpoint
+    to generate a URL that will open a pre-populated shopping list in Instacart.
+    
     Args:
         retailer_id: The Instacart retailer ID
         item_names: List of item names/descriptions
         postal_code: User's postal code
         country_code: Country code (default: US)
-
+        
     Returns:
         URL to a pre-populated shopping list on Instacart
     """
     logger.info(f"Creating shopping list for retailer: {retailer_id}")
     logger.info(f"Item count: {len(item_names) if item_names else 0}")
-
+    
     # First validate the retailer_id
     if retailer_id.startswith('retailer_') or not isinstance(retailer_id, str) or len(retailer_id) < 2:
         logger.warning(f"Invalid retailer_id format detected: {retailer_id}, defaulting to 'kroger'")
         retailer_id = 'kroger'  # Default to a known working retailer
-
-    # First try the official API approach
+    
+    # Log sample items
+    if item_names and len(item_names) > 0:
+        sample_items = item_names[:3]
+        logger.info(f"Sample items: {sample_items}")
+    
+    # Use the official API - without any fallback
+    # Enable verbose logging to diagnose API issues
+    old_level = logging.getLogger().level
+    logging.getLogger().setLevel(logging.DEBUG)
+    
     try:
-        # Get the client instance
-        client = get_instacart_client()
-
-        # Call the official API method
-        url = client.create_shopping_list_url(
-            retailer_id=retailer_id,
-            items=item_names,
-            postal_code=postal_code,
-            country_code=country_code
-        )
-
-        # If we got a valid URL, return it
-        if url and isinstance(url, str) and len(url) > 15:
-            logger.info(f"Successfully created shopping list URL via API: {url[:60]}...")
-            return url
-
-        # If we reached here, the API didn't return a valid URL
-        logger.warning("API didn't return a valid URL, falling back to direct URL creation")
-
-    except Exception as api_error:
-        # Log the API error but continue to the fallback approach
-        logger.error(f"Error using official API: {str(api_error)}", exc_info=True)
-        logger.warning("Falling back to direct URL creation")
-
-    # Fallback: Direct URL creation
-    try:
-        # Clean and normalize the items
+        # Clean items to ensure proper format
         cleaned_items = []
         for item in item_names:
             if not item:
                 continue
-
+                
             # Handle different item formats
             if isinstance(item, str):
                 cleaned_items.append(item)
@@ -645,58 +587,40 @@ def create_shopping_list_url_from_items(
                 except:
                     logger.warning(f"Unable to convert item to string: {item}")
                     continue
-
-        # Log sample items
-        if cleaned_items and len(cleaned_items) > 0:
-            sample_items = cleaned_items[:3]
-            logger.info(f"Sample items: {sample_items}")
-
-        # Create a direct URL to Instacart with retailer ID and items
-        base_url = "https://www.instacart.com"
-
-        # Process items for URL encoding
-        import urllib.parse
-
-        # Limit items to avoid overly long URLs
-        items_to_include = cleaned_items[:30]
-        logger.info(f"Including {len(items_to_include)} items in URL")
-
-        # Prepare formatted URL items
-        url_items = []
-        for item in items_to_include:
-            # Clean item name to remove problematic characters
-            item_cleaned = item.replace(':', ' ').replace('(', '').replace(')', '')
-
-            # Remove any double spaces
-            while '  ' in item_cleaned:
-                item_cleaned = item_cleaned.replace('  ', ' ')
-
-            # URL encode the item - spaces become %20
-            item_encoded = urllib.parse.quote(item_cleaned)
-            url_items.append(item_encoded)
-
-        # Only use the first item for better search results
-        # Multiple search_term parameters don't work well with Instacart
-        first_item = url_items[0] if url_items else "groceries"
-        items_query = f"search_term={first_item}"
-
-        # Create the final URL with correct format for shopping list
-        # The format for shopping list is different from just adding items to store URL
-        url = f"{base_url}/store/{retailer_id}/product_index?{items_query}"
-
-        # Log the generated URL (truncated for security)
-        logger.info(f"Created direct Instacart URL: {url[:60]}...")
-
+                    
+        # Get client instance
+        client = get_instacart_client()
+        
+        # Log API request details
+        logger.info(f"Calling official shopping_list_pages API for retailer: {retailer_id}")
+        logger.info(f"Using postal_code: {postal_code}, country_code: {country_code}")
+        logger.info(f"First few items: {cleaned_items[:3] if cleaned_items else []}")
+        
+        # Call the official API method
+        url = client.create_shopping_list_url(
+            retailer_id=retailer_id,
+            items=cleaned_items,
+            postal_code=postal_code,
+            country_code=country_code
+        )
+        
+        # Validate the URL
+        if not url or not isinstance(url, str) or len(url) < 10:
+            logger.error(f"API returned invalid URL: {url}")
+            raise ValueError(f"API returned invalid URL: {url}")
+            
+        logger.info(f"Successfully created shopping list URL via API: {url[:60]}...")
         return url
-
+        
     except Exception as e:
-        # Handle all errors in the fallback approach
-        logger.error(f"Error creating fallback URL: {str(e)}", exc_info=True)
-
-        # Create a minimal fallback URL if everything fails
-        # Use the product_index page which is where items are added to cart
-        fallback_url = f"https://www.instacart.com/store/{retailer_id}/product_index"
-        logger.warning(f"Using minimal fallback URL: {fallback_url}")
-
-        # Return a simple URL rather than failing completely
-        return fallback_url
+        # Log the API error with detailed information
+        logger.error(f"Error using Instacart API: {str(e)}", exc_info=True)
+        
+        # Re-raise the exception to propagate it to the caller
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to create Instacart shopping list: {str(e)}"
+        )
+    finally:
+        # Always restore the original logging level
+        logging.getLogger().setLevel(old_level)

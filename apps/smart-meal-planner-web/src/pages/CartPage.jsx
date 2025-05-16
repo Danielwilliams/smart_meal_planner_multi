@@ -1179,8 +1179,11 @@ function CartPage() {
         if (typeof item === 'object') {
           // Handle item with quantity
           if (item.name) {
-            // Format quantity correctly - avoid redundancy between quantity, unit, and unitOfMeasure
+            // Fix for redundancy in units - clean item properties for consistent formatting
             let formattedQuantity = '';
+
+            // Log item to help debug format issues
+            console.log('Processing item:', item);
 
             if (item.quantity) {
               // If quantity already includes the unit (e.g., "2 cups"), use it directly
@@ -1189,11 +1192,27 @@ function CartPage() {
                    item.quantity.toLowerCase() === 'to taste')) {
                 formattedQuantity = item.quantity;
               }
-              // Otherwise use quantity with appropriate unit (avoid redundancy)
+              // For cases with redundant unit information, clean it up
               else if (item.unitOfMeasure || item.unit) {
-                // Use one unit source, not both
+                // Use only one unit source (not both) to avoid redundancy
                 const unit = item.unitOfMeasure || item.unit;
-                formattedQuantity = `${item.quantity} ${unit}`;
+
+                // Avoid redundant units where item.quantity already contains the unit
+                // Check if quantity already ends with the unit
+                if (typeof item.quantity === 'string' &&
+                    (item.quantity.endsWith(unit) ||
+                     item.quantity.toLowerCase().endsWith(unit.toLowerCase()))) {
+                  formattedQuantity = item.quantity;
+                } else {
+                  // Handle case where we have both unitOfMeasure and unit with the same value
+                  if (item.unitOfMeasure && item.unit &&
+                      item.unitOfMeasure === item.unit) {
+                    // Use only one instance of the unit
+                    formattedQuantity = `${item.quantity} ${item.unit}`;
+                  } else {
+                    formattedQuantity = `${item.quantity} ${unit}`;
+                  }
+                }
               }
               // If no unit but has quantity, just use the quantity
               else if (item.quantity !== 1) {
