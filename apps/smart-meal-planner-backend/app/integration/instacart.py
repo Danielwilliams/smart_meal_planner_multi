@@ -428,13 +428,28 @@ class InstacartClient:
         try:
             # Make request to the official endpoint
             logger.info(f"Using official endpoint: {endpoint}")
-            response = self._make_request("POST", endpoint, data=data)
+            logger.info(f"API Request Data: {json.dumps(data)[:1000]}")
 
-            # Log the full response for debugging
-            logger.info(f"API Response: {json.dumps(response)[:1000] if response else 'None'}")
+            # Force debug information for requests/responses
+            old_level = logging.getLogger().level
+            logging.getLogger().setLevel(logging.DEBUG)
 
-            # Extract URL from the response
-            url = response.get("data", {}).get("attributes", {}).get("url", "")
+            try:
+                response = self._make_request("POST", endpoint, data=data)
+
+                # Log the full response for debugging
+                logger.info(f"API Response: {json.dumps(response)[:1000] if response else 'None'}")
+
+                # Extract URL from the response
+                url = response.get("data", {}).get("attributes", {}).get("url", "")
+
+                if url:
+                    logger.info(f"Successfully got URL from API: {url[:60]}...")
+                else:
+                    logger.warning("API response didn't contain a URL")
+            finally:
+                # Restore original logging level
+                logging.getLogger().setLevel(old_level)
 
             # If the official API endpoint didn't return a URL, create a fallback URL
             if not url:
@@ -460,11 +475,13 @@ class InstacartClient:
                     item_encoded = urllib.parse.quote(item_cleaned)
                     cleaned_url_items.append(item_encoded)
 
-                # Build query string with all items (limit to 30 to avoid too long URLs)
-                items_query = "&".join([f"items[]={item}" for item in cleaned_url_items[:30]])
+                # Only use the first item for better search results
+                # Multiple search_term parameters don't work well with Instacart
+                first_item = cleaned_url_items[0] if cleaned_url_items else "groceries"
+                items_query = f"search_term={first_item}"
 
-                # Create the final URL
-                url = f"{base_url}/store/{retailer_id}?{items_query}"
+                # Create the final URL with correct path for product search
+                url = f"{base_url}/store/{retailer_id}/product_index?{items_query}"
                 logger.info(f"Created fallback URL: {url[:60]}...")
             else:
                 logger.info(f"Successfully created shopping list URL: {url[:60]}...")
@@ -658,11 +675,14 @@ def create_shopping_list_url_from_items(
             item_encoded = urllib.parse.quote(item_cleaned)
             url_items.append(item_encoded)
 
-        # Build query string with all items
-        items_query = "&".join([f"items[]={item}" for item in url_items])
+        # Only use the first item for better search results
+        # Multiple search_term parameters don't work well with Instacart
+        first_item = url_items[0] if url_items else "groceries"
+        items_query = f"search_term={first_item}"
 
-        # Create the final URL
-        url = f"{base_url}/store/{retailer_id}?{items_query}"
+        # Create the final URL with correct format for shopping list
+        # The format for shopping list is different from just adding items to store URL
+        url = f"{base_url}/store/{retailer_id}/product_index?{items_query}"
 
         # Log the generated URL (truncated for security)
         logger.info(f"Created direct Instacart URL: {url[:60]}...")
@@ -674,7 +694,8 @@ def create_shopping_list_url_from_items(
         logger.error(f"Error creating fallback URL: {str(e)}", exc_info=True)
 
         # Create a minimal fallback URL if everything fails
-        fallback_url = f"https://www.instacart.com/store/{retailer_id}"
+        # Use the product_index page which is where items are added to cart
+        fallback_url = f"https://www.instacart.com/store/{retailer_id}/product_index"
         logger.warning(f"Using minimal fallback URL: {fallback_url}")
 
         # Return a simple URL rather than failing completely
