@@ -58,37 +58,57 @@ const searchStores = async (lat, lon) => {
     try {
       setLoading(true);
       setError('');
-      
+
       // First, try to get real store data using the backend
       console.log(`Searching for ${storeType} stores near ${zipCode} (radius: ${searchRadius} miles)`);
-      
+
       // Try direct API endpoint first
       try {
-        // Handle Instacart differently - use the retailers endpoint
+        // Handle Instacart differently - use the retailers endpoint or fallback data
         if (storeType === 'instacart') {
-          console.log('Fetching Instacart retailers');
-          const retailersResponse = await axiosInstance.get('/instacart/retailers');
+          console.log('Setting up Instacart retailers');
 
-          if (retailersResponse.data && Array.isArray(retailersResponse.data)) {
-            console.log(`Found ${retailersResponse.data.length} Instacart retailers`);
+          // Use predefined retailers for Instacart instead of making API calls
+          // This prevents unnecessary network errors when selecting Instacart from store dropdown
+          const defaultRetailers = [
+            {
+              id: 'kroger',
+              name: 'Kroger',
+              logo_url: 'https://d2d8wwwkmhfcva.cloudfront.net/96x96/d2lnr5kwz8i9wq.cloudfront.net/images/retailers/square/28.png'
+            },
+            {
+              id: 'publix',
+              name: 'Publix',
+              logo_url: 'https://d2d8wwwkmhfcva.cloudfront.net/96x96/d2lnr5kwz8i9wq.cloudfront.net/images/retailers/square/42.png'
+            },
+            {
+              id: 'sprouts',
+              name: 'Sprouts Farmers Market',
+              logo_url: 'https://d2d8wwwkmhfcva.cloudfront.net/96x96/d2lnr5kwz8i9wq.cloudfront.net/images/retailers/square/47.png'
+            },
+            {
+              id: 'albertsons',
+              name: 'Albertsons',
+              logo_url: 'https://d2d8wwwkmhfcva.cloudfront.net/96x96/d2lnr5kwz8i9wq.cloudfront.net/images/retailers/square/1.png'
+            }
+          ];
 
-            // Format the retailers as stores
-            const formattedStores = retailersResponse.data.map(retailer => ({
-              locationId: retailer.id,
-              name: retailer.name,
-              address: 'Available in your area',
-              city: '',
-              state: '',
-              zipCode: zipCode,
-              distance: 'Delivery service',
-              hours: null,
-              logo_url: retailer.logo_url || null // Store logo URL for display
-            }));
+          // Format the retailers as stores
+          const formattedStores = defaultRetailers.map(retailer => ({
+            locationId: retailer.id,
+            name: retailer.name,
+            address: 'Available in your area',
+            city: '',
+            state: '',
+            zipCode: zipCode,
+            distance: 'Delivery service',
+            hours: null,
+            logo_url: retailer.logo_url || null // Store logo URL for display
+          }));
 
-            setStores(formattedStores);
-            setLoading(false);
-            return;
-          }
+          setStores(formattedStores);
+          setLoading(false);
+          return;
         } else {
           // Original logic for Kroger and Walmart
           const directEndpoint = storeType === 'kroger' ? '/kroger/direct-stores' : `/${storeType}/stores/near`;
