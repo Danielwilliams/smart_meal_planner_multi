@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 # Constants
 BASE_URL = "https://connect.dev.instacart.tools"  # Development server URL
+PROD_BASE_URL = "https://connect.instacart.com"  # Production server for reference
 API_VERSION = "idp/v1"  # IDP API version according to docs
 
 class InstacartClient:
@@ -50,19 +51,13 @@ class InstacartClient:
         self.session = requests.Session()
 
         # Set the headers according to the official documentation
-        # Per https://docs.instacart.com/developer_platform_api/api/products/create_shopping_list_page
+        # Per https://docs.instacart.com/developer_platform_api/api/overview/
+        # The official format is: 'Authorization: Bearer <API-key>'
         self.session.headers.update({
             "Authorization": f"Bearer {self.formatted_api_key}",
             "Content-Type": "application/json",
             "Accept": "application/json"
         })
-
-        # Also include InstacartAPI format for compatibility with some endpoints
-        if not self.formatted_api_key.startswith("InstacartAPI "):
-            logger.info("Adding additional InstacartAPI format header for compatibility")
-            self.session.headers.update({
-                "X-Instacart-API-Key": f"InstacartAPI {self.formatted_api_key}"
-            })
 
         masked_key = self.formatted_api_key[:4] + "..." + self.formatted_api_key[-4:] if len(self.formatted_api_key) > 8 else "***masked***"
         logger.info(f"Initialized Instacart client with masked key: {masked_key}")
@@ -414,22 +409,32 @@ class InstacartClient:
                     logger.warning(f"Unable to convert item to string: {item}")
                     continue
 
-        # Prepare the request data according to official Instacart documentation
-        # Per https://docs.instacart.com/developer_platform_api/api/products/create_shopping_list_page
+        # Prepare the request data according to official documentation
+        # Per https://docs.instacart.com/developer_platform_api/api/products/create_shopping_list_page/
         data = {
             "data": {
                 "type": "shopping_list_page",
                 "attributes": {
+                    "title": "Smart Meal Planner Shopping List",
                     "retailer_key": retailer_id,
                     "postal_code": postal_code,
                     "country_code": country_code,
-                    "line_items": [{"name": item} for item in cleaned_items]
+                    "line_items": [
+                        {
+                            "name": item,
+                            "quantity": 1
+                        }
+                        for item in cleaned_items
+                    ],
+                    "landing_page_configuration": {
+                        "enable_pantry_items": True
+                    }
                 }
             }
         }
 
-        # Use the official documented endpoint directly from documentation
-        endpoint = "shopping_list_pages"  # Per official docs
+        # Use the correct endpoint from official documentation
+        endpoint = "products/products_link"  # This is the correct endpoint according to docs
         logger.info(f"Creating shopping list URL for retailer {retailer_id} with {len(cleaned_items)} items")
         logger.info(f"First few items: {cleaned_items[:3]}")
 
@@ -443,9 +448,11 @@ class InstacartClient:
             # Log the full response for debugging
             logger.info(f"API Response: {json.dumps(response)[:1000] if response else 'None'}")
 
-            # According to the official documentation, the URL should be in data.attributes.url
-            # Add extensive logging to diagnose the actual structure
-            logger.info(f"Response structure: {list(response.keys()) if response else 'None'}")
+            # Try to get URL from API response
+            url = ""
+            if response:
+                # Log structure for debugging
+                logger.info(f"Response structure: {list(response.keys()) if response else 'None'}")
 
             # If "data" is present, log its structure
             if response and "data" in response:
@@ -634,7 +641,7 @@ def create_shopping_list_url_from_items(
         client = get_instacart_client()
 
         # Log API request details
-        logger.info(f"Calling official shopping_list_pages API for retailer: {retailer_id}")
+        logger.info(f"Calling products/products_link endpoint for retailer: {retailer_id}")
         logger.info(f"Using postal_code: {postal_code}, country_code: {country_code}")
         logger.info(f"First few items: {cleaned_items[:3] if cleaned_items else []}")
         
@@ -657,7 +664,7 @@ def create_shopping_list_url_from_items(
     except Exception as e:
         # Log the API error with detailed information
         logger.error(f"Error using Instacart API: {str(e)}", exc_info=True)
-        
+
         # Re-raise the exception to propagate it to the caller
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,

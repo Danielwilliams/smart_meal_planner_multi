@@ -5,6 +5,7 @@ This router handles all endpoints related to Instacart cart management.
 """
 
 import logging
+import requests
 from typing import List, Dict, Optional
 from fastapi import APIRouter, Depends, HTTPException, Body, status
 from pydantic import BaseModel
@@ -260,17 +261,59 @@ async def create_shopping_list(
                 detail="At least one item is required"
             )
 
-        # Create shopping list URL
+        # Create direct shopping list URL without using the API
         try:
-            url = instacart.create_shopping_list_url_from_items(
-                retailer_id=retailer_id,
-                item_names=items,
-                postal_code=postal_code,
-                country_code=country_code
-            )
+            # This creates a direct URL to Instacart website with the items as search parameters
+            # Format: https://www.instacart.com/store/retailer_name?search_term=item1&search_term=item2...
+
+            # Clean retailer ID - remove any "retailer_" prefix if present
+            clean_retailer_id = retailer_id
+            if retailer_id and retailer_id.startswith('retailer_'):
+                # Extract the numeric part
+                clean_retailer_id = retailer_id.replace('retailer_', '')
+                logger.info(f"Cleaned retailer ID from {retailer_id} to {clean_retailer_id}")
+
+            # If retailer ID seems invalid, use a known working default
+            if not clean_retailer_id or not isinstance(clean_retailer_id, str) or len(clean_retailer_id) < 2:
+                clean_retailer_id = "kroger"
+                logger.warning(f"Using fallback retailer 'kroger' instead of invalid: {retailer_id}")
+
+            # Build the URL
+            base_url = f"https://www.instacart.com/store/{clean_retailer_id}"
+
+            # Clean items to ensure proper format
+            cleaned_items = []
+            for item in items:
+                if not item:
+                    continue
+
+                if isinstance(item, str):
+                    cleaned_items.append(item)
+                else:
+                    # Convert to string representation as fallback
+                    try:
+                        cleaned_items.append(str(item))
+                    except:
+                        logger.warning(f"Unable to convert item to string: {item}")
+                        continue
+
+            # If we have items, add them as search terms
+            params = []
+            for item in cleaned_items:
+                # URL encode the item
+                encoded_item = requests.utils.quote(item)
+                params.append(f"search_term={encoded_item}")
+
+            # Add the parameters to the URL if we have any
+            if params:
+                url = f"{base_url}?{'&'.join(params)}"
+            else:
+                url = base_url
+
+            logger.info(f"Created direct Instacart URL: {url[:60]}...")
 
             if not url:
-                raise ValueError("Received empty URL from Instacart API")
+                raise ValueError("Failed to create Instacart URL")
 
             # Return the URL and item count
             return {
