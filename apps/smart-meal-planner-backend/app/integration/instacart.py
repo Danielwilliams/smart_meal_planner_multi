@@ -457,26 +457,39 @@ class InstacartClient:
                 if isinstance(response['data'], dict) and "attributes" in response['data']:
                     logger.info(f"Attributes structure: {list(response['data']['attributes'].keys())}")
 
-            # Extract URL using the structure expected from the dev environment
-            # Based on error messages, it appears the response structure may be different
+            # Extract URL using the structure from the error message
+            # Error shows the response includes 'products_link_url'
             url = ""
             if response:
-                # Try all possible locations for the URL
-                if "url" in response:
+                # Log all available keys to help with debugging
+                logger.info(f"Available response keys: {list(response.keys()) if response else 'None'}")
+
+                # Try the specific field mentioned in the error message
+                if "products_link_url" in response:
+                    url = response["products_link_url"]
+                    logger.info("Found URL in products_link_url field")
+
+                # Try all other possible URL field names
+                elif "url" in response:
                     url = response["url"]
                 elif "link" in response:
                     url = response["link"]
                 elif "shopping_list_url" in response:
                     url = response["shopping_list_url"]
-                # Nested structure - might still be nested but in a different way
+
+                # Try nested structures
                 elif "data" in response and isinstance(response["data"], dict):
                     data = response["data"]
                     if "url" in data:
                         url = data["url"]
+                    elif "products_link_url" in data:
+                        url = data["products_link_url"]
                     elif "attributes" in data and isinstance(data["attributes"], dict):
                         attributes = data["attributes"]
                         if "url" in attributes:
                             url = attributes["url"]
+                        elif "products_link_url" in attributes:
+                            url = attributes["products_link_url"]
             
             if url:
                 logger.info(f"Successfully created shopping list URL: {url[:60]}...")
