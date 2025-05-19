@@ -318,70 +318,143 @@ def standardize_ingredient(ing: Any):
         # Regex to match multiple quantity-unit pairs
         pattern = r'(\d+(?:/\d+)?)\s*(cup|tbsp|tsp|oz|lb|clove|g|ml)s?\b'
         matches = re.findall(pattern, ing_str, re.IGNORECASE)
-        
+
         total_amount = 0
         for qty, unit_match in matches:
             amount = safe_convert_to_float(qty)
             if amount is not None:
                 total_amount += convert_to_base_unit(amount, unit_match)
-        
+
         # Remove quantity-unit parts from string
         clean_name = re.sub(pattern, '', ing_str, flags=re.IGNORECASE).strip()
-        
+
         return total_amount, clean_name
+
+    def check_unit_without_quantity(ing_str: str):
+        """
+        Check for units without quantities (e.g., "cup cheddar cheese")
+        Return the unit if found, empty string otherwise
+        """
+        # Match patterns like "cup cheese" or "tablespoon sugar"
+        unit_pattern = r'^(cup|cups|tbsp|tablespoon|tablespoons|tsp|teaspoon|teaspoons|oz|ounce|ounces|lb|pound|pounds)\s+(.+)$'
+        match = re.match(unit_pattern, ing_str.lower(), re.IGNORECASE)
+
+        if match:
+            unit = match.group(1)
+            name = match.group(2)
+            return unit, name
+
+        return "", ing_str
 
     if isinstance(ing, str):
         logger.debug(f"Standardizing string ingredient: {ing}")
-        # Try complex parsing first
+
+        # First check for unit without quantity pattern
+        raw_unit, name_after_unit = check_unit_without_quantity(ing)
+        if raw_unit:
+            # Found a unit without quantity, use default quantity based on unit and ingredient
+            clean_name = sanitize_name(name_after_unit)
+            unit = sanitize_unit(raw_unit, clean_name)
+
+            # Set default quantity based on unit and ingredient
+            if raw_unit.lower() in ['cup', 'cups']:
+                # For cheese items with cup unit, use appropriate default
+                if "cheese" in clean_name.lower():
+                    if "parmesan" in clean_name.lower() or "feta" in clean_name.lower():
+                        amount = 0.25  # Default to 1/4 cup for crumbly cheeses
+                    else:
+                        amount = 1.0  # Default to 1 cup for other cheeses
+                else:
+                    amount = 1.0  # Default to 1 cup for non-cheese items
+            elif raw_unit.lower() in ['tbsp', 'tablespoon', 'tablespoons']:
+                amount = 1.0  # Default 1 tbsp
+            elif raw_unit.lower() in ['tsp', 'teaspoon', 'teaspoons']:
+                amount = 1.0  # Default 1 tsp
+            elif raw_unit.lower() in ['oz', 'ounce', 'ounces']:
+                amount = 1.0  # Default 1 oz
+            else:
+                amount = 1.0  # Default for other units
+
+            logger.info(f"Parsed unit without quantity: '{ing}' -> name='{clean_name}', amount={amount}, unit='{unit}'")
+            return (clean_name, amount, unit)
+
+        # Try complex parsing for multi-unit ingredients
         amount, name = parse_complex_ingredient(ing)
         raw_unit = ''  # Initialize raw_unit with default value
-        
+
         # If complex parsing fails, fall back to existing method
         if amount == 0:
             amount, raw_unit, name = parse_quantity_unit(ing)
-        
+
         # Clean up the name first
         clean_name = sanitize_name(name)
-        
+
         # Sanitize the unit with the ingredient name for default units
         unit = sanitize_unit(raw_unit, clean_name)
-            
+
         return (clean_name, amount, unit)
-    
+
     # Dictionary handling with better name detection
     elif isinstance(ing, dict):
         logger.debug(f"Standardizing dict ingredient: {ing}")
-        
+
         # Look for name in various fields
         name = ing.get('name', '')
         if not name:
             name = ing.get('ingredient', '')
-        
+
         # Log the name we found
         logger.debug(f"Found ingredient name: {name}")
-        
+
         # Clean up the name first
         clean_name = sanitize_name(name)
-        
+
         # Look for quantity in various fields
         quantity = ing.get('quantity', None)
         if quantity is None:
             quantity = ing.get('amount', None)
-        
+
         # Log the quantity we found
         logger.debug(f"Found ingredient quantity: {quantity}")
-        
+
         # Look for unit in various fields - initialize earlier
         unit = ing.get('unit', '')
-        
+
         # Special handling for ingredients with potential qualifiers in quantity
         if isinstance(quantity, str):
+            # Check for unit without quantity (e.g., "cup" with no number)
+            if quantity.lower() in ['cup', 'cups', 'tbsp', 'tablespoon', 'tablespoons',
+                                   'tsp', 'teaspoon', 'teaspoons', 'oz', 'ounce', 'ounces',
+                                   'lb', 'pound', 'pounds']:
+                unit = quantity
+
+                # Set default quantity based on unit and ingredient
+                if unit.lower() in ['cup', 'cups']:
+                    # For cheese items with cup unit, use appropriate default
+                    if "cheese" in clean_name.lower():
+                        if "parmesan" in clean_name.lower() or "feta" in clean_name.lower():
+                            quantity = 0.25  # Default to 1/4 cup for crumbly cheeses
+                        else:
+                            quantity = 1.0  # Default to 1 cup for other cheeses
+                    else:
+                        quantity = 1.0  # Default to 1 cup for non-cheese items
+                elif unit.lower() in ['tbsp', 'tablespoon', 'tablespoons']:
+                    quantity = 1.0  # Default 1 tbsp
+                elif unit.lower() in ['tsp', 'teaspoon', 'teaspoons']:
+                    quantity = 1.0  # Default 1 tsp
+                elif unit.lower() in ['oz', 'ounce', 'ounces']:
+                    quantity = 1.0  # Default 1 oz
+                else:
+                    quantity = 1.0  # Default for other units
+
+                logger.info(f"Parsed unit without quantity: '{name}' -> quantity={quantity}, unit='{unit}'")
+
             # Handle cases like "12 large eggs", "4 medium onions", etc.
-            if re.search(r'\d+\s+(large|medium|small|cloves|leaves|cans|slices)', quantity):
+            elif re.search(r'\d+\s+(large|medium|small|cloves|leaves|cans|slices)', quantity):
                 # Extract both number and qualifier
                 number_match = re.search(r'(\d+)', quantity)
                 qualifier_match = re.search(r'(large|medium|small|cloves|leaves|cans|slices)', quantity)
-                
+
                 if number_match:
                     # Store the qualifier in the unit field if appropriate
                     if qualifier_match and not unit:
@@ -392,38 +465,38 @@ def standardize_ingredient(ing: Any):
                                 unit = qualifier
                         elif qualifier in ['cloves', 'leaves', 'cans', 'slices']:
                             unit = qualifier
-                            
+
                     # Update the quantity to just the number
                     quantity = number_match.group(1)
                     logger.info(f"Extracted quantity: {quantity}, qualifier: {unit if unit else 'none'}")
-            
+
             # Handle 'cooked' qualifier in quantities
-            if 'cooked' in quantity.lower() and ('rice' in clean_name.lower() or 'quinoa' in clean_name.lower()):
+            if isinstance(quantity, str) and 'cooked' in quantity.lower() and ('rice' in clean_name.lower() or 'quinoa' in clean_name.lower()):
                 # Extract just the number for the quantity
                 number_match = re.search(r'(\d+)', quantity)
                 if number_match:
                     quantity = number_match.group(1)
                 # Mark this as cooked in the unit field
                 unit = 'cups cooked'
-        
+
         # Standardize egg names
         if clean_name.lower() in ['egg', 'eggs']:
             clean_name = 'egg'
             # If unit is not specified but we know it's eggs, set qualifier to 'large'
             if not unit:
                 unit = 'large'
-        
+
         # Convert quantity to float
         amount = safe_convert_to_float(quantity)
-        
+
         # Remove piece units and apply defaults if needed
         if unit and unit.lower() in ['piece', 'pieces']:
             unit = sanitize_unit('', clean_name)
         else:
             unit = sanitize_unit(unit, clean_name)
-            
+
         return (clean_name, amount, unit)
-    
+
     logger.warning(f"Unexpected ingredient type: {type(ing)}")
     return (str(ing).lower(), None, "")
 
@@ -1094,6 +1167,16 @@ def aggregate_grocery_list(menu_dict: Dict[str, Any]):
                 else:
                     total_amt = 4.0  # Default for other cheeses
                     unit = "oz"
+        # Handle case where unit is "cup" but quantity is missing
+        elif total_amt is None and unit and unit.lower() in ["cup", "cups"]:
+            # For cheese items, use appropriate default based on cheese type
+            if "cheese" in name.lower():
+                if "parmesan" in name.lower() or "feta" in name.lower():
+                    total_amt = 0.25  # Default to 1/4 cup for crumbly cheeses
+                else:
+                    total_amt = 1.0  # Default to 1 cup for other cheeses
+            else:
+                total_amt = 1.0  # Default to 1 cup for non-cheese items
 
         # Generate display string with formatted quantity and unit
         formatted_name = name.strip()
