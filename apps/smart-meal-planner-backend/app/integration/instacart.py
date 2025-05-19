@@ -409,11 +409,11 @@ class InstacartClient:
                     logger.warning(f"Unable to convert item to string: {item}")
                     continue
 
-        # Prepare the request data according to what the API error message indicates
-        # The error shows we need to supply title and line_items at the top level
+        # Prepare the request data with appropriate retailer ID parameter
+        # Try retailer_id instead of retailer_key based on error messages
         data = {
             "title": "Smart Meal Planner Shopping List",
-            "retailer_key": retailer_id,
+            "retailer_id": retailer_id,  # Try retailer_id parameter instead
             "postal_code": postal_code,
             "country_code": country_code,
             "line_items": [
@@ -424,6 +424,9 @@ class InstacartClient:
                 for item in cleaned_items
             ]
         }
+
+        # Log the request format with retailer ID information
+        logger.info(f"Using retailer_id: {retailer_id} for API request")
 
         # Use the correct endpoint from official documentation
         endpoint = "products/products_link"  # This is the correct endpoint according to docs
@@ -600,10 +603,37 @@ def create_shopping_list_url_from_items(
     logger.info(f"Creating shopping list for retailer: {retailer_id}")
     logger.info(f"Item count: {len(item_names) if item_names else 0}")
     
-    # First validate the retailer_id
-    if retailer_id.startswith('retailer_') or not isinstance(retailer_id, str) or len(retailer_id) < 2:
+    # First validate and normalize the retailer_id
+    if not isinstance(retailer_id, str) or len(retailer_id) < 2:
         logger.warning(f"Invalid retailer_id format detected: {retailer_id}, defaulting to 'kroger'")
         retailer_id = 'kroger'  # Default to a known working retailer
+
+    # Try to convert retailer IDs to the expected numeric format if needed
+    # Some retailers have known numeric IDs that work better with the API
+    retailer_mapping = {
+        "kroger": "8",           # Kroger appears to be retailer ID 8
+        "publix": "87",          # Example mapping
+        "costco": "5",           # Example mapping
+        "aldi": "25",            # Example mapping
+        "target": "116",         # Example mapping
+        "walmart": "118",        # Example mapping
+        "wegmans": "119",        # Example mapping
+        "sams_club": "93",       # Example mapping
+        "sprouts": "105"         # Example mapping
+    }
+
+    # If retailer_id is a name, convert to numeric ID if we have a mapping
+    if retailer_id.lower() in retailer_mapping:
+        numeric_id = retailer_mapping[retailer_id.lower()]
+        logger.info(f"Converting retailer name '{retailer_id}' to numeric ID: {numeric_id}")
+        retailer_id = numeric_id
+    # If retailer_id starts with 'retailer_', extract the numeric part
+    elif retailer_id.startswith('retailer_'):
+        numeric_id = retailer_id.replace('retailer_', '')
+        logger.info(f"Extracting numeric ID from '{retailer_id}': {numeric_id}")
+        retailer_id = numeric_id
+
+    logger.info(f"Using retailer_id: {retailer_id}")
     
     # Log sample items
     if item_names and len(item_names) > 0:
