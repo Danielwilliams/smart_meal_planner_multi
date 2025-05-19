@@ -57,3 +57,5 @@ build/
 **/node_modules/
 
 **/.claude/settings.local.json
+menu examples
+menu examples.txt

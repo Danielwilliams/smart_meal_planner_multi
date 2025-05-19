@@ -744,7 +744,8 @@ def extract_ingredient_quantities_from_menu(menu_data):
 
 def aggregate_grocery_list(menu_dict: Dict[str, Any]):
     """
-    Flexible grocery list aggregation with format detection for all menu types
+    Flexible grocery list aggregation with format detection for all menu types,
+    with improved handling of quantities and formatting
     """
     import logging
     logger = logging.getLogger(__name__)
@@ -793,7 +794,7 @@ def aggregate_grocery_list(menu_dict: Dict[str, Any]):
         # Return in the format expected by frontend
         return formatted_list
 
-    # Otherwise, use standard aggregation
+    # Otherwise, use improved aggregation
     aggregated = {}
 
     # If null, return empty list
@@ -867,8 +868,17 @@ def aggregate_grocery_list(menu_dict: Dict[str, Any]):
                     aggregated_dict[key] = current + amount
                     logger.info(f"Added amount {amount} to {name}, total now: {aggregated_dict[key]}")
                 elif key not in aggregated_dict:
-                    aggregated_dict[key] = None
-                    logger.info(f"Added {name} without amount")
+                    # Instead of setting to None, provide default values for common ingredients
+                    if "cheese" in name.lower():
+                        if "cheddar" in name.lower() or "mozzarella" in name.lower():
+                            aggregated_dict[key] = 8.0  # Default 8 oz for common cheeses
+                            logger.info(f"Added default amount 8.0 for {name}")
+                        else:
+                            aggregated_dict[key] = 4.0  # Default 4 oz for other cheeses
+                            logger.info(f"Added default amount 4.0 for {name}")
+                    else:
+                        aggregated_dict[key] = None
+                        logger.info(f"Added {name} without amount")
 
         # Handle snack-specific format (title and quantity without ingredients)
         if 'title' in obj and not 'ingredients' in obj:
@@ -890,7 +900,14 @@ def aggregate_grocery_list(menu_dict: Dict[str, Any]):
                             current = 0.0
                         aggregated_dict[key] = current + amount
                     elif key not in aggregated_dict:
-                        aggregated_dict[key] = None
+                        # Apply same default logic for titled items
+                        if "cheese" in name.lower():
+                            if "cheddar" in name.lower() or "mozzarella" in name.lower():
+                                aggregated_dict[key] = 8.0
+                            else:
+                                aggregated_dict[key] = 4.0
+                        else:
+                            aggregated_dict[key] = None
 
         # Recursively process all nested objects
         for key, value in obj.items():
@@ -989,8 +1006,17 @@ def aggregate_grocery_list(menu_dict: Dict[str, Any]):
                                         aggregated[key] = current + amount
                                         logger.info(f"Added ingredient: {name}, amount: {amount}")
                                     elif key not in aggregated:
-                                        aggregated[key] = None
-                                        logger.info(f"Added ingredient without amount: {name}")
+                                        # Apply same defaults here
+                                        if "cheese" in name.lower():
+                                            if "cheddar" in name.lower() or "mozzarella" in name.lower():
+                                                aggregated[key] = 8.0
+                                                logger.info(f"Added default amount 8.0 for {name}")
+                                            else:
+                                                aggregated[key] = 4.0
+                                                logger.info(f"Added default amount 4.0 for {name}")
+                                        else:
+                                            aggregated[key] = None
+                                            logger.info(f"Added ingredient without amount: {name}")
 
                             # Check if this item is a snack in the simplified format (no ingredients array)
                             elif section == 'snacks' and item.get('title') and (item.get('quantity') or item.get('amount')):
@@ -1014,15 +1040,91 @@ def aggregate_grocery_list(menu_dict: Dict[str, Any]):
                                         current = 0.0
                                     aggregated[key] = current + amount
                                 elif key not in aggregated:
-                                    aggregated[key] = None
+                                    # Apply same default logic
+                                    if "cheese" in name.lower():
+                                        if "cheddar" in name.lower() or "mozzarella" in name.lower():
+                                            aggregated[key] = 8.0
+                                        else:
+                                            aggregated[key] = 4.0
+                                    else:
+                                        aggregated[key] = None
         except Exception as e:
             logger.error(f"Error in direct day/meal structure processing: {str(e)}")
 
-    # Generate final list with smart formatting
+    # Generate final list with smart formatting and improved structure
     results = []
-    for (name, unit), total_amt in aggregated.items():
-        line = combine_amount_and_unit(total_amt, unit, name)
-        results.append({"name": line, "quantity": ""})
 
-    logger.info(f"Generated grocery list with {len(results)} items")
+    # First pass: create name-to-ingredients mapping to help with potential duplicates
+    ingredient_lookup = {}
+
+    for (name, unit), total_amt in aggregated.items():
+        # Apply defaults for common ingredients that are still missing quantities
+        if total_amt is None:
+            if "chicken" in name.lower() and "breast" in name.lower():
+                total_amt = 6.0  # Default to 6 oz per chicken breast
+                unit = "oz"
+            elif "beef" in name.lower() or "steak" in name.lower():
+                total_amt = 8.0
+                unit = "oz"
+            elif "oil" in name.lower():
+                total_amt = 2.0
+                unit = "tbsp"
+            elif "spice" in name.lower() or "powder" in name.lower() or "seasoning" in name.lower():
+                total_amt = 1.0
+                unit = "tsp"
+            elif "sauce" in name.lower():
+                total_amt = 2.0
+                unit = "tbsp"
+            elif "vinegar" in name.lower():
+                total_amt = 1.0
+                unit = "tbsp"
+            elif "salsa" in name.lower():
+                total_amt = 1.5
+                unit = "cups"
+            elif "garlic" in name.lower() and "powder" not in name.lower():
+                total_amt = 2.0
+                unit = "cloves"
+
+        # Generate display string with formatted quantity and unit
+        formatted_name = name.strip()
+        # Capitalize first letter of each word
+        display_name = ' '.join(word.capitalize() for word in formatted_name.split())
+
+        # Format quantity and unit
+        if total_amt is not None:
+            # Convert float to fraction where appropriate
+            if isinstance(total_amt, float):
+                fraction = Fraction(total_amt).limit_denominator(16)
+                if fraction.denominator == 1:
+                    # Whole number
+                    qty_str = str(fraction.numerator)
+                else:
+                    # Fraction
+                    qty_str = str(fraction)
+            else:
+                qty_str = str(total_amt)
+
+            # Include unit if present, otherwise just the quantity
+            if unit:
+                quantity_str = f"{qty_str} {unit}"
+            else:
+                quantity_str = qty_str
+        else:
+            # For ingredients still without quantities, use appropriate defaults
+            if name.lower() == "salt" or name.lower() == "salt to taste":
+                quantity_str = "To taste"
+            elif name.lower() == "black pepper" or name.lower() == "pepper":
+                quantity_str = "To taste"
+            else:
+                # Default for anything else without a quantity
+                quantity_str = "As needed"
+
+        # Store in results with clear structure for frontend
+        results.append({
+            "name": display_name,
+            "quantity": quantity_str,
+            "unit": unit if unit else ""
+        })
+
+    logger.info(f"Generated improved grocery list with {len(results)} items")
     return results
