@@ -135,13 +135,13 @@
       // Fix format: "NAME: NUMBER" with missing unit
       const missingUnitRegex = /^(.+):\s*([\d\.\/]+)\s*$/;
       const missingUnitMatch = originalText.match(missingUnitRegex);
-      
+
       if (missingUnitMatch && !embeddedMatch) {
         const itemName = missingUnitMatch[1];
         const quantity = missingUnitMatch[2];
-        
+
         // Add appropriate units based on item type
-        if (itemName.toLowerCase().includes('chicken') || 
+        if (itemName.toLowerCase().includes('chicken') ||
             itemName.toLowerCase().includes('beef') ||
             itemName.toLowerCase().includes('turkey') ||
             itemName.toLowerCase().includes('steak')) {
@@ -154,6 +154,19 @@
           processedText = `${itemName}: ${quantity} cloves`;
         }
         console.log(`Added missing unit: "${originalText}" -> "${processedText}"`);
+      }
+
+      // Fix cheese items specifically
+      if (originalText.toLowerCase().includes('cheddar cheese') &&
+          !originalText.toLowerCase().includes('oz')) {
+        processedText = "Cheddar Cheese: 8 oz";
+        console.log(`Fixed cheese quantity: "${originalText}" -> "${processedText}"`);
+      }
+
+      if (originalText.toLowerCase().includes('mozzarella cheese') &&
+          !originalText.toLowerCase().includes('oz')) {
+        processedText = "Mozzarella Cheese: 8 oz";
+        console.log(`Fixed cheese quantity: "${originalText}" -> "${processedText}"`);
       }
       
       // Update the item text if it changed

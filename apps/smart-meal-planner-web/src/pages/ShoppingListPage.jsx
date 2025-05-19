@@ -43,6 +43,7 @@ import CATEGORY_MAPPING from '../data/categoryMapping';
 import ShoppingList from '../components/ShoppingList';
 import SmartShoppingList from '../components/SmartShoppingList';
 import CategorizedShoppingList from '../components/CategorizedShoppingList';
+import MealShoppingList from '../components/MealShoppingList';
 import InstacartResults from '../components/InstacartResults';
 import { adaptShoppingListResponse } from '../utils/aiShoppingListAdapter';
 import {
@@ -4232,6 +4233,12 @@ const categorizeItems = (mealPlanData) => {
                     id="tab-1"
                     aria-controls="tabpanel-1"
                   />
+                  <Tab
+                    icon={<KitchenIcon />}
+                    label="By Meal"
+                    id="tab-2"
+                    aria-controls="tabpanel-2"
+                  />
                 </Tabs>
                 
                 {/* Refresh button to regenerate AI shopping list */}
@@ -4420,8 +4427,8 @@ const categorizeItems = (mealPlanData) => {
                 id="tabpanel-1"
                 aria-labelledby="tab-1"
               >
-                {/* Always display AI tab content */}
-              {(
+                {/* AI tab content */}
+                {(
                   <Box>
                     {/* Processing indicator with entertaining messages */}
                     {aiShoppingLoading && (
@@ -4807,6 +4814,22 @@ const categorizeItems = (mealPlanData) => {
                     </>
                     )}
                   </Box>
+                )}
+              </div>
+
+              {/* By Meal List Tab Panel */}
+              <div
+                role="tabpanel"
+                hidden={activeTab !== 2}
+                id="tabpanel-2"
+                aria-labelledby="tab-2"
+              >
+                {selectedMenuId ? (
+                  <MealShoppingList menuId={selectedMenuId} />
+                ) : (
+                  <Alert severity="info">
+                    Please select a menu to view meal-specific shopping lists.
+                  </Alert>
                 )}
               </div>
             </>
