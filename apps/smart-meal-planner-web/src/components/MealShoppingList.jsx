@@ -21,7 +21,7 @@ import {
 import {
   ExpandMore as ExpandMoreIcon,
   Restaurant as MealIcon,
-  FastFood as SnackIcon
+  LocalCafe as SnackIcon
 } from '@mui/icons-material';
 import apiService from '../services/apiService';
 
