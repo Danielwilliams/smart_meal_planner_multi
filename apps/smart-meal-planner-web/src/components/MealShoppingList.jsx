@@ -1,6 +1,7 @@
 // src/components/MealShoppingList.jsx
 
 import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 import {
   Typography,
   Paper,
@@ -47,11 +48,26 @@ const MealShoppingList = ({ menuId }) => {
         setLoading(true);
         setError(null);
         
-        // Call the API endpoint for meal-specific shopping lists
-        // FIX: Wrap in try/catch to handle potential errors
+        // Call the API endpoint for meal-specific shopping lists using axios directly
+        // since apiService.get might not be defined
         let response;
         try {
-          response = await apiService.get(`/menu/${menuId}/meal-shopping-lists`);
+          // Use axios directly instead of apiService.get
+          const token = localStorage.getItem('access_token');
+          const formattedToken = token && token.startsWith('Bearer ') ? token : `Bearer ${token}`;
+
+          const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://smartmealplannermulti-production.up.railway.app';
+
+          const axiosResponse = await axios.get(`${API_BASE_URL}/menu/${menuId}/meal-shopping-lists`, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'Authorization': formattedToken
+            }
+          });
+
+          // Extract data from axios response
+          response = axiosResponse.data;
           console.log('Meal shopping lists response:', response);
         } catch (apiError) {
           console.error('API Error:', apiError);
