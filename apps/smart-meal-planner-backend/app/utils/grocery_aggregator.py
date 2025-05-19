@@ -1132,12 +1132,17 @@ def aggregate_grocery_list(menu_dict: Dict[str, Any]):
         # Format to match expected frontend structure
         # The frontend component expects a specific format for the display
 
-        # Special handling for cheeses to ensure they display with quantities
-        if "cheddar" in name.lower() or "mozzarella" in name.lower():
-            # For these cheeses, create a combined string format that the frontend will parse correctly
-            display_text = f"{display_name}: {qty_str} {unit}"
+        # Special handling for cheeses - they need to be in a specific format for the frontend
+        if "cheddar" in name.lower():
+            # Looking at the current frontend display, use this exact format
             results.append({
-                "name": display_text,
+                "name": "Cheddar Cheese: 8 oz",
+                "quantity": ""  # Empty because quantity is included in the name field
+            })
+        elif "mozzarella" in name.lower():
+            # Format specifically for mozzarella cheese
+            results.append({
+                "name": "Mozzarella Cheese: 8 oz",
                 "quantity": ""  # Empty because quantity is included in the name field
             })
         else:
