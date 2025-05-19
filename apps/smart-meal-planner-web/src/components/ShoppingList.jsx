@@ -2258,9 +2258,43 @@ const ShoppingList = ({
       {showDebugData && (
         <Paper elevation={3} sx={{ my: 2, p: 2, bgcolor: '#f8d7da' }}>
           <Typography variant="h6" gutterBottom>Debug Data</Typography>
-          <Box sx={{ bgcolor: '#f5f5f5', p: 2, borderRadius: 1, overflowX: 'auto' }}>
+          <Typography variant="subtitle1" gutterBottom>Categories Data:</Typography>
+          <Box sx={{ bgcolor: '#f5f5f5', p: 2, borderRadius: 1, overflowX: 'auto', mb: 2 }}>
             <pre style={{ margin: 0 }}>
               {JSON.stringify(categories, null, 2)}
+            </pre>
+          </Box>
+
+          <Typography variant="subtitle1" gutterBottom>Processed Categories:</Typography>
+          <Box sx={{ bgcolor: '#f5f5f5', p: 2, borderRadius: 1, overflowX: 'auto', mb: 2 }}>
+            <pre style={{ margin: 0 }}>
+              {JSON.stringify(processedCategories, null, 2)}
+            </pre>
+          </Box>
+
+          <Typography variant="subtitle1" gutterBottom>Raw Menu Data (if available):</Typography>
+          <Box sx={{ bgcolor: '#f5f5f5', p: 2, borderRadius: 1, overflowX: 'auto', mb: 2 }}>
+            <pre style={{ margin: 0 }}>
+              {localStorage.getItem('debug_menu_data') || "No raw menu data available"}
+            </pre>
+          </Box>
+
+          <Typography variant="subtitle1" gutterBottom>Detailed Item Analysis:</Typography>
+          <Box sx={{ bgcolor: '#f5f5f5', p: 2, borderRadius: 1, overflowX: 'auto' }}>
+            <pre style={{ margin: 0 }}>
+              {Array.isArray(categories) ?
+                JSON.stringify(categories.slice(0, 10).map(item => {
+                  return {
+                    original: item,
+                    type: typeof item,
+                    hasName: item && typeof item === 'object' ? !!item.name : 'n/a',
+                    hasQuantity: item && typeof item === 'object' ? !!item.quantity : 'n/a',
+                    nameValue: item && typeof item === 'object' ? item.name : 'n/a',
+                    quantityValue: item && typeof item === 'object' ? item.quantity : 'n/a',
+                    unitValue: item && typeof item === 'object' ? item.unit : 'n/a'
+                  };
+                }), null, 2)
+                : "Categories is not an array"}
             </pre>
           </Box>
         </Paper>

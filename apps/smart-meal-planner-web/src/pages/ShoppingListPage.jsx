@@ -394,6 +394,14 @@ function ShoppingListPage() {
         const menuDetails = await apiService.getMenuDetails(selectedMenuId);
         console.log("DIRECT MENU DETAILS:", menuDetails);
 
+        // Save full menu details to localStorage for debugging
+        try {
+          localStorage.setItem('debug_menu_data', JSON.stringify(menuDetails));
+          console.log("Full menu data saved to localStorage for debugging");
+        } catch (storageErr) {
+          console.error("Failed to save menu data to localStorage:", storageErr);
+        }
+
         if (menuDetails && menuDetails.days && Array.isArray(menuDetails.days)) {
           console.log("SUCCESS: Direct menu details contains full menu data with days");
 
@@ -424,8 +432,8 @@ function ShoppingListPage() {
           throw new Error('No auth token found');
         }
 
-        // Direct fetch to the API - bypass apiService
-        const directResponse = await fetch(`https://smartmealplannermulti-production.up.railway.app/menu/${selectedMenuId}/grocery-list`, {
+        // Direct fetch to the API - bypass apiService - with use_ai=true
+        const directResponse = await fetch(`https://smartmealplannermulti-production.up.railway.app/menu/${selectedMenuId}/grocery-list?use_ai=true`, {
           method: 'GET',
           headers: {
             'Authorization': `Bearer ${token}`
@@ -442,6 +450,13 @@ function ShoppingListPage() {
         // Add a global window variable to debug in browser console
         window.lastGroceryListResponse = directResult;
         console.log("Available in browser console as 'window.lastGroceryListResponse'");
+
+        // Also save to localStorage for the debug panel
+        try {
+          localStorage.setItem('debug_menu_data', JSON.stringify(directResult));
+        } catch (storageErr) {
+          console.error("Failed to save menu data to localStorage:", storageErr);
+        }
 
         // Display first few items directly in the console for debugging
         if (Array.isArray(directResult) && directResult.length > 0) {
@@ -471,7 +486,8 @@ function ShoppingListPage() {
         }
 
         // Fall back to regular approach if direct fetch didn't produce a usable array
-        const groceryListResponse = await apiService.getGroceryListByMenuId(selectedMenuId);
+        // Force use_ai=true to get proper quantities
+        const groceryListResponse = await apiService.getGroceryListByMenuId(selectedMenuId, true);
         console.log("Raw grocery list response from apiService:", groceryListResponse);
 
         if (groceryListResponse && groceryListResponse.groceryList && groceryListResponse.groceryList.length > 0) {

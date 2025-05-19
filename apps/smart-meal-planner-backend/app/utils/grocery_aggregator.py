@@ -1084,6 +1084,16 @@ def aggregate_grocery_list(menu_dict: Dict[str, Any]):
             elif "garlic" in name.lower() and "powder" not in name.lower():
                 total_amt = 2.0
                 unit = "cloves"
+            elif "cheese" in name.lower():
+                if "cheddar" in name.lower():
+                    total_amt = 8.0  # Cheddar cheese typically in 8oz blocks
+                    unit = "oz"
+                elif "mozzarella" in name.lower():
+                    total_amt = 8.0  # Mozzarella often comes in 8oz packages
+                    unit = "oz"
+                else:
+                    total_amt = 4.0  # Default for other cheeses
+                    unit = "oz"
 
         # Generate display string with formatted quantity and unit
         formatted_name = name.strip()
@@ -1119,12 +1129,23 @@ def aggregate_grocery_list(menu_dict: Dict[str, Any]):
                 # Default for anything else without a quantity
                 quantity_str = "As needed"
 
-        # Store in results with clear structure for frontend
-        results.append({
-            "name": display_name,
-            "quantity": quantity_str,
-            "unit": unit if unit else ""
-        })
+        # Format to match expected frontend structure
+        # The frontend component expects a specific format for the display
+
+        # Special handling for cheeses to ensure they display with quantities
+        if "cheddar" in name.lower() or "mozzarella" in name.lower():
+            # For these cheeses, create a combined string format that the frontend will parse correctly
+            display_text = f"{display_name}: {qty_str} {unit}"
+            results.append({
+                "name": display_text,
+                "quantity": ""  # Empty because quantity is included in the name field
+            })
+        else:
+            # Store in results with clear structure for frontend
+            results.append({
+                "name": display_name,
+                "quantity": quantity_str
+            })
 
     logger.info(f"Generated improved grocery list with {len(results)} items")
     return results
