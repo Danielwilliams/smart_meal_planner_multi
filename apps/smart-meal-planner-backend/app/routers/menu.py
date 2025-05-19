@@ -4,14 +4,16 @@ import re
 import os
 import asyncio
 from typing import List, Optional, Dict, Any, Set
-from fastapi import APIRouter, HTTPException, Query, Body, Depends
+from fastapi import APIRouter, HTTPException, Query, Body, Depends, status
 import openai
 from psycopg2.extras import RealDictCursor
-from ..db import get_db_connection
+from ..db import get_db_connection, get_db
+from sqlalchemy.orm import Session
 from ..config import OPENAI_API_KEY
 from ..models.user import GenerateMealPlanRequest
 from ..models.menus import SaveMenuRequest
 from pydantic import BaseModel
+from ..crud import menu_crud
 import logging
 from ..utils.grocery_aggregator import aggregate_grocery_list
 
@@ -2164,16 +2166,16 @@ async def unshare_menu(
         user_id = user.get('user_id')
         org_id = user.get('organization_id')
         role = user.get('role', '')
-        
+
         if role != 'owner':
             raise HTTPException(
-                status_code=403, 
+                status_code=403,
                 detail="Only organization owners can unshare menus"
             )
-        
+
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
-        
+
         try:
             # Get the share record with menu details
             cursor.execute("""
@@ -2182,47 +2184,144 @@ async def unshare_menu(
                 JOIN menus m ON sm.menu_id = m.id
                 WHERE sm.id = %s
             """, (share_id,))
-            
+
             share = cursor.fetchone()
-            
+
             if not share:
                 raise HTTPException(
                     status_code=404,
                     detail="Share record not found"
                 )
-            
+
             # Check if user owns the menu or is from the same organization
             if share['menu_owner_id'] != user_id and share['organization_id'] != org_id:
                 raise HTTPException(
                     status_code=403,
                     detail="You don't have permission to remove this share"
                 )
-            
+
             # Delete the share
             cursor.execute("""
                 DELETE FROM shared_menus
                 WHERE id = %s
                 RETURNING id
             """, (share_id,))
-            
+
             deleted = cursor.fetchone()
-            
+
             if not deleted:
                 raise HTTPException(
                     status_code=404,
                     detail="Share record not found"
                 )
-            
+
             conn.commit()
-            
+
             return {
                 "message": "Menu share removed successfully"
             }
-            
+
         finally:
             cursor.close()
             conn.close()
-            
+
     except Exception as e:
         logger.error(f"Error unsharing menu: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/{menu_id}/meal-shopping-lists", response_model=Dict[str, Any])
+async def get_meal_shopping_lists(
+    menu_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Get shopping lists organized by individual meals for a specific menu
+    """
+    # Retrieve the menu
+    menu = menu_crud.get_menu(db, menu_id)
+    if not menu:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Menu with ID {menu_id} not found"
+        )
+
+    # Get menu data
+    menu_data = {}
+    try:
+        if menu.meal_plan_json:
+            menu_data = json.loads(menu.meal_plan_json)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error parsing menu data: {str(e)}"
+        )
+
+    # Initialize result
+    result = {
+        "title": menu.nickname or f"Menu {menu_id}",
+        "meal_lists": []
+    }
+
+    # Process menu plan data if available
+    if menu_data and "days" in menu_data and isinstance(menu_data["days"], list):
+        # Process each day
+        for day_index, day in enumerate(menu_data["days"]):
+            # Process meals
+            if "meals" in day and isinstance(day["meals"], list):
+                for meal_index, meal in enumerate(day["meals"]):
+                    # Extract meal details
+                    meal_data = {
+                        "day_index": day_index,
+                        "day": day.get("day_number", day_index + 1),
+                        "meal_index": meal_index,
+                        "title": meal.get("title", f"Meal {meal_index + 1}"),
+                        "meal_time": meal.get("meal_time", ""),
+                        "servings": meal.get("servings", 0),
+                        "is_snack": False,
+                        "ingredients": []
+                    }
+
+                    # Process ingredients for this meal
+                    if "ingredients" in meal and isinstance(meal["ingredients"], list):
+                        for ingredient in meal["ingredients"]:
+                            if isinstance(ingredient, dict) and "name" in ingredient:
+                                ing_entry = {
+                                    "name": ingredient["name"].capitalize(),
+                                    "quantity": ingredient.get("quantity", "")
+                                }
+                                meal_data["ingredients"].append(ing_entry)
+
+                    # Add to result if it has ingredients
+                    if meal_data["ingredients"]:
+                        result["meal_lists"].append(meal_data)
+
+            # Process snacks
+            if "snacks" in day and isinstance(day["snacks"], list):
+                for snack_index, snack in enumerate(day["snacks"]):
+                    # Extract snack details
+                    snack_data = {
+                        "day_index": day_index,
+                        "day": day.get("day_number", day_index + 1),
+                        "meal_index": snack_index,
+                        "title": snack.get("title", f"Snack {snack_index + 1}"),
+                        "meal_time": "Snack",
+                        "servings": snack.get("servings", 0),
+                        "is_snack": True,
+                        "ingredients": []
+                    }
+
+                    # Process ingredients for this snack
+                    if "ingredients" in snack and isinstance(snack["ingredients"], list):
+                        for ingredient in snack["ingredients"]:
+                            if isinstance(ingredient, dict) and "name" in ingredient:
+                                ing_entry = {
+                                    "name": ingredient["name"].capitalize(),
+                                    "quantity": ingredient.get("quantity", "")
+                                }
+                                snack_data["ingredients"].append(ing_entry)
+
+                    # Add to result if it has ingredients
+                    if snack_data["ingredients"]:
+                        result["meal_lists"].append(snack_data)
+
+    return result
