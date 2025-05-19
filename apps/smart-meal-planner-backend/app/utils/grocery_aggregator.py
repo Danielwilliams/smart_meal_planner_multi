@@ -332,11 +332,11 @@ def standardize_ingredient(ing: Any):
 
     def check_unit_without_quantity(ing_str: str):
         """
-        Check for units without quantities (e.g., "cup cheddar cheese")
+        Check for units without quantities (e.g., "cup cheddar cheese", "lb ground beef")
         Return the unit if found, empty string otherwise
         """
-        # Match patterns like "cup cheese" or "tablespoon sugar"
-        unit_pattern = r'^(cup|cups|tbsp|tablespoon|tablespoons|tsp|teaspoon|teaspoons|oz|ounce|ounces|lb|pound|pounds)\s+(.+)$'
+        # Match patterns like "cup cheese" or "tablespoon sugar" or "lb ground beef"
+        unit_pattern = r'^(cup|cups|tbsp|tablespoon|tablespoons|tsp|teaspoon|teaspoons|oz|ounce|ounces|lb|pound|pounds|g|gram|grams|kg|kilogram|kilograms|ml|milliliter|liter|liters|clove|cloves|pinch|dash|can|cans|bottle|bottles|slice|slices|piece|pieces|scoop|scoops)\s+(.+)$'
         match = re.match(unit_pattern, ing_str.lower(), re.IGNORECASE)
 
         if match:
