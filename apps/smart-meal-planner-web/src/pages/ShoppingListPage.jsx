@@ -45,6 +45,7 @@ import SmartShoppingList from '../components/SmartShoppingList';
 import CategorizedShoppingList from '../components/CategorizedShoppingList';
 import MealShoppingList from '../components/MealShoppingList';
 import InstacartResults from '../components/InstacartResults';
+import ErrorBoundary from '../components/ErrorBoundary';
 import { adaptShoppingListResponse } from '../utils/aiShoppingListAdapter';
 import {
   AutoAwesome as AiIcon,
@@ -4825,7 +4826,15 @@ const categorizeItems = (mealPlanData) => {
                 aria-labelledby="tab-2"
               >
                 {selectedMenuId ? (
-                  <MealShoppingList menuId={selectedMenuId} />
+                  <ErrorBoundary
+                    fallback={
+                      <Alert severity="error" sx={{ my: 2 }}>
+                        An error occurred loading meal lists. This feature may not be available yet.
+                      </Alert>
+                    }
+                  >
+                    <MealShoppingList menuId={selectedMenuId} />
+                  </ErrorBoundary>
                 ) : (
                   <Alert severity="info">
                     Please select a menu to view meal-specific shopping lists.
