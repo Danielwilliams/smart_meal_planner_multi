@@ -1208,6 +1208,15 @@ def aggregate_grocery_list(menu_dict: Dict[str, Any]):
                 quantity_str = "To taste"
             elif name.lower() == "black pepper" or name.lower() == "pepper":
                 quantity_str = "To taste"
+            # Default quantities for common cheeses
+            elif "cheddar cheese" in name.lower():
+                quantity_str = "8 oz"
+            elif "mozzarella cheese" in name.lower():
+                quantity_str = "8 oz"
+            elif "parmesan cheese" in name.lower():
+                quantity_str = "1/4 cup"
+            elif "cheese" in name.lower():
+                quantity_str = "1 cup"
             else:
                 # Default for anything else without a quantity
                 quantity_str = "As needed"
@@ -1215,25 +1224,12 @@ def aggregate_grocery_list(menu_dict: Dict[str, Any]):
         # Format to match expected frontend structure
         # The frontend component expects a specific format for the display
 
-        # Special handling for cheeses - they need to be in a specific format for the frontend
-        if "cheddar" in name.lower():
-            # Looking at the current frontend display, use this exact format
-            results.append({
-                "name": "Cheddar Cheese: 8 oz",
-                "quantity": ""  # Empty because quantity is included in the name field
-            })
-        elif "mozzarella" in name.lower():
-            # Format specifically for mozzarella cheese
-            results.append({
-                "name": "Mozzarella Cheese: 8 oz",
-                "quantity": ""  # Empty because quantity is included in the name field
-            })
-        else:
-            # Store in results with clear structure for frontend
-            results.append({
-                "name": display_name,
-                "quantity": quantity_str
-            })
+        # Fix for all ingredients - separate the name and quantity properly
+        # Build proper result entry with name and quantity separated
+        results.append({
+            "name": display_name,
+            "quantity": quantity_str
+        })
 
     logger.info(f"Generated improved grocery list with {len(results)} items")
     return results
