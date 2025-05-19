@@ -409,28 +409,20 @@ class InstacartClient:
                     logger.warning(f"Unable to convert item to string: {item}")
                     continue
 
-        # Prepare the request data according to official documentation
-        # Per https://docs.instacart.com/developer_platform_api/api/products/create_shopping_list_page/
+        # Prepare the request data according to what the API error message indicates
+        # The error shows we need to supply title and line_items at the top level
         data = {
-            "data": {
-                "type": "shopping_list_page",
-                "attributes": {
-                    "title": "Smart Meal Planner Shopping List",
-                    "retailer_key": retailer_id,
-                    "postal_code": postal_code,
-                    "country_code": country_code,
-                    "line_items": [
-                        {
-                            "name": item,
-                            "quantity": 1
-                        }
-                        for item in cleaned_items
-                    ],
-                    "landing_page_configuration": {
-                        "enable_pantry_items": True
-                    }
+            "title": "Smart Meal Planner Shopping List",
+            "retailer_key": retailer_id,
+            "postal_code": postal_code,
+            "country_code": country_code,
+            "line_items": [
+                {
+                    "name": item,
+                    "quantity": 1
                 }
-            }
+                for item in cleaned_items
+            ]
         }
 
         # Use the correct endpoint from official documentation
@@ -462,20 +454,26 @@ class InstacartClient:
                 if isinstance(response['data'], dict) and "attributes" in response['data']:
                     logger.info(f"Attributes structure: {list(response['data']['attributes'].keys())}")
 
-            # Extract URL using the official structure and fallbacks
+            # Extract URL using the structure expected from the dev environment
+            # Based on error messages, it appears the response structure may be different
             url = ""
             if response:
-                # Primary path per documentation: data.attributes.url
-                if "data" in response and isinstance(response["data"], dict):
-                    if "attributes" in response["data"] and isinstance(response["data"]["attributes"], dict):
-                        if "url" in response["data"]["attributes"]:
-                            url = response["data"]["attributes"]["url"]
-
-                # Fallback paths
-                if not url and "url" in response:
+                # Try all possible locations for the URL
+                if "url" in response:
                     url = response["url"]
-                elif not url and "link" in response:
+                elif "link" in response:
                     url = response["link"]
+                elif "shopping_list_url" in response:
+                    url = response["shopping_list_url"]
+                # Nested structure - might still be nested but in a different way
+                elif "data" in response and isinstance(response["data"], dict):
+                    data = response["data"]
+                    if "url" in data:
+                        url = data["url"]
+                    elif "attributes" in data and isinstance(data["attributes"], dict):
+                        attributes = data["attributes"]
+                        if "url" in attributes:
+                            url = attributes["url"]
             
             if url:
                 logger.info(f"Successfully created shopping list URL: {url[:60]}...")
