@@ -172,41 +172,81 @@ async def add_meal_ingredients_to_cart(
                 detail="Invalid store. Must be 'kroger' or 'instacart'"
             )
 
+        # Format all ingredients first
+        formatted_items = []
+        for ingredient in request.ingredients:
+            item_name = ingredient.get("name", "")
+            quantity = ingredient.get("quantity", "1")
+
+            if not item_name:
+                continue
+
+            # Format the item for the store API
+            if quantity and quantity.strip():
+                formatted_item = f"{quantity} {item_name}".strip()
+            else:
+                formatted_item = item_name.strip()
+            formatted_items.append(formatted_item)
+
+        if not formatted_items:
+            raise HTTPException(
+                status_code=400,
+                detail="No valid ingredients found to add to cart"
+            )
+
         added_items = []
         failed_items = []
 
-        # Process each ingredient
-        for ingredient in request.ingredients:
-            try:
-                item_name = ingredient.get("name", "")
-                quantity = ingredient.get("quantity", "1")
+        # Add to cart based on store
+        try:
+            if request.store.lower() == "kroger":
+                # For Kroger, add items individually
+                for item in formatted_items:
+                    try:
+                        result = add_to_cart_func(None, item, 1)  # Simplified for now
+                        added_items.append({
+                            "item": item,
+                            "status": "success",
+                            "result": result
+                        })
+                    except Exception as item_error:
+                        logger.error(f"Failed to add Kroger item {item}: {str(item_error)}")
+                        failed_items.append({
+                            "item": item,
+                            "status": "failed",
+                            "error": str(item_error)
+                        })
 
-                if not item_name:
-                    continue
+            elif request.store.lower() == "instacart":
+                # For Instacart, pass all items at once as a list of strings
+                try:
+                    logger.info(f"Adding {len(formatted_items)} items to Instacart: {formatted_items}")
+                    result = add_to_cart_func(formatted_items)
+                    # If successful, mark all items as added
+                    for item in formatted_items:
+                        added_items.append({
+                            "item": item,
+                            "status": "success",
+                            "result": result
+                        })
+                except Exception as instacart_error:
+                    logger.error(f"Failed to add Instacart items: {str(instacart_error)}")
+                    # If failed, mark all items as failed
+                    for item in formatted_items:
+                        failed_items.append({
+                            "item": item,
+                            "status": "failed",
+                            "error": str(instacart_error)
+                        })
 
-                # Format the item for the store API
-                formatted_item = f"{quantity} {item_name}".strip()
-
-                # Add to cart based on store
-                if request.store.lower() == "kroger":
-                    # For Kroger, we'll need a user token - this should be passed from frontend
-                    result = add_to_cart_func(None, formatted_item, 1)  # Simplified for now
-                elif request.store.lower() == "instacart":
-                    # For Instacart, create a shopping list URL
-                    result = add_to_cart_func([formatted_item])
-
-                added_items.append({
-                    "item": formatted_item,
-                    "status": "success",
-                    "result": result
-                })
-
-            except Exception as item_error:
-                logger.error(f"Failed to add item {ingredient}: {str(item_error)}")
+        except Exception as general_error:
+            logger.error(f"General error adding items to {request.store}: {str(general_error)}")
+            # Mark all items as failed
+            for item in formatted_items:
                 failed_items.append({
-                    "item": ingredient.get("name", "Unknown"),
+                    "item": item,
                     "status": "failed",
-                    "error": str(item_error)
+                    "error": str(general_error)
                 })
 
         return {
