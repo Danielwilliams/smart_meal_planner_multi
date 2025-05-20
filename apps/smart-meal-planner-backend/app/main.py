@@ -23,7 +23,8 @@ from app.routers import (
     order,
     store,
     grocery_list,
-    meal_grocery_list
+    meal_grocery_list,
+    meal_shopping_lists
 )
 
 # Import store-specific routers directly
@@ -125,6 +126,7 @@ def create_app() -> FastAPI:
     app.include_router(kroger_auth.router)
     app.include_router(grocery_list.router)
     app.include_router(meal_grocery_list.router)
+    app.include_router(meal_shopping_lists.router)
     app.include_router(store.router)
     app.include_router(saved_recipes.router)
     app.include_router(organizations.router)

@@ -2250,16 +2250,13 @@ async def unshare_menu(
         logger.error(f"Error unsharing menu: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/{menu_id}/meal-shopping-lists", response_model=Dict[str, Any])
-async def get_meal_shopping_lists(
-    menu_id: int,
-    db: Session = Depends(get_db)
-):
+# @router.get("/{menu_id}/meal-shopping-lists")
+# async def get_meal_shopping_lists(menu_id: int):
     """
     Get shopping lists organized by individual meals for a specific menu
     """
-    # Retrieve the menu
-    menu = menu_crud.get_menu(db, menu_id)
+    # Retrieve the menu using the correct crud function
+    menu = menu_crud.get_menu_by_id(menu_id)
     if not menu:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -2267,19 +2264,11 @@ async def get_meal_shopping_lists(
         )
 
     # Get menu data
-    menu_data = {}
-    try:
-        if menu.meal_plan_json:
-            menu_data = json.loads(menu.meal_plan_json)
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error parsing menu data: {str(e)}"
-        )
+    menu_data = menu.get("meal_plan_dict", {})
 
     # Initialize result
     result = {
-        "title": menu.nickname or f"Menu {menu_id}",
+        "title": f"Menu {menu_id}",
         "meal_lists": []
     }
 
