@@ -17,12 +17,16 @@ import {
   CircularProgress,
   Chip,
   Divider,
-  Alert
+  Alert,
+  ButtonGroup,
+  Snackbar
 } from '@mui/material';
 import {
   ExpandMore as ExpandMoreIcon,
   Restaurant as MealIcon,
-  LocalCafe as SnackIcon
+  LocalCafe as SnackIcon,
+  ShoppingCart as ShoppingCartIcon,
+  LocalGroceryStore as KrogerIcon
 } from '@mui/icons-material';
 import apiService from '../services/apiService';
 
@@ -34,6 +38,9 @@ const MealShoppingList = ({ menuId }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [menuTitle, setMenuTitle] = useState('');
+  const [cartLoading, setCartLoading] = useState({});
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
 
   // Fetch meal-specific shopping lists when component mounts
   useEffect(() => {
@@ -153,13 +160,65 @@ const MealShoppingList = ({ menuId }) => {
   // Get meal type display (breakfast, lunch, dinner)
   const getMealTypeDisplay = (mealTime) => {
     if (!mealTime) return '';
-    
+
     const normalizedTime = mealTime.toLowerCase().trim();
     if (normalizedTime === 'breakfast') return ' (Breakfast)';
     if (normalizedTime === 'lunch') return ' (Lunch)';
     if (normalizedTime === 'dinner') return ' (Dinner)';
-    
+
     return normalizedTime ? ` (${mealTime})` : '';
+  };
+
+  // Add meal ingredients to cart
+  const addMealToCart = async (meal, store) => {
+    if (!meal.ingredients || meal.ingredients.length === 0) {
+      setSnackbarMessage('No ingredients to add to cart');
+      setSnackbarOpen(true);
+      return;
+    }
+
+    const mealKey = `${meal.day_index}-${meal.meal_index}-${store}`;
+    setCartLoading(prev => ({ ...prev, [mealKey]: true }));
+
+    try {
+      const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://smartmealplannermulti-production.up.railway.app';
+      const token = localStorage.getItem('access_token');
+      const formattedToken = token && token.startsWith('Bearer ') ? token : `Bearer ${token}`;
+
+      const response = await axios.post(
+        `${API_BASE_URL}/menu/${menuId}/meal-to-cart`,
+        {
+          ingredients: meal.ingredients,
+          store: store,
+          meal_title: meal.title || 'Untitled Meal'
+        },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Authorization': formattedToken
+          }
+        }
+      );
+
+      if (response.data) {
+        const { success_count, failure_count } = response.data;
+        if (success_count > 0) {
+          setSnackbarMessage(
+            `Added ${success_count} items from "${meal.title}" to ${store.charAt(0).toUpperCase() + store.slice(1)} cart`
+          );
+        } else {
+          setSnackbarMessage(`Failed to add items to ${store} cart`);
+        }
+        setSnackbarOpen(true);
+      }
+    } catch (err) {
+      console.error('Error adding meal to cart:', err);
+      setSnackbarMessage(`Error adding meal to ${store} cart: ${err.response?.data?.detail || err.message}`);
+      setSnackbarOpen(true);
+    } finally {
+      setCartLoading(prev => ({ ...prev, [mealKey]: false }));
+    }
   };
 
   // Render loading state
@@ -312,6 +371,49 @@ const MealShoppingList = ({ menuId }) => {
                             </ListItem>
                           )}
                         </List>
+
+                        {/* Cart Buttons */}
+                        {meal.ingredients && meal.ingredients.length > 0 && (
+                          <Box sx={{ mt: 2, pt: 1, borderTop: '1px solid #e0e0e0' }}>
+                            <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
+                              Add to Cart:
+                            </Typography>
+                            <ButtonGroup size="small" variant="outlined" fullWidth>
+                              <Button
+                                startIcon={cartLoading[`${meal.day_index}-${meal.meal_index}-kroger`] ?
+                                  <CircularProgress size={16} /> : <KrogerIcon />}
+                                onClick={() => addMealToCart(meal, 'kroger')}
+                                disabled={cartLoading[`${meal.day_index}-${meal.meal_index}-kroger`]}
+                                sx={{
+                                  color: '#0066B2',
+                                  borderColor: '#0066B2',
+                                  '&:hover': {
+                                    borderColor: '#0066B2',
+                                    backgroundColor: 'rgba(0, 102, 178, 0.04)'
+                                  }
+                                }}
+                              >
+                                Kroger
+                              </Button>
+                              <Button
+                                startIcon={cartLoading[`${meal.day_index}-${meal.meal_index}-instacart`] ?
+                                  <CircularProgress size={16} /> : <ShoppingCartIcon />}
+                                onClick={() => addMealToCart(meal, 'instacart')}
+                                disabled={cartLoading[`${meal.day_index}-${meal.meal_index}-instacart`]}
+                                sx={{
+                                  color: '#F36D00',
+                                  borderColor: '#F36D00',
+                                  '&:hover': {
+                                    borderColor: '#F36D00',
+                                    backgroundColor: 'rgba(243, 109, 0, 0.04)'
+                                  }
+                                }}
+                              >
+                                Instacart
+                              </Button>
+                            </ButtonGroup>
+                          </Box>
+                        )}
                       </Paper>
                     </Grid>
                   );
@@ -321,6 +423,15 @@ const MealShoppingList = ({ menuId }) => {
           </Accordion>
         );
       })}
+
+      {/* Snackbar for feedback */}
+      <Snackbar
+        open={snackbarOpen}
+        autoHideDuration={4000}
+        onClose={() => setSnackbarOpen(false)}
+        message={snackbarMessage}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      />
     </Box>
   );
 };
