@@ -4376,9 +4376,9 @@ const categorizeItems = (mealPlanData) => {
 
                     // Run our emergency fix
                     emergencyFetchList();
-                  }} // Force refresh
+                  }}
                 >
-                  Regenerate AI List
+                  Refresh List
                 </Button>
               </Box>
               
@@ -4799,7 +4799,7 @@ const categorizeItems = (mealPlanData) => {
             startIcon={<AutoAwesome />}
             color="secondary"
           >
-            Generate AI List
+            Regenerate List
           </Button>
         </DialogActions>
       </Dialog>
