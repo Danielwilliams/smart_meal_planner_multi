@@ -167,19 +167,29 @@ function NavBar() {
       <AppBar position="static">
         <Toolbar sx={{ flexWrap: 'wrap', justifyContent: 'space-between' }}>
           {/* Logo/Title Area */}
-          <Typography 
-            variant="h6" 
-            component={Link} 
+          <Typography
+            variant="h6"
+            component={Link}
             to="/"
-            sx={{ 
-              flexGrow: 0, 
+            sx={{
+              flexGrow: 0,
               mr: { xs: 0, md: 2 },
-              textDecoration: 'none', 
+              textDecoration: 'none',
               color: 'inherit',
               display: 'flex',
               alignItems: 'center'
             }}
           >
+            <img
+              src="/favicon-32x32.png"
+              alt="Smart Meal Planner Logo"
+              style={{
+                width: 28,
+                height: 28,
+                marginRight: 8,
+                borderRadius: 4
+              }}
+            />
             Smart Meal Planner
             {organization && !isMobile && (
               <Chip
