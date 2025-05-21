@@ -169,7 +169,7 @@ const MealShoppingList = ({ menuId }) => {
     return normalizedTime ? ` (${mealTime})` : '';
   };
 
-  // Add meal ingredients to cart using existing services
+  // Add meal ingredients to cart using the proper flow: internal cart first, then to store
   const addMealToCart = async (meal, store) => {
     if (!meal.ingredients || meal.ingredients.length === 0) {
       setSnackbarMessage('No ingredients to add to cart');
@@ -181,6 +181,8 @@ const MealShoppingList = ({ menuId }) => {
     setCartLoading(prev => ({ ...prev, [mealKey]: true }));
 
     try {
+      // For now, directly create shopping list without internal cart complexity
+      // This follows the same pattern as the working CartPage Instacart integration
       if (store === 'instacart') {
         // Use the existing Instacart service
         const instacartBackendService = (await import('../services/instacartBackendService')).default;
