@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
-import InstacartCarrotIcon from '../assets/instacart/Instacart_Carrot.png';
 import {
   Container,
   Typography,
@@ -99,17 +98,48 @@ function ShoppingListPage() {
     }
   };
   
-  // Default to Standard tab (index 0)
-  const [activeTab, setActiveTab] = useState(0);
+  // AI shopping list state
+  // No longer needed - we auto-generate the AI list
+  const [showAiShoppingPrompt, setShowAiShoppingPrompt] = useState(false);
+  const [aiShoppingLoading, setAiShoppingLoading] = useState(false);
+  const [aiShoppingData, setAiShoppingData] = useState(null);
+
+  // Create a reference to the initial data with true quantities
+  const [initialGroceryItems, setInitialGroceryItems] = useState({});
+  // Default to AI Enhanced tab (index 1)
+  const [activeTab, setActiveTab] = useState(1);
+  const [aiPreferences, setAiPreferences] = useState('');
+  const [usingAiList, setUsingAiList] = useState(false);
+
+  // For New AI List button - ensure these are still accessible
+  const [generationStats, setGenerationStats] = useState(null);
+  const [generationLogs, setGenerationLogs] = useState([]);
+  const [showLogs, setShowLogs] = useState(true); // Show logs by default
+
+  // For entertaining messages while loading
+  const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
   const [instacartRetailerId, setInstacartRetailerId] = useState('');
   const [creatingShoppingList, setCreatingShoppingList] = useState(false);
   const [shoppingListUrl, setShoppingListUrl] = useState(null);
   const [showShoppingListDialog, setShowShoppingListDialog] = useState(false);
-
-  // Legacy AI stub functions
-  const clearStatusPolling = () => { return; };
-  const generateNewAiList = async () => { return; };
-  const handleAiPromptResponse = () => { return; };
+  const loadingMessages = [
+    "AI chef is chopping ingredients into categories...",
+    "Sorting your tomatoes from your potatoes...",
+    "Figuring out what aisle the quinoa is in...",
+    "Counting how many eggs you'll need...",
+    "Calculating the perfect amount of garlic (always more)...",
+    "Organizing your shopping route for maximum efficiency...",
+    "Deciding whether avocados should be in produce or 'temperamental fruits'...",
+    "Making sure you don't forget the salt this time...",
+    "Translating 'a pinch' into actual measurements...",
+    "Checking if you really need more olive oil...",
+    "Determining if ice cream counts as a dairy essential...",
+    "Sorting ingredients by 'foods you'll actually use' vs 'aspirational purchases'..."
+  ];
+  
+  // Cache management
+  const AI_SHOPPING_CACHE_KEY = 'ai_shopping_cache';
+  const CACHE_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 
   // Debug log
   console.log("ShoppingListPage params:", { 
@@ -878,8 +908,11 @@ function ShoppingListPage() {
   // Menu selection handler
   const handleMenuSelect = async (menuId) => {
     try {
-      // Clear current data
+      // Clear current data and stop any active polling
+      clearStatusPolling();
       setLoading(true);
+      setAiShoppingData(null);
+      setUsingAiList(false);
 
       console.log(`Manually selecting menu ID: ${menuId}`);
 
@@ -930,7 +963,7 @@ function ShoppingListPage() {
 
         setAiShoppingData(processedCache);
         setUsingAiList(true);
-        setActiveTab(0); // Switch to Standard tab
+        setActiveTab(1); // Switch to AI tab
 
         // Show notification
         showSnackbar(`Using cached shopping list for menu ${menuId}`);
@@ -1033,11 +1066,58 @@ function ShoppingListPage() {
   const MAX_POLLS = 60; // Maximum number of status checks (5 minutes at 5-second intervals)
   const POLL_INTERVAL = 5000; // Poll every 5 seconds
 
-  // Legacy AI function - now just returns safe defaults
+  // Process AI shopping list items function (moved outside to be reusable)
   const processAiShoppingItems = (response) => {
-    console.log("AI functionality removed - returning safe default");
-    return { groceryList: [], error: "AI functionality removed" };
-  };
+    // Safety check for null response
+    if (!response) {
+      console.error("Null response passed to processAiShoppingItems");
+      return { groceryList: [], error: "Invalid response data" };
+    }
+
+    console.log("Processing AI shopping list items with response keys:", Object.keys(response));
+
+    // Make a deep copy to avoid mutating the original response
+    try {
+      response = JSON.parse(JSON.stringify(response));
+    } catch (error) {
+      console.error("Error creating deep copy of response:", error);
+      // Continue with the original response if copy fails
+    }
+
+    // Check if we have a direct groceryList or need to extract it from a different structure
+    if (!response.groceryList && response.result && response.result.groceryList) {
+      console.log("Found groceryList inside result property - extracting it");
+      response.groceryList = response.result.groceryList;
+
+      // Also extract other properties if they exist
+      if (response.result.nutritionTips) response.nutritionTips = response.result.nutritionTips;
+      if (response.result.recommendations) response.recommendations = response.result.recommendations;
+      if (response.result.healthySwaps) response.healthySwaps = response.result.healthySwaps;
+      if (response.result.pantryStaples) response.pantryStaples = response.result.pantryStaples;
+    }
+
+    // Handle case where groceryList might be a string (JSON)
+    if (response.groceryList && typeof response.groceryList === 'string') {
+      try {
+        console.log("groceryList is a string, attempting to parse as JSON");
+        response.groceryList = JSON.parse(response.groceryList);
+      } catch (parseError) {
+        console.error("Failed to parse groceryList string as JSON:", parseError);
+      }
+    }
+
+    // Format and normalize all items to ensure quantities are shown
+    if (response.groceryList && Array.isArray(response.groceryList)) {
+      console.log(`Processing ${response.groceryList.length} AI shopping list categories`);
+
+      response.groceryList.forEach(category => {
+        // Skip null categories
+        if (!category) return;
+
+        // Handle malformed property names in categories
+        // Check for properties like "car carbs" instead of "carbs"
+        if (category) {
+          Object.keys(category).forEach(key => {
             if (key.includes('carb') && key !== 'carbs') {
               console.log(`Found malformed carbs key: ${key}, fixing`);
               category.carbs = category[key];
@@ -2036,7 +2116,7 @@ Combine duplicate ingredients, adding up quantities when appropriate.
           "Consider buying in-season produce for better flavor and value."
         ]
       });
-      setActiveTab(0);
+      setActiveTab(1);
       setUsingAiList(true);
 
       // Cache the results
@@ -2171,8 +2251,8 @@ Combine duplicate ingredients, adding up quantities when appropriate.
         setAiShoppingData(processedResponse);
         setAiShoppingLoading(false);
 
-        // Use Standard tab
-        setActiveTab(0);
+        // Automatically switch to the AI tab
+        setActiveTab(1);
         setUsingAiList(true);
 
         console.log("AI shopping list processed successfully - switching to AI tab");
@@ -2616,7 +2696,7 @@ Combine duplicate ingredients, adding up quantities when appropriate.
                 "Check your pantry before shopping to avoid duplicates."
               ]
             });
-            setActiveTab(0);
+            setActiveTab(1);
             setUsingAiList(true);
           })
           .catch(error => {
@@ -2825,8 +2905,8 @@ Combine duplicate ingredients, adding up quantities when appropriate.
             // Start polling for status updates
             startStatusPolling(menuId);
 
-            // Always switch to the Standard tab
-            setActiveTab(0);
+            // Always switch to the AI tab when processing starts
+            setActiveTab(1);
 
             // Return the initial processing response - but don't treat it as final
             // We'll update with the completed result when polling completes
@@ -2913,8 +2993,8 @@ Combine duplicate ingredients, adding up quantities when appropriate.
                 // Start polling for status updates
                 startStatusPolling(menuId);
 
-                // Always switch to the Standard tab
-                setActiveTab(0);
+                // Always switch to the AI tab when processing starts
+                setActiveTab(1);
                 return statusResponse;
               }
             }
@@ -2943,8 +3023,8 @@ Combine duplicate ingredients, adding up quantities when appropriate.
       setAiShoppingData(processedResponse);
       setUsingAiList(true);
 
-      // Use Standard tab by default
-      setActiveTab(0); // Switch to Standard tab
+      // Automatically switch to the AI tab when data is available
+      setActiveTab(1); // Switch to AI tab
 
       // Check for conditions that indicate a completed shopping list
       // Log the processed response for debugging
@@ -3163,7 +3243,7 @@ Combine duplicate ingredients, adding up quantities when appropriate.
             "Check your pantry before shopping to avoid duplicates."
           ]
         });
-        setActiveTab(0);
+        setActiveTab(1);
         setUsingAiList(true);
       } catch (error) {
         console.error("AI PROMPT: Error fetching shopping list:", error);
@@ -3192,9 +3272,9 @@ Combine duplicate ingredients, adding up quantities when appropriate.
   useEffect(() => {
     console.log(`Selected menu changed to: ${selectedMenuId}`);
 
-    // Default to Standard tab (index 0)
-    console.log('Setting active tab to Standard (0)');
-    setActiveTab(0);
+    // Force active tab to AI Enhanced (index 1)
+    console.log('Setting active tab to AI Enhanced (1)');
+    setActiveTab(1);
 
     // Reset AI data when menu changes to avoid showing previous menu's items
     if (selectedMenuId) {
@@ -3207,12 +3287,14 @@ Combine duplicate ingredients, adding up quantities when appropriate.
       // Add a slight delay to allow the standard list to load first
       setTimeout(() => {
         console.log('Automatically generating AI shopping list...');
-        // AI functionality removed
+        generateNewAiList(); // This will be shown in the AI tab by default
       }, 500);
 
-      // AI functionality removed
+      // Make sure the showLogs state is set to true to display generation logs
+      setShowLogs(true);
 
-      // AI functionality removed
+      // Clear any existing polling when menu changes
+      clearStatusPolling();
     }
 
     // Fetch new shopping list data for the selected menu
@@ -3236,7 +3318,7 @@ Combine duplicate ingredients, adding up quantities when appropriate.
 
           setAiShoppingData(processedCache);
           setUsingAiList(true);
-          setActiveTab(0); // Switch to Standard tab by default
+          setActiveTab(1); // Switch to AI tab if we have cached data
           setAiShoppingLoading(false); // Ensure loading is turned off
 
           // Show a toast notification that we're using cached data
@@ -4130,7 +4212,7 @@ const categorizeItems = (mealPlanData) => {
           {(
             <>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                {/* Tab navigation */}
+                {/* Always show tabs */}
                 <Tabs
                   value={activeTab}
                   onChange={(e, newValue) => {
@@ -4147,14 +4229,179 @@ const categorizeItems = (mealPlanData) => {
                     aria-controls="tabpanel-0"
                   />
                   <Tab
-                    icon={<KitchenIcon />}
-                    label="By Meal"
+                    icon={<AiIcon />}
+                    label="AI Enhanced"
                     id="tab-1"
                     aria-controls="tabpanel-1"
                   />
+                  <Tab
+                    icon={<KitchenIcon />}
+                    label="By Meal"
+                    id="tab-2"
+                    aria-controls="tabpanel-2"
+                  />
                 </Tabs>
-              </Box>
+                
+                {/* Refresh button to regenerate AI shopping list */}
+                <Button 
+                  variant="outlined" 
+                  color="primary" 
+                  disabled={aiShoppingLoading}
+                  startIcon={aiShoppingLoading ? <CircularProgress size={20} /> : <AiIcon />}
+                  onClick={() => {
+                    // Set loading state immediately for a more responsive feel
+                    console.log("SIMPLE EMERGENCY FIX: Regenerate AI List button clicked");
+                    setAiShoppingLoading(true);
+                    // Switch to AI tab
+                    setActiveTab(1);
+                    // Reset loading message index to start fresh
+                    setLoadingMessageIndex(0);
 
+                    // EMERGENCY DIRECT FIX - Using simplest possible approach
+                    console.log("SIMPLE EMERGENCY FIX: Getting shopping list with menuId:", selectedMenuId);
+
+                    const emergencyFetchList = async () => {
+                      try {
+                        // Get the token
+                        const token = localStorage.getItem('token');
+
+                        // Direct API call with minimal processing
+                        const response = await fetch(`https://smartmealplannermulti-production.up.railway.app/menu/${selectedMenuId}/grocery-list`, {
+                          method: 'GET',
+                          headers: {
+                            'Authorization': `Bearer ${token}`
+                          }
+                        });
+
+                        // Basic error handling
+                        if (!response.ok) {
+                          throw new Error(`API error: ${response.status}`);
+                        }
+
+                        // Parse the response
+                        const result = await response.json();
+                        console.log("SIMPLE EMERGENCY FIX: Got shopping list:", result);
+
+                        // Very basic item extraction - get anything we can find
+                        let items = [];
+                        if (result.ingredient_list && Array.isArray(result.ingredient_list)) {
+                          items = result.ingredient_list;
+                        } else if (result.items && Array.isArray(result.items)) {
+                          items = result.items;
+                        } else if (Array.isArray(result)) {
+                          items = result;
+                        } else {
+                          // Last attempt - get any array from the response
+                          for (const key in result) {
+                            if (Array.isArray(result[key]) && result[key].length > 0) {
+                              items = result[key];
+                              break;
+                            }
+                          }
+                        }
+
+                        // Create very simple categories
+                        const categories = {
+                          "Produce": [],
+                          "Protein": [],
+                          "Dairy": [],
+                          "Grains": [],
+                          "Other": []
+                        };
+
+                        // Process each item minimally
+                        items.forEach(item => {
+                          // Get the item as a string
+                          const itemStr = typeof item === 'string' ? item :
+                                        (item && item.name ? item.name : String(item));
+
+                          // Very basic categorization
+                          const lowerItem = itemStr.toLowerCase();
+                          if (lowerItem.includes('chicken') || lowerItem.includes('beef') ||
+                              lowerItem.includes('meat') || lowerItem.includes('fish')) {
+                            categories["Protein"].push(itemStr);
+                          } else if (lowerItem.includes('milk') || lowerItem.includes('cheese') ||
+                                    lowerItem.includes('egg') || lowerItem.includes('yogurt')) {
+                            categories["Dairy"].push(itemStr);
+                          } else if (lowerItem.includes('apple') || lowerItem.includes('banana') ||
+                                    lowerItem.includes('vegetable') || lowerItem.includes('tomato') ||
+                                    lowerItem.includes('lettuce') || lowerItem.includes('onion')) {
+                            categories["Produce"].push(itemStr);
+                          } else if (lowerItem.includes('bread') || lowerItem.includes('rice') ||
+                                    lowerItem.includes('pasta') || lowerItem.includes('cereal')) {
+                            categories["Grains"].push(itemStr);
+                          } else {
+                            categories["Other"].push(itemStr);
+                          }
+                        });
+
+                        // Format for the UI
+                        const formattedCategories = Object.entries(categories)
+                          .filter(([_, items]) => items.length > 0)
+                          .map(([category, items]) => ({
+                            category,
+                            items: items.map(item => ({
+                              name: item,
+                              display_name: item
+                            }))
+                          }));
+
+                        // If we got nothing, create a single category with all items
+                        if (formattedCategories.length === 0 && items.length > 0) {
+                          formattedCategories.push({
+                            category: "All Items",
+                            items: items.map(item => ({
+                              name: typeof item === 'string' ? item : (item.name || String(item)),
+                              display_name: typeof item === 'string' ? item : (item.name || String(item))
+                            }))
+                          });
+                        }
+
+                        // Update state with our simple data
+                        setAiShoppingLoading(false);
+                        setAiShoppingData({
+                          groceryList: formattedCategories,
+                          menuId: selectedMenuId,
+                          status: "completed",
+                          cached: true,
+                          nutritionTips: [
+                            "Try to prioritize whole foods over processed options.",
+                            "Choose lean proteins for healthier meal options."
+                          ],
+                          recommendations: [
+                            "Shop the perimeter of the store first for fresh foods.",
+                            "Check your pantry before shopping to avoid duplicates."
+                          ]
+                        });
+                        setActiveTab(1);
+                        setUsingAiList(true);
+
+                      } catch (error) {
+                        console.error("SIMPLE EMERGENCY FIX: Error:", error);
+                        setAiShoppingLoading(false);
+
+                        // Even if we fail, provide some data to show something
+                        setAiShoppingData({
+                          groceryList: [{
+                            category: "All Items",
+                            items: [{ name: "Error fetching items", display_name: "Please try again" }]
+                          }],
+                          menuId: selectedMenuId,
+                          status: "error",
+                          cached: false,
+                          nutritionTips: ["Error fetching shopping list."],
+                          recommendations: ["Please try refreshing the page."]
+                        });
+                      }
+                    };
+
+                    // Run our emergency fix
+                    emergencyFetchList();
+                  }} // Force refresh
+                >
+                  Regenerate AI List
+                </Button>
+              </Box>
               
               {/* Standard List Tab Panel */}
               <div
@@ -4174,12 +4421,409 @@ const categorizeItems = (mealPlanData) => {
                 )}
               </div>
               
-              {/* By Meal Tab Panel (now at index 1) */}
+              {/* AI Enhanced List Tab Panel */}
               <div
                 role="tabpanel"
                 hidden={activeTab !== 1}
                 id="tabpanel-1"
                 aria-labelledby="tab-1"
+              >
+                {/* AI tab content */}
+                {(
+                  <Box>
+                    {/* Processing indicator with entertaining messages */}
+                    {aiShoppingLoading && (
+                      <Card sx={{ mb: 3, backgroundColor: '#f8f9fa' }}>
+                        <CardContent>
+                          <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" py={3}>
+                            <CircularProgress size={60} sx={{ mb: 3 }} />
+                            <Typography variant="h6" textAlign="center" gutterBottom>
+                              AI Shopping List in Progress
+                            </Typography>
+                            <Typography variant="body1" color="text.secondary" textAlign="center" sx={{ fontStyle: 'italic', mt: 1 }}>
+                              {loadingMessages[loadingMessageIndex]}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary" textAlign="center" sx={{ mt: 2 }}>
+                              This may take up to 60 seconds. We're creating a smart, categorized shopping list for you.
+                            </Typography>
+                          </Box>
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {/* No AI shopping data yet, but we can show the generate button */}
+                    {!aiShoppingData && !aiShoppingLoading && (
+                      <Box sx={{ my: 3, p: 3, border: '1px dashed #e0e0e0', borderRadius: 2, bgcolor: '#fafafa', textAlign: 'center' }}>
+                        <Typography variant="h6" gutterBottom>
+                          AI Shopping List
+                        </Typography>
+                        <Typography variant="body1" color="text.secondary" paragraph>
+                          Get a smart, categorized shopping list with healthy alternatives and shopping tips.
+                        </Typography>
+                        <Button
+                          variant="contained"
+                          color="primary"
+                          startIcon={<AutoAwesome />}
+                          onClick={generateNewAiList}
+                          disabled={!selectedMenuId}
+                          size="large"
+                          sx={{ mt: 2 }}
+                        >
+                          Generate AI List
+                        </Button>
+
+                        {generationStats && (
+                          <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
+                            <Chip
+                              icon={generationStats.success ? <TipsIcon /> : <OfferIcon />}
+                              label={generationStats.success ?
+                                `Generated in ${generationStats.duration.toFixed(1)}s` :
+                                'Failed to generate'}
+                              color={generationStats.success ? "success" : "error"}
+                              variant="outlined"
+                              size="small"
+                            />
+                          </Box>
+                        )}
+                      </Box>
+                    )}
+
+                    {/* Display AI shopping data when available */}
+                    {console.log("AI Shopping Data available:", !!aiShoppingData)}
+                    {aiShoppingData && (
+                    <>
+                    {/* Display cache info if applicable */}
+                    {aiShoppingData.cached && (
+                      <Alert severity="info" sx={{ mb: 2 }}>
+                        Using cached shopping list from {new Date(aiShoppingData.cache_time).toLocaleString()}.
+                        <Button
+                          size="small"
+                          sx={{ ml: 2 }}
+                          onClick={() => {
+                            setAiShoppingLoading(true);
+                            setActiveTab(1);
+                            setLoadingMessageIndex(0);
+
+                            // TRY THE SIMPLEST APPROACH - just fetch the current shopping list
+                            directFetchShoppingList(selectedMenuId);
+                          }}
+                        >
+                          Refresh
+                        </Button>
+                      </Alert>
+                    )}
+
+                    {/* New AI List Generation Button */}
+                    <Box sx={{ my: 2, p: 2, border: '1px solid #e0e0e0', borderRadius: 1, bgcolor: '#f9f9f9' }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                        <Button
+                          variant="contained"
+                          color="primary"
+                          startIcon={aiShoppingLoading ? <CircularProgress size={20} /> : <AutoAwesome />}
+                          onClick={generateNewAiList}
+                          disabled={aiShoppingLoading || !selectedMenuId}
+                        >
+                          New AI List
+                        </Button>
+
+                        {generationStats && (
+                          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                            <Chip
+                              icon={generationStats.success ? <TipsIcon /> : <OfferIcon />}
+                              label={generationStats.success ?
+                                `Generated in ${generationStats.duration.toFixed(1)}s` :
+                                'Failed to generate'}
+                              color={generationStats.success ? "success" : "error"}
+                              variant="outlined"
+                              size="small"
+                            />
+                          </Box>
+                        )}
+                      </Box>
+
+                      {/* Logs Display */}
+                      <Accordion
+                        expanded={showLogs}
+                        onChange={() => setShowLogs(!showLogs)}
+                        sx={{ boxShadow: 'none', border: '1px solid #e0e0e0' }}
+                      >
+                        <AccordionSummary expandIcon={<ExpandMore />}>
+                          <Typography variant="subtitle2">
+                            Generation Logs {generationLogs.length > 0 ? `(${generationLogs.length})` : ''}
+                          </Typography>
+                        </AccordionSummary>
+                        <AccordionDetails>
+                          {generationLogs.length > 0 ? (
+                            <List dense sx={{ maxHeight: '200px', overflow: 'auto' }}>
+                              {generationLogs.map((log, index) => (
+                                <ListItem key={index} sx={{
+                                  py: 0.5,
+                                  color: log.type === 'error' ? 'error.main' :
+                                         log.type === 'success' ? 'success.main' :
+                                         log.type === 'warning' ? 'warning.main' : 'text.primary'
+                                }}>
+                                  <ListItemText
+                                    primary={`${log.timestamp}: ${log.message}`}
+                                    primaryTypographyProps={{ fontSize: '0.85rem' }}
+                                  />
+                                </ListItem>
+                              ))}
+                            </List>
+                          ) : (
+                            <Typography variant="body2" color="text.secondary">
+                              No generation logs available.
+                            </Typography>
+                          )}
+                        </AccordionDetails>
+                      </Accordion>
+                    </Box>
+
+                    {/* AI Tips and Recommendations */}
+                    {aiShoppingData.nutritionTips && Array.isArray(aiShoppingData.nutritionTips) && aiShoppingData.nutritionTips.length > 0 && (
+                      <Card sx={{ mb: 3 }}>
+                        <CardContent>
+                          <Box display="flex" alignItems="center" mb={1}>
+                            <TipsIcon sx={{ mr: 1 }} color="primary" />
+                            <Typography variant="h6">Nutrition Tips</Typography>
+                          </Box>
+                          <List dense>
+                            {aiShoppingData.nutritionTips.map((tip, index) => (
+                              <ListItem key={index}>
+                                <ListItemIcon><TipsIcon color="primary" /></ListItemIcon>
+                                <ListItemText primary={tip} />
+                              </ListItem>
+                            ))}
+                          </List>
+                        </CardContent>
+                      </Card>
+                    )}
+                    
+                    {aiShoppingData.recommendations && Array.isArray(aiShoppingData.recommendations) && aiShoppingData.recommendations.length > 0 && (
+                      <Card sx={{ mb: 3 }}>
+                        <CardContent>
+                          <Box display="flex" alignItems="center" mb={1}>
+                            <OfferIcon sx={{ mr: 1 }} color="primary" />
+                            <Typography variant="h6">Shopping Recommendations</Typography>
+                          </Box>
+                          <List dense>
+                            {aiShoppingData.recommendations.map((rec, index) => (
+                              <ListItem key={index}>
+                                <ListItemIcon><OfferIcon color="primary" /></ListItemIcon>
+                                <ListItemText primary={rec} />
+                              </ListItem>
+                            ))}
+                          </List>
+                        </CardContent>
+                      </Card>
+                    )}
+                    
+                    {/* Pantry Items Section */}
+                    {aiShoppingData.pantryStaples && Array.isArray(aiShoppingData.pantryStaples) && aiShoppingData.pantryStaples.length > 0 && (
+                      <Card sx={{ mb: 3 }}>
+                        <CardContent>
+                          <Box display="flex" alignItems="center" mb={1}>
+                            <KitchenIcon sx={{ mr: 1 }} color="primary" />
+                            <Typography variant="h6">Common Pantry Items</Typography>
+                          </Box>
+                          <List dense>
+                            {aiShoppingData.pantryStaples.map((item, index) => (
+                              <ListItem key={index}>
+                                <ListItemIcon><KitchenIcon color="primary" /></ListItemIcon>
+                                <ListItemText primary={item} />
+                              </ListItem>
+                            ))}
+                          </List>
+                        </CardContent>
+                      </Card>
+                    )}
+                    
+                    {/* Healthy Swaps Section */}
+                    {aiShoppingData.healthySwaps && Array.isArray(aiShoppingData.healthySwaps) && aiShoppingData.healthySwaps.length > 0 && (
+                      <Card sx={{ mb: 3 }}>
+                        <CardContent>
+                          <Box display="flex" alignItems="center" mb={1}>
+                            <TipsIcon sx={{ mr: 1 }} color="success" />
+                            <Typography variant="h6">Healthy Alternatives</Typography>
+                          </Box>
+                          <List dense>
+                            {aiShoppingData.healthySwaps.map((item, index) => (
+                              <ListItem key={index}>
+                                <ListItemIcon><TipsIcon color="success" /></ListItemIcon>
+                                <ListItemText primary={item} />
+                              </ListItem>
+                            ))}
+                          </List>
+                        </CardContent>
+                      </Card>
+                    )}
+                    
+                    {/* AI Categorized Shopping List */}
+                    {aiShoppingData.groceryList && Array.isArray(aiShoppingData.groceryList) && aiShoppingData.groceryList.length > 0 ? (
+                      // Case: AI returned properly categorized groceries
+                      aiShoppingData.groceryList.map((category, index) => (
+                        <Accordion key={index} defaultExpanded={true} sx={{ mb: 1 }}>
+                          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                            <Box display="flex" alignItems="center">
+                              <CategoryIcon sx={{ mr: 1 }} />
+                              <Typography variant="h6">{category.category || "Category " + (index + 1)}</Typography>
+                            </Box>
+                          </AccordionSummary>
+                          <AccordionDetails>
+                            <Grid container spacing={2}>
+                              {category.items && Array.isArray(category.items) ? (
+                                category.items.map((item, itemIndex) => (
+                                  <Grid item xs={12} sm={6} key={itemIndex}>
+                                    <Box sx={{ mb: 1 }}>
+                                      <Typography variant="body1" fontWeight="medium">
+                                        {typeof item === 'string' ? item : (
+                                          // Handle cheese special case with 1g quantity
+                                          ((item.name && (item.name.toLowerCase().includes('cheese') ||
+                                                         item.name.toLowerCase().includes('mozzarella'))) &&
+                                          item.quantity === '1' && item.unit === 'g') ? (
+                                            // Apply proper cheese quantities based on type
+                                            item.name.toLowerCase().includes('cheddar') ||
+                                            item.name.toLowerCase().includes('mozzarella') ?
+                                              `${item.name}: 8 oz` :
+                                            item.name.toLowerCase().includes('feta') ||
+                                            item.name.toLowerCase().includes('parmesan') ?
+                                              `${item.name}: 1/4 cup` :
+                                              `${item.name}: 4 oz`
+                                          ) : (
+                                            // Otherwise use display_name if available
+                                            item.display_name ? item.display_name :
+                                            // Or build a string with name, quantity and unit
+                                            `${item.name || 'Unknown item'}${item.quantity ? ': ' + item.quantity : ''}${item.unit ? ' ' + item.unit : ''}`
+                                          )
+                                        )}
+                                      </Typography>
+                                      {item.notes && (
+                                        <Typography variant="body2" color="text.secondary">
+                                          {item.notes}
+                                        </Typography>
+                                      )}
+                                      {item.alternatives && (
+                                        <Typography variant="body2" color="primary">
+                                          Alt: {item.alternatives}
+                                        </Typography>
+                                      )}
+                                      {item.healthyAlternatives && (
+                                        <Typography variant="body2" color="success.main">
+                                          Healthy Option: {item.healthyAlternatives}
+                                        </Typography>
+                                      )}
+                                      <Box sx={{ mt: 1 }}>
+                                        {selectedStore === 'mixed' ? (
+                                          <>
+                                            <Button
+                                              variant="outlined"
+                                              size="small"
+                                              sx={{ mr: 1 }}
+                                              onClick={() => handleAddToMixedCart(typeof item === 'string' ? item : item.name, 'instacart')}
+                                            >
+                                              Add to Instacart
+                                            </Button>
+                                            <Button 
+                                              variant="outlined" 
+                                              size="small" 
+                                              onClick={() => handleAddToMixedCart(typeof item === 'string' ? item : item.name, 'kroger')}
+                                            >
+                                              Add to Kroger
+                                            </Button>
+                                          </>
+                                        ) : (
+                                          <Button 
+                                            variant="outlined" 
+                                            size="small" 
+                                            onClick={() => handleAddToCart(typeof item === 'string' ? item : item.name, selectedStore)}
+                                          >
+                                            Add to {selectedStore.charAt(0).toUpperCase() + selectedStore.slice(1)} Cart
+                                          </Button>
+                                        )}
+                                      </Box>
+                                    </Box>
+                                  </Grid>
+                                ))
+                              ) : (
+                                <Grid item xs={12}>
+                                  <Typography>No items in this category</Typography>
+                                </Grid>
+                              )}
+                            </Grid>
+                          </AccordionDetails>
+                        </Accordion>
+                      ))
+                    ) : (
+                      // Fallback: If AI response doesn't have the expected structure,
+                      // show original list in a single category
+                      <Accordion defaultExpanded={true} sx={{ mb: 1 }}>
+                        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                          <Box display="flex" alignItems="center">
+                            <CategoryIcon sx={{ mr: 1 }} />
+                            <Typography variant="h6">All Items</Typography>
+                          </Box>
+                        </AccordionSummary>
+                        <AccordionDetails>
+                          <Grid container spacing={2}>
+                            {groceryList && groceryList.length > 0 ? (
+                              groceryList.map((item, index) => (
+                                <Grid item xs={12} sm={6} key={index}>
+                                  <Box sx={{ mb: 1 }}>
+                                    <Typography variant="body1" fontWeight="medium">
+                                      {typeof item === 'string' ? item : (item.name || 'Unknown item')}
+                                    </Typography>
+                                    <Box sx={{ mt: 1 }}>
+                                      {selectedStore === 'mixed' ? (
+                                        <>
+                                          <Button
+                                            variant="outlined"
+                                            size="small"
+                                            sx={{ mr: 1 }}
+                                            onClick={() => handleAddToMixedCart(typeof item === 'string' ? item : item.name, 'instacart')}
+                                          >
+                                            Add to Instacart
+                                          </Button>
+                                          <Button 
+                                            variant="outlined" 
+                                            size="small" 
+                                            onClick={() => handleAddToMixedCart(typeof item === 'string' ? item : item.name, 'kroger')}
+                                          >
+                                            Add to Kroger
+                                          </Button>
+                                        </>
+                                      ) : (
+                                        <Button 
+                                          variant="outlined" 
+                                          size="small" 
+                                          onClick={() => handleAddToCart(typeof item === 'string' ? item : item.name, selectedStore)}
+                                        >
+                                          Add to {selectedStore.charAt(0).toUpperCase() + selectedStore.slice(1)} Cart
+                                        </Button>
+                                      )}
+                                    </Box>
+                                  </Box>
+                                </Grid>
+                              ))
+                            ) : (
+                              <Grid item xs={12}>
+                                <Typography>No items available</Typography>
+                              </Grid>
+                            )}
+                          </Grid>
+                        </AccordionDetails>
+                      </Accordion>
+                    )}
+                    </>
+                    )}
+                  </Box>
+                )}
+              </div>
+
+              {/* By Meal List Tab Panel */}
+              <div
+                role="tabpanel"
+                hidden={activeTab !== 2}
+                id="tabpanel-2"
+                aria-labelledby="tab-2"
               >
                 {selectedMenuId ? (
                   <ErrorBoundary
@@ -4197,14 +4841,17 @@ const categorizeItems = (mealPlanData) => {
                   </Alert>
                 )}
               </div>
-            </div>
+            </>
           )}
 
-      {/* Error state for no grocery items */}
-      {!loading && groceryList.length === 0 && (
-        <Alert severity="info" sx={{ mt: 3 }}>
-          No grocery items found for this menu. The menu might not have any ingredients listed, or there might be an issue with the menu data.
-        </Alert>
+          {/* AI data is now always shown in the AI tab, regardless of the conditional above */}
+        </Box>
+      ) : (
+        !loading && (
+          <Alert severity="info" sx={{ mt: 3 }}>
+            No grocery items found for this menu. The menu might not have any ingredients listed, or there might be an issue with the menu data.
+          </Alert>
+        )
       )}
 
       <Snackbar
@@ -4213,8 +4860,70 @@ const categorizeItems = (mealPlanData) => {
         onClose={handleCloseSnackbar}
         message={snackbarMessage}
       />
-
-
+      
+      {/* AI Shopping List Prompt Dialog */}
+      <Dialog
+        open={showAiShoppingPrompt}
+        onClose={() => handleAiPromptResponse(false)}
+        aria-labelledby="ai-shopping-dialog-title"
+      >
+        <DialogTitle id="ai-shopping-dialog-title">
+          <Box display="flex" alignItems="center">
+            <AiIcon sx={{ mr: 1 }} color="primary" />
+            Use AI-Enhanced Shopping List?
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Would you like to generate an AI-enhanced shopping list with:
+          </DialogContentText>
+          <List>
+            <ListItem>
+              <ListItemIcon><CategoryIcon /></ListItemIcon>
+              <ListItemText primary="Smart categorization by store section" />
+            </ListItem>
+            <ListItem>
+              <ListItemIcon><OfferIcon /></ListItemIcon>
+              <ListItemText primary="Alternative brand suggestions" />
+            </ListItem>
+            <ListItem>
+              <ListItemIcon><TipsIcon /></ListItemIcon>
+              <ListItemText primary="Nutritional tips and information" />
+            </ListItem>
+            <ListItem>
+              <ListItemIcon><KitchenIcon /></ListItemIcon>
+              <ListItemText primary="Common pantry staples identification" />
+            </ListItem>
+            <ListItem>
+              <ListItemIcon><TipsIcon color="success" /></ListItemIcon>
+              <ListItemText primary="Healthy alternatives to ingredients" />
+            </ListItem>
+          </List>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => handleAiPromptResponse(false)}>No, Just Regular List</Button>
+          <Button
+            onClick={() => handleAiPromptResponse(true)}
+            startIcon={<AiIcon />}
+            color="primary"
+          >
+            Use AI (Cached)
+          </Button>
+          <Button
+            onClick={() => {
+              setShowAiShoppingPrompt(false);
+              setActiveTab(1);
+              generateNewAiList();
+            }}
+            variant="contained"
+            startIcon={<AutoAwesome />}
+            color="secondary"
+          >
+            Generate AI List
+          </Button>
+        </DialogActions>
+      </Dialog>
+      
       {/* Kroger Store Selection Dialog */}
       <StoreSelector
         open={showKrogerStoreSelector}
@@ -4256,55 +4965,45 @@ const categorizeItems = (mealPlanData) => {
           </Alert>
 
           <Typography variant="body1" paragraph>
-            We've created a direct link to Instacart with all your items pre-populated.
+            We've created a direct link to Instacart with all your grocery items pre-populated.
             Click the button below to open your shopping list on Instacart.
           </Typography>
 
-          <Box sx={{ mt: 3, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center' }}>
             <Button
               variant="contained"
               href={shoppingListUrl}
               target="_blank"
               rel="noopener noreferrer"
               sx={{
-                height: 46,                     // Official height
-                py: '16px',                     // Official vertical padding
-                px: '18px',                     // Official horizontal padding
-                backgroundColor: '#003D29',     // Official dark background
-                color: '#FAF1E5',               // Official text color
-                fontWeight: 500,
+                bgcolor: '#F36D00', // Instacart orange
+                color: 'white',
+                fontWeight: 600,
+                px: 3,
+                py: 1.2,
+                borderRadius: 2,
                 textTransform: 'none',
-                borderRadius: '999px',          // Fully rounded
                 fontSize: '1rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 1.5,
-                boxShadow: 'none',
                 '&:hover': {
-                  backgroundColor: '#002A1C',   // Slightly darker on hover
+                  bgcolor: '#E05D00', // Darker orange on hover
                 }
               }}
+              startIcon={<ShoppingCartIcon />}
             >
-              <Box component="img"
-                src={InstacartCarrotIcon}
-                alt="Instacart"
-                sx={{ height: 22, width: 'auto' }}  // Official 22px size
-              />
               Shop with Instacart
             </Button>
-
-            {/* Attribution required by guidelines */}
-            <Typography
-              variant="caption"
-              sx={{
-                mt: 1,
-                color: 'text.secondary',
-                fontSize: '0.75rem'
-              }}
-            >
-              Powered by Instacart
-            </Typography>
           </Box>
+
+          {/* Attribution required by guidelines */}
+          <Typography
+            variant="caption"
+            align="center"
+            display="block"
+            mt={1}
+            color="text.secondary"
+          >
+            Powered by Instacart
+          </Typography>
         </DialogContent>
         <DialogActions sx={{ borderTop: '1px solid', borderColor: 'divider', px: 3 }}>
           <Typography
