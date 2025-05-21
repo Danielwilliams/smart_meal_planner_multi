@@ -164,8 +164,8 @@ async def add_meal_ingredients_to_cart(
             from ..integration.kroger import add_to_kroger_cart
             add_to_cart_func = add_to_kroger_cart
         elif request.store.lower() == "instacart":
-            from ..integration.instacart import create_instacart_shopping_list
-            add_to_cart_func = create_instacart_shopping_list
+            from ..integration.instacart import create_shopping_list_url_from_items
+            add_to_cart_func = create_shopping_list_url_from_items
         else:
             raise HTTPException(
                 status_code=400,
@@ -221,7 +221,15 @@ async def add_meal_ingredients_to_cart(
                 # For Instacart, pass all items at once as a list of strings
                 try:
                     logger.info(f"Adding {len(formatted_items)} items to Instacart: {formatted_items}")
-                    result = add_to_cart_func(formatted_items)
+                    # Use default retailer and postal code for now
+                    retailer_id = "publix"  # Default retailer
+                    postal_code = "80538"   # Default postal code
+
+                    result = add_to_cart_func(
+                        retailer_id=retailer_id,
+                        item_names=formatted_items,
+                        postal_code=postal_code
+                    )
                     # If successful, mark all items as added
                     for item in formatted_items:
                         added_items.append({
