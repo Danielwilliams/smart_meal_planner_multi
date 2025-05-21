@@ -98,48 +98,12 @@ function ShoppingListPage() {
     }
   };
   
-  // AI shopping list state
-  // No longer needed - we auto-generate the AI list
-  const [showAiShoppingPrompt, setShowAiShoppingPrompt] = useState(false);
-  const [aiShoppingLoading, setAiShoppingLoading] = useState(false);
-  const [aiShoppingData, setAiShoppingData] = useState(null);
-
-  // Create a reference to the initial data with true quantities
-  const [initialGroceryItems, setInitialGroceryItems] = useState({});
   // Default to Standard tab (index 0)
   const [activeTab, setActiveTab] = useState(0);
-  const [aiPreferences, setAiPreferences] = useState('');
-  const [usingAiList, setUsingAiList] = useState(false);
-
-  // For New AI List button - ensure these are still accessible
-  const [generationStats, setGenerationStats] = useState(null);
-  const [generationLogs, setGenerationLogs] = useState([]);
-  const [showLogs, setShowLogs] = useState(true); // Show logs by default
-
-  // For entertaining messages while loading
-  const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
   const [instacartRetailerId, setInstacartRetailerId] = useState('');
   const [creatingShoppingList, setCreatingShoppingList] = useState(false);
   const [shoppingListUrl, setShoppingListUrl] = useState(null);
   const [showShoppingListDialog, setShowShoppingListDialog] = useState(false);
-  const loadingMessages = [
-    "AI chef is chopping ingredients into categories...",
-    "Sorting your tomatoes from your potatoes...",
-    "Figuring out what aisle the quinoa is in...",
-    "Counting how many eggs you'll need...",
-    "Calculating the perfect amount of garlic (always more)...",
-    "Organizing your shopping route for maximum efficiency...",
-    "Deciding whether avocados should be in produce or 'temperamental fruits'...",
-    "Making sure you don't forget the salt this time...",
-    "Translating 'a pinch' into actual measurements...",
-    "Checking if you really need more olive oil...",
-    "Determining if ice cream counts as a dairy essential...",
-    "Sorting ingredients by 'foods you'll actually use' vs 'aspirational purchases'..."
-  ];
-  
-  // Cache management
-  const AI_SHOPPING_CACHE_KEY = 'ai_shopping_cache';
-  const CACHE_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 
   // Debug log
   console.log("ShoppingListPage params:", { 
@@ -4741,68 +4705,6 @@ const categorizeItems = (mealPlanData) => {
         message={snackbarMessage}
       />
       
-      {/* AI Shopping List Prompt Dialog */}
-      <Dialog
-        open={showAiShoppingPrompt}
-        onClose={() => handleAiPromptResponse(false)}
-        aria-labelledby="ai-shopping-dialog-title"
-      >
-        <DialogTitle id="ai-shopping-dialog-title">
-          <Box display="flex" alignItems="center">
-            <AiIcon sx={{ mr: 1 }} color="primary" />
-            Use AI-Enhanced Shopping List?
-          </Box>
-        </DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            Would you like to generate an AI-enhanced shopping list with:
-          </DialogContentText>
-          <List>
-            <ListItem>
-              <ListItemIcon><CategoryIcon /></ListItemIcon>
-              <ListItemText primary="Smart categorization by store section" />
-            </ListItem>
-            <ListItem>
-              <ListItemIcon><OfferIcon /></ListItemIcon>
-              <ListItemText primary="Alternative brand suggestions" />
-            </ListItem>
-            <ListItem>
-              <ListItemIcon><TipsIcon /></ListItemIcon>
-              <ListItemText primary="Nutritional tips and information" />
-            </ListItem>
-            <ListItem>
-              <ListItemIcon><KitchenIcon /></ListItemIcon>
-              <ListItemText primary="Common pantry staples identification" />
-            </ListItem>
-            <ListItem>
-              <ListItemIcon><TipsIcon color="success" /></ListItemIcon>
-              <ListItemText primary="Healthy alternatives to ingredients" />
-            </ListItem>
-          </List>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => handleAiPromptResponse(false)}>No, Just Regular List</Button>
-          <Button
-            onClick={() => handleAiPromptResponse(true)}
-            startIcon={<AiIcon />}
-            color="primary"
-          >
-            Use AI (Cached)
-          </Button>
-          <Button
-            onClick={() => {
-              setShowAiShoppingPrompt(false);
-              setActiveTab(0);
-              generateNewAiList();
-            }}
-            variant="contained"
-            startIcon={<AutoAwesome />}
-            color="secondary"
-          >
-            Regenerate List
-          </Button>
-        </DialogActions>
-      </Dialog>
       
       {/* Kroger Store Selection Dialog */}
       <StoreSelector
