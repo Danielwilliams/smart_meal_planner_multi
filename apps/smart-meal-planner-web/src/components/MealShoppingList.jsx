@@ -389,34 +389,17 @@ const MealShoppingList = ({ menuId }) => {
                             <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
                               Add to Cart:
                             </Typography>
-                            <Box sx={{ display: 'flex', gap: 1 }}>
-                              <Button
-                                startIcon={cartLoading[`${meal.day_index}-${meal.meal_index}-kroger`] ?
-                                  <CircularProgress size={16} /> : <KrogerIcon />}
-                                onClick={() => addMealToCart(meal, 'kroger')}
-                                disabled={cartLoading[`${meal.day_index}-${meal.meal_index}-kroger`]}
-                                variant="outlined"
-                                size="small"
-                                sx={{
-                                  flex: 1,
-                                  color: '#0066B2',
-                                  borderColor: '#0066B2',
-                                  '&:hover': {
-                                    borderColor: '#0066B2',
-                                    backgroundColor: 'rgba(0, 102, 178, 0.04)'
-                                  }
-                                }}
-                              >
-                                Kroger
-                              </Button>
+                            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                              {/* Instacart CTA button - Stacked on top for prominence */}
                               <Button
                                 onClick={() => addMealToCart(meal, 'instacart')}
                                 disabled={cartLoading[`${meal.day_index}-${meal.meal_index}-instacart`]}
                                 variant="contained"
-                                size="small"
+                                fullWidth
                                 sx={{
-                                  flex: 1,
-                                  height: 32, // Smaller for UI context but still with proper styling
+                                  height: 46, // Official Instacart height
+                                  py: '16px', // Official vertical padding
+                                  px: '18px', // Official horizontal padding
                                   backgroundColor: '#003D29', // Official dark background
                                   color: '#FAF1E5', // Official text color
                                   fontWeight: 500,
@@ -431,14 +414,35 @@ const MealShoppingList = ({ menuId }) => {
                                 }}
                               >
                                 {cartLoading[`${meal.day_index}-${meal.meal_index}-instacart`] ?
-                                  <CircularProgress size={16} color="inherit" /> :
+                                  <CircularProgress size={22} color="inherit" /> :
                                   <Box component="img"
                                     src={InstacartCarrotIcon}
                                     alt="Instacart"
-                                    sx={{ height: 16, width: 'auto', mr: 0.5 }}
+                                    sx={{ height: 22, width: 'auto', mr: 1 }}
                                   />
                                 }
                                 Get Ingredients
+                              </Button>
+
+                              {/* Kroger button below */}
+                              <Button
+                                startIcon={cartLoading[`${meal.day_index}-${meal.meal_index}-kroger`] ?
+                                  <CircularProgress size={16} /> : <KrogerIcon />}
+                                onClick={() => addMealToCart(meal, 'kroger')}
+                                disabled={cartLoading[`${meal.day_index}-${meal.meal_index}-kroger`]}
+                                variant="outlined"
+                                fullWidth
+                                size="medium"
+                                sx={{
+                                  color: '#0066B2',
+                                  borderColor: '#0066B2',
+                                  '&:hover': {
+                                    borderColor: '#0066B2',
+                                    backgroundColor: 'rgba(0, 102, 178, 0.04)'
+                                  }
+                                }}
+                              >
+                                Shop with Kroger
                               </Button>
                             </Box>
                           </Box>
