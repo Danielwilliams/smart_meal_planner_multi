@@ -204,6 +204,18 @@ const MealShoppingList = ({ menuId }) => {
           itemName = `2 tbsp ${name}`;
         } else if (quantity === "1" && name.toLowerCase().includes("tomato sauce")) {
           itemName = `1 can ${name}`;
+        } else if (quantity === "1" && name.toLowerCase().includes("cheese") && !name.toLowerCase().includes("cream cheese")) {
+          itemName = `1 cup ${name}`;
+        } else if (quantity === "3" && name.toLowerCase().includes("rice")) {
+          itemName = `3 cups ${name}`;
+        } else if (quantity === "1" && name.toLowerCase().includes("broccoli")) {
+          itemName = `1 head ${name}`;
+        } else if (quantity === "1" && name.toLowerCase().includes("onion")) {
+          itemName = `1 medium ${name}`;
+        } else if (quantity === "4" && name.toLowerCase().includes("garlic")) {
+          itemName = `4 cloves ${name}`;
+        } else if (quantity === "8" && name.toLowerCase().includes("chicken")) {
+          itemName = `8 oz ${name}`;
         } else if (quantity && quantity.trim()) {
           // For all other cases with quantity
           itemName = `${quantity} ${name}`.trim();
@@ -411,6 +423,24 @@ const MealShoppingList = ({ menuId }) => {
                                         }
                                         if (quantity === "1" && name.toLowerCase().includes("tomato sauce")) {
                                           return "1 can " + name;
+                                        }
+                                        if (quantity === "1" && name.toLowerCase().includes("cheese") && !name.toLowerCase().includes("cream cheese")) {
+                                          return "1 cup " + name;
+                                        }
+                                        if (quantity === "3" && name.toLowerCase().includes("rice")) {
+                                          return "3 cups " + name;
+                                        }
+                                        if (quantity === "1" && name.toLowerCase().includes("broccoli")) {
+                                          return "1 head " + name;
+                                        }
+                                        if (quantity === "1" && name.toLowerCase().includes("onion")) {
+                                          return "1 medium " + name;
+                                        }
+                                        if (quantity === "4" && name.toLowerCase().includes("garlic")) {
+                                          return "4 cloves " + name;
+                                        }
+                                        if (quantity === "8" && name.toLowerCase().includes("chicken")) {
+                                          return "8 oz " + name;
                                         }
 
                                         // For all other cases, show quantity with the ingredient name

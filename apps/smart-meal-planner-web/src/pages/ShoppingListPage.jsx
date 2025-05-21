@@ -106,8 +106,8 @@ function ShoppingListPage() {
 
   // Create a reference to the initial data with true quantities
   const [initialGroceryItems, setInitialGroceryItems] = useState({});
-  // Default to AI Enhanced tab (index 1)
-  const [activeTab, setActiveTab] = useState(1);
+  // Default to Standard tab (index 0)
+  const [activeTab, setActiveTab] = useState(0);
   const [aiPreferences, setAiPreferences] = useState('');
   const [usingAiList, setUsingAiList] = useState(false);
 
@@ -963,7 +963,7 @@ function ShoppingListPage() {
 
         setAiShoppingData(processedCache);
         setUsingAiList(true);
-        setActiveTab(1); // Switch to AI tab
+        setActiveTab(0); // Switch to Standard tab
 
         // Show notification
         showSnackbar(`Using cached shopping list for menu ${menuId}`);
@@ -2116,7 +2116,7 @@ Combine duplicate ingredients, adding up quantities when appropriate.
           "Consider buying in-season produce for better flavor and value."
         ]
       });
-      setActiveTab(1);
+      setActiveTab(0);
       setUsingAiList(true);
 
       // Cache the results
@@ -2251,8 +2251,8 @@ Combine duplicate ingredients, adding up quantities when appropriate.
         setAiShoppingData(processedResponse);
         setAiShoppingLoading(false);
 
-        // Automatically switch to the AI tab
-        setActiveTab(1);
+        // Use Standard tab
+        setActiveTab(0);
         setUsingAiList(true);
 
         console.log("AI shopping list processed successfully - switching to AI tab");
@@ -2696,7 +2696,7 @@ Combine duplicate ingredients, adding up quantities when appropriate.
                 "Check your pantry before shopping to avoid duplicates."
               ]
             });
-            setActiveTab(1);
+            setActiveTab(0);
             setUsingAiList(true);
           })
           .catch(error => {
@@ -2905,8 +2905,8 @@ Combine duplicate ingredients, adding up quantities when appropriate.
             // Start polling for status updates
             startStatusPolling(menuId);
 
-            // Always switch to the AI tab when processing starts
-            setActiveTab(1);
+            // Always switch to the Standard tab
+            setActiveTab(0);
 
             // Return the initial processing response - but don't treat it as final
             // We'll update with the completed result when polling completes
@@ -2993,8 +2993,8 @@ Combine duplicate ingredients, adding up quantities when appropriate.
                 // Start polling for status updates
                 startStatusPolling(menuId);
 
-                // Always switch to the AI tab when processing starts
-                setActiveTab(1);
+                // Always switch to the Standard tab
+                setActiveTab(0);
                 return statusResponse;
               }
             }
@@ -3023,8 +3023,8 @@ Combine duplicate ingredients, adding up quantities when appropriate.
       setAiShoppingData(processedResponse);
       setUsingAiList(true);
 
-      // Automatically switch to the AI tab when data is available
-      setActiveTab(1); // Switch to AI tab
+      // Use Standard tab by default
+      setActiveTab(0); // Switch to Standard tab
 
       // Check for conditions that indicate a completed shopping list
       // Log the processed response for debugging
@@ -3243,7 +3243,7 @@ Combine duplicate ingredients, adding up quantities when appropriate.
             "Check your pantry before shopping to avoid duplicates."
           ]
         });
-        setActiveTab(1);
+        setActiveTab(0);
         setUsingAiList(true);
       } catch (error) {
         console.error("AI PROMPT: Error fetching shopping list:", error);
@@ -3272,9 +3272,9 @@ Combine duplicate ingredients, adding up quantities when appropriate.
   useEffect(() => {
     console.log(`Selected menu changed to: ${selectedMenuId}`);
 
-    // Force active tab to AI Enhanced (index 1)
-    console.log('Setting active tab to AI Enhanced (1)');
-    setActiveTab(1);
+    // Default to Standard tab (index 0)
+    console.log('Setting active tab to Standard (0)');
+    setActiveTab(0);
 
     // Reset AI data when menu changes to avoid showing previous menu's items
     if (selectedMenuId) {
@@ -3318,7 +3318,7 @@ Combine duplicate ingredients, adding up quantities when appropriate.
 
           setAiShoppingData(processedCache);
           setUsingAiList(true);
-          setActiveTab(1); // Switch to AI tab if we have cached data
+          setActiveTab(0); // Switch to Standard tab by default
           setAiShoppingLoading(false); // Ensure loading is turned off
 
           // Show a toast notification that we're using cached data
@@ -4212,7 +4212,7 @@ const categorizeItems = (mealPlanData) => {
           {(
             <>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                {/* Always show tabs */}
+                {/* Tab navigation */}
                 <Tabs
                   value={activeTab}
                   onChange={(e, newValue) => {
@@ -4229,38 +4229,17 @@ const categorizeItems = (mealPlanData) => {
                     aria-controls="tabpanel-0"
                   />
                   <Tab
-                    icon={<AiIcon />}
-                    label="AI Enhanced"
+                    icon={<KitchenIcon />}
+                    label="By Meal"
                     id="tab-1"
                     aria-controls="tabpanel-1"
                   />
-                  <Tab
-                    icon={<KitchenIcon />}
-                    label="By Meal"
-                    id="tab-2"
-                    aria-controls="tabpanel-2"
-                  />
                 </Tabs>
-                
-                {/* Refresh button to regenerate AI shopping list */}
-                <Button 
-                  variant="outlined" 
-                  color="primary" 
-                  disabled={aiShoppingLoading}
-                  startIcon={aiShoppingLoading ? <CircularProgress size={20} /> : <AiIcon />}
-                  onClick={() => {
-                    // Set loading state immediately for a more responsive feel
-                    console.log("SIMPLE EMERGENCY FIX: Regenerate AI List button clicked");
-                    setAiShoppingLoading(true);
-                    // Switch to AI tab
-                    setActiveTab(1);
-                    // Reset loading message index to start fresh
-                    setLoadingMessageIndex(0);
+              </Box>
 
-                    // EMERGENCY DIRECT FIX - Using simplest possible approach
-                    console.log("SIMPLE EMERGENCY FIX: Getting shopping list with menuId:", selectedMenuId);
-
-                    const emergencyFetchList = async () => {
+              {/* Legacy code kept for reference but not used */}
+              {false && (() => {
+                const emergencyFetchList = async () => {
                       try {
                         // Get the token
                         const token = localStorage.getItem('token');
@@ -4373,7 +4352,7 @@ const categorizeItems = (mealPlanData) => {
                             "Check your pantry before shopping to avoid duplicates."
                           ]
                         });
-                        setActiveTab(1);
+                        setActiveTab(0);
                         setUsingAiList(true);
 
                       } catch (error) {
@@ -4421,105 +4400,29 @@ const categorizeItems = (mealPlanData) => {
                 )}
               </div>
               
-              {/* AI Enhanced List Tab Panel */}
+              {/* By Meal Tab Panel (now at index 1) */}
               <div
                 role="tabpanel"
                 hidden={activeTab !== 1}
                 id="tabpanel-1"
                 aria-labelledby="tab-1"
               >
-                {/* AI tab content */}
-                {(
-                  <Box>
-                    {/* Processing indicator with entertaining messages */}
-                    {aiShoppingLoading && (
-                      <Card sx={{ mb: 3, backgroundColor: '#f8f9fa' }}>
-                        <CardContent>
-                          <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" py={3}>
-                            <CircularProgress size={60} sx={{ mb: 3 }} />
-                            <Typography variant="h6" textAlign="center" gutterBottom>
-                              AI Shopping List in Progress
-                            </Typography>
-                            <Typography variant="body1" color="text.secondary" textAlign="center" sx={{ fontStyle: 'italic', mt: 1 }}>
-                              {loadingMessages[loadingMessageIndex]}
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary" textAlign="center" sx={{ mt: 2 }}>
-                              This may take up to 60 seconds. We're creating a smart, categorized shopping list for you.
-                            </Typography>
-                          </Box>
-                        </CardContent>
-                      </Card>
-                    )}
-
-                    {/* No AI shopping data yet, but we can show the generate button */}
-                    {!aiShoppingData && !aiShoppingLoading && (
-                      <Box sx={{ my: 3, p: 3, border: '1px dashed #e0e0e0', borderRadius: 2, bgcolor: '#fafafa', textAlign: 'center' }}>
-                        <Typography variant="h6" gutterBottom>
-                          AI Shopping List
-                        </Typography>
-                        <Typography variant="body1" color="text.secondary" paragraph>
-                          Get a smart, categorized shopping list with healthy alternatives and shopping tips.
-                        </Typography>
-                        <Button
-                          variant="contained"
-                          color="primary"
-                          startIcon={<AutoAwesome />}
-                          onClick={generateNewAiList}
-                          disabled={!selectedMenuId}
-                          size="large"
-                          sx={{ mt: 2 }}
-                        >
-                          Generate AI List
-                        </Button>
-
-                        {generationStats && (
-                          <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
-                            <Chip
-                              icon={generationStats.success ? <TipsIcon /> : <OfferIcon />}
-                              label={generationStats.success ?
-                                `Generated in ${generationStats.duration.toFixed(1)}s` :
-                                'Failed to generate'}
-                              color={generationStats.success ? "success" : "error"}
-                              variant="outlined"
-                              size="small"
-                            />
-                          </Box>
-                        )}
-                      </Box>
-                    )}
-
-                    {/* Display AI shopping data when available */}
-                    {console.log("AI Shopping Data available:", !!aiShoppingData)}
-                    {aiShoppingData && (
-                    <>
-                    {/* Display cache info if applicable */}
-                    {aiShoppingData.cached && (
-                      <Alert severity="info" sx={{ mb: 2 }}>
-                        Using cached shopping list from {new Date(aiShoppingData.cache_time).toLocaleString()}.
-                        <Button
-                          size="small"
-                          sx={{ ml: 2 }}
-                          onClick={() => {
-                            setAiShoppingLoading(true);
-                            setActiveTab(1);
-                            setLoadingMessageIndex(0);
-
-                            // TRY THE SIMPLEST APPROACH - just fetch the current shopping list
-                            directFetchShoppingList(selectedMenuId);
-                          }}
-                        >
-                          Refresh
-                        </Button>
+                {selectedMenuId ? (
+                  <ErrorBoundary
+                    fallback={
+                      <Alert severity="error" sx={{ my: 2 }}>
+                        An error occurred loading meal lists. This feature may not be available yet.
                       </Alert>
-                    )}
-
-                    {/* New AI List Generation Button */}
-                    <Box sx={{ my: 2, p: 2, border: '1px solid #e0e0e0', borderRadius: 1, bgcolor: '#f9f9f9' }}>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                        <Button
-                          variant="contained"
-                          color="primary"
-                          startIcon={aiShoppingLoading ? <CircularProgress size={20} /> : <AutoAwesome />}
+                    }
+                  >
+                    <MealShoppingList menuId={selectedMenuId} />
+                  </ErrorBoundary>
+                ) : (
+                  <Alert severity="info">
+                    Please select a menu to view meal-specific shopping lists.
+                  </Alert>
+                )}
+              </div>
                           onClick={generateNewAiList}
                           disabled={aiShoppingLoading || !selectedMenuId}
                         >
@@ -4818,29 +4721,6 @@ const categorizeItems = (mealPlanData) => {
                 )}
               </div>
 
-              {/* By Meal List Tab Panel */}
-              <div
-                role="tabpanel"
-                hidden={activeTab !== 2}
-                id="tabpanel-2"
-                aria-labelledby="tab-2"
-              >
-                {selectedMenuId ? (
-                  <ErrorBoundary
-                    fallback={
-                      <Alert severity="error" sx={{ my: 2 }}>
-                        An error occurred loading meal lists. This feature may not be available yet.
-                      </Alert>
-                    }
-                  >
-                    <MealShoppingList menuId={selectedMenuId} />
-                  </ErrorBoundary>
-                ) : (
-                  <Alert severity="info">
-                    Please select a menu to view meal-specific shopping lists.
-                  </Alert>
-                )}
-              </div>
             </>
           )}
 
@@ -4912,7 +4792,7 @@ const categorizeItems = (mealPlanData) => {
           <Button
             onClick={() => {
               setShowAiShoppingPrompt(false);
-              setActiveTab(1);
+              setActiveTab(0);
               generateNewAiList();
             }}
             variant="contained"
