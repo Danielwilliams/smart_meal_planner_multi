@@ -1343,8 +1343,7 @@ function CartPage() {
 
       // Safely get store name with capitalization
       let storeName = 'Unknown Store';
-      if (typeof store === 'string') {
-        console.log(`⚠️ DEBUG: Store is string "${store}"`);
+      if (store && typeof store === 'string') {
         if (store.length > 0) {
           // Extra safety check to ensure charAt doesn't fail
           try {
@@ -1357,7 +1356,7 @@ function CartPage() {
           storeName = "Store"; // Default if empty string
         }
       } else {
-        console.warn(`⚠️ DEBUG: Store is not a string: ${typeof store}, value:`, store);
+        console.warn(`Store is not a valid string: ${typeof store}`);
         return (
           <Card sx={{ mb: 4, p: 2, backgroundColor: '#fff3e0' }}>
             <Typography variant="h6" color="warning.main">Invalid Store Type</Typography>
@@ -2052,7 +2051,7 @@ function CartPage() {
                 </Box>
               ) : (
                 <Typography color="text.secondary" sx={{ width: '100%', mt: 2 }}>
-                  Click "Search Instacart" to find your items
+                  Items ready for Instacart checkout
                 </Typography>
               )}
             </Box>
@@ -2060,25 +2059,6 @@ function CartPage() {
         </Card>
       </ErrorBoundary>
 
-      {/* Debug Tools - Always available */}
-      <Card sx={{ mb: 4 }}>
-        <CardContent>
-          <Accordion>
-            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-              <Box display="flex" alignItems="center">
-                <BugReportIcon sx={{ mr: 1, color: 'warning.main' }} />
-                <Typography variant="h6" color="warning.main">Instacart API Diagnostics</Typography>
-              </Box>
-            </AccordionSummary>
-            <AccordionDetails>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Use this tool to test the Instacart API connection through our secure backend proxy.
-              </Typography>
-              <InstacartSimpleTester />
-            </AccordionDetails>
-          </Accordion>
-        </CardContent>
-      </Card>
 
       {/* Error Display */}
       {error && (
