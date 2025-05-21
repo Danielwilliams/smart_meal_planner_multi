@@ -1939,19 +1939,6 @@ function CartPage() {
                 </Button>
               </Box>
 
-              {/* Search button that directly searches Instacart */}
-              <Button
-                variant="contained"
-                color="secondary"
-                onClick={() => handleStoreSearch('instacart')}
-                disabled={loading.search || loading.instacart ||
-                  !internalCart.instacart || !Array.isArray(internalCart.instacart) ||
-                  internalCart.instacart.length === 0}
-                startIcon={loading.instacart ? <CircularProgress size={20} /> : <ShoppingCartIcon />}
-                sx={{ mr: 1, mb: 1 }}
-              >
-                Search Instacart
-              </Button>
 
               {/* Official Instacart CTA Button */}
               <Box sx={{ mr: 1, mb: 1 }}>
