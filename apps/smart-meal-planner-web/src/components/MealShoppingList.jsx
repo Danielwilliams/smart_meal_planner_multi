@@ -169,7 +169,7 @@ const MealShoppingList = ({ menuId }) => {
     return normalizedTime ? ` (${mealTime})` : '';
   };
 
-  // Add meal ingredients to cart using the proper flow: internal cart first, then to store
+  // Add meal ingredients to internal cart assigned to the specified store
   const addMealToCart = async (meal, store) => {
     if (!meal.ingredients || meal.ingredients.length === 0) {
       setSnackbarMessage('No ingredients to add to cart');
@@ -181,50 +181,50 @@ const MealShoppingList = ({ menuId }) => {
     setCartLoading(prev => ({ ...prev, [mealKey]: true }));
 
     try {
-      // For now, directly create shopping list without internal cart complexity
-      // This follows the same pattern as the working CartPage Instacart integration
-      if (store === 'instacart') {
-        // Use the existing Instacart service
-        const instacartBackendService = (await import('../services/instacartBackendService')).default;
+      const token = localStorage.getItem('access_token');
+      const formattedToken = token && token.startsWith('Bearer ') ? token : `Bearer ${token}`;
+      const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://smartmealplannermulti-production.up.railway.app';
 
-        // Convert ingredients to item names list
-        const itemNames = meal.ingredients.map(ingredient => {
-          if (ingredient.quantity && ingredient.quantity.trim()) {
-            return `${ingredient.quantity} ${ingredient.name}`.trim();
-          }
-          return ingredient.name.trim();
-        });
-
-        // Use default retailer for now
-        const retailerId = 'publix';
-        const postalCode = '80538';
-
-        const result = await instacartBackendService.createShoppingListUrl(
-          retailerId,
-          itemNames,
-          postalCode
-        );
-
-        if (result.success) {
-          setSnackbarMessage(
-            `Created Instacart shopping list with ${meal.ingredients.length} items from "${meal.title}"`
-          );
-          // Open the shopping list URL
-          if (result.url) {
-            window.open(result.url, '_blank');
-          }
-        } else {
-          setSnackbarMessage(`Failed to create Instacart shopping list: ${result.error}`);
+      // Convert ingredients to cart items format
+      const cartItems = meal.ingredients.map(ingredient => {
+        let name = ingredient.name;
+        if (ingredient.quantity && ingredient.quantity.trim()) {
+          name = `${ingredient.quantity} ${ingredient.name}`.trim();
         }
-      } else if (store === 'kroger') {
-        // For Kroger, show a message that this feature is coming soon
-        setSnackbarMessage('Kroger integration for individual meals coming soon!');
-      }
+        return {
+          name: name,
+          quantity: 1,
+          store_preference: store
+        };
+      });
 
-      setSnackbarOpen(true);
+      // Add items to internal cart assigned to the specified store
+      const response = await axios.post(
+        `${API_BASE_URL}/cart/internal/add_items`,
+        {
+          items: cartItems,
+          store: store
+        },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': formattedToken
+          }
+        }
+      );
+
+      if (response.data && response.data.status === 'success') {
+        setSnackbarMessage(
+          `Added ${meal.ingredients.length} items from "${meal.title}" to ${store.charAt(0).toUpperCase() + store.slice(1)} cart`
+        );
+        setSnackbarOpen(true);
+      } else {
+        setSnackbarMessage(`Failed to add items to ${store} cart`);
+        setSnackbarOpen(true);
+      }
     } catch (err) {
       console.error('Error adding meal to cart:', err);
-      setSnackbarMessage(`Error adding meal to ${store} cart: ${err.message}`);
+      setSnackbarMessage(`Error adding meal to ${store} cart: ${err.response?.data?.detail || err.message}`);
       setSnackbarOpen(true);
     } finally {
       setCartLoading(prev => ({ ...prev, [mealKey]: false }));
