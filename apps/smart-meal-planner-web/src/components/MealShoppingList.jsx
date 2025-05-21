@@ -169,7 +169,7 @@ const MealShoppingList = ({ menuId }) => {
     return normalizedTime ? ` (${mealTime})` : '';
   };
 
-  // Add meal ingredients to cart
+  // Add meal ingredients to cart using existing services
   const addMealToCart = async (meal, store) => {
     if (!meal.ingredients || meal.ingredients.length === 0) {
       setSnackbarMessage('No ingredients to add to cart');
@@ -181,40 +181,48 @@ const MealShoppingList = ({ menuId }) => {
     setCartLoading(prev => ({ ...prev, [mealKey]: true }));
 
     try {
-      const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://smartmealplannermulti-production.up.railway.app';
-      const token = localStorage.getItem('access_token');
-      const formattedToken = token && token.startsWith('Bearer ') ? token : `Bearer ${token}`;
+      if (store === 'instacart') {
+        // Use the existing Instacart service
+        const instacartBackendService = (await import('../services/instacartBackendService')).default;
 
-      const response = await axios.post(
-        `${API_BASE_URL}/menu/${menuId}/meal-to-cart`,
-        {
-          ingredients: meal.ingredients,
-          store: store,
-          meal_title: meal.title || 'Untitled Meal'
-        },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'Authorization': formattedToken
+        // Convert ingredients to item names list
+        const itemNames = meal.ingredients.map(ingredient => {
+          if (ingredient.quantity && ingredient.quantity.trim()) {
+            return `${ingredient.quantity} ${ingredient.name}`.trim();
           }
-        }
-      );
+          return ingredient.name.trim();
+        });
 
-      if (response.data) {
-        const { success_count, failure_count } = response.data;
-        if (success_count > 0) {
+        // Use default retailer for now
+        const retailerId = 'publix';
+        const postalCode = '80538';
+
+        const result = await instacartBackendService.createShoppingListUrl(
+          retailerId,
+          itemNames,
+          postalCode
+        );
+
+        if (result.success) {
           setSnackbarMessage(
-            `Added ${success_count} items from "${meal.title}" to ${store.charAt(0).toUpperCase() + store.slice(1)} cart`
+            `Created Instacart shopping list with ${meal.ingredients.length} items from "${meal.title}"`
           );
+          // Open the shopping list URL
+          if (result.url) {
+            window.open(result.url, '_blank');
+          }
         } else {
-          setSnackbarMessage(`Failed to add items to ${store} cart`);
+          setSnackbarMessage(`Failed to create Instacart shopping list: ${result.error}`);
         }
-        setSnackbarOpen(true);
+      } else if (store === 'kroger') {
+        // For Kroger, show a message that this feature is coming soon
+        setSnackbarMessage('Kroger integration for individual meals coming soon!');
       }
+
+      setSnackbarOpen(true);
     } catch (err) {
       console.error('Error adding meal to cart:', err);
-      setSnackbarMessage(`Error adding meal to ${store} cart: ${err.response?.data?.detail || err.message}`);
+      setSnackbarMessage(`Error adding meal to ${store} cart: ${err.message}`);
       setSnackbarOpen(true);
     } finally {
       setCartLoading(prev => ({ ...prev, [mealKey]: false }));

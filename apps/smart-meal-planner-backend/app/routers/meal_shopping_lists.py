@@ -159,14 +159,8 @@ async def add_meal_ingredients_to_cart(
     try:
         logger.info(f"Adding meal '{request.meal_title}' ingredients to {request.store} cart")
 
-        # Import the store integration functions
-        if request.store.lower() == "kroger":
-            from ..integration.kroger import add_to_kroger_cart
-            add_to_cart_func = add_to_kroger_cart
-        elif request.store.lower() == "instacart":
-            from ..integration.instacart import create_shopping_list_url_from_items
-            add_to_cart_func = create_shopping_list_url_from_items
-        else:
+        # We'll handle each store differently
+        if request.store.lower() not in ["kroger", "instacart"]:
             raise HTTPException(
                 status_code=400,
                 detail="Invalid store. Must be 'kroger' or 'instacart'"
