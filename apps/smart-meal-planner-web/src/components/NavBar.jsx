@@ -181,13 +181,16 @@ function NavBar() {
             }}
           >
             <img
-              src="/favicon-32x32.png"
+              src="/favicon.ico"
               alt="Smart Meal Planner Logo"
               style={{
                 width: 28,
                 height: 28,
                 marginRight: 8,
                 borderRadius: 4
+              }}
+              onError={(e) => {
+                e.target.style.display = 'none';
               }}
             />
             Smart Meal Planner
