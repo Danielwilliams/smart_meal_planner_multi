@@ -416,11 +416,14 @@ const MealShoppingList = ({ menuId }) => {
                                 size="small"
                                 sx={{
                                   flex: 1,
-                                  backgroundColor: '#F36D00',
-                                  color: 'white',
-                                  fontWeight: 600,
+                                  height: 32, // Smaller for UI context but still with proper styling
+                                  backgroundColor: '#003D29', // Official dark background
+                                  color: '#FAF1E5', // Official text color
+                                  fontWeight: 500,
+                                  borderRadius: '999px', // Fully rounded
+                                  textTransform: 'none',
                                   '&:hover': {
-                                    backgroundColor: '#E05D00'
+                                    backgroundColor: '#002A1C' // Slightly darker on hover
                                   },
                                   '&:disabled': {
                                     backgroundColor: '#ccc'
@@ -435,7 +438,7 @@ const MealShoppingList = ({ menuId }) => {
                                     sx={{ height: 16, width: 'auto', mr: 0.5 }}
                                   />
                                 }
-                                Instacart
+                                Get Ingredients
                               </Button>
                             </Box>
                           </Box>

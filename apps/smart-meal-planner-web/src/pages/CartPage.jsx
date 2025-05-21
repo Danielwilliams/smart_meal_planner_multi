@@ -162,6 +162,13 @@ function CartPage() {
   // Define all helper functions before they're used in any hooks
   const handleError = (err) => {
     console.log("⚠️ DEBUG: handleError called", err);
+    if (!err) {
+      setError('An unknown error occurred');
+      setSnackbarMessage('An unknown error occurred');
+      setSnackbarOpen(true);
+      return;
+    }
+
     if (err.response?.status === 401) {
       navigate('/login');
       return;
@@ -222,7 +229,7 @@ function CartPage() {
       
       if (response.status === 'success' && response.cart) {
         setInternalCart(response.cart);
-        setSnackbarMessage(`Items assigned to ${store}`);
+        setSnackbarMessage(`Items assigned to ${store ? store : 'store'}`);
         setSnackbarOpen(true);
       }
     } catch (err) {
@@ -1332,13 +1339,7 @@ function CartPage() {
     try {
       // Defensive type checks - return early with error card if store is falsy
       if (!store) {
-        console.warn("⚠️ DEBUG: Store is null or undefined");
-        return (
-          <Card sx={{ mb: 4, p: 2, backgroundColor: '#fff3e0' }}>
-            <Typography variant="h6" color="warning.main">Store Error</Typography>
-            <Typography variant="body2">Store identifier is missing</Typography>
-          </Card>
-        );
+        return null; // Just return null to avoid rendering anything when store is falsy
       }
 
       // Safely get store name with capitalization
@@ -1809,8 +1810,8 @@ function CartPage() {
 
       {/* Store Sections */}
       <ErrorBoundary>
-        {/* Verify all parameters before calling renderStoreSection */}
-        {renderStoreSection(
+        {/* Only render kroger section if internalCart exists */}
+        {internalCart && renderStoreSection(
           'kroger',
           Array.isArray(internalCart?.kroger) ? internalCart.kroger : [],
           () => handleStoreSearch('kroger'),
@@ -1949,25 +1950,24 @@ function CartPage() {
                     internalCart.instacart.length === 0 ||
                     !instacartRetailer?.id}
                   sx={{
-                    height: 48,
-                    px: 3,
-                    backgroundColor: '#F36D00',
-                    color: 'white',
-                    fontWeight: 600,
+                    height: 46,                     // Official height
+                    py: '16px',                     // Official vertical padding
+                    px: '18px',                     // Official horizontal padding
+                    backgroundColor: '#003D29',     // Official dark background
+                    color: '#FAF1E5',               // Official text color
+                    fontWeight: 500,
                     textTransform: 'none',
-                    borderRadius: 2,
+                    borderRadius: '999px',          // Fully rounded
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 1,
-                    boxShadow: '0 4px 12px rgba(243, 109, 0, 0.25)',
+                    gap: 1.5,
+                    boxShadow: 'none',
                     '&:hover': {
-                      backgroundColor: '#E05D00',
-                      boxShadow: '0 6px 16px rgba(243, 109, 0, 0.35)',
+                      backgroundColor: '#002A1C',   // Slightly darker on hover
                     },
                     '&:disabled': {
                       backgroundColor: '#ccc',
-                      color: '#999',
-                      boxShadow: 'none'
+                      color: '#999'
                     }
                   }}
                 >
@@ -1977,7 +1977,7 @@ function CartPage() {
                     <Box component="img"
                       src={InstacartCarrotIcon}
                       alt="Instacart"
-                      sx={{ height: 24, width: 'auto' }}
+                      sx={{ height: 22, width: 'auto' }}  // Official 22px size
                     />
                   )}
                   Shop with Instacart
@@ -2312,28 +2312,28 @@ function CartPage() {
               target="_blank"
               rel="noopener noreferrer"
               sx={{
-                height: 56,
-                px: 4,
-                backgroundColor: '#F36D00',
-                color: 'white',
-                fontWeight: 600,
+                height: 46,                     // Official height
+                py: '16px',                     // Official vertical padding
+                px: '18px',                     // Official horizontal padding
+                backgroundColor: '#003D29',     // Official dark background
+                color: '#FAF1E5',               // Official text color
+                fontWeight: 500,
                 textTransform: 'none',
-                borderRadius: 2,
-                fontSize: '1.125rem',
+                borderRadius: '999px',          // Fully rounded
+                fontSize: '1rem',
                 display: 'flex',
                 alignItems: 'center',
-                gap: 1,
-                boxShadow: '0 4px 12px rgba(243, 109, 0, 0.25)',
+                gap: 1.5,
+                boxShadow: 'none',
                 '&:hover': {
-                  backgroundColor: '#E05D00',
-                  boxShadow: '0 6px 16px rgba(243, 109, 0, 0.35)',
+                  backgroundColor: '#002A1C',   // Slightly darker on hover
                 }
               }}
             >
               <Box component="img"
                 src={InstacartCarrotIcon}
                 alt="Instacart"
-                sx={{ height: 28, width: 'auto' }}
+                sx={{ height: 22, width: 'auto' }}  // Official 22px size
               />
               Shop with Instacart
             </Button>

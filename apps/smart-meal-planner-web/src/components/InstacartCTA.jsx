@@ -5,91 +5,59 @@ import InstacartLogo from '../assets/instacart/Instacart_Logo.png';
 
 /**
  * Official Instacart CTA Button Component
- * Follows Instacart design guidelines for CTA placement and design
+ * Following precise Instacart design guidelines for CTA placement and design
+ *
+ * Per official Instacart guidelines:
+ * - Button Height: 46px (fixed)
+ * - Button Width: Dynamic based on text
+ * - Approved texts: "Shop with Instacart", "Get Ingredients", "Order with Instacart", "Get Recipe Ingredients"
+ * - Logo Size: 22px (fixed)
+ * - Fully rounded corners
+ * - Dark green background (#003D29)
+ * - Light text color (#FAF1E5)
  */
 const InstacartCTA = ({
   onClick,
   disabled = false,
   loading = false,
-  variant = 'primary', // 'primary', 'secondary', 'minimal'
-  size = 'large', // 'small', 'medium', 'large'
   showLogo = true,
-  children = 'Shop with Instacart',
+  children = 'Shop with Instacart', // Must be one of the approved texts only
   fullWidth = false,
   ...props
 }) => {
-  // Instacart brand colors
-  const instacartOrange = '#F36D00';
-  const instacartGreen = '#43B02A';
-  const instacartHoverOrange = '#E05D00';
+  // Official Instacart brand colors
+  const instacartDark = '#003D29';      // Dark background
+  const instacartText = '#FAF1E5';      // Text color
+  const instacartOrange = '#FF7009';    // Logo orange
+  const instacartGreen = '#0AAD0A';     // Logo green
 
-  // Size configurations
+  // Official size configuration (per guidelines)
   const sizeConfig = {
-    small: {
-      height: 36,
-      fontSize: '0.875rem',
-      paddingX: 2,
-      iconSize: 20
-    },
-    medium: {
-      height: 44,
-      fontSize: '1rem',
-      paddingX: 3,
-      iconSize: 24
-    },
-    large: {
-      height: 56,
-      fontSize: '1.125rem',
-      paddingX: 4,
-      iconSize: 28
+    // We'll only have one size according to the official guidelines
+    standard: {
+      height: 46,                      // Exact height from guidelines
+      paddingY: '16px',                // Vertical padding from guidelines
+      paddingX: '18px',                // Horizontal padding from guidelines
+      fontSize: '1rem',                // Standard size for text
+      iconSize: 22                     // Logo size from guidelines
     }
   };
 
-  const config = sizeConfig[size];
+  // Use standard size only
 
-  // Variant styles
-  const getVariantStyles = () => {
-    switch (variant) {
-      case 'primary':
-        return {
-          backgroundColor: instacartOrange,
-          color: 'white',
-          '&:hover': {
-            backgroundColor: instacartHoverOrange,
-          },
-          '&:disabled': {
-            backgroundColor: '#ccc',
-            color: '#999',
-          }
-        };
-      case 'secondary':
-        return {
-          backgroundColor: 'transparent',
-          color: instacartOrange,
-          border: `2px solid ${instacartOrange}`,
-          '&:hover': {
-            backgroundColor: instacartOrange,
-            color: 'white',
-          },
-          '&:disabled': {
-            borderColor: '#ccc',
-            color: '#999',
-          }
-        };
-      case 'minimal':
-        return {
-          backgroundColor: 'transparent',
-          color: instacartOrange,
-          '&:hover': {
-            backgroundColor: 'rgba(243, 109, 0, 0.04)',
-          },
-          '&:disabled': {
-            color: '#999',
-          }
-        };
-      default:
-        return {};
-    }
+  // Official dark variant style (per guidelines)
+  const getButtonStyle = () => {
+    return {
+      backgroundColor: instacartDark,
+      color: instacartText,
+      '&:hover': {
+        backgroundColor: '#002A1C', // Slightly darker for hover state
+      },
+      '&:disabled': {
+        backgroundColor: '#ccc',
+        color: '#999',
+      }
+    };
   };
 
   return (
@@ -100,20 +68,20 @@ const InstacartCTA = ({
         variant="contained"
         fullWidth={fullWidth}
         sx={{
-          ...getVariantStyles(),
-          height: config.height,
-          fontSize: config.fontSize,
-          px: config.paddingX,
-          fontWeight: 600,
+          ...getButtonStyle(),
+          height: sizeConfig.standard.height,
+          fontSize: sizeConfig.standard.fontSize,
+          py: sizeConfig.standard.paddingY,
+          px: sizeConfig.standard.paddingX,
+          fontWeight: 500,
           textTransform: 'none',
-          borderRadius: 2,
+          borderRadius: '999px', // Fully rounded button
           display: 'flex',
           alignItems: 'center',
-          gap: 1,
-          boxShadow: variant === 'primary' ? '0 4px 12px rgba(243, 109, 0, 0.25)' : 'none',
+          gap: 1.5,
+          boxShadow: 'none',
           '&:hover': {
-            ...getVariantStyles()['&:hover'],
-            boxShadow: variant === 'primary' ? '0 6px 16px rgba(243, 109, 0, 0.35)' : 'none',
+            ...getButtonStyle()['&:hover'],
           }
         }}
         {...props}
@@ -121,12 +89,11 @@ const InstacartCTA = ({
         {showLogo && (
           <Box
             component="img"
-            src={variant === 'minimal' ? InstacartLogo : InstacartCarrotIcon}
+            src={InstacartCarrotIcon}
             alt="Instacart"
             sx={{
-              height: config.iconSize,
+              height: sizeConfig.standard.iconSize,
               width: 'auto',
-              filter: variant === 'secondary' && !disabled ? 'brightness(0) saturate(100%) invert(46%) sepia(86%) saturate(1836%) hue-rotate(21deg) brightness(96%) contrast(97%)' : 'none'
             }}
           />
         )}
