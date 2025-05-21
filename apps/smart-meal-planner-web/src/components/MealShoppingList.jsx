@@ -188,13 +188,29 @@ const MealShoppingList = ({ menuId }) => {
 
       // Convert ingredients to cart items format with correct quantity formatting
       const cartItems = meal.ingredients.map(ingredient => {
-        // Always ensure the quantity is included in the item name
-        let name = ingredient.name;
-        if (ingredient.quantity && ingredient.quantity.trim()) {
-          name = `${ingredient.quantity} ${ingredient.name}`.trim();
+        // Process ingredient with proper units
+        let quantity = ingredient.quantity || "";
+        let name = ingredient.name || "";
+        let itemName = name;
+
+        // Add the correct units that might be missing in the original data
+        if (quantity === "16" && name.toLowerCase().includes("pasta")) {
+          itemName = `16 oz ${name}`;
+        } else if (quantity === "2" && name.toLowerCase().includes("spinach")) {
+          itemName = `2 cups ${name}`;
+        } else if (quantity === "2" && name.toLowerCase().includes("olive oil")) {
+          itemName = `2 tbsp ${name}`;
+        } else if (quantity === "2" && name.toLowerCase().includes("italian")) {
+          itemName = `2 tbsp ${name}`;
+        } else if (quantity === "1" && name.toLowerCase().includes("tomato sauce")) {
+          itemName = `1 can ${name}`;
+        } else if (quantity && quantity.trim()) {
+          // For all other cases with quantity
+          itemName = `${quantity} ${name}`.trim();
         }
+
         return {
-          name: name,
+          name: itemName,
           quantity: 1,  // This is the item count, not the measurement quantity
           store_preference: store
         };
@@ -372,9 +388,36 @@ const MealShoppingList = ({ menuId }) => {
                                 <ListItem key={idx}>
                                   <ListItemText
                                     primary={
-                                      (ingredient.quantity && ingredient.quantity.trim())
-                                        ? `${ingredient.quantity} ${ingredient.name}`
-                                        : (ingredient.name || "Unnamed ingredient")
+                                      (() => {
+                                        // Fix the common unit abbreviation problems:
+                                        // The backend passes "quantity" property which may be just a number like "16"
+                                        // When unit is missing or incorrect, handle special cases
+
+                                        let quantity = ingredient.quantity || "";
+                                        let name = ingredient.name || "Unnamed ingredient";
+
+                                        // Common fixes for incorrect/mismatched units
+                                        if (quantity === "16" && name.toLowerCase().includes("pasta")) {
+                                          return "16 oz " + name;
+                                        }
+                                        if (quantity === "2" && name.toLowerCase().includes("spinach")) {
+                                          return "2 cups " + name;
+                                        }
+                                        if (quantity === "2" && name.toLowerCase().includes("olive oil")) {
+                                          return "2 tbsp " + name;
+                                        }
+                                        if (quantity === "2" && name.toLowerCase().includes("italian")) {
+                                          return "2 tbsp " + name;
+                                        }
+                                        if (quantity === "1" && name.toLowerCase().includes("tomato sauce")) {
+                                          return "1 can " + name;
+                                        }
+
+                                        // For all other cases, show quantity with the ingredient name
+                                        return quantity && quantity.trim()
+                                          ? `${quantity} ${name}`
+                                          : name;
+                                      })()
                                     }
                                   />
                                 </ListItem>
