@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
+import InstacartCarrotIcon from '../assets/instacart/Instacart_Carrot.png';
 import {
   Container,
   Typography,
@@ -104,6 +105,11 @@ function ShoppingListPage() {
   const [creatingShoppingList, setCreatingShoppingList] = useState(false);
   const [shoppingListUrl, setShoppingListUrl] = useState(null);
   const [showShoppingListDialog, setShowShoppingListDialog] = useState(false);
+
+  // Legacy AI stub functions
+  const clearStatusPolling = () => { return; };
+  const generateNewAiList = async () => { return; };
+  const handleAiPromptResponse = () => { return; };
 
   // Debug log
   console.log("ShoppingListPage params:", { 
@@ -872,11 +878,8 @@ function ShoppingListPage() {
   // Menu selection handler
   const handleMenuSelect = async (menuId) => {
     try {
-      // Clear current data and stop any active polling
-      clearStatusPolling();
+      // Clear current data
       setLoading(true);
-      setAiShoppingData(null);
-      setUsingAiList(false);
 
       console.log(`Manually selecting menu ID: ${menuId}`);
 
@@ -1030,58 +1033,11 @@ function ShoppingListPage() {
   const MAX_POLLS = 60; // Maximum number of status checks (5 minutes at 5-second intervals)
   const POLL_INTERVAL = 5000; // Poll every 5 seconds
 
-  // Process AI shopping list items function (moved outside to be reusable)
+  // Legacy AI function - now just returns safe defaults
   const processAiShoppingItems = (response) => {
-    // Safety check for null response
-    if (!response) {
-      console.error("Null response passed to processAiShoppingItems");
-      return { groceryList: [], error: "Invalid response data" };
-    }
-
-    console.log("Processing AI shopping list items with response keys:", Object.keys(response));
-
-    // Make a deep copy to avoid mutating the original response
-    try {
-      response = JSON.parse(JSON.stringify(response));
-    } catch (error) {
-      console.error("Error creating deep copy of response:", error);
-      // Continue with the original response if copy fails
-    }
-
-    // Check if we have a direct groceryList or need to extract it from a different structure
-    if (!response.groceryList && response.result && response.result.groceryList) {
-      console.log("Found groceryList inside result property - extracting it");
-      response.groceryList = response.result.groceryList;
-
-      // Also extract other properties if they exist
-      if (response.result.nutritionTips) response.nutritionTips = response.result.nutritionTips;
-      if (response.result.recommendations) response.recommendations = response.result.recommendations;
-      if (response.result.healthySwaps) response.healthySwaps = response.result.healthySwaps;
-      if (response.result.pantryStaples) response.pantryStaples = response.result.pantryStaples;
-    }
-
-    // Handle case where groceryList might be a string (JSON)
-    if (response.groceryList && typeof response.groceryList === 'string') {
-      try {
-        console.log("groceryList is a string, attempting to parse as JSON");
-        response.groceryList = JSON.parse(response.groceryList);
-      } catch (parseError) {
-        console.error("Failed to parse groceryList string as JSON:", parseError);
-      }
-    }
-
-    // Format and normalize all items to ensure quantities are shown
-    if (response.groceryList && Array.isArray(response.groceryList)) {
-      console.log(`Processing ${response.groceryList.length} AI shopping list categories`);
-
-      response.groceryList.forEach(category => {
-        // Skip null categories
-        if (!category) return;
-
-        // Handle malformed property names in categories
-        // Check for properties like "car carbs" instead of "carbs"
-        if (category) {
-          Object.keys(category).forEach(key => {
+    console.log("AI functionality removed - returning safe default");
+    return { groceryList: [], error: "AI functionality removed" };
+  };
             if (key.includes('carb') && key !== 'carbs') {
               console.log(`Found malformed carbs key: ${key}, fixing`);
               category.carbs = category[key];
@@ -3251,14 +3207,12 @@ Combine duplicate ingredients, adding up quantities when appropriate.
       // Add a slight delay to allow the standard list to load first
       setTimeout(() => {
         console.log('Automatically generating AI shopping list...');
-        generateNewAiList(); // This will be shown in the AI tab by default
+        // AI functionality removed
       }, 500);
 
-      // Make sure the showLogs state is set to true to display generation logs
-      setShowLogs(true);
+      // AI functionality removed
 
-      // Clear any existing polling when menu changes
-      clearStatusPolling();
+      // AI functionality removed
     }
 
     // Fetch new shopping list data for the selected menu
@@ -4201,150 +4155,6 @@ const categorizeItems = (mealPlanData) => {
                 </Tabs>
               </Box>
 
-              {/* Legacy code kept for reference but not used */}
-              {false && (() => {
-                const emergencyFetchList = async () => {
-                      try {
-                        // Get the token
-                        const token = localStorage.getItem('token');
-
-                        // Direct API call with minimal processing
-                        const response = await fetch(`https://smartmealplannermulti-production.up.railway.app/menu/${selectedMenuId}/grocery-list`, {
-                          method: 'GET',
-                          headers: {
-                            'Authorization': `Bearer ${token}`
-                          }
-                        });
-
-                        // Basic error handling
-                        if (!response.ok) {
-                          throw new Error(`API error: ${response.status}`);
-                        }
-
-                        // Parse the response
-                        const result = await response.json();
-                        console.log("SIMPLE EMERGENCY FIX: Got shopping list:", result);
-
-                        // Very basic item extraction - get anything we can find
-                        let items = [];
-                        if (result.ingredient_list && Array.isArray(result.ingredient_list)) {
-                          items = result.ingredient_list;
-                        } else if (result.items && Array.isArray(result.items)) {
-                          items = result.items;
-                        } else if (Array.isArray(result)) {
-                          items = result;
-                        } else {
-                          // Last attempt - get any array from the response
-                          for (const key in result) {
-                            if (Array.isArray(result[key]) && result[key].length > 0) {
-                              items = result[key];
-                              break;
-                            }
-                          }
-                        }
-
-                        // Create very simple categories
-                        const categories = {
-                          "Produce": [],
-                          "Protein": [],
-                          "Dairy": [],
-                          "Grains": [],
-                          "Other": []
-                        };
-
-                        // Process each item minimally
-                        items.forEach(item => {
-                          // Get the item as a string
-                          const itemStr = typeof item === 'string' ? item :
-                                        (item && item.name ? item.name : String(item));
-
-                          // Very basic categorization
-                          const lowerItem = itemStr.toLowerCase();
-                          if (lowerItem.includes('chicken') || lowerItem.includes('beef') ||
-                              lowerItem.includes('meat') || lowerItem.includes('fish')) {
-                            categories["Protein"].push(itemStr);
-                          } else if (lowerItem.includes('milk') || lowerItem.includes('cheese') ||
-                                    lowerItem.includes('egg') || lowerItem.includes('yogurt')) {
-                            categories["Dairy"].push(itemStr);
-                          } else if (lowerItem.includes('apple') || lowerItem.includes('banana') ||
-                                    lowerItem.includes('vegetable') || lowerItem.includes('tomato') ||
-                                    lowerItem.includes('lettuce') || lowerItem.includes('onion')) {
-                            categories["Produce"].push(itemStr);
-                          } else if (lowerItem.includes('bread') || lowerItem.includes('rice') ||
-                                    lowerItem.includes('pasta') || lowerItem.includes('cereal')) {
-                            categories["Grains"].push(itemStr);
-                          } else {
-                            categories["Other"].push(itemStr);
-                          }
-                        });
-
-                        // Format for the UI
-                        const formattedCategories = Object.entries(categories)
-                          .filter(([_, items]) => items.length > 0)
-                          .map(([category, items]) => ({
-                            category,
-                            items: items.map(item => ({
-                              name: item,
-                              display_name: item
-                            }))
-                          }));
-
-                        // If we got nothing, create a single category with all items
-                        if (formattedCategories.length === 0 && items.length > 0) {
-                          formattedCategories.push({
-                            category: "All Items",
-                            items: items.map(item => ({
-                              name: typeof item === 'string' ? item : (item.name || String(item)),
-                              display_name: typeof item === 'string' ? item : (item.name || String(item))
-                            }))
-                          });
-                        }
-
-                        // Update state with our simple data
-                        setAiShoppingLoading(false);
-                        setAiShoppingData({
-                          groceryList: formattedCategories,
-                          menuId: selectedMenuId,
-                          status: "completed",
-                          cached: true,
-                          nutritionTips: [
-                            "Try to prioritize whole foods over processed options.",
-                            "Choose lean proteins for healthier meal options."
-                          ],
-                          recommendations: [
-                            "Shop the perimeter of the store first for fresh foods.",
-                            "Check your pantry before shopping to avoid duplicates."
-                          ]
-                        });
-                        setActiveTab(0);
-                        setUsingAiList(true);
-
-                      } catch (error) {
-                        console.error("SIMPLE EMERGENCY FIX: Error:", error);
-                        setAiShoppingLoading(false);
-
-                        // Even if we fail, provide some data to show something
-                        setAiShoppingData({
-                          groceryList: [{
-                            category: "All Items",
-                            items: [{ name: "Error fetching items", display_name: "Please try again" }]
-                          }],
-                          menuId: selectedMenuId,
-                          status: "error",
-                          cached: false,
-                          nutritionTips: ["Error fetching shopping list."],
-                          recommendations: ["Please try refreshing the page."]
-                        });
-                      }
-                    };
-
-                    // Run our emergency fix
-                    emergencyFetchList();
-                  }}
-                >
-                  Refresh List
-                </Button>
-              </Box>
               
               {/* Standard List Tab Panel */}
               <div
@@ -4387,315 +4197,14 @@ const categorizeItems = (mealPlanData) => {
                   </Alert>
                 )}
               </div>
-                          onClick={generateNewAiList}
-                          disabled={aiShoppingLoading || !selectedMenuId}
-                        >
-                          New AI List
-                        </Button>
-
-                        {generationStats && (
-                          <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                            <Chip
-                              icon={generationStats.success ? <TipsIcon /> : <OfferIcon />}
-                              label={generationStats.success ?
-                                `Generated in ${generationStats.duration.toFixed(1)}s` :
-                                'Failed to generate'}
-                              color={generationStats.success ? "success" : "error"}
-                              variant="outlined"
-                              size="small"
-                            />
-                          </Box>
-                        )}
-                      </Box>
-
-                      {/* Logs Display */}
-                      <Accordion
-                        expanded={showLogs}
-                        onChange={() => setShowLogs(!showLogs)}
-                        sx={{ boxShadow: 'none', border: '1px solid #e0e0e0' }}
-                      >
-                        <AccordionSummary expandIcon={<ExpandMore />}>
-                          <Typography variant="subtitle2">
-                            Generation Logs {generationLogs.length > 0 ? `(${generationLogs.length})` : ''}
-                          </Typography>
-                        </AccordionSummary>
-                        <AccordionDetails>
-                          {generationLogs.length > 0 ? (
-                            <List dense sx={{ maxHeight: '200px', overflow: 'auto' }}>
-                              {generationLogs.map((log, index) => (
-                                <ListItem key={index} sx={{
-                                  py: 0.5,
-                                  color: log.type === 'error' ? 'error.main' :
-                                         log.type === 'success' ? 'success.main' :
-                                         log.type === 'warning' ? 'warning.main' : 'text.primary'
-                                }}>
-                                  <ListItemText
-                                    primary={`${log.timestamp}: ${log.message}`}
-                                    primaryTypographyProps={{ fontSize: '0.85rem' }}
-                                  />
-                                </ListItem>
-                              ))}
-                            </List>
-                          ) : (
-                            <Typography variant="body2" color="text.secondary">
-                              No generation logs available.
-                            </Typography>
-                          )}
-                        </AccordionDetails>
-                      </Accordion>
-                    </Box>
-
-                    {/* AI Tips and Recommendations */}
-                    {aiShoppingData.nutritionTips && Array.isArray(aiShoppingData.nutritionTips) && aiShoppingData.nutritionTips.length > 0 && (
-                      <Card sx={{ mb: 3 }}>
-                        <CardContent>
-                          <Box display="flex" alignItems="center" mb={1}>
-                            <TipsIcon sx={{ mr: 1 }} color="primary" />
-                            <Typography variant="h6">Nutrition Tips</Typography>
-                          </Box>
-                          <List dense>
-                            {aiShoppingData.nutritionTips.map((tip, index) => (
-                              <ListItem key={index}>
-                                <ListItemIcon><TipsIcon color="primary" /></ListItemIcon>
-                                <ListItemText primary={tip} />
-                              </ListItem>
-                            ))}
-                          </List>
-                        </CardContent>
-                      </Card>
-                    )}
-                    
-                    {aiShoppingData.recommendations && Array.isArray(aiShoppingData.recommendations) && aiShoppingData.recommendations.length > 0 && (
-                      <Card sx={{ mb: 3 }}>
-                        <CardContent>
-                          <Box display="flex" alignItems="center" mb={1}>
-                            <OfferIcon sx={{ mr: 1 }} color="primary" />
-                            <Typography variant="h6">Shopping Recommendations</Typography>
-                          </Box>
-                          <List dense>
-                            {aiShoppingData.recommendations.map((rec, index) => (
-                              <ListItem key={index}>
-                                <ListItemIcon><OfferIcon color="primary" /></ListItemIcon>
-                                <ListItemText primary={rec} />
-                              </ListItem>
-                            ))}
-                          </List>
-                        </CardContent>
-                      </Card>
-                    )}
-                    
-                    {/* Pantry Items Section */}
-                    {aiShoppingData.pantryStaples && Array.isArray(aiShoppingData.pantryStaples) && aiShoppingData.pantryStaples.length > 0 && (
-                      <Card sx={{ mb: 3 }}>
-                        <CardContent>
-                          <Box display="flex" alignItems="center" mb={1}>
-                            <KitchenIcon sx={{ mr: 1 }} color="primary" />
-                            <Typography variant="h6">Common Pantry Items</Typography>
-                          </Box>
-                          <List dense>
-                            {aiShoppingData.pantryStaples.map((item, index) => (
-                              <ListItem key={index}>
-                                <ListItemIcon><KitchenIcon color="primary" /></ListItemIcon>
-                                <ListItemText primary={item} />
-                              </ListItem>
-                            ))}
-                          </List>
-                        </CardContent>
-                      </Card>
-                    )}
-                    
-                    {/* Healthy Swaps Section */}
-                    {aiShoppingData.healthySwaps && Array.isArray(aiShoppingData.healthySwaps) && aiShoppingData.healthySwaps.length > 0 && (
-                      <Card sx={{ mb: 3 }}>
-                        <CardContent>
-                          <Box display="flex" alignItems="center" mb={1}>
-                            <TipsIcon sx={{ mr: 1 }} color="success" />
-                            <Typography variant="h6">Healthy Alternatives</Typography>
-                          </Box>
-                          <List dense>
-                            {aiShoppingData.healthySwaps.map((item, index) => (
-                              <ListItem key={index}>
-                                <ListItemIcon><TipsIcon color="success" /></ListItemIcon>
-                                <ListItemText primary={item} />
-                              </ListItem>
-                            ))}
-                          </List>
-                        </CardContent>
-                      </Card>
-                    )}
-                    
-                    {/* AI Categorized Shopping List */}
-                    {aiShoppingData.groceryList && Array.isArray(aiShoppingData.groceryList) && aiShoppingData.groceryList.length > 0 ? (
-                      // Case: AI returned properly categorized groceries
-                      aiShoppingData.groceryList.map((category, index) => (
-                        <Accordion key={index} defaultExpanded={true} sx={{ mb: 1 }}>
-                          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                            <Box display="flex" alignItems="center">
-                              <CategoryIcon sx={{ mr: 1 }} />
-                              <Typography variant="h6">{category.category || "Category " + (index + 1)}</Typography>
-                            </Box>
-                          </AccordionSummary>
-                          <AccordionDetails>
-                            <Grid container spacing={2}>
-                              {category.items && Array.isArray(category.items) ? (
-                                category.items.map((item, itemIndex) => (
-                                  <Grid item xs={12} sm={6} key={itemIndex}>
-                                    <Box sx={{ mb: 1 }}>
-                                      <Typography variant="body1" fontWeight="medium">
-                                        {typeof item === 'string' ? item : (
-                                          // Handle cheese special case with 1g quantity
-                                          ((item.name && (item.name.toLowerCase().includes('cheese') ||
-                                                         item.name.toLowerCase().includes('mozzarella'))) &&
-                                          item.quantity === '1' && item.unit === 'g') ? (
-                                            // Apply proper cheese quantities based on type
-                                            item.name.toLowerCase().includes('cheddar') ||
-                                            item.name.toLowerCase().includes('mozzarella') ?
-                                              `${item.name}: 8 oz` :
-                                            item.name.toLowerCase().includes('feta') ||
-                                            item.name.toLowerCase().includes('parmesan') ?
-                                              `${item.name}: 1/4 cup` :
-                                              `${item.name}: 4 oz`
-                                          ) : (
-                                            // Otherwise use display_name if available
-                                            item.display_name ? item.display_name :
-                                            // Or build a string with name, quantity and unit
-                                            `${item.name || 'Unknown item'}${item.quantity ? ': ' + item.quantity : ''}${item.unit ? ' ' + item.unit : ''}`
-                                          )
-                                        )}
-                                      </Typography>
-                                      {item.notes && (
-                                        <Typography variant="body2" color="text.secondary">
-                                          {item.notes}
-                                        </Typography>
-                                      )}
-                                      {item.alternatives && (
-                                        <Typography variant="body2" color="primary">
-                                          Alt: {item.alternatives}
-                                        </Typography>
-                                      )}
-                                      {item.healthyAlternatives && (
-                                        <Typography variant="body2" color="success.main">
-                                          Healthy Option: {item.healthyAlternatives}
-                                        </Typography>
-                                      )}
-                                      <Box sx={{ mt: 1 }}>
-                                        {selectedStore === 'mixed' ? (
-                                          <>
-                                            <Button
-                                              variant="outlined"
-                                              size="small"
-                                              sx={{ mr: 1 }}
-                                              onClick={() => handleAddToMixedCart(typeof item === 'string' ? item : item.name, 'instacart')}
-                                            >
-                                              Add to Instacart
-                                            </Button>
-                                            <Button 
-                                              variant="outlined" 
-                                              size="small" 
-                                              onClick={() => handleAddToMixedCart(typeof item === 'string' ? item : item.name, 'kroger')}
-                                            >
-                                              Add to Kroger
-                                            </Button>
-                                          </>
-                                        ) : (
-                                          <Button 
-                                            variant="outlined" 
-                                            size="small" 
-                                            onClick={() => handleAddToCart(typeof item === 'string' ? item : item.name, selectedStore)}
-                                          >
-                                            Add to {selectedStore.charAt(0).toUpperCase() + selectedStore.slice(1)} Cart
-                                          </Button>
-                                        )}
-                                      </Box>
-                                    </Box>
-                                  </Grid>
-                                ))
-                              ) : (
-                                <Grid item xs={12}>
-                                  <Typography>No items in this category</Typography>
-                                </Grid>
-                              )}
-                            </Grid>
-                          </AccordionDetails>
-                        </Accordion>
-                      ))
-                    ) : (
-                      // Fallback: If AI response doesn't have the expected structure,
-                      // show original list in a single category
-                      <Accordion defaultExpanded={true} sx={{ mb: 1 }}>
-                        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                          <Box display="flex" alignItems="center">
-                            <CategoryIcon sx={{ mr: 1 }} />
-                            <Typography variant="h6">All Items</Typography>
-                          </Box>
-                        </AccordionSummary>
-                        <AccordionDetails>
-                          <Grid container spacing={2}>
-                            {groceryList && groceryList.length > 0 ? (
-                              groceryList.map((item, index) => (
-                                <Grid item xs={12} sm={6} key={index}>
-                                  <Box sx={{ mb: 1 }}>
-                                    <Typography variant="body1" fontWeight="medium">
-                                      {typeof item === 'string' ? item : (item.name || 'Unknown item')}
-                                    </Typography>
-                                    <Box sx={{ mt: 1 }}>
-                                      {selectedStore === 'mixed' ? (
-                                        <>
-                                          <Button
-                                            variant="outlined"
-                                            size="small"
-                                            sx={{ mr: 1 }}
-                                            onClick={() => handleAddToMixedCart(typeof item === 'string' ? item : item.name, 'instacart')}
-                                          >
-                                            Add to Instacart
-                                          </Button>
-                                          <Button 
-                                            variant="outlined" 
-                                            size="small" 
-                                            onClick={() => handleAddToMixedCart(typeof item === 'string' ? item : item.name, 'kroger')}
-                                          >
-                                            Add to Kroger
-                                          </Button>
-                                        </>
-                                      ) : (
-                                        <Button 
-                                          variant="outlined" 
-                                          size="small" 
-                                          onClick={() => handleAddToCart(typeof item === 'string' ? item : item.name, selectedStore)}
-                                        >
-                                          Add to {selectedStore.charAt(0).toUpperCase() + selectedStore.slice(1)} Cart
-                                        </Button>
-                                      )}
-                                    </Box>
-                                  </Box>
-                                </Grid>
-                              ))
-                            ) : (
-                              <Grid item xs={12}>
-                                <Typography>No items available</Typography>
-                              </Grid>
-                            )}
-                          </Grid>
-                        </AccordionDetails>
-                      </Accordion>
-                    )}
-                    </>
-                    )}
-                  </Box>
-                )}
-              </div>
-
-            </>
+            </div>
           )}
 
-          {/* AI data is now always shown in the AI tab, regardless of the conditional above */}
-        </Box>
-      ) : (
-        !loading && (
-          <Alert severity="info" sx={{ mt: 3 }}>
-            No grocery items found for this menu. The menu might not have any ingredients listed, or there might be an issue with the menu data.
-          </Alert>
-        )
+      {/* Error state for no grocery items */}
+      {!loading && groceryList.length === 0 && (
+        <Alert severity="info" sx={{ mt: 3 }}>
+          No grocery items found for this menu. The menu might not have any ingredients listed, or there might be an issue with the menu data.
+        </Alert>
       )}
 
       <Snackbar
@@ -4704,8 +4213,8 @@ const categorizeItems = (mealPlanData) => {
         onClose={handleCloseSnackbar}
         message={snackbarMessage}
       />
-      
-      
+
+
       {/* Kroger Store Selection Dialog */}
       <StoreSelector
         open={showKrogerStoreSelector}
@@ -4747,45 +4256,55 @@ const categorizeItems = (mealPlanData) => {
           </Alert>
 
           <Typography variant="body1" paragraph>
-            We've created a direct link to Instacart with all your grocery items pre-populated.
+            We've created a direct link to Instacart with all your items pre-populated.
             Click the button below to open your shopping list on Instacart.
           </Typography>
 
-          <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center' }}>
+          <Box sx={{ mt: 3, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
             <Button
               variant="contained"
               href={shoppingListUrl}
               target="_blank"
               rel="noopener noreferrer"
               sx={{
-                bgcolor: '#F36D00', // Instacart orange
-                color: 'white',
-                fontWeight: 600,
-                px: 3,
-                py: 1.2,
-                borderRadius: 2,
+                height: 46,                     // Official height
+                py: '16px',                     // Official vertical padding
+                px: '18px',                     // Official horizontal padding
+                backgroundColor: '#003D29',     // Official dark background
+                color: '#FAF1E5',               // Official text color
+                fontWeight: 500,
                 textTransform: 'none',
+                borderRadius: '999px',          // Fully rounded
                 fontSize: '1rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1.5,
+                boxShadow: 'none',
                 '&:hover': {
-                  bgcolor: '#E05D00', // Darker orange on hover
+                  backgroundColor: '#002A1C',   // Slightly darker on hover
                 }
               }}
-              startIcon={<ShoppingCartIcon />}
             >
+              <Box component="img"
+                src={InstacartCarrotIcon}
+                alt="Instacart"
+                sx={{ height: 22, width: 'auto' }}  // Official 22px size
+              />
               Shop with Instacart
             </Button>
-          </Box>
 
-          {/* Attribution required by guidelines */}
-          <Typography
-            variant="caption"
-            align="center"
-            display="block"
-            mt={1}
-            color="text.secondary"
-          >
-            Powered by Instacart
-          </Typography>
+            {/* Attribution required by guidelines */}
+            <Typography
+              variant="caption"
+              sx={{
+                mt: 1,
+                color: 'text.secondary',
+                fontSize: '0.75rem'
+              }}
+            >
+              Powered by Instacart
+            </Typography>
+          </Box>
         </DialogContent>
         <DialogActions sx={{ borderTop: '1px solid', borderColor: 'divider', px: 3 }}>
           <Typography
