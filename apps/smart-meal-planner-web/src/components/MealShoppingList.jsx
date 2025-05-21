@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import InstacartCarrotIcon from '../assets/instacart/Instacart_Carrot.png';
 import {
   Typography,
   Paper,
@@ -388,13 +389,16 @@ const MealShoppingList = ({ menuId }) => {
                             <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
                               Add to Cart:
                             </Typography>
-                            <ButtonGroup size="small" variant="outlined" fullWidth>
+                            <Box sx={{ display: 'flex', gap: 1 }}>
                               <Button
                                 startIcon={cartLoading[`${meal.day_index}-${meal.meal_index}-kroger`] ?
                                   <CircularProgress size={16} /> : <KrogerIcon />}
                                 onClick={() => addMealToCart(meal, 'kroger')}
                                 disabled={cartLoading[`${meal.day_index}-${meal.meal_index}-kroger`]}
+                                variant="outlined"
+                                size="small"
                                 sx={{
+                                  flex: 1,
                                   color: '#0066B2',
                                   borderColor: '#0066B2',
                                   '&:hover': {
@@ -406,22 +410,34 @@ const MealShoppingList = ({ menuId }) => {
                                 Kroger
                               </Button>
                               <Button
-                                startIcon={cartLoading[`${meal.day_index}-${meal.meal_index}-instacart`] ?
-                                  <CircularProgress size={16} /> : <ShoppingCartIcon />}
                                 onClick={() => addMealToCart(meal, 'instacart')}
                                 disabled={cartLoading[`${meal.day_index}-${meal.meal_index}-instacart`]}
+                                variant="contained"
+                                size="small"
                                 sx={{
-                                  color: '#F36D00',
-                                  borderColor: '#F36D00',
+                                  flex: 1,
+                                  backgroundColor: '#F36D00',
+                                  color: 'white',
+                                  fontWeight: 600,
                                   '&:hover': {
-                                    borderColor: '#F36D00',
-                                    backgroundColor: 'rgba(243, 109, 0, 0.04)'
+                                    backgroundColor: '#E05D00'
+                                  },
+                                  '&:disabled': {
+                                    backgroundColor: '#ccc'
                                   }
                                 }}
                               >
+                                {cartLoading[`${meal.day_index}-${meal.meal_index}-instacart`] ?
+                                  <CircularProgress size={16} color="inherit" /> :
+                                  <Box component="img"
+                                    src={InstacartCarrotIcon}
+                                    alt="Instacart"
+                                    sx={{ height: 16, width: 'auto', mr: 0.5 }}
+                                  />
+                                }
                                 Instacart
                               </Button>
-                            </ButtonGroup>
+                            </Box>
                           </Box>
                         )}
                       </Paper>

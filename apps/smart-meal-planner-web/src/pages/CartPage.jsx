@@ -1,5 +1,6 @@
 // src/pages/CartPage.jsx
 import React, { useState, useEffect } from 'react';
+import InstacartCarrotIcon from '../assets/instacart/Instacart_Carrot.png';
 import {
   Container,
   Typography,
@@ -1952,27 +1953,62 @@ function CartPage() {
                 Search Instacart
               </Button>
 
-              {/* Direct Shop with Instacart button */}
-              <Button
-                variant="contained"
-                onClick={createInstacartShoppingList}
-                disabled={creatingShoppingList ||
-                  !internalCart.instacart || !Array.isArray(internalCart.instacart) ||
-                  internalCart.instacart.length === 0 ||
-                  !instacartRetailer?.id}
-                startIcon={creatingShoppingList ? <CircularProgress size={20} /> : <ShoppingCartIcon />}
-                sx={{
-                  mr: 1,
-                  mb: 1,
-                  bgcolor: '#F36D00', // Instacart orange
-                  color: 'white',
-                  '&:hover': {
-                    bgcolor: '#E05D00' // Darker orange
-                  }
-                }}
-              >
-                Shop with Instacart
-              </Button>
+              {/* Official Instacart CTA Button */}
+              <Box sx={{ mr: 1, mb: 1 }}>
+                <Button
+                  variant="contained"
+                  onClick={createInstacartShoppingList}
+                  disabled={creatingShoppingList ||
+                    !internalCart.instacart || !Array.isArray(internalCart.instacart) ||
+                    internalCart.instacart.length === 0 ||
+                    !instacartRetailer?.id}
+                  sx={{
+                    height: 48,
+                    px: 3,
+                    backgroundColor: '#F36D00',
+                    color: 'white',
+                    fontWeight: 600,
+                    textTransform: 'none',
+                    borderRadius: 2,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 1,
+                    boxShadow: '0 4px 12px rgba(243, 109, 0, 0.25)',
+                    '&:hover': {
+                      backgroundColor: '#E05D00',
+                      boxShadow: '0 6px 16px rgba(243, 109, 0, 0.35)',
+                    },
+                    '&:disabled': {
+                      backgroundColor: '#ccc',
+                      color: '#999',
+                      boxShadow: 'none'
+                    }
+                  }}
+                >
+                  {creatingShoppingList ? (
+                    <CircularProgress size={20} color="inherit" />
+                  ) : (
+                    <Box component="img"
+                      src={InstacartCarrotIcon}
+                      alt="Instacart"
+                      sx={{ height: 24, width: 'auto' }}
+                    />
+                  )}
+                  Shop with Instacart
+                </Button>
+                <Typography
+                  variant="caption"
+                  sx={{
+                    display: 'block',
+                    mt: 0.5,
+                    color: 'text.secondary',
+                    fontSize: '0.75rem',
+                    textAlign: 'center'
+                  }}
+                >
+                  Powered by Instacart
+                </Typography>
+              </Box>
 
               {searchResults.instacart && searchResults.instacart.length > 0 ? (
                 <Box sx={{ width: '100%', mt: 2 }}>
@@ -2302,41 +2338,51 @@ function CartPage() {
             Click the button below to open your shopping list on Instacart.
           </Typography>
 
-          <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center' }}>
+          <Box sx={{ mt: 3, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
             <Button
               variant="contained"
               href={shoppingListUrl}
               target="_blank"
               rel="noopener noreferrer"
               sx={{
-                bgcolor: '#F36D00', // Instacart orange
+                height: 56,
+                px: 4,
+                backgroundColor: '#F36D00',
                 color: 'white',
                 fontWeight: 600,
-                px: 3,
-                py: 1.2,
-                borderRadius: 2,
                 textTransform: 'none',
-                fontSize: '1rem',
+                borderRadius: 2,
+                fontSize: '1.125rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                boxShadow: '0 4px 12px rgba(243, 109, 0, 0.25)',
                 '&:hover': {
-                  bgcolor: '#E05D00', // Darker orange on hover
+                  backgroundColor: '#E05D00',
+                  boxShadow: '0 6px 16px rgba(243, 109, 0, 0.35)',
                 }
               }}
-              startIcon={<ShoppingCartIcon />}
             >
+              <Box component="img"
+                src={InstacartCarrotIcon}
+                alt="Instacart"
+                sx={{ height: 28, width: 'auto' }}
+              />
               Shop with Instacart
             </Button>
-          </Box>
 
-          {/* Attribution required by guidelines */}
-          <Typography
-            variant="caption"
-            align="center"
-            display="block"
-            mt={1}
-            color="text.secondary"
-          >
-            Powered by Instacart
-          </Typography>
+            {/* Attribution required by guidelines */}
+            <Typography
+              variant="caption"
+              sx={{
+                mt: 1,
+                color: 'text.secondary',
+                fontSize: '0.75rem'
+              }}
+            >
+              Powered by Instacart
+            </Typography>
+          </Box>
         </DialogContent>
         <DialogActions sx={{ borderTop: '1px solid', borderColor: 'divider', px: 3 }}>
           <Typography
