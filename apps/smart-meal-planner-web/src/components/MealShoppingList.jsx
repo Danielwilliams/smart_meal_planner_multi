@@ -186,15 +186,16 @@ const MealShoppingList = ({ menuId }) => {
       const formattedToken = token && token.startsWith('Bearer ') ? token : `Bearer ${token}`;
       const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://smartmealplannermulti-production.up.railway.app';
 
-      // Convert ingredients to cart items format
+      // Convert ingredients to cart items format with correct quantity formatting
       const cartItems = meal.ingredients.map(ingredient => {
+        // Always ensure the quantity is included in the item name
         let name = ingredient.name;
         if (ingredient.quantity && ingredient.quantity.trim()) {
           name = `${ingredient.quantity} ${ingredient.name}`.trim();
         }
         return {
           name: name,
-          quantity: 1,
+          quantity: 1,  // This is the item count, not the measurement quantity
           store_preference: store
         };
       });
@@ -370,8 +371,11 @@ const MealShoppingList = ({ menuId }) => {
                               return (
                                 <ListItem key={idx}>
                                   <ListItemText
-                                    primary={ingredient.name || "Unnamed ingredient"}
-                                    secondary={ingredient.quantity || ""}
+                                    primary={
+                                      (ingredient.quantity && ingredient.quantity.trim())
+                                        ? `${ingredient.quantity} ${ingredient.name}`
+                                        : (ingredient.name || "Unnamed ingredient")
+                                    }
                                   />
                                 </ListItem>
                               );
