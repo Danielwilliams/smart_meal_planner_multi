@@ -366,7 +366,67 @@ class InstacartClient:
 
         return response.get("data", {}).get("attributes", {}).get("url", "")
 
-    def create_shopping_list_url(
+def parse_item_quantity_and_name(item_string: str) -> Dict:
+    """
+    Parse an item string like "2 tsp Taco Seasoning" into quantity and clean name.
+
+    Args:
+        item_string: String like "2 tsp Taco Seasoning" or "8 Corn Tortillas"
+
+    Returns:
+        Dict with 'name' and 'quantity' fields
+    """
+    import re
+
+    # Pattern 1: Quantity with unit (e.g., "1 lb Beef (ground)", "2 tbsp Olive Oil")
+    quantity_with_unit_pattern = r'^(\d+(?:\.\d+)?(?:/\d+)?)\s*(lb|lbs|oz|g|kg|cup|cups|tbsp|tsp|cloves?|pieces?|medium|large|small|cans?|slices?)\s+(.+)$'
+    quantity_with_unit_match = re.match(quantity_with_unit_pattern, item_string, re.IGNORECASE)
+
+    # Pattern 2: Quantity without unit (e.g., "8 Corn Tortillas", "2 Bell Pepper")
+    quantity_only_pattern = r'^(\d+(?:\.\d+)?(?:/\d+)?)\s+(.+)$'
+    quantity_only_match = re.match(quantity_only_pattern, item_string)
+
+    if quantity_with_unit_match:
+        # Extract quantity, unit, and clean name
+        quantity_str, unit, ingredient_name = quantity_with_unit_match.groups()
+
+        # Handle fractions
+        if '/' in quantity_str:
+            numerator, denominator = quantity_str.split('/')
+            quantity = float(numerator) / float(denominator)
+        else:
+            quantity = float(quantity_str)
+
+        # Return clean name with unit but proper quantity field
+        return {
+            "name": f"{unit} {ingredient_name}",
+            "quantity": quantity
+        }
+
+    elif quantity_only_match:
+        # Extract quantity and clean name (no unit)
+        quantity_str, ingredient_name = quantity_only_match.groups()
+
+        # Handle fractions
+        if '/' in quantity_str:
+            numerator, denominator = quantity_str.split('/')
+            quantity = float(numerator) / float(denominator)
+        else:
+            quantity = float(quantity_str)
+
+        # Return clean name with proper quantity field
+        return {
+            "name": ingredient_name,
+            "quantity": quantity
+        }
+    else:
+        # No quantity pattern matched, use as-is with default quantity
+        return {
+            "name": item_string,
+            "quantity": 1
+        }
+
+def create_shopping_list_url(
         self,
         retailer_id: str,
         items: List[str],
@@ -417,16 +477,17 @@ class InstacartClient:
             "postal_code": postal_code,
             "country_code": country_code,
             "line_items": [
-                {
-                    "name": item
-                    # Don't add quantity field since quantities are embedded in item names
-                }
+                parse_item_quantity_and_name(item)
                 for item in cleaned_items
             ]
         }
 
         # Log the request format with retailer ID information
         logger.info(f"Using retailer_id: {retailer_id} for API request")
+        logger.info(f"Sending {len(data['line_items'])} items to Instacart:")
+        for i, item in enumerate(data['line_items'][:3]):  # Log first 3 items
+            logger.info(f"  Item {i+1}: {item}")
+        logger.info(f"Full request data: {json.dumps(data, indent=2)}")
 
         # Use the correct endpoint from official documentation
         endpoint = "products/products_link"  # This is the correct endpoint according to docs
