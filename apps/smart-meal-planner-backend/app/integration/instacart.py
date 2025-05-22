@@ -417,25 +417,61 @@ class InstacartClient:
         try:
             response = self._make_request("POST", endpoint, data=data)
 
-            # Extract the URL from the response
-            url = response.get("data", {}).get("attributes", {}).get("url", "")
+            # Log the full response to debug URL extraction
+            logger.info(f"Full response from Instacart API: {json.dumps(response, indent=2)}")
 
-            if url:
+            # Try multiple possible response formats to extract URL
+            url = None
+
+            if response:
+                # Try direct url field
+                if "url" in response:
+                    url = response["url"]
+                    logger.info("Found URL in root level")
+
+                # Try nested data.attributes.url (original format)
+                elif "data" in response and isinstance(response["data"], dict):
+                    data_section = response["data"]
+                    if "url" in data_section:
+                        url = data_section["url"]
+                        logger.info("Found URL in data level")
+                    elif "attributes" in data_section and isinstance(data_section["attributes"], dict):
+                        attributes = data_section["attributes"]
+                        if "url" in attributes:
+                            url = attributes["url"]
+                            logger.info("Found URL in data.attributes level")
+
+                # Try other possible URL field names
+                elif "shopping_list_url" in response:
+                    url = response["shopping_list_url"]
+                    logger.info("Found URL in shopping_list_url field")
+                elif "products_link_url" in response:
+                    url = response["products_link_url"]
+                    logger.info("Found URL in products_link_url field")
+
+            if url and isinstance(url, str) and url.strip():
                 logger.info(f"Successfully created shopping list URL: {url[:50]}...")
-                return url
+                return url.strip()
             else:
-                logger.error(f"No URL returned in response: {response}")
+                logger.error(f"No valid URL found in response. Available keys: {list(response.keys()) if response else 'No response'}")
+                logger.error(f"Full response: {response}")
                 raise HTTPException(
                     status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail="Failed to get shopping list URL from Instacart"
+                    detail=f"Failed to get shopping list URL from Instacart. Response keys: {list(response.keys()) if response else 'No response'}"
                 )
 
         except Exception as e:
             logger.error(f"Error creating shopping list: {str(e)}")
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"Failed to create Instacart shopping list: {str(e)}"
-            )
+            if "502" in str(e) or "Bad Gateway" in str(e):
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=f"Instacart API error: {str(e)}"
+                )
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=f"Failed to create Instacart shopping list: {str(e)}"
+                )
 
 def parse_item_quantity_and_name(item_string: str) -> Dict:
     """
