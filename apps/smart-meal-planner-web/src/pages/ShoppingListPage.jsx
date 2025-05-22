@@ -104,11 +104,20 @@ function ShoppingListPage() {
         displayText = item;
       } else if (item && typeof item === 'object') {
         itemName = item.name || '';
+        // Clean up item name - remove trailing colons and extra whitespace
+        const cleanItemName = itemName.replace(/:\s*$/, '').trim();
+
         // If item has both name and quantity, format properly
-        if (item.quantity && item.name) {
-          displayText = `${item.name}: ${item.quantity}`;
+        if (item.quantity && cleanItemName) {
+          // Clean up quantity - remove duplicate text like "1 Can: 1 can" -> "1 can"
+          let cleanQuantity = item.quantity;
+          if (typeof cleanQuantity === 'string') {
+            // Remove patterns like "1 Can: " from the beginning
+            cleanQuantity = cleanQuantity.replace(/^\d+\s+[A-Z][a-z]+:\s*/, '').trim();
+          }
+          displayText = `${cleanItemName}: ${cleanQuantity}`;
         } else {
-          displayText = item.name || '';
+          displayText = cleanItemName || '';
         }
       } else {
         return; // Skip invalid items
