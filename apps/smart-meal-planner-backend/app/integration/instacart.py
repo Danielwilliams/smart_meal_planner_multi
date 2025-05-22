@@ -366,6 +366,82 @@ class InstacartClient:
 
         return response.get("data", {}).get("attributes", {}).get("url", "")
 
+    def create_shopping_list_url(
+        self,
+        retailer_id: str,
+        items: List[str],
+        postal_code: str = "80538",
+        country_code: str = "US"
+    ) -> str:
+        """
+        Create a shopping list page URL that opens directly in Instacart.
+
+        Args:
+            retailer_id: The Instacart retailer ID
+            items: List of item strings (may contain embedded quantities)
+            postal_code: User's postal code for location
+            country_code: Country code (default: US)
+
+        Returns:
+            URL string for the Instacart shopping list
+        """
+        # Clean the items by removing any None or empty values
+        cleaned_items = [item.strip() for item in items if item and item.strip()]
+
+        if not cleaned_items:
+            raise ValueError("No valid items provided for shopping list")
+
+        # Build the request data
+        data = {
+            "data": {
+                "type": "products_link",
+                "attributes": {
+                    "title": "Smart Meal Planner Shopping List",
+                    "retailer_id": retailer_id,
+                    "postal_code": postal_code,
+                    "country_code": country_code,
+                    "line_items": [
+                        parse_item_quantity_and_name(item)
+                        for item in cleaned_items
+                    ]
+                }
+            }
+        }
+
+        # Log the request format with retailer ID information
+        logger.info(f"Using retailer_id: {retailer_id} for API request")
+        logger.info(f"Sending {len(data['data']['attributes']['line_items'])} items to Instacart:")
+        for i, item in enumerate(data['data']['attributes']['line_items'][:3]):  # Log first 3 items
+            logger.info(f"  Item {i+1}: {item}")
+        logger.info(f"Full request data: {json.dumps(data, indent=2)}")
+
+        # Use the correct endpoint from official documentation
+        endpoint = "products/products_link"  # This is the correct endpoint according to docs
+        logger.info(f"Creating shopping list URL for retailer {retailer_id} with {len(cleaned_items)} items")
+
+        try:
+            response = self._make_request("POST", endpoint, data=data)
+
+            # Extract the URL from the response
+            url = response.get("data", {}).get("attributes", {}).get("url", "")
+
+            if url:
+                logger.info(f"Successfully created shopping list URL: {url[:50]}...")
+                return url
+            else:
+                logger.error(f"No URL returned in response: {response}")
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail="Failed to get shopping list URL from Instacart"
+                )
+
+        except Exception as e:
+            logger.error(f"Error creating shopping list: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Failed to create Instacart shopping list: {str(e)}"
+            )
+
 def parse_item_quantity_and_name(item_string: str) -> Dict:
     """
     Parse an item string like "2 tsp Taco Seasoning" into quantity and clean name.
@@ -426,154 +502,6 @@ def parse_item_quantity_and_name(item_string: str) -> Dict:
             "quantity": 1
         }
 
-def create_shopping_list_url(
-        self,
-        retailer_id: str,
-        items: List[str],
-        postal_code: str = "80538",
-        country_code: str = "US"
-    ) -> str:
-        """
-        Create a shopping list page URL that opens directly in Instacart.
-
-        This uses the Create Shopping List Page endpoint to generate a URL that
-        users can click to open a pre-populated shopping list in Instacart.
-
-        https://docs.instacart.com/developer_platform_api/api/products/create_shopping_list_page
-
-        Args:
-            retailer_id: The Instacart retailer ID/key
-            items: List of item names/descriptions
-            postal_code: User's postal code
-            country_code: User's country code (default US)
-
-        Returns:
-            URL to a pre-populated shopping list on Instacart
-        """
-        # Clean the items list to ensure all elements are strings
-        cleaned_items = []
-        for item in items:
-            if not item:
-                continue
-
-            # Handle different item formats
-            if isinstance(item, str):
-                cleaned_items.append(item)
-            elif isinstance(item, dict) and "name" in item:
-                cleaned_items.append(item["name"])
-            else:
-                # Convert to string representation as fallback
-                try:
-                    cleaned_items.append(str(item))
-                except:
-                    logger.warning(f"Unable to convert item to string: {item}")
-                    continue
-
-        # Prepare the request data with appropriate retailer ID parameter
-        # Try retailer_id instead of retailer_key based on error messages
-        data = {
-            "title": "Smart Meal Planner Shopping List",
-            "retailer_id": retailer_id,  # Try retailer_id parameter instead
-            "postal_code": postal_code,
-            "country_code": country_code,
-            "line_items": [
-                parse_item_quantity_and_name(item)
-                for item in cleaned_items
-            ]
-        }
-
-        # Log the request format with retailer ID information
-        logger.info(f"Using retailer_id: {retailer_id} for API request")
-        logger.info(f"Sending {len(data['line_items'])} items to Instacart:")
-        for i, item in enumerate(data['line_items'][:3]):  # Log first 3 items
-            logger.info(f"  Item {i+1}: {item}")
-        logger.info(f"Full request data: {json.dumps(data, indent=2)}")
-
-        # Use the correct endpoint from official documentation
-        endpoint = "products/products_link"  # This is the correct endpoint according to docs
-        logger.info(f"Creating shopping list URL for retailer {retailer_id} with {len(cleaned_items)} items")
-        logger.info(f"First few items: {cleaned_items[:3]}")
-
-        try:
-            # Make request to the official endpoint with detailed logging
-            logger.info(f"Using official endpoint: {endpoint}")
-            logger.info(f"API Request Data: {json.dumps(data)[:1000]}")
-            
-            response = self._make_request("POST", endpoint, data=data)
-            
-            # Log the full response for debugging
-            logger.info(f"API Response: {json.dumps(response)[:1000] if response else 'None'}")
-
-            # Try to get URL from API response
-            url = ""
-            if response:
-                # Log structure for debugging
-                logger.info(f"Response structure: {list(response.keys()) if response else 'None'}")
-
-            # If "data" is present, log its structure
-            if response and "data" in response:
-                logger.info(f"Data structure: {list(response['data'].keys()) if isinstance(response['data'], dict) else 'Not a dict'}")
-
-                # If "attributes" is present, log its structure
-                if isinstance(response['data'], dict) and "attributes" in response['data']:
-                    logger.info(f"Attributes structure: {list(response['data']['attributes'].keys())}")
-
-            # Extract URL using the structure from the error message
-            # Error shows the response includes 'products_link_url'
-            url = ""
-            if response:
-                # Log all available keys to help with debugging
-                logger.info(f"Available response keys: {list(response.keys()) if response else 'None'}")
-
-                # Try the specific field mentioned in the error message
-                if "products_link_url" in response:
-                    url = response["products_link_url"]
-                    logger.info("Found URL in products_link_url field")
-
-                # Try all other possible URL field names
-                elif "url" in response:
-                    url = response["url"]
-                elif "link" in response:
-                    url = response["link"]
-                elif "shopping_list_url" in response:
-                    url = response["shopping_list_url"]
-
-                # Try nested structures
-                elif "data" in response and isinstance(response["data"], dict):
-                    data = response["data"]
-                    if "url" in data:
-                        url = data["url"]
-                    elif "products_link_url" in data:
-                        url = data["products_link_url"]
-                    elif "attributes" in data and isinstance(data["attributes"], dict):
-                        attributes = data["attributes"]
-                        if "url" in attributes:
-                            url = attributes["url"]
-                        elif "products_link_url" in attributes:
-                            url = attributes["products_link_url"]
-            
-            if url:
-                logger.info(f"Successfully created shopping list URL: {url[:60]}...")
-            else:
-                logger.warning("API response didn't contain a URL")
-                logger.info(f"Full response: {json.dumps(response)}")
-
-                # Detailed error to help troubleshoot the problem
-                error_msg = (
-                    "API response did not include a URL. This could be due to:\n"
-                    "1. Invalid retailer_id format\n"
-                    "2. Incorrect API endpoint path\n"
-                    "3. Improper request body format\n"
-                    "4. API permissions issue\n"
-                    f"5. Unexpected response format: {list(response.keys()) if response else 'empty response'}"
-                )
-                raise ValueError(error_msg)
-
-            return url
-        except Exception as e:
-            logger.error(f"Error creating shopping list URL: {str(e)}")
-            logger.error(f"Request data was: {json.dumps(data)[:500]}...")
-            raise
 
 # Create a singleton instance to reuse
 _instacart_client = None
