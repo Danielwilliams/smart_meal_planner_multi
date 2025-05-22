@@ -4176,8 +4176,7 @@ const categorizeItems = (mealPlanData) => {
       {groceryList && groceryList.length > 0 ? (
         <Box sx={{ width: '100%' }}>
           {/* Always show tab interface regardless of AI data */}
-          {(
-            <>
+          <>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                 {/* Always show tabs */}
                 <Tabs
@@ -4246,12 +4245,15 @@ const categorizeItems = (mealPlanData) => {
                   </Alert>
                 )}
               </div>
-            </>
-          )}
+          </>
+        </Box>
+      ) : (
+        <Alert severity="info" sx={{ mt: 2 }}>
+          Please select a menu to view the shopping list.
+        </Alert>
+      )}
 
-        </Container>
-      </Box>
-    </Box>
+    </Container>
   );
 }
 
