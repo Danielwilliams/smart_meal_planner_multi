@@ -101,6 +101,16 @@ function ShoppingListPage() {
   // Default to Standard tab (index 0)
   const [activeTab, setActiveTab] = useState(0);
 
+  // Dummy AI state variables (functionality removed but keeping to prevent errors)
+  const [aiShoppingLoading, setAiShoppingLoading] = useState(false);
+  const [aiShoppingData, setAiShoppingData] = useState(null);
+  const [showAiShoppingPrompt, setShowAiShoppingPrompt] = useState(false);
+  const [usingAiList, setUsingAiList] = useState(false);
+  const [showLogs, setShowLogs] = useState(false);
+
+  // Dummy loading messages array (functionality removed but keeping to prevent errors)
+  const loadingMessages = ["Loading..."];
+
   const [instacartRetailerId, setInstacartRetailerId] = useState('');
   const [creatingShoppingList, setCreatingShoppingList] = useState(false);
   const [shoppingListUrl, setShoppingListUrl] = useState(null);
@@ -3089,33 +3099,34 @@ Combine duplicate ingredients, adding up quantities when appropriate.
     }
   };
 
-  // Handler for AI prompt dialog
+  // Handler for AI prompt dialog (removed - AI functionality disabled)
   const handleAiPromptResponse = async (useAi) => {
-    setShowAiShoppingPrompt(false);
+    // AI functionality has been removed - do nothing
+    console.log("AI prompt response called but AI functionality is disabled");
+  };
 
-    if (useAi) {
-      // User chose AI shopping list - use our simplified approach
-      setAiShoppingLoading(true);
+  // Initial data fetch
+  useEffect(() => {
+    console.log(`Selected menu changed to: ${selectedMenuId}`);
 
-      // Use the same emergency function to fetch directly
-      try {
-        // Get the token
-        const token = localStorage.getItem('token');
+    // Default to Standard tab (index 0)
+    console.log('Setting active tab to Standard (0)');
+    setActiveTab(0);
 
-        // Direct API call with minimal processing
-        const response = await fetch(`https://smartmealplannermulti-production.up.railway.app/menu/${selectedMenuId}/grocery-list`, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
+    // Reset data when menu changes to avoid showing previous menu's items
+    if (selectedMenuId) {
+      // Clear previous data and loading state
+      console.log(`Menu changed to: ${selectedMenuId}`);
+      // Load menu data if needed
+    }
+  }, [user, selectedMenuId]);
 
-        // Basic error handling
-        if (!response.ok) {
-          throw new Error(`API error: ${response.status}`);
-        }
-
-        // Parse the response
+const categorizeItems = (mealPlanData) => {
+  // Safety check for null input
+  if (!mealPlanData) {
+    console.warn("Null meal plan data passed to categorizeItems");
+    return { "No Items Found": [] };
+  }
         const result = await response.json();
         console.log("AI PROMPT: Got shopping list:", result);
 
