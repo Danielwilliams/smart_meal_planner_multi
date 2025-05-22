@@ -3127,30 +3127,71 @@ const categorizeItems = (mealPlanData) => {
     console.warn("Null meal plan data passed to categorizeItems");
     return { "No Items Found": [] };
   }
-        const result = await response.json();
-        console.log("AI PROMPT: Got shopping list:", result);
 
-        // Very basic item extraction - get anything we can find
-        let items = [];
-        if (result.ingredient_list && Array.isArray(result.ingredient_list)) {
-          items = result.ingredient_list;
-        } else if (result.items && Array.isArray(result.items)) {
-          items = result.items;
-        } else if (Array.isArray(result)) {
-          items = result;
-        } else {
-          // Last attempt - get any array from the response
-          for (const key in result) {
-            if (Array.isArray(result[key]) && result[key].length > 0) {
-              items = result[key];
-              break;
-            }
-          }
-        }
+  let ingredientsList = [];
+  console.log("Categorizing items from data:", mealPlanData);
 
-        // Create very simple categories
-        const categories = {
-          "Produce": [],
+  // Handle case where we get a groceryList array directly
+  if (mealPlanData && mealPlanData.groceryList && Array.isArray(mealPlanData.groceryList)) {
+    console.log("Using groceryList property directly:", mealPlanData.groceryList);
+    // Filter out null/undefined items for safety
+    const validItems = mealPlanData.groceryList.filter(item => item !== null && item !== undefined);
+    return { "All Items": validItems };
+  }
+
+  // First, determine the structure of the input data
+  if (Array.isArray(mealPlanData)) {
+    // If it's already a direct list of ingredients
+    console.log("Data is an array, using directly");
+    // Filter out null/undefined items for safety
+    ingredientsList = mealPlanData.filter(item => item !== null && item !== undefined);
+  } else if (mealPlanData && (mealPlanData.meal_plan || mealPlanData.meal_plan_json)) {
+    // If it's a structured meal plan object
+    console.log("Found meal_plan or meal_plan_json property, processing structured data");
+
+    let mealPlan;
+    try {
+      mealPlan = mealPlanData.meal_plan_json ? JSON.parse(mealPlanData.meal_plan_json) : mealPlanData.meal_plan;
+    } catch (parseError) {
+      console.error("Error parsing meal plan JSON:", parseError);
+      mealPlan = mealPlanData.meal_plan || mealPlanData;
+    }
+
+    if (mealPlan) {
+      ingredientsList = extractIngredientsFromMealPlan(mealPlan);
+    }
+  } else {
+    console.log("Data structure not recognized, using as-is");
+    ingredientsList = [mealPlanData];
+  }
+
+  // Apply categorization
+  const categories = applyCategorization(ingredientsList);
+
+  return categories;
+};
+
+// Helper function to extract ingredients from meal plan
+const extractIngredientsFromMealPlan = (mealPlan) => {
+  // Simple implementation - extract ingredients from the meal plan structure
+  const ingredients = [];
+  if (Array.isArray(mealPlan)) {
+    mealPlan.forEach(meal => {
+      if (meal.ingredients && Array.isArray(meal.ingredients)) {
+        ingredients.push(...meal.ingredients);
+      }
+    });
+  }
+  return ingredients;
+};
+
+// Helper function to apply categorization
+const applyCategorization = (ingredients) => {
+  return { "All Items": ingredients };
+};
+
+  return (
+    <Container maxWidth="md">
           "Protein": [],
           "Dairy": [],
           "Grains": [],
