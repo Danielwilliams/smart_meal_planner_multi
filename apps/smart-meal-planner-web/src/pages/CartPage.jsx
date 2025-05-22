@@ -1193,6 +1193,55 @@ function CartPage() {
             // Log item to help debug format issues
             console.log('Processing item:', item);
 
+            // Parse quantity from item name if it's embedded (like "1 lb Beef (ground)")
+            let parsedQuantity = item.quantity;
+            let cleanName = item.name;
+
+            // Check if the name contains quantity information at the beginning
+            // Pattern 1: Quantity with unit (e.g., "1 lb Beef (ground)", "2 tbsp Olive Oil")
+            const quantityWithUnitPattern = /^(\d+(?:\.\d+)?(?:\/\d+)?)\s*(lb|lbs|oz|g|kg|cup|cups|tbsp|tsp|cloves?|pieces?|medium|large|small|cans?|slices?)\s+(.+)$/i;
+            const quantityWithUnitMatch = item.name.match(quantityWithUnitPattern);
+
+            // Pattern 2: Quantity without unit (e.g., "8 Corn Tortillas", "2 Bell Pepper")
+            const quantityOnlyPattern = /^(\d+(?:\.\d+)?(?:\/\d+)?)\s+(.+)$/i;
+            const quantityOnlyMatch = item.name.match(quantityOnlyPattern);
+
+            if (quantityWithUnitMatch) {
+              // Extract quantity, unit, and clean name
+              const [, quantity, unit, ingredientName] = quantityWithUnitMatch;
+
+              // Handle fractions
+              if (quantity.includes('/')) {
+                const [numerator, denominator] = quantity.split('/');
+                parsedQuantity = parseFloat(numerator) / parseFloat(denominator);
+              } else {
+                parsedQuantity = parseFloat(quantity);
+              }
+
+              cleanName = ingredientName;
+              console.log(`Parsed with unit "${item.name}" -> quantity: ${parsedQuantity}, unit: ${unit}, name: "${cleanName}"`);
+
+              // Return the properly formatted item for Instacart
+              return `${parsedQuantity} ${unit} ${cleanName}`;
+            } else if (quantityOnlyMatch) {
+              // Extract quantity and clean name (no unit)
+              const [, quantity, ingredientName] = quantityOnlyMatch;
+
+              // Handle fractions
+              if (quantity.includes('/')) {
+                const [numerator, denominator] = quantity.split('/');
+                parsedQuantity = parseFloat(numerator) / parseFloat(denominator);
+              } else {
+                parsedQuantity = parseFloat(quantity);
+              }
+
+              cleanName = ingredientName;
+              console.log(`Parsed without unit "${item.name}" -> quantity: ${parsedQuantity}, name: "${cleanName}"`);
+
+              // Return the properly formatted item for Instacart
+              return `${parsedQuantity} ${cleanName}`;
+            }
+
             if (item.quantity) {
               // If quantity already includes the unit (e.g., "2 cups"), use it directly
               if (typeof item.quantity === 'string' &&
