@@ -96,25 +96,41 @@ function ShoppingListPage() {
     const categorized = {};
     
     groceryItems.forEach(item => {
-      // Get the item name (handle both string and object formats)
-      const itemName = typeof item === 'string' ? item : item.name || '';
+      // Handle both string and object formats
+      let itemName, displayText;
+
+      if (typeof item === 'string') {
+        itemName = item;
+        displayText = item;
+      } else if (item && typeof item === 'object') {
+        itemName = item.name || '';
+        // If item has both name and quantity, format properly
+        if (item.quantity && item.name) {
+          displayText = `${item.name}: ${item.quantity}`;
+        } else {
+          displayText = item.name || '';
+        }
+      } else {
+        return; // Skip invalid items
+      }
+
       if (!itemName) return;
-      
+
       // Determine category based on keywords
       const normalizedName = itemName.toLowerCase();
-      const category = Object.keys(CATEGORY_MAPPING).find(cat => 
-        CATEGORY_MAPPING[cat].some(keyword => 
+      const category = Object.keys(CATEGORY_MAPPING).find(cat =>
+        CATEGORY_MAPPING[cat].some(keyword =>
           normalizedName.includes(keyword.toLowerCase())
         )
       ) || 'Other';
-      
+
       // Create category array if it doesn't exist
       if (!categorized[category]) {
         categorized[category] = [];
       }
-      
-      // Add the item to its category
-      categorized[category].push(itemName);
+
+      // Add the formatted item to its category
+      categorized[category].push(displayText);
     });
     
     console.log('Categorized items for display:', categorized);
