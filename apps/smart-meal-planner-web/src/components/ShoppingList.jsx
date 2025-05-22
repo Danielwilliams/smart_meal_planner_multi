@@ -1464,45 +1464,8 @@ const ShoppingListItem = ({
 
   // Handle different item formats
   if (typeof item === 'object' && item !== null) {
-    // First check for a direct name and quantity - this is what we use now
+    // For objects, use existing logic for name and quantity
     if (item.name) {
-      // IMPORTANT: Check if the name contains ": " which may indicate quantity is embedded
-      if (item.name.includes(': ') && !item.quantity) {
-        console.log('Found item with embedded quantity:', item.name);
-
-        // Split the name and quantity
-        const parts = item.name.split(': ');
-        if (parts.length >= 2) {
-          const extractedName = parts[0];
-          let extractedQuantity = parts[1];
-
-          // Further parse the quantity to extract unit if present
-          // Improved regex to handle fractions (1/2) and various unit formats
-          const unitRegex = /([\d\.\/]+)\s*([a-zA-Z]+s?)?/;
-          const unitMatch = extractedQuantity.match(unitRegex);
-
-          if (unitMatch) {
-            extractedQuantity = unitMatch[1];
-            if (unitMatch[2] && !item.unit) {
-              item.unit = unitMatch[2];
-            }
-          }
-
-          console.log('Extracted from name:', {
-            name: extractedName,
-            quantity: extractedQuantity,
-            unit: item.unit
-          });
-
-          // Update the item object to separate name and quantity
-          item.name = extractedName;
-          if (!item.quantity) {
-            item.quantity = extractedQuantity;
-          }
-        }
-      }
-
-      // Clean up any decimal points in the quantity if it's a whole number
       let cleanQuantity = '';
 
       if (item.quantity) {
@@ -1513,20 +1476,10 @@ const ShoppingListItem = ({
           if (cleanQuantity.includes('.') && cleanQuantity.endsWith('.0')) {
             cleanQuantity = cleanQuantity.replace('.0', '');
           }
-          // Remove any extra decimal points like "1.: 1"
-          cleanQuantity = cleanQuantity.replace(/\d+\.: /, '');
         }
       }
 
-      // Debug: log the cleaned quantity
-      console.log(`Cleaned quantity for ${item.name}:`, {
-        original: item.quantity,
-        cleaned: cleanQuantity,
-        hasUnit: !!item.unit,
-        unit: item.unit
-      });
-
-      // Set display name directly using the name and quantity properties
+      // Set display name using the name and quantity properties
       if (cleanQuantity) {
         if (cleanQuantity === 'To taste') {
           displayName = `${item.name}: ${cleanQuantity}`;
@@ -1537,20 +1490,22 @@ const ShoppingListItem = ({
         displayName = item.name;
       }
 
-      // Debug: log final display name
-      console.log(`Final display name for ${item.name}:`, displayName);
+      itemName = item.name;
     }
     // Legacy format - use display_name if available
     else if (item.display_name) {
       displayName = item.display_name;
+      itemName = item.display_name.split(':')[0].trim();
     }
+  } else if (typeof item === 'string') {
+    // For strings (what backend sends), use as-is without re-processing
+    displayName = item.trim();
 
-    // Use the base name (without quantity/unit) for cart operations
-    if (item.name && item.name.includes(':')) {
-      // Extract just the ingredient name if it's a format like "Chicken Breast: 96 oz"
-      itemName = item.name.split(':')[0].trim();
+    // Extract just the name part for operations that need it
+    if (item.includes(':')) {
+      itemName = item.split(':')[0].trim();
     } else {
-      itemName = item.name || String(item);
+      itemName = item.trim();
     }
   }
   
