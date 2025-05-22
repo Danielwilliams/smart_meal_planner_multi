@@ -123,8 +123,16 @@ function ShoppingListPage() {
                 cleanQuantity = parts[1].trim();
               }
             }
+            // Remove any weird decimal formatting like "0.:" -> ""
+            cleanQuantity = cleanQuantity.replace(/^\d*\.:\s*/, '').trim();
           }
-          displayText = `${cleanItemName}: ${cleanQuantity}`;
+
+          // Only add colon if the name doesn't already have one
+          if (cleanItemName.includes(':')) {
+            displayText = cleanItemName; // Name already includes quantity
+          } else {
+            displayText = `${cleanItemName}: ${cleanQuantity}`;
+          }
         } else {
           displayText = cleanItemName || '';
         }

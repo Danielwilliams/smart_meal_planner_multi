@@ -787,24 +787,47 @@ def extract_ingredient_quantities_from_menu(menu_data):
         # Sum quantities for this unit
         matching_qty = sum(o['qty'] for o in occurrences if (o['unit'] or 'piece') == most_common_unit)
 
-        # Format quantity to get rid of decimal if it's a whole number
-        formatted_qty = int(matching_qty) if matching_qty == int(matching_qty) else matching_qty
+        # Format quantity more carefully - handle decimals better
+        if matching_qty == int(matching_qty):
+            # Whole number
+            formatted_qty = str(int(matching_qty))
+        elif matching_qty == float(int(matching_qty * 2)) / 2:
+            # Half numbers like 0.5, 1.5, etc.
+            if matching_qty < 1:
+                from fractions import Fraction
+                frac = Fraction(matching_qty).limit_denominator(16)
+                formatted_qty = str(frac)
+            else:
+                formatted_qty = f"{matching_qty:.1f}".rstrip('0').rstrip('.')
+        else:
+            # Other decimals, round to 2 places and clean
+            formatted_qty = f"{matching_qty:.2f}".rstrip('0').rstrip('.')
 
-        # Create properly capitalized name
-        display_name = ' '.join(word.capitalize() for word in ingredient.split())
+        # Create properly capitalized name - clean any existing colons first
+        clean_ingredient_name = ingredient.replace(':', '').strip()
+        display_name = ' '.join(word.capitalize() for word in clean_ingredient_name.split())
 
         # Clean up the unit to avoid duplicates and format properly
-        clean_unit = most_common_unit
+        clean_unit = most_common_unit.strip() if most_common_unit else ''
         if clean_unit:
-            # Remove any numbers or colons from the unit
+            # Remove any numbers, colons, and extra whitespace from the unit
             clean_unit = re.sub(r'^\d+\s*', '', clean_unit)  # Remove leading numbers
-            clean_unit = clean_unit.replace(':', '').strip()  # Remove colons
+            clean_unit = re.sub(r'[:\d]', '', clean_unit)     # Remove colons and any digits
+            clean_unit = clean_unit.strip()                    # Clean whitespace
+
+            # Fix common unit issues
+            if clean_unit.lower() in ['slice', 'slices']:
+                clean_unit = 'slices'
+            elif clean_unit.lower() in ['can', 'cans']:
+                clean_unit = 'cans'
+            elif clean_unit.lower() in ['piece', 'pieces']:
+                clean_unit = 'pieces'
 
         # Add to summarized ingredients with clean formatting
-        if clean_unit:
+        if clean_unit and clean_unit != 'piece':
             quantity_text = f"{formatted_qty} {clean_unit}"
         else:
-            quantity_text = str(formatted_qty)
+            quantity_text = formatted_qty
 
         summarized_ingredients.append({
             "name": display_name,
