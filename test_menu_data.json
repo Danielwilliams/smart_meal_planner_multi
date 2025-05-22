@@ -1,0 +1,41 @@
+{
+  "menu_id": 409,
+  "meal_plan_json": {
+    "days": [
+      {
+        "meals": [
+          {
+            "title": "Spicy Beef Tacos",
+            "ingredients": [
+              {"fat": "56g", "name": "Beef (ground)", "carbs": "0g", "protein": "80g", "calories": "800", "quantity": "1 lb"},
+              {"fat": "1g", "name": "Taco seasoning", "carbs": "6g", "protein": "1g", "calories": "30", "quantity": "2 tbsp"},
+              {"fat": "0g", "name": "Onion", "carbs": "10g", "protein": "1g", "calories": "40", "quantity": "1"},
+              {"fat": "0g", "name": "Bell peppers", "carbs": "14g", "protein": "2g", "calories": "60", "quantity": "2"}
+            ]
+          }
+        ],
+        "snacks": [
+          {
+            "title": "Spiced Roasted Nuts",
+            "ingredients": [
+              {"fat": "54g", "name": "Mixed nuts", "carbs": "20g", "protein": "20g", "calories": "600", "quantity": "1 cup"},
+              {"fat": "0g", "name": "Salt", "carbs": "0g", "protein": "0g", "calories": "0", "quantity": "1/2 tsp"}
+            ]
+          }
+        ]
+      },
+      {
+        "meals": [
+          {
+            "title": "Test Meal",
+            "ingredients": [
+              {"name": "Flank Steak", "quantity": "16 oz"},
+              {"name": "Bacon", "quantity": "8 slices"},
+              {"name": "Chickpeas", "quantity": "1 can"}
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

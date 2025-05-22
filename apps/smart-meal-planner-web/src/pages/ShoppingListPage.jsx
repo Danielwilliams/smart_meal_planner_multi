@@ -96,54 +96,38 @@ function ShoppingListPage() {
     const categorized = {};
     
     groceryItems.forEach(item => {
-      // Handle both string and object formats
-      let itemName, displayText, cleanItemName;
+      let displayText, itemNameForCategorization;
 
       if (typeof item === 'string') {
-        itemName = item;
-        cleanItemName = item.trim();
-        displayText = item;
-      } else if (item && typeof item === 'object') {
-        itemName = item.name || '';
-        // Clean up item name - remove trailing colons and extra whitespace
-        cleanItemName = itemName.replace(/:\s*$/, '').trim();
+        // Item is already a formatted string from backend (e.g., "Beef (ground): 1 lb")
+        displayText = item.trim();
 
-        // If item has both name and quantity, format properly
-        if (item.quantity && cleanItemName) {
-          // Clean up quantity - remove duplicate text like "1 Can: 1 can" -> "1 can"
-          let cleanQuantity = item.quantity;
-          if (typeof cleanQuantity === 'string') {
-            // Remove patterns like "1 Can: " or "8 Slice: " from the beginning
-            cleanQuantity = cleanQuantity.replace(/^\d+\s+[A-Z][a-z]+s?:\s*/, '').trim();
-            // Also handle cases where there might be duplicate info
-            // Example: "8 Slice: 8 slices" -> "8 slices"
-            if (cleanQuantity.includes(':')) {
-              const parts = cleanQuantity.split(':');
-              if (parts.length === 2) {
-                cleanQuantity = parts[1].trim();
-              }
-            }
-            // Remove any weird decimal formatting like "0.:" -> ""
-            cleanQuantity = cleanQuantity.replace(/^\d*\.:\s*/, '').trim();
-          }
-
-          // Only add colon if the name doesn't already have one
-          if (cleanItemName.includes(':')) {
-            displayText = cleanItemName; // Name already includes quantity
-          } else {
-            displayText = `${cleanItemName}: ${cleanQuantity}`;
-          }
+        // Extract just the name part for categorization (before the colon)
+        if (item.includes(':')) {
+          itemNameForCategorization = item.split(':')[0].trim();
         } else {
-          displayText = cleanItemName || '';
+          itemNameForCategorization = item.trim();
         }
+      } else if (item && typeof item === 'object') {
+        // Item is an object with name and quantity properties
+        const itemName = item.name || '';
+        const itemQuantity = item.quantity || '';
+
+        if (itemQuantity && itemName) {
+          displayText = `${itemName}: ${itemQuantity}`;
+        } else {
+          displayText = itemName;
+        }
+
+        itemNameForCategorization = itemName;
       } else {
         return; // Skip invalid items
       }
 
-      if (!cleanItemName) return;
+      if (!itemNameForCategorization) return;
 
-      // Determine category based on keywords using the cleaned name
-      const normalizedName = cleanItemName.toLowerCase();
+      // Determine category based on keywords using the name for categorization
+      const normalizedName = itemNameForCategorization.toLowerCase();
       const category = Object.keys(CATEGORY_MAPPING).find(cat =>
         CATEGORY_MAPPING[cat].some(keyword =>
           normalizedName.includes(keyword.toLowerCase())
@@ -155,7 +139,7 @@ function ShoppingListPage() {
         categorized[category] = [];
       }
 
-      // Add the formatted item to its category
+      // Add the item to its category
       categorized[category].push(displayText);
     });
     
