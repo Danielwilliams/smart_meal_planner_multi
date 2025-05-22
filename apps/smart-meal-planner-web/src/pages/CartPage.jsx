@@ -1242,6 +1242,9 @@ function CartPage() {
               return `${parsedQuantity} ${cleanName}`;
             }
 
+            // If we reach here, parsing didn't match any patterns, use original logic
+            console.log(`No parsing patterns matched for "${item.name}", using original logic`);
+
             if (item.quantity) {
               // If quantity already includes the unit (e.g., "2 cups"), use it directly
               if (typeof item.quantity === 'string' &&
