@@ -3,12 +3,14 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogActions,
   LinearProgress,
   Typography,
   Box,
   Chip,
   Alert,
-  CircularProgress
+  CircularProgress,
+  Button
 } from '@mui/material';
 import {
   RestaurantMenu as ChefIcon,
@@ -175,6 +177,29 @@ const MenuGenerationProgress = ({ open, onClose, progress, allowClose = false })
           </Box>
         )}
       </DialogContent>
+
+      <DialogActions>
+        {allowClose && (
+          <>
+            <Button onClick={onClose} color="primary">
+              Close
+            </Button>
+            {progress?.phase === 'error' && (
+              <Button
+                onClick={() => {
+                  onClose();
+                  // Trigger a page refresh to reset state
+                  window.location.reload();
+                }}
+                color="primary"
+                variant="contained"
+              >
+                Try Again
+              </Button>
+            )}
+          </>
+        )}
+      </DialogActions>
     </Dialog>
   );
 };

@@ -426,54 +426,106 @@ function MenuDisplayPage() {
     } catch (err) {
       console.error('Menu generation error:', err);
 
-      // Update progress to show error
+      // Update progress to show we're checking for results
       setGenerationProgress({
         phase: 'error',
-        message: 'Error occurred, checking for partial results...',
-        progress: 95,
+        message: 'Connection issue detected. Checking if menu was generated...',
+        progress: 90,
         error: err.message
       });
-      
-      // Check if we already have a menu ID, it might be a partial success
-      if (err.message && err.message.includes('unexpected')) {
-        // Try to fetch the latest menu - the menu might have been saved successfully
-        try {
-          console.log("Attempting to fetch latest menu despite error...");
-          const latestMenu = await apiService.getLatestMenu(user.userId);
-          if (latestMenu && (latestMenu.menu_id || (latestMenu.meal_plan && latestMenu.meal_plan.days))) {
-            console.log("Found latest menu despite error:", latestMenu);
-            
-            // Update state with the found menu
-            setMenu(latestMenu);
-            setSelectedMenuId(latestMenu.menu_id);
-            
-            // Fetch updated history
-            const updatedHistory = await apiService.getMenuHistory(user.userId);
-            setMenuHistory(updatedHistory);
-            
-            updateUserProgress({ has_generated_menu: true });
-            
-            // Show a warning instead of an error
-            setError('');
-            setSnackbarMessage('Menu was generated but had a minor loading issue. It has been loaded successfully.');
-            setSnackbarOpen(true);
-            
-            // Exit the error handler since we recovered
-            setLoading(false);
-            return;
+
+      // Always try to recover - check for any newly generated menu
+      let recoverySuccessful = false;
+
+      try {
+        console.log("Attempting recovery - checking for latest menu...");
+
+        // Wait a moment for any background processing to complete
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        const latestMenu = await apiService.getLatestMenu(user.userId);
+
+        // Check if we have a valid menu that's newer than our current one
+        if (latestMenu && latestMenu.menu_id &&
+            (!selectedMenuId || latestMenu.menu_id !== selectedMenuId)) {
+
+          console.log("Recovery successful - found new menu:", latestMenu.menu_id);
+
+          // Update state with the recovered menu
+          setMenu(latestMenu);
+          setSelectedMenuId(latestMenu.menu_id);
+
+          // Fetch updated history
+          const updatedHistory = await apiService.getMenuHistory(user.userId);
+          setMenuHistory(updatedHistory);
+
+          updateUserProgress({ has_generated_menu: true });
+
+          // Update progress to show success
+          setGenerationProgress({
+            phase: 'complete',
+            message: 'Menu generated successfully despite connection issue!',
+            progress: 100
+          });
+
+          // Auto-close dialog after showing success
+          setTimeout(() => {
+            setShowProgressDialog(false);
+            setGenerationProgress(null);
+          }, 3000);
+
+          // Show success message
+          setError('');
+          setSnackbarMessage('Menu generated successfully! There was a minor connection issue but your menu is ready.');
+          setSnackbarOpen(true);
+
+          recoverySuccessful = true;
+
+          // If in client mode, navigate appropriately
+          if (clientMode && selectedClient) {
+            navigate(`/menu/${latestMenu.menu_id}?clientId=${selectedClient.id}`, { replace: true });
           }
-        } catch (recoveryErr) {
-          console.error("Error during recovery attempt:", recoveryErr);
+
+          if (isNewUser) {
+            navigate('/shopping-list', {
+              state: {
+                menuId: latestMenu.menu_id,
+                isNewUser: true,
+                showWalkthrough: true
+              }
+            });
+          }
         }
+      } catch (recoveryErr) {
+        console.error("Recovery attempt failed:", recoveryErr);
       }
-      
-      // Display a more specific error message for timeouts
-      if (err.message && err.message.includes('timed out')) {
-        setError('Menu generation timed out. Try reducing the number of days or using a different AI model.');
-      } else if (err.response && err.response.status === 504) {
-        setError('The server took too long to respond. Try generating a shorter menu or try again later.');
-      } else {
-        setError(`Failed to generate menu: ${err.message || 'Please try again.'}`);
+
+      // Only show error if recovery was not successful
+      if (!recoverySuccessful) {
+        // Update progress to show final error state
+        setGenerationProgress({
+          phase: 'error',
+          message: 'Menu generation failed. Please try again.',
+          progress: 0,
+          error: err.message
+        });
+
+        // Display user-friendly error message
+        if (err.response?.status === 500) {
+          setError('Server error occurred during menu generation. Please try again with fewer days or a different AI model.');
+        } else if (err.message && err.message.includes('timed out')) {
+          setError('Menu generation timed out. Try reducing the number of days or using a different AI model.');
+        } else if (err.response?.status === 504) {
+          setError('The server took too long to respond. Try generating a shorter menu or try again later.');
+        } else {
+          setError(`Failed to generate menu: ${err.message || 'Please try again.'}`);
+        }
+
+        // Auto-close progress dialog after 5 seconds on error
+        setTimeout(() => {
+          setShowProgressDialog(false);
+          setGenerationProgress(null);
+        }, 5000);
       }
     } finally {
       setLoading(false);
