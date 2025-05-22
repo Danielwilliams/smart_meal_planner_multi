@@ -391,27 +391,22 @@ class InstacartClient:
         if not cleaned_items:
             raise ValueError("No valid items provided for shopping list")
 
-        # Build the request data
+        # Build the request data - based on the error, API expects flat structure
         data = {
-            "data": {
-                "type": "products_link",
-                "attributes": {
-                    "title": "Smart Meal Planner Shopping List",
-                    "retailer_id": retailer_id,
-                    "postal_code": postal_code,
-                    "country_code": country_code,
-                    "line_items": [
-                        parse_item_quantity_and_name(item)
-                        for item in cleaned_items
-                    ]
-                }
-            }
+            "title": "Smart Meal Planner Shopping List",
+            "retailer_id": retailer_id,
+            "postal_code": postal_code,
+            "country_code": country_code,
+            "line_items": [
+                parse_item_quantity_and_name(item)
+                for item in cleaned_items
+            ]
         }
 
         # Log the request format with retailer ID information
         logger.info(f"Using retailer_id: {retailer_id} for API request")
-        logger.info(f"Sending {len(data['data']['attributes']['line_items'])} items to Instacart:")
-        for i, item in enumerate(data['data']['attributes']['line_items'][:3]):  # Log first 3 items
+        logger.info(f"Sending {len(data['line_items'])} items to Instacart:")
+        for i, item in enumerate(data['line_items'][:3]):  # Log first 3 items
             logger.info(f"  Item {i+1}: {item}")
         logger.info(f"Full request data: {json.dumps(data, indent=2)}")
 
