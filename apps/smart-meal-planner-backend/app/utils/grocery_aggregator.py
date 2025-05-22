@@ -753,65 +753,37 @@ def extract_ingredient_quantities_from_menu(menu_data):
                                     'display': quantity
                                 })
 
-    # Check if we can summarize quantities for specific ingredients
-    special_ingredients = ["chicken breast", "beef sirloin", "chicken thighs", "ground beef", "chicken", "beef", "ground turkey"]
+    # Process ALL ingredients found in the menu, not just predefined lists
     summarized_ingredients = []
 
-    # First process the meat ingredients that need special handling
-    for ingredient in special_ingredients:
-        if ingredient in ingredient_quantities:
-            occurrences = ingredient_quantities[ingredient]
+    # Process every ingredient that was found in the menu
+    for ingredient, occurrences in ingredient_quantities.items():
+        if not occurrences:
+            continue
 
-            # Check if all occurrences have the same unit
-            first_unit = occurrences[0]['unit'] if occurrences else None
-            if first_unit and all(o['unit'] == first_unit for o in occurrences):
-                # Sum the quantities
-                total_qty = sum(o['qty'] for o in occurrences)
+        # Get the most common unit for this ingredient
+        unit_count = {}
+        for o in occurrences:
+            unit = o['unit'] or 'piece'
+            unit_count[unit] = unit_count.get(unit, 0) + 1
 
-                # Format quantity to get rid of decimal if it's a whole number
-                formatted_qty = int(total_qty) if total_qty == int(total_qty) else total_qty
+        # Find the most common unit
+        most_common_unit = max(unit_count.items(), key=lambda x: x[1])[0] if unit_count else 'piece'
 
-                # Create a special display entry
-                summarized_ingredients.append({
-                    "name": ingredient,
-                    "quantity": f"{formatted_qty} {first_unit}"
-                })
+        # Sum quantities for this unit
+        matching_qty = sum(o['qty'] for o in occurrences if (o['unit'] or 'piece') == most_common_unit)
 
-    # Now add common ingredients from the menu
-    other_important_ingredients = [
-        "bell pepper", "onion", "garlic", "olive oil", "salsa", "broccoli",
-        "rice", "quinoa", "egg", "milk", "avocado", "tomato", "carrot", "black bean",
-        "feta cheese", "cheddar cheese", "parmesan cheese", "beans", "honey", "vanilla"
-    ]
+        # Format quantity to get rid of decimal if it's a whole number
+        formatted_qty = int(matching_qty) if matching_qty == int(matching_qty) else matching_qty
 
-    # Process other important ingredients
-    for ingredient in other_important_ingredients:
-        if ingredient in ingredient_quantities:
-            occurrences = ingredient_quantities[ingredient]
+        # Create properly capitalized name
+        display_name = ' '.join(word.capitalize() for word in ingredient.split())
 
-            # Check if we have enough occurrences to process
-            if occurrences:
-                # Get the most common unit
-                unit_count = {}
-                for o in occurrences:
-                    unit = o['unit'] or 'piece'
-                    unit_count[unit] = unit_count.get(unit, 0) + 1
-
-                # Find the most common unit
-                most_common_unit = max(unit_count.items(), key=lambda x: x[1])[0] if unit_count else None
-
-                if most_common_unit:
-                    # Sum quantities for this unit
-                    matching_qty = sum(o['qty'] for o in occurrences if (o['unit'] or 'piece') == most_common_unit)
-
-                    # Format quantity to get rid of decimal if it's a whole number
-                    formatted_qty = int(matching_qty) if matching_qty == int(matching_qty) else matching_qty
-
-                    # Add to summarized ingredients
-                    summarized_ingredients.append({
-                        "name": ingredient,
-                        "quantity": f"{formatted_qty} {most_common_unit}"
-                    })
+        # Add to summarized ingredients
+        summarized_ingredients.append({
+            "name": display_name,
+            "quantity": f"{formatted_qty} {most_common_unit}"
+        })
 
     return ingredient_quantities, summarized_ingredients
 
