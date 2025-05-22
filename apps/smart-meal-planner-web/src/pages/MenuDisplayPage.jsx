@@ -36,6 +36,7 @@ import RecipeSaveButton from '../components/RecipeSaveButton';
 import RecipeSaveDialog from '../components/RecipeSaveDialog';
 import MenuSharingModal from '../components/MenuSharingModal';
 import ModelSelectionDialog from '../components/ModelSelectionDialog';
+import MenuGenerationProgress from '../components/MenuGenerationProgress';
 
 // Utility Functions
 function formatIngredient(ing) {
@@ -108,6 +109,10 @@ function MenuDisplayPage() {
   // Model selection dialog state
   const [modelDialogOpen, setModelDialogOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState('default');
+
+  // Menu generation progress state
+  const [generationProgress, setGenerationProgress] = useState(null);
+  const [showProgressDialog, setShowProgressDialog] = useState(false);
 
   // Filter States
   const [mealTimeFilters, setMealTimeFilters] = useState({
@@ -373,7 +378,27 @@ function MenuDisplayPage() {
       };
 
       console.log(`Generating menu with model: ${selectedModel}, days: ${durationDays}`);
-      const newMenu = await apiService.generateMenu(menuRequest);
+
+      // Show progress dialog
+      setShowProgressDialog(true);
+      setGenerationProgress({
+        phase: 'initializing',
+        message: 'Starting meal plan generation...',
+        progress: 0
+      });
+
+      const newMenu = await apiService.generateMenu(menuRequest, (progress) => {
+        setGenerationProgress(progress);
+
+        // Auto-close dialog on completion
+        if (progress.phase === 'complete') {
+          setTimeout(() => {
+            setShowProgressDialog(false);
+            setGenerationProgress(null);
+          }, 2000);
+        }
+      });
+
       console.log('Menu generation successful');
       
       const updatedHistory = await apiService.getMenuHistory(user.userId);
@@ -400,6 +425,14 @@ function MenuDisplayPage() {
       }
     } catch (err) {
       console.error('Menu generation error:', err);
+
+      // Update progress to show error
+      setGenerationProgress({
+        phase: 'error',
+        message: 'Error occurred, checking for partial results...',
+        progress: 95,
+        error: err.message
+      });
       
       // Check if we already have a menu ID, it might be a partial success
       if (err.message && err.message.includes('unexpected')) {
@@ -1389,6 +1422,14 @@ function MenuDisplayPage() {
         autoHideDuration={3000}
         onClose={() => setSnackbarOpen(false)}
         message={snackbarMessage}
+      />
+
+      {/* Progress Dialog for Menu Generation */}
+      <MenuGenerationProgress
+        open={showProgressDialog}
+        onClose={() => setShowProgressDialog(false)}
+        progress={generationProgress}
+        allowClose={generationProgress?.phase === 'error'}
       />
     </Container>
   );

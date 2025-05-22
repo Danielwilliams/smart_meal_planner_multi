@@ -654,13 +654,22 @@ const apiService = {
     }
   },
 
-  async generateMenu(menuRequest) {
+  async generateMenu(menuRequest, onProgress = null) {
     // Store the latest menu ID before generation to help with recovery
     let latestMenuIdBeforeGeneration = null;
-    
+
     try {
       console.log('Generating menu with request:', menuRequest);
-      
+
+      // Notify start
+      if (onProgress) {
+        onProgress({
+          phase: 'initializing',
+          message: 'Preparing meal plan generation...',
+          progress: 5
+        });
+      }
+
       // Attempt to get latest menu ID before generation
       try {
         if (menuRequest.user_id) {
@@ -673,15 +682,54 @@ const apiService = {
       } catch (e) {
         console.warn("Could not fetch latest menu ID before generation:", e);
       }
-      
+
+      // Notify AI processing start
+      if (onProgress) {
+        onProgress({
+          phase: 'generating',
+          message: 'AI is creating your personalized meal plan...',
+          progress: 15
+        });
+      }
+
       const resp = await axiosInstance.post('/menu/generate', menuRequest, {
-        timeout: 900000 // 15 minutes timeout for menu generation
+        timeout: 900000, // 15 minutes timeout for menu generation
+        onUploadProgress: (progressEvent) => {
+          if (onProgress && progressEvent.total) {
+            const uploadProgress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+            onProgress({
+              phase: 'uploading',
+              message: 'Sending your preferences to AI...',
+              progress: Math.min(25, 15 + (uploadProgress * 0.1))
+            });
+          }
+        }
       });
+
+      // Notify completion
+      if (onProgress) {
+        onProgress({
+          phase: 'complete',
+          message: 'Meal plan generated successfully!',
+          progress: 100
+        });
+      }
+
       console.log('Menu generation successful');
       return resp.data;
     } catch (err) {
       console.error('Menu generation error:', err);
-      
+
+      // Notify error
+      if (onProgress) {
+        onProgress({
+          phase: 'error',
+          message: 'Checking for partial results...',
+          progress: 90,
+          error: err.message
+        });
+      }
+
       // Special handling for timeouts - they could be partial successes
       if (err.code === 'ECONNABORTED' || (err.response && err.response.status === 504)) {
         console.log("Timeout detected, checking if menu was partially created...");
