@@ -1,25 +1,41 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
-import { 
-  Container, 
-  Typography, 
-  Select, 
-  MenuItem, 
-  FormControl, 
-  InputLabel, 
-  Box, 
-  Paper, 
+import {
+  Container,
+  Typography,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Box,
+  Paper,
   Grid,
   Button,
   CircularProgress,
   Alert,
-  Snackbar
+  Snackbar,
+  Tabs,
+  Tab,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions
 } from '@mui/material';
+import {
+  ShoppingBasket as BasketIcon,
+  Kitchen as KitchenIcon,
+  ShoppingCart as ShoppingCartIcon
+} from '@mui/icons-material';
 import StoreSelector from '../components/StoreSelector';
 import { useAuth } from '../context/AuthContext';
 import apiService from '../services/apiService';
 import CATEGORY_MAPPING from '../data/categoryMapping';
 import ShoppingList from '../components/ShoppingList';
+import MealShoppingList from '../components/MealShoppingList';
+import ErrorBoundary from '../components/ErrorBoundary';
+import instacartService from '../services/instacartService';
+import instacartBackendService from '../services/instacartBackendService';
 
 function ShoppingListPage() {
   const { user } = useAuth();
@@ -42,6 +58,15 @@ function ShoppingListPage() {
   const [storeSearchResults, setStoreSearchResults] = useState({});
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
+
+  // Tab management
+  const [activeTab, setActiveTab] = useState(0); // 0 = Standard, 1 = By Meal
+
+  // Instacart state
+  const [instacartRetailerId, setInstacartRetailerId] = useState('');
+  const [creatingShoppingList, setCreatingShoppingList] = useState(false);
+  const [shoppingListUrl, setShoppingListUrl] = useState(null);
+  const [showShoppingListDialog, setShowShoppingListDialog] = useState(false);
 
   // Debug log
   console.log("ShoppingListPage params:", { 
@@ -944,6 +969,53 @@ const categorizeItems = (mealPlanData) => {
     setSnackbarOpen(false);
   };
 
+  // Instacart functionality
+  const handleSelectInstacartRetailer = async () => {
+    try {
+      const retailers = await instacartService.getRetailers();
+      if (retailers && retailers.length > 0) {
+        // For now, select the first available retailer
+        setInstacartRetailerId(retailers[0].id);
+        setSnackbarMessage(`Selected retailer: ${retailers[0].name}`);
+        setSnackbarOpen(true);
+      }
+    } catch (error) {
+      console.error('Error fetching retailers:', error);
+      setSnackbarMessage('Error loading Instacart retailers');
+      setSnackbarOpen(true);
+    }
+  };
+
+  const handleCreateShoppingList = async (categories, selectedStore) => {
+    if (selectedStore !== 'instacart') {
+      setSnackbarMessage('Please select Instacart as your store to create shopping list');
+      setSnackbarOpen(true);
+      return;
+    }
+
+    try {
+      setCreatingShoppingList(true);
+
+      const result = await instacartBackendService.createShoppingListUrl(
+        categories,
+        instacartRetailerId
+      );
+
+      if (result && result.shoppingListUrl) {
+        setShoppingListUrl(result.shoppingListUrl);
+        setShowShoppingListDialog(true);
+      } else {
+        throw new Error('Failed to create shopping list URL');
+      }
+    } catch (error) {
+      console.error('Error creating shopping list:', error);
+      setSnackbarMessage('Error creating Instacart shopping list');
+      setSnackbarOpen(true);
+    } finally {
+      setCreatingShoppingList(false);
+    }
+  };
+
   return (
     <Container maxWidth="md">
       <Typography variant="h4" gutterBottom>
@@ -984,19 +1056,12 @@ const categorizeItems = (mealPlanData) => {
           </FormControl>
         )}
 
-        <FormControl sx={{ flex: 1 }}>
-          <InputLabel>Store Search Mode</InputLabel>
-          <Select
-            value={selectedStore}
-            label="Store Search Mode"
-            onChange={(e) => setSelectedStore(e.target.value)}
-          >
-            <MenuItem value="walmart">Walmart</MenuItem>
-            <MenuItem value="kroger">Kroger</MenuItem>
-            <MenuItem value="instacart">Instacart</MenuItem>
-            <MenuItem value="mixed">Mixed Stores</MenuItem>
-          </Select>
-        </FormControl>
+        <StoreSelector
+          selectedStore={selectedStore}
+          onStoreChange={setSelectedStore}
+          instacartRetailerId={instacartRetailerId}
+          onSelectInstacartRetailer={handleSelectInstacartRetailer}
+        />
 
         {selectedStore !== 'mixed' && groceryList.length > 0 && (
           <Button 
@@ -1009,13 +1074,91 @@ const categorizeItems = (mealPlanData) => {
         )}
       </Box>
 
+      {/* Shopping List Display with Tabs */}
       {groceryList && groceryList.length > 0 ? (
-        <ShoppingList 
-          categories={formatCategoriesForDisplay(groceryList)} 
-          selectedStore={selectedStore} 
-          onAddToCart={handleAddToCart} 
-          onAddToMixedCart={handleAddToMixedCart} 
-        />
+        <Box sx={{ width: '100%' }}>
+          {/* Tab Navigation */}
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Tabs
+              value={activeTab}
+              onChange={(e, newValue) => {
+                console.log(`Switching to tab: ${newValue}`);
+                setActiveTab(newValue);
+              }}
+              aria-label="shopping list tabs"
+              sx={{ mb: 2 }}
+            >
+              <Tab
+                icon={<BasketIcon />}
+                label="Standard"
+                id="tab-0"
+                aria-controls="tabpanel-0"
+              />
+              <Tab
+                icon={<KitchenIcon />}
+                label="By Meal"
+                id="tab-1"
+                aria-controls="tabpanel-1"
+              />
+            </Tabs>
+
+            {/* Create Instacart Shopping List Button */}
+            {selectedStore === 'instacart' && (
+              <Button
+                variant="contained"
+                color="primary"
+                startIcon={creatingShoppingList ? <CircularProgress size={20} /> : <ShoppingCartIcon />}
+                onClick={() => handleCreateShoppingList(formatCategoriesForDisplay(groceryList), selectedStore)}
+                disabled={creatingShoppingList}
+              >
+                {creatingShoppingList ? 'Creating...' : 'Create Instacart List'}
+              </Button>
+            )}
+          </Box>
+
+          {/* Standard List Tab Panel */}
+          <div
+            role="tabpanel"
+            hidden={activeTab !== 0}
+            id="tabpanel-0"
+            aria-labelledby="tab-0"
+          >
+            {activeTab === 0 && (
+              <ShoppingList
+                categories={formatCategoriesForDisplay(groceryList)}
+                selectedStore={selectedStore}
+                onAddToCart={handleAddToCart}
+                onAddToMixedCart={handleAddToMixedCart}
+              />
+            )}
+          </div>
+
+          {/* By Meal List Tab Panel */}
+          <div
+            role="tabpanel"
+            hidden={activeTab !== 1}
+            id="tabpanel-1"
+            aria-labelledby="tab-1"
+          >
+            {activeTab === 1 && (
+              selectedMenuId ? (
+                <ErrorBoundary
+                  fallback={
+                    <Alert severity="error" sx={{ my: 2 }}>
+                      An error occurred loading meal lists. This feature may not be available yet.
+                    </Alert>
+                  }
+                >
+                  <MealShoppingList menuId={selectedMenuId} />
+                </ErrorBoundary>
+              ) : (
+                <Alert severity="info">
+                  Please select a menu to view meal-specific shopping lists.
+                </Alert>
+              )
+            )}
+          </div>
+        </Box>
       ) : (
         !loading && (
           <Alert severity="info" sx={{ mt: 3 }}>
@@ -1032,12 +1175,56 @@ const categorizeItems = (mealPlanData) => {
       />
       
       {/* Kroger Store Selection Dialog */}
-      <StoreSelector 
+      <StoreSelector
         open={showKrogerStoreSelector}
         onClose={() => setShowKrogerStoreSelector(false)}
         onStoreSelect={handleKrogerStoreSelect}
         storeType="kroger"
       />
+
+      {/* Instacart Shopping List Dialog */}
+      <Dialog
+        open={showShoppingListDialog}
+        onClose={() => setShowShoppingListDialog(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          Instacart Shopping List Created
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Your shopping list has been created successfully!
+            Click the button below to open it in Instacart.
+          </DialogContentText>
+          {shoppingListUrl && (
+            <Box sx={{ mt: 2, textAlign: 'center' }}>
+              <Button
+                variant="contained"
+                color="primary"
+                href={shoppingListUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                startIcon={<ShoppingCartIcon />}
+              >
+                Open in Instacart
+              </Button>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ borderTop: '1px solid', borderColor: 'divider', px: 3 }}>
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ flexGrow: 1 }}
+          >
+            Powered by Instacart
+          </Typography>
+          <Button onClick={() => setShowShoppingListDialog(false)}>
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 }
