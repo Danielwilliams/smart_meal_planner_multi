@@ -128,19 +128,29 @@ function ShoppingListPage() {
 
       // Determine category based on keywords using the name for categorization
       const normalizedName = itemNameForCategorization.toLowerCase();
-      const category = Object.keys(CATEGORY_MAPPING).find(cat =>
-        CATEGORY_MAPPING[cat].some(keyword =>
-          normalizedName.includes(keyword.toLowerCase())
-        )
-      ) || 'Other';
+
+      // Special case for flank steak to ensure it goes to meat-seafood
+      let category;
+      if (normalizedName.includes('flank')) {
+        category = 'meat-seafood';
+      } else {
+        category = Object.keys(CATEGORY_MAPPING).find(cat =>
+          CATEGORY_MAPPING[cat].some(keyword =>
+            normalizedName.includes(keyword.toLowerCase())
+          )
+        ) || 'Other';
+      }
 
       // Debug: log categorization for problematic items
-      if (normalizedName.includes('flank')) {
-        console.log('Categorizing flank item:', {
+      if (normalizedName.includes('flank') || normalizedName.includes('steak')) {
+        console.log('Categorizing steak/flank item:', {
           originalItem: item,
           itemNameForCategorization,
           normalizedName,
           foundCategory: category,
+          allCategories: Object.keys(CATEGORY_MAPPING),
+          meatSeafoodKeywords: CATEGORY_MAPPING['meat-seafood'],
+          beveragesKeywords: CATEGORY_MAPPING['beverages'],
           matchedKeywords: Object.keys(CATEGORY_MAPPING).map(cat => ({
             category: cat,
             keywords: CATEGORY_MAPPING[cat].filter(keyword =>
