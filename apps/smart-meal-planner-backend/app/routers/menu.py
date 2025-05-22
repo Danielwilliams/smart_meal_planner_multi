@@ -148,11 +148,37 @@ def contains_gluten(meal: Dict[str, Any]) -> bool:
     
     return False
 
+def convert_new_schema_to_old(day_json, required_meal_times, snacks_per_day=0):
+    """Convert new schema format (breakfast, lunch, dinner as properties) to old format (meals array)"""
+    meals = []
+
+    # Convert main meals
+    for meal_time in required_meal_times:
+        if meal_time.lower() not in ['snack', 'morning snack', 'afternoon snack', 'evening snack']:
+            meal_data = day_json.get(meal_time.lower())
+            if meal_data:
+                meals.append({
+                    "meal_time": meal_time.lower(),
+                    **meal_data
+                })
+
+    # Convert snacks
+    snacks = day_json.get("snacks", [])
+    for i, snack in enumerate(snacks):
+        meals.append({
+            "meal_time": f"snack_{i+1}",
+            **snack
+        })
+
+    # Update the day_json to include meals array for backward compatibility
+    day_json["meals"] = meals
+    return day_json
+
 def validate_meal_plan(
-    day_json: Dict[str, Any], 
-    dietary_restrictions: List[str], 
-    disliked_ingredients: List[str], 
-    used_meal_titles: Set[str], 
+    day_json: Dict[str, Any],
+    dietary_restrictions: List[str],
+    disliked_ingredients: List[str],
+    used_meal_titles: Set[str],
     required_meal_times: List[str] = None,
     time_constraints: Dict[str, int] = None,
     meal_time_preferences: Dict[str, bool] = None,
@@ -529,9 +555,117 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
                 if req.snacks_per_day > 0:
                     meal_times_desc += f" plus {req.snacks_per_day} snack(s)"
             
+            # Create schema with explicit meal time requirements
+            meal_properties = {}
+
+            # Add required meal times as separate properties
+            for meal_time in required_meal_times:
+                if meal_time.lower() not in ['snack', 'morning snack', 'afternoon snack', 'evening snack']:
+                    meal_properties[meal_time.lower()] = {
+                        "type": "object",
+                        "description": f"Required {meal_time} meal",
+                        "properties": {
+                            "title": {"type": "string", "description": "Title of the meal"},
+                            "ingredients": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "name": {"type": "string"},
+                                        "quantity": {"type": "string"},
+                                        "calories": {"type": "string"},
+                                        "protein": {"type": "string"},
+                                        "carbs": {"type": "string"},
+                                        "fat": {"type": "string"}
+                                    },
+                                    "required": ["name", "quantity"]
+                                }
+                            },
+                            "instructions": {"type": "array", "items": {"type": "string"}},
+                            "servings": {"type": "integer"},
+                            "macros": {
+                                "type": "object",
+                                "properties": {
+                                    "perServing": {
+                                        "type": "object",
+                                        "properties": {
+                                            "calories": {"type": "integer"},
+                                            "protein": {"type": "string"},
+                                            "carbs": {"type": "string"},
+                                            "fat": {"type": "string"}
+                                        }
+                                    },
+                                    "perMeal": {
+                                        "type": "object",
+                                        "properties": {
+                                            "calories": {"type": "integer"},
+                                            "protein": {"type": "string"},
+                                            "carbs": {"type": "string"},
+                                            "fat": {"type": "string"}
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "required": ["title", "ingredients", "instructions", "servings", "macros"]
+                    }
+
+            # Add snacks if requested
+            if req.snacks_per_day > 0:
+                meal_properties["snacks"] = {
+                    "type": "array",
+                    "description": f"Required {req.snacks_per_day} snack(s)",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "title": {"type": "string"},
+                            "ingredients": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "name": {"type": "string"},
+                                        "quantity": {"type": "string"},
+                                        "calories": {"type": "string"},
+                                        "protein": {"type": "string"},
+                                        "carbs": {"type": "string"},
+                                        "fat": {"type": "string"}
+                                    }
+                                }
+                            },
+                            "servings": {"type": "integer"},
+                            "macros": {
+                                "type": "object",
+                                "properties": {
+                                    "perServing": {
+                                        "type": "object",
+                                        "properties": {
+                                            "calories": {"type": "integer"},
+                                            "protein": {"type": "string"},
+                                            "carbs": {"type": "string"},
+                                            "fat": {"type": "string"}
+                                        }
+                                    },
+                                    "perMeal": {
+                                        "type": "object",
+                                        "properties": {
+                                            "calories": {"type": "integer"},
+                                            "protein": {"type": "string"},
+                                            "carbs": {"type": "string"},
+                                            "fat": {"type": "string"}
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "minItems": req.snacks_per_day,
+                    "maxItems": req.snacks_per_day
+                }
+
             menu_schema = {
                 "name": "generate_daily_meal_plan",
-                "description": f"Generate a daily meal plan with all required meal times: {meal_times_desc}",
+                "description": f"Generate a daily meal plan with ALL required meal times: {meal_times_desc}. YOU MUST INCLUDE ALL MEAL TIMES.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -539,160 +673,22 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
                             "type": "integer",
                             "description": "Day number in the meal plan"
                         },
-                        "meals": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "meal_time": {
-                                        "type": "string",
-                                        "description": "Meal time (breakfast, lunch, dinner, etc.)"
-                                    },
-                                    "title": {
-                                        "type": "string",
-                                        "description": "Title of the meal"
-                                    },
-                                    "ingredients": {
-                                        "type": "array",
-                                        "items": {
-                                            "type": "object",
-                                            "properties": {
-                                                "name": {
-                                                    "type": "string",
-                                                    "description": "Name of the ingredient"
-                                                },
-                                                "quantity": {
-                                                    "type": "string",
-                                                    "description": "Quantity of the ingredient"
-                                                },
-                                                "calories": {
-                                                    "type": "string",
-                                                    "description": "Calories in the ingredient"
-                                                },
-                                                "protein": {
-                                                    "type": "string",
-                                                    "description": "Protein content in the ingredient"
-                                                },
-                                                "carbs": {
-                                                    "type": "string",
-                                                    "description": "Carbs content in the ingredient"
-                                                },
-                                                "fat": {
-                                                    "type": "string",
-                                                    "description": "Fat content in the ingredient"
-                                                }
-                                            },
-                                            "required": ["name", "quantity"]
-                                        }
-                                    },
-                                    "instructions": {
-                                        "type": "array",
-                                        "items": {
-                                            "type": "string"
-                                        },
-                                        "description": "Step-by-step cooking instructions"
-                                    },
-                                    "servings": {
-                                        "type": "integer",
-                                        "description": "Number of servings"
-                                    },
-                                    "macros": {
-                                        "type": "object",
-                                        "properties": {
-                                            "perServing": {
-                                                "type": "object",
-                                                "properties": {
-                                                    "calories": { "type": "integer" },
-                                                    "protein": { "type": "string" },
-                                                    "carbs": { "type": "string" },
-                                                    "fat": { "type": "string" }
-                                                }
-                                            },
-                                            "perMeal": {
-                                                "type": "object",
-                                                "properties": {
-                                                    "calories": { "type": "integer" },
-                                                    "protein": { "type": "string" },
-                                                    "carbs": { "type": "string" },
-                                                    "fat": { "type": "string" }
-                                                }
-                                            }
-                                        }
-                                    },
-                                    "appliance_used": {
-                                        "type": "string",
-                                        "description": "Main appliance used in preparation"
-                                    },
-                                    "complexity_level": {
-                                        "type": "string",
-                                        "description": "Preparation complexity (minimal, easy, standard, complex)"
-                                    }
-                                },
-                                "required": ["meal_time", "title", "ingredients", "instructions", "servings", "macros"]
-                            }
-                        },
-                        "snacks": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "title": { "type": "string" },
-                                    "ingredients": {
-                                        "type": "array",
-                                        "items": {
-                                            "type": "object",
-                                            "properties": {
-                                                "name": { "type": "string" },
-                                                "quantity": { "type": "string" },
-                                                "calories": { "type": "string" },
-                                                "protein": { "type": "string" },
-                                                "carbs": { "type": "string" },
-                                                "fat": { "type": "string" }
-                                            }
-                                        }
-                                    },
-                                    "servings": { "type": "integer" },
-                                    "macros": {
-                                        "type": "object",
-                                        "properties": {
-                                            "perServing": {
-                                                "type": "object",
-                                                "properties": {
-                                                    "calories": { "type": "integer" },
-                                                    "protein": { "type": "string" },
-                                                    "carbs": { "type": "string" },
-                                                    "fat": { "type": "string" }
-                                                }
-                                            },
-                                            "perMeal": {
-                                                "type": "object",
-                                                "properties": {
-                                                    "calories": { "type": "integer" },
-                                                    "protein": { "type": "string" },
-                                                    "carbs": { "type": "string" },
-                                                    "fat": { "type": "string" }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        },
+                        **meal_properties,
                         "summary": {
                             "type": "object",
                             "properties": {
-                                "calorie_goal": { "type": "string" },
-                                "protein_goal": { "type": "string" },
-                                "carbs_goal": { "type": "string" },
-                                "fat_goal": { "type": "string" },
-                                "protein_grams": { "type": "string" },
-                                "carbs_grams": { "type": "string" },
-                                "fat_grams": { "type": "string" },
-                                "variance_from_goal": { "type": "string" }
+                                "calorie_goal": {"type": "string"},
+                                "protein_goal": {"type": "string"},
+                                "carbs_goal": {"type": "string"},
+                                "fat_goal": {"type": "string"},
+                                "protein_grams": {"type": "string"},
+                                "carbs_grams": {"type": "string"},
+                                "fat_grams": {"type": "string"},
+                                "variance_from_goal": {"type": "string"}
                             }
                         }
                     },
-                    "required": ["dayNumber", "meals", "summary"]
+                    "required": ["dayNumber", "summary"] + [meal_time.lower() for meal_time in required_meal_times if meal_time.lower() not in ['snack', 'morning snack', 'afternoon snack', 'evening snack']] + (["snacks"] if req.snacks_per_day > 0 else [])
                 }
             }
 
@@ -811,9 +807,12 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
                                 if not isinstance(day_json, dict):
                                     raise ValueError("Response is not a valid JSON object")
                                 
+                                # Convert new schema format to old format for backward compatibility
+                                day_json = convert_new_schema_to_old(day_json, selected_meal_times, req.snacks_per_day)
+
                                 if 'meals' not in day_json or 'dayNumber' not in day_json:
                                     raise ValueError("JSON missing required keys")
-                                
+
                                 # Check for issues with the meal plan, including required meal times
                                 issues = validate_meal_plan(
                                     day_json, 
