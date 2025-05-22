@@ -559,7 +559,7 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
             meal_properties = {}
 
             # Add required meal times as separate properties
-            for meal_time in required_meal_times:
+            for meal_time in selected_meal_times:
                 if meal_time.lower() not in ['snack', 'morning snack', 'afternoon snack', 'evening snack']:
                     meal_properties[meal_time.lower()] = {
                         "type": "object",
@@ -688,7 +688,7 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
                             }
                         }
                     },
-                    "required": ["dayNumber", "summary"] + [meal_time.lower() for meal_time in required_meal_times if meal_time.lower() not in ['snack', 'morning snack', 'afternoon snack', 'evening snack']] + (["snacks"] if req.snacks_per_day > 0 else [])
+                    "required": ["dayNumber", "summary"] + [meal_time.lower() for meal_time in selected_meal_times if meal_time.lower() not in ['snack', 'morning snack', 'afternoon snack', 'evening snack']] + (["snacks"] if req.snacks_per_day > 0 else [])
                 }
             }
 
