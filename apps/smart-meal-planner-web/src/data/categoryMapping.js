@@ -6,7 +6,7 @@ const CATEGORY_MAPPING = {
   deli: ["ham", "turkey", "salami", "cheddar", "provolone"],
   "breads-grains": ["bread", "tortilla", "pasta", "rice", "oats", "quinoa"],
   "frozen-foods": ["frozen vegetables", "ice cream", "pizza", "frozen meals"],
-  "meat-seafood": ["chicken", "beef", "pork", "fish", "shrimp", "salmon", "steak", "sirloin", "flank", "ground beef", "sausage", "bacon"],
+  "meat-seafood": ["chicken", "beef", "pork", "fish", "shrimp", "salmon", "steak", "sirloin", "flank", "flank steak", "ground beef", "sausage", "bacon"],
   "baking-spices": ["flour", "sugar", "cinnamon", "salt", "pepper", "baking powder", "vanilla"],
   condiments: ["ketchup", "mustard", "mayo", "soy sauce", "vinegar", "salad dressing", "olive oil", "sesame oil", "bbq sauce", "salsa"],
   Other: ["mixed nuts", "black beans", "chickpeas", "corn", "taco seasoning", "italian seasoning", "paprika", "smoked paprika", "cumin", "chili flakes", "ancho chili powder", "honey", "rice vinegar"]

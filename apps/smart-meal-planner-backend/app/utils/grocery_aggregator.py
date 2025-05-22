@@ -703,18 +703,25 @@ def extract_ingredient_quantities_from_menu(menu_data):
                             unit = ''
 
                             if isinstance(quantity, str):
-                                # Simple regex to extract number and unit
-                                qty_match = re.match(r'(\d+(?:\.\d+)?)\s*([a-zA-Z]+)?', quantity)
+                                # Enhanced regex to handle fractions, decimals, and multi-word units
+                                qty_match = re.match(r'(\d+(?:[./]\d+)?(?:\.\d+)?)\s*([a-zA-Z]+(?:\s+[a-zA-Z]+)*)?', quantity.strip())
                                 if qty_match:
-                                    qty_value = float(qty_match.group(1))
-                                    unit = qty_match.group(2) or ''
+                                    # Parse the numeric part (handle fractions)
+                                    qty_str = qty_match.group(1)
+                                    if '/' in qty_str:
+                                        parts = qty_str.split('/')
+                                        qty_value = float(parts[0]) / float(parts[1])
+                                    else:
+                                        qty_value = float(qty_str)
+                                    unit = qty_match.group(2).strip() if qty_match.group(2) else ''
 
-                            # Track this ingredient
-                            if name and qty_value is not None:
-                                if name not in ingredient_quantities:
-                                    ingredient_quantities[name] = []
+                            # Track this ingredient with clean name (no extra colons)
+                            clean_name = name.replace(':', '').strip()
+                            if clean_name and qty_value is not None:
+                                if clean_name not in ingredient_quantities:
+                                    ingredient_quantities[clean_name] = []
 
-                                ingredient_quantities[name].append({
+                                ingredient_quantities[clean_name].append({
                                     'qty': qty_value,
                                     'unit': unit,
                                     'display': quantity
@@ -736,18 +743,25 @@ def extract_ingredient_quantities_from_menu(menu_data):
                             unit = ''
 
                             if isinstance(quantity, str):
-                                # Simple regex to extract number and unit
-                                qty_match = re.match(r'(\d+(?:\.\d+)?)\s*([a-zA-Z]+)?', quantity)
+                                # Enhanced regex to handle fractions, decimals, and multi-word units
+                                qty_match = re.match(r'(\d+(?:[./]\d+)?(?:\.\d+)?)\s*([a-zA-Z]+(?:\s+[a-zA-Z]+)*)?', quantity.strip())
                                 if qty_match:
-                                    qty_value = float(qty_match.group(1))
-                                    unit = qty_match.group(2) or ''
+                                    # Parse the numeric part (handle fractions)
+                                    qty_str = qty_match.group(1)
+                                    if '/' in qty_str:
+                                        parts = qty_str.split('/')
+                                        qty_value = float(parts[0]) / float(parts[1])
+                                    else:
+                                        qty_value = float(qty_str)
+                                    unit = qty_match.group(2).strip() if qty_match.group(2) else ''
 
-                            # Track this ingredient
-                            if name and qty_value is not None:
-                                if name not in ingredient_quantities:
-                                    ingredient_quantities[name] = []
+                            # Track this ingredient with clean name (no extra colons)
+                            clean_name = name.replace(':', '').strip()
+                            if clean_name and qty_value is not None:
+                                if clean_name not in ingredient_quantities:
+                                    ingredient_quantities[clean_name] = []
 
-                                ingredient_quantities[name].append({
+                                ingredient_quantities[clean_name].append({
                                     'qty': qty_value,
                                     'unit': unit,
                                     'display': quantity
@@ -779,10 +793,22 @@ def extract_ingredient_quantities_from_menu(menu_data):
         # Create properly capitalized name
         display_name = ' '.join(word.capitalize() for word in ingredient.split())
 
-        # Add to summarized ingredients
+        # Clean up the unit to avoid duplicates and format properly
+        clean_unit = most_common_unit
+        if clean_unit:
+            # Remove any numbers or colons from the unit
+            clean_unit = re.sub(r'^\d+\s*', '', clean_unit)  # Remove leading numbers
+            clean_unit = clean_unit.replace(':', '').strip()  # Remove colons
+
+        # Add to summarized ingredients with clean formatting
+        if clean_unit:
+            quantity_text = f"{formatted_qty} {clean_unit}"
+        else:
+            quantity_text = str(formatted_qty)
+
         summarized_ingredients.append({
             "name": display_name,
-            "quantity": f"{formatted_qty} {most_common_unit}"
+            "quantity": quantity_text
         })
 
     return ingredient_quantities, summarized_ingredients

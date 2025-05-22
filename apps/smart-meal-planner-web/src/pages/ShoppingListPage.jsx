@@ -97,23 +97,32 @@ function ShoppingListPage() {
     
     groceryItems.forEach(item => {
       // Handle both string and object formats
-      let itemName, displayText;
+      let itemName, displayText, cleanItemName;
 
       if (typeof item === 'string') {
         itemName = item;
+        cleanItemName = item.trim();
         displayText = item;
       } else if (item && typeof item === 'object') {
         itemName = item.name || '';
         // Clean up item name - remove trailing colons and extra whitespace
-        const cleanItemName = itemName.replace(/:\s*$/, '').trim();
+        cleanItemName = itemName.replace(/:\s*$/, '').trim();
 
         // If item has both name and quantity, format properly
         if (item.quantity && cleanItemName) {
           // Clean up quantity - remove duplicate text like "1 Can: 1 can" -> "1 can"
           let cleanQuantity = item.quantity;
           if (typeof cleanQuantity === 'string') {
-            // Remove patterns like "1 Can: " from the beginning
-            cleanQuantity = cleanQuantity.replace(/^\d+\s+[A-Z][a-z]+:\s*/, '').trim();
+            // Remove patterns like "1 Can: " or "8 Slice: " from the beginning
+            cleanQuantity = cleanQuantity.replace(/^\d+\s+[A-Z][a-z]+s?:\s*/, '').trim();
+            // Also handle cases where there might be duplicate info
+            // Example: "8 Slice: 8 slices" -> "8 slices"
+            if (cleanQuantity.includes(':')) {
+              const parts = cleanQuantity.split(':');
+              if (parts.length === 2) {
+                cleanQuantity = parts[1].trim();
+              }
+            }
           }
           displayText = `${cleanItemName}: ${cleanQuantity}`;
         } else {
@@ -123,10 +132,10 @@ function ShoppingListPage() {
         return; // Skip invalid items
       }
 
-      if (!itemName) return;
+      if (!cleanItemName) return;
 
-      // Determine category based on keywords
-      const normalizedName = itemName.toLowerCase();
+      // Determine category based on keywords using the cleaned name
+      const normalizedName = cleanItemName.toLowerCase();
       const category = Object.keys(CATEGORY_MAPPING).find(cat =>
         CATEGORY_MAPPING[cat].some(keyword =>
           normalizedName.includes(keyword.toLowerCase())
