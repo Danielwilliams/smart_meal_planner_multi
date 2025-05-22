@@ -46,16 +46,13 @@ import CategorizedShoppingList from '../components/CategorizedShoppingList';
 import MealShoppingList from '../components/MealShoppingList';
 import InstacartResults from '../components/InstacartResults';
 import ErrorBoundary from '../components/ErrorBoundary';
-import { adaptShoppingListResponse } from '../utils/aiShoppingListAdapter';
 import {
-  AutoAwesome as AiIcon,
   ExpandMore as ExpandMoreIcon,
   ShoppingBasket as BasketIcon,
   TipsAndUpdates as TipsIcon,
   LocalOffer as OfferIcon,
   Kitchen as KitchenIcon,
   Category as CategoryIcon,
-  AutoAwesome,
   ExpandMore,
   ShoppingCart as ShoppingCartIcon
 } from '@mui/icons-material';
@@ -98,47 +95,17 @@ function ShoppingListPage() {
     }
   };
   
-  // AI shopping list state
-  // No longer needed - we auto-generate the AI list
-  const [showAiShoppingPrompt, setShowAiShoppingPrompt] = useState(false);
-  const [aiShoppingLoading, setAiShoppingLoading] = useState(false);
-  const [aiShoppingData, setAiShoppingData] = useState(null);
 
   // Create a reference to the initial data with true quantities
   const [initialGroceryItems, setInitialGroceryItems] = useState({});
-  // Default to AI Enhanced tab (index 1)
-  const [activeTab, setActiveTab] = useState(1);
-  const [aiPreferences, setAiPreferences] = useState('');
-  const [usingAiList, setUsingAiList] = useState(false);
+  // Default to Standard tab (index 0)
+  const [activeTab, setActiveTab] = useState(0);
 
-  // For New AI List button - ensure these are still accessible
-  const [generationStats, setGenerationStats] = useState(null);
-  const [generationLogs, setGenerationLogs] = useState([]);
-  const [showLogs, setShowLogs] = useState(true); // Show logs by default
-
-  // For entertaining messages while loading
-  const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
   const [instacartRetailerId, setInstacartRetailerId] = useState('');
   const [creatingShoppingList, setCreatingShoppingList] = useState(false);
   const [shoppingListUrl, setShoppingListUrl] = useState(null);
   const [showShoppingListDialog, setShowShoppingListDialog] = useState(false);
-  const loadingMessages = [
-    "AI chef is chopping ingredients into categories...",
-    "Sorting your tomatoes from your potatoes...",
-    "Figuring out what aisle the quinoa is in...",
-    "Counting how many eggs you'll need...",
-    "Calculating the perfect amount of garlic (always more)...",
-    "Organizing your shopping route for maximum efficiency...",
-    "Deciding whether avocados should be in produce or 'temperamental fruits'...",
-    "Making sure you don't forget the salt this time...",
-    "Translating 'a pinch' into actual measurements...",
-    "Checking if you really need more olive oil...",
-    "Determining if ice cream counts as a dairy essential...",
-    "Sorting ingredients by 'foods you'll actually use' vs 'aspirational purchases'..."
-  ];
-  
   // Cache management
-  const AI_SHOPPING_CACHE_KEY = 'ai_shopping_cache';
   const CACHE_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 
   // Debug log
@@ -4277,6 +4244,7 @@ const categorizeItems = (mealPlanData) => {
                   <Alert severity="info">
                     Please select a menu to view meal-specific shopping lists.
                   </Alert>
+                )}
               </div>
             </>
           )}
