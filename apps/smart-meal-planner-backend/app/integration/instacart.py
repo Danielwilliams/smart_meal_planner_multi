@@ -418,8 +418,8 @@ class InstacartClient:
             "country_code": country_code,
             "line_items": [
                 {
-                    "name": item,
-                    "quantity": 1
+                    "name": item
+                    # Don't add quantity field since quantities are embedded in item names
                 }
                 for item in cleaned_items
             ]
