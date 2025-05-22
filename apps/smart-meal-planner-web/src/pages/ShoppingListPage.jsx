@@ -134,6 +134,22 @@ function ShoppingListPage() {
         )
       ) || 'Other';
 
+      // Debug: log categorization for problematic items
+      if (normalizedName.includes('flank')) {
+        console.log('Categorizing flank item:', {
+          originalItem: item,
+          itemNameForCategorization,
+          normalizedName,
+          foundCategory: category,
+          matchedKeywords: Object.keys(CATEGORY_MAPPING).map(cat => ({
+            category: cat,
+            keywords: CATEGORY_MAPPING[cat].filter(keyword =>
+              normalizedName.includes(keyword.toLowerCase())
+            )
+          })).filter(match => match.keywords.length > 0)
+        });
+      }
+
       // Create category array if it doesn't exist
       if (!categorized[category]) {
         categorized[category] = [];

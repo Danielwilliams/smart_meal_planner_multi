@@ -1763,12 +1763,24 @@ const ShoppingList = ({
             return;
           }
 
-          // Process the items safely - pass directly for array of objects
-          if (Array.isArray(items) && items.length > 0 && typeof items[0] === 'object' && items[0].name && items[0].quantity) {
-            console.log("DIRECT ITEM OBJECTS DETECTED - no need for combineItems");
-            processed[category] = items;
+          // Process the items safely
+          if (Array.isArray(items) && items.length > 0) {
+            // If items are objects with name and quantity, use them directly
+            if (typeof items[0] === 'object' && items[0].name && items[0].quantity) {
+              console.log("DIRECT ITEM OBJECTS DETECTED - no need for combineItems");
+              processed[category] = items;
+            }
+            // If items are already formatted strings (like "Bacon: 4 slices"), use them as-is
+            else if (typeof items[0] === 'string') {
+              console.log("FORMATTED STRINGS DETECTED - using as-is");
+              processed[category] = items;
+            }
+            // Otherwise, process them
+            else {
+              processed[category] = combineItems(items);
+            }
           } else {
-            processed[category] = combineItems(Array.isArray(items) ? items : []);
+            processed[category] = [];
           }
         } catch (itemError) {
           console.error(`Error processing category ${category}:`, itemError);
