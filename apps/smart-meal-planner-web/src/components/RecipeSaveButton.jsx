@@ -115,14 +115,19 @@ const RecipeSaveButton = ({
       console.log('Saving recipe with data:', JSON.stringify(saveData, null, 2));
 
       // Use apiService which handles authentication and correct base URL
-      const response = await apiService.saveRecipe(saveData, scraped);
-      
+      const data = await apiService.saveRecipe(saveData, scraped);
+
       // Log the API response
-      console.log('API Response:', response.data);
-      
-      // Extract saved_id from response
-      const data = response.data;
+      console.log('🐛 API Service Response:', data);
+      console.log('🐛 Response type:', typeof data);
+
+      // Extract saved_id from response (apiService already returns response.data)
       const savedId = data.saved_id;
+      console.log('🐛 Extracted savedId:', savedId);
+
+      if (!savedId) {
+        throw new Error('No saved_id returned from server');
+      }
       
       // Show success message
       setSnackbarMessage('Recipe saved successfully!');
