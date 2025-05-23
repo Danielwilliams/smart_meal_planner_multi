@@ -76,13 +76,35 @@ const SavedRecipesPage = () => {
     fetchSavedRecipes();
   }, [user, navigate]);
 
-  const handleViewRecipe = async (recipeId, menuId) => {
+  const handleViewRecipe = async (recipeId, menuId, recipe = null) => {
     try {
       setSelectedRecipe({ recipeId, menuId });
       setDialogOpen(true);
       setLoadingRecipeDetails(true);
-      
-      // Fetch the menu details to get the recipe details
+
+      // Check if this is a scraped recipe (no menu_id)
+      if (!menuId || menuId === null) {
+        // For scraped recipes, try to get the stored recipe data directly
+        const scrapedRecipe = savedRecipes.find(r => r.recipe_id === recipeId || r.id === recipeId);
+        if (scrapedRecipe) {
+          // Create a recipe object from the stored data
+          const recipeDetails = {
+            title: scrapedRecipe.recipe_name,
+            ingredients: scrapedRecipe.ingredients || [],
+            instructions: scrapedRecipe.instructions || [],
+            macros: scrapedRecipe.macros,
+            complexity_level: scrapedRecipe.complexity_level,
+            servings: scrapedRecipe.servings,
+            recipe_source: 'scraped'
+          };
+
+          setRecipeDetails(recipeDetails);
+          setLoadingRecipeDetails(false);
+          return;
+        }
+      }
+
+      // For menu recipes, fetch the menu details to get the recipe details
       const menuDetails = await apiService.getMenuDetails(menuId);
       
       // Find the recipe in the menu
@@ -293,9 +315,9 @@ const SavedRecipesPage = () => {
                 justifyContent: 'space-between', 
                 p: 1.5 
               }}>
-                <Button 
+                <Button
                   startIcon={<ViewIcon />}
-                  onClick={() => handleViewRecipe(recipe.recipe_id, recipe.menu_id)}
+                  onClick={() => handleViewRecipe(recipe.recipe_id, recipe.menu_id, recipe)}
                   size="small"
                   variant="contained"
                 >
