@@ -133,9 +133,9 @@ async def get_meal_shopping_lists(menu_id: int):
                             if snack_data["ingredients"]:
                                 result["meal_lists"].append(snack_data)
             
-            # Remove duplicates - keep the cleaner format (without snack_1, snack_2, etc.)
-            unique_meals = []
-            seen_titles = set()
+            # Remove duplicates - prefer cleaner format (without snack_1, snack_2, etc.)
+            # Group meals by clean title first
+            title_groups = {}
 
             for meal in result["meal_lists"]:
                 title = meal.get("title", "")
@@ -145,14 +145,40 @@ async def get_meal_shopping_lists(menu_id: int):
                 if " (snack_" in title.lower():
                     clean_title = title.split(" (snack_")[0]
 
-                # If we've seen this title before, skip it (keep the first/cleaner one)
-                if clean_title.lower() not in seen_titles:
-                    seen_titles.add(clean_title.lower())
-                    # Update the title to the clean version
-                    meal["title"] = clean_title
-                    unique_meals.append(meal)
+                clean_key = clean_title.lower()
+                if clean_key not in title_groups:
+                    title_groups[clean_key] = []
+
+                # Mark whether this is a numbered version
+                is_numbered = " (snack_" in title.lower()
+                title_groups[clean_key].append({
+                    'meal': meal,
+                    'original_title': title,
+                    'clean_title': clean_title,
+                    'is_numbered': is_numbered
+                })
+
+            # Choose the best version from each group
+            unique_meals = []
+            for clean_key, versions in title_groups.items():
+                if len(versions) == 1:
+                    # Only one version, use it
+                    chosen = versions[0]
                 else:
-                    logger.info(f"Removing duplicate meal/snack: {title} (already have {clean_title})")
+                    # Multiple versions - prefer non-numbered (cleaner) version
+                    clean_versions = [v for v in versions if not v['is_numbered']]
+                    if clean_versions:
+                        chosen = clean_versions[0]  # Use clean version
+                        # Log removals
+                        for v in versions:
+                            if v['is_numbered']:
+                                logger.info(f"Removing numbered snack: {v['original_title']}")
+                    else:
+                        chosen = versions[0]  # Fallback
+
+                # Update title and add to results
+                chosen['meal']['title'] = chosen['clean_title']
+                unique_meals.append(chosen['meal'])
 
             result["meal_lists"] = unique_meals
             return result

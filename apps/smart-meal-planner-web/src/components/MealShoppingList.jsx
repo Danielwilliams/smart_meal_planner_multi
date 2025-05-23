@@ -414,11 +414,17 @@ const MealShoppingList = ({ menuId }) => {
 
                                         // Handle meat weight conversions (common issue)
                                         if (lowerName.includes("chicken") || lowerName.includes("beef") || lowerName.includes("pork") || lowerName.includes("meat")) {
-                                          if (numericQuantity >= 16 && !quantity.includes("oz") && !quantity.includes("lb")) {
-                                            // Large numbers for meat are likely in oz, convert to lb if > 16
+                                          // Check for obvious wrong conversions like "16 lb" chicken (should be 1 lb)
+                                          if (numericQuantity === 16 && quantity.includes("lb")) {
+                                            return `1 lb ${name}`;
+                                          }
+                                          // Check for large numbers without proper units
+                                          else if (numericQuantity >= 16 && !quantity.includes("oz") && !quantity.includes("lb")) {
                                             const pounds = numericQuantity / 16;
                                             return pounds >= 1 ? `${pounds} lb ${name}` : `${numericQuantity} oz ${name}`;
-                                          } else if (numericQuantity <= 8 && !quantity.includes("oz") && !quantity.includes("lb")) {
+                                          }
+                                          // Small amounts without units should be oz
+                                          else if (numericQuantity <= 8 && !quantity.includes("oz") && !quantity.includes("lb")) {
                                             return `${numericQuantity} oz ${name}`;
                                           }
                                         }
@@ -459,6 +465,40 @@ const MealShoppingList = ({ menuId }) => {
                                         }
                                         if (quantity === "8" && lowerName.includes("chicken")) {
                                           return "8 oz " + name;
+                                        }
+
+                                        // Add missing units for common ingredients
+                                        if (quantity && !isNaN(numericQuantity) && numericQuantity > 0) {
+                                          // Check if quantity already has a unit
+                                          const hasUnit = /\b(oz|lb|cup|tbsp|tsp|clove|piece|can|head|medium|large|small|g|kg|ml|l)\b/i.test(quantity);
+
+                                          if (!hasUnit) {
+                                            // Add appropriate units based on ingredient type
+                                            if (lowerName.includes("edamame") || lowerName.includes("almonds") || lowerName.includes("nuts")) {
+                                              return `${quantity} oz ${name}`;
+                                            }
+                                            if (lowerName.includes("mozzarella") && lowerName.includes("ball")) {
+                                              return `${quantity} oz ${name}`;
+                                            }
+                                            if (lowerName.includes("cherry tomato") || lowerName.includes("tomato")) {
+                                              return `${quantity} medium ${name}`;
+                                            }
+                                            if (lowerName.includes("balsamic glaze") || lowerName.includes("glaze")) {
+                                              return `${quantity} tbsp ${name}`;
+                                            }
+                                            if (lowerName.includes("green onion") || lowerName.includes("onion")) {
+                                              return `${quantity} medium ${name}`;
+                                            }
+                                            if (lowerName.includes("bell pepper") || lowerName.includes("pepper")) {
+                                              return `${quantity} medium ${name}`;
+                                            }
+                                            if (lowerName.includes("peas")) {
+                                              return `${quantity} cup ${name}`;
+                                            }
+                                            if (lowerName.includes("egg")) {
+                                              return `${quantity} large ${name}`;
+                                            }
+                                          }
                                         }
 
                                         // For all other cases, show quantity with the ingredient name
