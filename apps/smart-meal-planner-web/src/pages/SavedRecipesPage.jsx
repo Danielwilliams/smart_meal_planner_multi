@@ -87,16 +87,57 @@ const SavedRecipesPage = () => {
         // For scraped recipes, try to get the stored recipe data directly
         const scrapedRecipe = savedRecipes.find(r => r.recipe_id === recipeId || r.id === recipeId);
         if (scrapedRecipe) {
+          console.log('🐛 Raw scraped recipe data:', scrapedRecipe);
+
+          // Parse ingredients - could be JSON string, array, or object
+          let ingredients = [];
+          if (scrapedRecipe.ingredients) {
+            if (typeof scrapedRecipe.ingredients === 'string') {
+              try {
+                ingredients = JSON.parse(scrapedRecipe.ingredients);
+              } catch (e) {
+                ingredients = [scrapedRecipe.ingredients]; // Treat as single ingredient
+              }
+            } else if (Array.isArray(scrapedRecipe.ingredients)) {
+              ingredients = scrapedRecipe.ingredients;
+            } else if (typeof scrapedRecipe.ingredients === 'object') {
+              // Convert object to array
+              ingredients = Object.values(scrapedRecipe.ingredients);
+            }
+          }
+
+          // Parse instructions - could be JSON string, array, or string
+          let instructions = [];
+          if (scrapedRecipe.instructions) {
+            if (typeof scrapedRecipe.instructions === 'string') {
+              try {
+                instructions = JSON.parse(scrapedRecipe.instructions);
+              } catch (e) {
+                instructions = [scrapedRecipe.instructions]; // Treat as single instruction
+              }
+            } else if (Array.isArray(scrapedRecipe.instructions)) {
+              instructions = scrapedRecipe.instructions;
+            } else if (typeof scrapedRecipe.instructions === 'object') {
+              // Convert object to array
+              instructions = Object.values(scrapedRecipe.instructions);
+            }
+          }
+
+          console.log('🐛 Parsed ingredients:', ingredients);
+          console.log('🐛 Parsed instructions:', instructions);
+
           // Create a recipe object from the stored data
           const recipeDetails = {
             title: scrapedRecipe.recipe_name,
-            ingredients: scrapedRecipe.ingredients || [],
-            instructions: scrapedRecipe.instructions || [],
+            ingredients: ingredients,
+            instructions: instructions,
             macros: scrapedRecipe.macros,
             complexity_level: scrapedRecipe.complexity_level,
             servings: scrapedRecipe.servings,
             recipe_source: 'scraped'
           };
+
+          console.log('🐛 Final recipe details:', recipeDetails);
 
           setRecipeDetails(recipeDetails);
           setLoadingRecipeDetails(false);
