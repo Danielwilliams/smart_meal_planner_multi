@@ -280,46 +280,31 @@ const CustomMenuBuilderPage = () => {
       setLoading(true);
       setError('');
       
-      // Prepare custom menu structure
-      const customMenuStructure = {
-        user_id: activeClient?.id || user.userId,
-        nickname: menuNickname || `Custom Menu ${new Date().toLocaleDateString()}`,
-        meal_plan: {
-          days: Array.from({length: 7}, (_, dayIndex) => ({
-            dayNumber: dayIndex + 1,
-            meals: [],
-            snacks: []
-          }))
-        }
+      // Convert selected recipes to the format expected by backend
+      const recipes = Object.entries(selectedRecipes).map(([key, recipe]) => ({
+        recipe_id: recipe.scraped_recipe_id || null,
+        menu_recipe_id: recipe.recipe_id && !recipe.scraped_recipe_id ? String(recipe.recipe_id) : null,
+        saved_recipe_id: recipe.saved_id || null,
+        title: recipe.recipe_name || recipe.title,
+        ingredients: recipe.ingredients || [],
+        instructions: recipe.instructions || [],
+        meal_time: recipe.mealTime === 'snacks' ? 'snack' : recipe.mealTime,
+        servings: recipe.servings || 1,
+        macros: recipe.macros || {},
+        image_url: recipe.image_url || null
+      }));
+
+      // Prepare custom menu request in the format expected by backend
+      const customMenuRequest = {
+        user_id: user.userId,
+        for_client_id: activeClient?.id || null,
+        recipes: recipes,
+        duration_days: 7,
+        nickname: menuNickname || `Custom Menu ${new Date().toLocaleDateString()}`
       };
 
-      // Populate the menu structure with selected recipes
-      Object.entries(selectedRecipes).forEach(([key, recipe]) => {
-        const dayIndex = recipe.day - 1;
-        
-        // Create a properly structured recipe object with all required fields
-        const recipeObject = {
-          title: recipe.recipe_name || recipe.title,
-          ingredients: recipe.ingredients || [],
-          instructions: recipe.instructions || [],
-          servings: recipe.servings || 1,
-          metadata: {
-            macros: recipe.macros || {},
-            complexity_level: recipe.complexity_level || recipe.complexity || 'standard'
-          }
-        };
-        
-        // Add meal_time only for meals, not for snacks
-        if (recipe.mealTime === 'snacks') {
-          customMenuStructure.meal_plan.days[dayIndex].snacks.push(recipeObject);
-        } else {
-          recipeObject.meal_time = recipe.mealTime;
-          customMenuStructure.meal_plan.days[dayIndex].meals.push(recipeObject);
-        }
-      });
-
-      console.log('Saving custom menu:', customMenuStructure);
-      const response = await apiService.saveCustomMenu(customMenuStructure, activeClient?.id);
+      console.log('Saving custom menu:', customMenuRequest);
+      const response = await apiService.saveCustomMenu(customMenuRequest, activeClient?.id);
       
       setSnackbarMessage('Custom menu saved successfully!');
       setSnackbarOpen(true);
