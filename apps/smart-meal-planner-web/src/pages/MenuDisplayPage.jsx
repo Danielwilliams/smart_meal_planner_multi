@@ -1033,17 +1033,17 @@ function MenuDisplayPage() {
                         <Box sx={{ mt: 1 }}>
                           <Typography variant="body2">
                             <strong>Per Serving:</strong><br />
-                            Calories: {meal.macros.perServing.calories} |
-                            Protein: {meal.macros.perServing.protein} |
-                            Carbs: {meal.macros.perServing.carbs} |
-                            Fat: {meal.macros.perServing.fat}
+                            Calories: {safeGet(meal.macros, 'perServing.calories', 'N/A')} |
+                            Protein: {safeGet(meal.macros, 'perServing.protein', 'N/A')} |
+                            Carbs: {safeGet(meal.macros, 'perServing.carbs', 'N/A')} |
+                            Fat: {safeGet(meal.macros, 'perServing.fat', 'N/A')}
                           </Typography>
                           <Typography variant="body2" sx={{ mt: 1 }}>
                             <strong>Total Recipe ({meal.servings || 1} servings):</strong><br />
-                            Calories: {meal.macros.perMeal.calories} |
-                            Protein: {meal.macros.perMeal.protein} |
-                            Carbs: {meal.macros.perMeal.carbs} |
-                            Fat: {meal.macros.perMeal.fat}
+                            Calories: {safeGet(meal.macros, 'perMeal.calories', 'N/A')} |
+                            Protein: {safeGet(meal.macros, 'perMeal.protein', 'N/A')} |
+                            Carbs: {safeGet(meal.macros, 'perMeal.carbs', 'N/A')} |
+                            Fat: {safeGet(meal.macros, 'perMeal.fat', 'N/A')}
                           </Typography>
                         </Box>
                       </Box>
