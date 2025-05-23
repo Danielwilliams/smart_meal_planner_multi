@@ -244,16 +244,29 @@ async def remove_cart_item(
             raise HTTPException(400, "item_name and store are required")
             
         logger.info(f"Removing item '{item_name}' from '{store}' for user {user_id}")
-            
+
         if user_id in internal_carts:
             if store not in internal_carts[user_id]:
                 raise HTTPException(400, f"Invalid store: {store}")
-                
-            # Find and remove the item
-            internal_carts[user_id][store] = [
-                item for item in internal_carts[user_id][store] 
-                if item.name != item_name
-            ]
+
+            # Debug: Log current cart contents before removal
+            logger.info(f"Current cart for user {user_id}, store {store}: {internal_carts[user_id][store]}")
+
+            # Find and remove the item with better error handling
+            original_count = len(internal_carts[user_id][store])
+            try:
+                internal_carts[user_id][store] = [
+                    item for item in internal_carts[user_id][store]
+                    if getattr(item, 'name', str(item)) != item_name
+                ]
+                new_count = len(internal_carts[user_id][store])
+                logger.info(f"Items removed: {original_count - new_count}")
+            except Exception as filter_error:
+                logger.error(f"Error during item filtering: {str(filter_error)}")
+                logger.error(f"Cart item types: {[type(item) for item in internal_carts[user_id][store]]}")
+                raise
+        else:
+            logger.warning(f"User {user_id} not found in internal_carts")
             
         return {"status": "success"}
     except Exception as e:
