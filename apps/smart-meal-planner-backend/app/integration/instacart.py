@@ -486,7 +486,7 @@ def parse_item_quantity_and_name(item_string: str) -> Dict:
     import re
 
     # Pattern 1: Quantity with unit (e.g., "1 lb Beef (ground)", "2 tbsp Olive Oil")
-    quantity_with_unit_pattern = r'^(\d+(?:\.\d+)?(?:/\d+)?)\s*(lb|lbs|oz|g|kg|cup|cups|tbsp|tsp|cloves?|pieces?|medium|large|small|cans?|slices?)\s+(.+)$'
+    quantity_with_unit_pattern = r'^(\d+(?:\.\d+)?(?:/\d+)?)\s*(lb|lbs|oz|g|kg|cup|cups|tbsp|tsp|cloves?|pieces?|medium|large|small|cans?|slices?|leaves?)\s+(.+)$'
     quantity_with_unit_match = re.match(quantity_with_unit_pattern, item_string, re.IGNORECASE)
 
     # Pattern 2: Quantity without unit (e.g., "8 Corn Tortillas", "2 Bell Pepper")
@@ -504,10 +504,12 @@ def parse_item_quantity_and_name(item_string: str) -> Dict:
         else:
             quantity = float(quantity_str)
 
-        # Return clean name with unit but proper quantity field
+        # Return clean ingredient name with separate quantity and unit fields
         return {
-            "name": f"{unit} {ingredient_name}",
-            "quantity": quantity
+            "name": ingredient_name,
+            "quantity": quantity,
+            "unit": unit,
+            "display_text": f"{quantity_str} {unit} {ingredient_name}"
         }
 
     elif quantity_only_match:
@@ -521,16 +523,18 @@ def parse_item_quantity_and_name(item_string: str) -> Dict:
         else:
             quantity = float(quantity_str)
 
-        # Return clean name with proper quantity field
+        # Return clean name with proper quantity field (no unit)
         return {
             "name": ingredient_name,
-            "quantity": quantity
+            "quantity": quantity,
+            "display_text": f"{quantity_str} {ingredient_name}"
         }
     else:
         # No quantity pattern matched, use as-is with default quantity
         return {
             "name": item_string,
-            "quantity": 1
+            "quantity": 1,
+            "display_text": item_string
         }
 
 
