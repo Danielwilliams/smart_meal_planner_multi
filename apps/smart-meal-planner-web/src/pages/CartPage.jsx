@@ -181,7 +181,7 @@ function CartPage() {
   const clearError = () => {
     setError(null);
   };
-  
+
   const clearSearchResults = (store) => {
     console.log("⚠️ DEBUG: clearSearchResults called", store);
     if (store) {
@@ -215,7 +215,7 @@ function CartPage() {
     try {
       setLoading(prev => ({ ...prev, cart: true }));
       const response = await apiService.assignStoreToItems(user.userId, items, store);
-      
+
       if (response.status === 'success' && response.cart) {
         setInternalCart(response.cart);
         setSnackbarMessage(`Items assigned to ${store ? store : 'store'}`);
@@ -231,29 +231,29 @@ function CartPage() {
 
   const checkKrogerCredentials = async () => {
     console.log("⚠️ DEBUG: Checking Kroger credentials");
-    
+
     try {
       // First try to get Kroger status from the backend
       console.log("Getting Kroger connection status from backend");
       const status = await krogerAuthService.checkKrogerStatus();
       console.log("Backend Kroger status:", status);
-      
+
       // If the backend says we're connected and have a store location, we're good to go
       if (status && status.is_connected && status.store_location) {
         console.log("Backend reports valid Kroger connection with store location:", status.store_location);
-        
+
         // Update localStorage with the store location from the backend for consistency
         localStorage.setItem('kroger_store_location', status.store_location);
         localStorage.setItem('kroger_store_location_id', status.store_location);
         localStorage.setItem('kroger_store_selected', 'true');
         localStorage.setItem('kroger_connected', 'true');
-        
+
         // Clear any store selection flags to prevent the dialog from showing again
         sessionStorage.removeItem('kroger_needs_store_selection');
-        
+
         return true;
       }
-      
+
       // If connected but no store location, show the store selector
       if (status && status.is_connected && !status.store_location) {
         console.log("Connected but no store location set in backend, showing store selector");
@@ -261,28 +261,28 @@ function CartPage() {
         setShowStoreSelector(true);
         return false;
       }
-      
+
       // If we get here, we're not properly connected according to the backend
       console.log("Not properly connected according to backend, checking local state");
     } catch (err) {
       console.error("Error checking Kroger status with backend:", err);
       console.log("Falling back to client-side state checks");
     }
-    
+
     // Fall back to checking client-side state
     const storeSelectionComplete = sessionStorage.getItem('kroger_store_selection_complete') === 'true';
-    const storeSelectionDone = localStorage.getItem('kroger_store_selection_done') === 'true'; 
-    const storeLocation = localStorage.getItem('kroger_store_location') || 
+    const storeSelectionDone = localStorage.getItem('kroger_store_selection_done') === 'true';
+    const storeLocation = localStorage.getItem('kroger_store_location') ||
                           localStorage.getItem('kroger_store_location_id');
     const isConnected = localStorage.getItem('kroger_connected') === 'true';
-    
+
     // If we have a recent store selection with location, we're good
     if ((storeSelectionComplete || storeSelectionDone) && storeLocation) {
       console.log("Store selection is complete and we have a location from client-side");
       localStorage.setItem('kroger_connected', 'true');
       return true;
     }
-    
+
     // If connected but no store location, show the store selector
     if (isConnected && !storeLocation) {
       console.log("Connected but no store location from client-side, showing store selector");
@@ -290,13 +290,13 @@ function CartPage() {
       setShowStoreSelector(true);
       return false;
     }
-    
+
     // If connected with store location, we're good
     if (isConnected && storeLocation) {
       console.log("Connected with store location from client-side");
       return true;
     }
-    
+
     // Not connected at all, show reconnect dialog
     console.log("Not connected according to client-side state, showing reconnect dialog");
     showKrogerError(
@@ -720,7 +720,7 @@ function CartPage() {
       // First attempt to refresh the token
       console.log("Attempting to refresh Kroger token via auth service");
       const refreshResult = await krogerAuthService.getKrogerToken();
-      
+
       if (refreshResult.success) {
         setSnackbarMessage("Kroger connection refreshed successfully");
         setSnackbarOpen(true);
@@ -729,7 +729,7 @@ function CartPage() {
         // If refresh fails, show reconnect dialog
         console.log("Token refresh failed, showing reconnect dialog");
         showKrogerError(
-          "Kroger Authentication Required", 
+          "Kroger Authentication Required",
           "Your Kroger session has expired. Please reconnect your account to continue.",
           true
         );
@@ -738,7 +738,7 @@ function CartPage() {
     } catch (err) {
       console.error("Error handling Kroger auth:", err);
       showKrogerError(
-        "Kroger Authentication Error", 
+        "Kroger Authentication Error",
         "There was a problem with your Kroger connection. Please reconnect your account.",
         true
       );
@@ -751,33 +751,33 @@ function CartPage() {
     try {
       // Close any open error dialog
       setShowErrorDialog(false);
-      
+
       // Show connecting message
       setSnackbarMessage("Redirecting to Kroger login for cart access...");
       setSnackbarOpen(true);
-      
+
       console.log('Initiating Kroger reconnection for cart operations');
-      
+
       // Mark the starting time of the reconnection attempt
       const reconnectStartTime = Date.now();
       localStorage.setItem('kroger_reconnect_start_time', reconnectStartTime.toString());
-      
+
       // Remove any schema issue flag to try backend first
       localStorage.removeItem('database_schema_issue');
-      
+
       // Use krogerAuthService to handle reconnection with proper fallbacks
       try {
         console.log('Using krogerAuthService to handle reconnection');
         await krogerAuthService.reconnectKroger();
-        
+
         // No further actions needed because krogerAuthService will handle the redirect
         return;
       } catch (serviceError) {
         console.error('Error using krogerAuthService for reconnection:', serviceError);
-        
+
         // If the service fails, fall back to direct OAuth URL construction
         console.log('Falling back to direct OAuth URL construction');
-        
+
         // Use hardcoded client ID for consistency (same as in krogerAuthService)
         const clientId = 'smartmealplannerio-243261243034247652497361364a447078555731455949714a464f61656e5a676b444e552e42796961517a4f4576367156464b3564774c3039777a614700745159802496692';
         const redirectUri = 'https://smart-meal-planner-multi.vercel.app/kroger/callback';
@@ -785,51 +785,51 @@ function CartPage() {
         // Make sure to include cart.basic:write scope for cart operations
         const scope = 'product.compact cart.basic:write profile.compact';
         const state = Math.random().toString(36).substring(2, 15);
-        
+
         // Log the client ID and redirect URI being used
-        console.log("Using hardcoded values:", { 
+        console.log("Using hardcoded values:", {
           clientId: clientId.substring(0, 10) + '...',
           redirectUri
         });
-        
+
         // Store the state to verify when we're redirected back
         localStorage.setItem('kroger_auth_state', state);
-        
+
         // Clear any existing store selection flags to ensure fresh selection
         sessionStorage.removeItem('kroger_store_selection_complete');
         localStorage.removeItem('kroger_store_selection_done');
         sessionStorage.removeItem('kroger_needs_store_selection');
-        
+
         // Explicitly set these flags to help with debugging
         localStorage.setItem('kroger_reconnect_attempted', 'true');
         localStorage.setItem('kroger_auth_pending', 'true');
-        
+
         // Construct the OAuth URL directly
         const authUrl = `https://api.kroger.com/v1/connect/oauth2/authorize?scope=${encodeURIComponent(scope)}&response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`;
-        
+
         console.log("Redirecting directly to:", authUrl);
         window.location.href = authUrl;
       }
-      
+
       // Set a backup timer to detect if redirect doesn't happen (browser popup blocked, etc)
       setTimeout(() => {
         const currentTime = Date.now();
         const startTime = parseInt(localStorage.getItem('kroger_reconnect_start_time') || '0', 10);
-        
+
         if (currentTime - startTime >= 3000 && document.visibilityState !== 'hidden') {
           console.error("Redirect didn't happen! Possible popup blocking or other issue");
           setError("Failed to open Kroger login. Please check if popups are blocked in your browser.");
-          
+
           // Clean up flags if redirect fails
           localStorage.removeItem('kroger_reconnect_attempted');
           localStorage.removeItem('kroger_auth_pending');
         }
       }, 3000);
-      
+
     } catch (err) {
       console.error("Kroger reconnect error:", err);
       setError("Failed to reconnect to Kroger. Please try again.");
-      
+
       // Clean up flags on error
       localStorage.removeItem('kroger_reconnect_attempted');
       localStorage.removeItem('kroger_auth_pending');
@@ -840,22 +840,22 @@ function CartPage() {
     console.log("⚠️ DEBUG: handleAddToCart called", {items, store});
     try {
       setLoading(prev => ({ ...prev, cart: true }));
-      
+
       // For Kroger, first check if store selection is already done to avoid redundant prompts
       if (store === 'kroger') {
         // Check for store selection flags
-        const storeLocation = localStorage.getItem('kroger_store_location') || 
+        const storeLocation = localStorage.getItem('kroger_store_location') ||
                              localStorage.getItem('kroger_store_location_id');
-        const storeSelected = localStorage.getItem('kroger_store_selected') === 'true' || 
+        const storeSelected = localStorage.getItem('kroger_store_selected') === 'true' ||
                              localStorage.getItem('kroger_store_configured') === 'true' ||
                              sessionStorage.getItem('kroger_store_selection_complete') === 'true' ||
                              localStorage.getItem('kroger_store_selection_done') === 'true';
-                             
+
         console.log('Kroger store selection check before cart operation:', {
           storeLocation,
           storeSelected
         });
-        
+
         // If we have a stored location and selection flag, set additional flags to prevent prompts
         if (storeLocation && storeSelected) {
           console.log('Store already selected, setting additional flags to prevent prompts');
@@ -868,25 +868,25 @@ function CartPage() {
           sessionStorage.removeItem('kroger_needs_store_selection');
         }
       }
-      
+
       let response;
-      
+
       // Use dedicated Kroger service for Kroger items
       if (store === 'kroger') {
         console.log('Using dedicated Kroger auth service for cart operation');
         response = await krogerAuthService.addToKrogerCart(items);
-        
+
         // Check for reconnection needed - we need a user-authorized token with cart.basic:write scope
         if (!response.success) {
           console.log('Kroger error response:', response);
-          
+
           // Check for needs_setup flag (store selection needed)
           if (response.needs_setup) {
             console.log('Store selection needed according to response');
             // Try checking if we already have store location in localStorage before showing selector
-            const storeLocation = localStorage.getItem('kroger_store_location') || 
+            const storeLocation = localStorage.getItem('kroger_store_location') ||
                                  localStorage.getItem('kroger_store_location_id');
-                                 
+
             if (storeLocation) {
               console.log('Found store location in localStorage:', storeLocation);
               // Use the stored location to update backend
@@ -896,7 +896,7 @@ function CartPage() {
                 // Retry cart operation
                 console.log('Retrying cart operation with stored location');
                 response = await krogerAuthService.addToKrogerCart(items);
-                
+
                 // If retry succeeds, continue with success flow
                 if (response.success) {
                   console.log('Retry succeeded with stored location');
@@ -913,22 +913,22 @@ function CartPage() {
                 // Fall through to store selector if update fails
               }
             }
-            
+
             // If we got here, we need to show store selector
             setCurrentStore('kroger');
             setShowStoreSelector(true);
             setLoading(prev => ({ ...prev, cart: false }));
             return;
           }
-          
+
           // Check for needs_reconnect flag or specific error messages
-          if (response.needs_reconnect || 
+          if (response.needs_reconnect ||
               response.message === "An unexpected error occurred" ||
               (response.message && response.message.includes("Server needs restarting"))) {
-            
+
             console.log('Kroger reconnection needed');
             showKrogerError(
-              "Kroger Cart Authorization Required", 
+              "Kroger Cart Authorization Required",
               "Your Kroger session requires cart permissions. Please reconnect your account to add items to cart.",
               true
             );
@@ -936,7 +936,7 @@ function CartPage() {
             return;
           }
         }
-        
+
         // Check if it was a timeout
         if (!response.success && response.timeout) {
           setError(response.message || 'The request timed out. Check your Kroger cart directly.');
@@ -944,14 +944,14 @@ function CartPage() {
           setLoading(prev => ({ ...prev, cart: false }));
           return;
         }
-        
+
         // Handle general errors
         if (!response.success) {
           setError(response.message || 'Failed to add items to Kroger cart');
           setLoading(prev => ({ ...prev, cart: false }));
           return;
         }
-        
+
         // Success
         setSnackbarMessage(`Items added to Kroger cart successfully`);
         setSnackbarOpen(true);
@@ -961,7 +961,7 @@ function CartPage() {
       } else {
         // Use regular API service for Walmart
         response = await apiService.addToWalmartCart(items);
-        
+
         if (response.success) {
           setSnackbarMessage(`Items added to ${store} cart successfully`);
           setSnackbarOpen(true);
@@ -973,46 +973,46 @@ function CartPage() {
       }
     } catch (err) {
       console.error(`⚠️ DEBUG: Error adding to ${store} cart:`, err);
-      
+
       // Special handling for timeout errors
       if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
         // For timeouts, assume the operation might have succeeded anyway
         setError(`The request to ${store} took too long to respond. The items might have been added to your cart anyway. Please check your ${store} cart directly.`);
-        
+
         // For Kroger timeouts, offer direct cart link
         if (store === 'kroger') {
           setShowKrogerCartDialog(true);
         }
-        
+
         return;
       }
-      
+
       handleError(err);
     } finally {
       setLoading(prev => ({ ...prev, cart: false }));
     }
   };
-  
+
   const handleStoreSelect = async (locationId) => {
     console.log("⚠️ DEBUG: handleStoreSelect called", locationId);
     try {
       if (currentStore === 'kroger') {
         console.log('Updating Kroger store location to:', locationId);
-        
+
         // Save the location ID locally right away for fast client-side tracking
         localStorage.setItem('kroger_store_location', locationId);
         localStorage.setItem('kroger_store_location_id', locationId);
         localStorage.setItem('kroger_store_selected', 'true');
         localStorage.setItem('kroger_store_timestamp', Date.now().toString());
         localStorage.setItem('kroger_store_configured', 'true');
-        
+
         // Set flags to prevent location selection loops
         sessionStorage.setItem('kroger_store_selection_complete', 'true');
         localStorage.setItem('kroger_store_selection_done', 'true');
-        
+
         // Clear the store selection needed flag
         sessionStorage.removeItem('kroger_needs_store_selection');
-        
+
         // First try to update the location with the backend - critical for persistence!
         console.log("Updating store location in backend DB...");
         apiService.updateKrogerLocation(locationId)
@@ -1027,29 +1027,29 @@ function CartPage() {
           })
           .catch(updateErr => {
             console.error('Error updating store location with backend:', updateErr);
-            
+
             // Check if this is a database schema issue
-            if (updateErr.response?.data?.error?.includes('client_id') || 
+            if (updateErr.response?.data?.error?.includes('client_id') ||
                 updateErr.response?.data?.error?.includes('column')) {
               console.log("Database schema issue detected, setting flag");
               localStorage.setItem('database_schema_issue', 'true');
             }
-            
+
             // Continue despite the error - we'll use the locally stored location
           });
-        
+
         // Always close the store selector dialog
         setShowStoreSelector(false);
-        
+
         // Show success message regardless of backend success
         setSnackbarMessage('Store location updated successfully');
         setSnackbarOpen(true);
-        
+
         // Wait a short time before attempting search to ensure storage is updated
         if (lastSearchedItems && lastSearchedItems.length > 0) {
           try {
             console.log('Attempting search with newly selected store after delay...');
-            
+
             // Small delay to ensure all updates are complete
             setTimeout(async () => {
               try {
@@ -1070,7 +1070,7 @@ function CartPage() {
       }
     } catch (err) {
       console.error('⚠️ DEBUG: Store selection error:', err);
-      
+
       // Handle gracefully - close dialog and show error in snackbar
       setShowStoreSelector(false);
       setSnackbarMessage('Error setting store location');
@@ -1083,7 +1083,7 @@ function CartPage() {
     try {
       setLoading(prev => ({ ...prev, cart: true }));
       const response = await apiService.clearStoreItems(user.userId, store);
-      
+
       if (response.status === 'success') {
         setInternalCart(prev => ({
           ...prev,
@@ -1106,14 +1106,14 @@ function CartPage() {
     try {
       setLoading(prev => ({ ...prev, cart: true }));
       const newQuantity = Math.max(1, item.quantity + change);
-      
+
       const response = await apiService.updateCartItemQuantity(
         user.userId,
         item.name,
         store,
         newQuantity
       );
-      
+
       if (response.status === 'success') {
         await loadInternalCart();
       }
@@ -1124,7 +1124,7 @@ function CartPage() {
       setLoading(prev => ({ ...prev, cart: false }));
     }
   };
-  
+
   const removeItem = async (item, store) => {
     console.log("⚠️ DEBUG: removeItem called", {item, store});
     try {
@@ -1569,7 +1569,7 @@ function CartPage() {
     const reconnectAttempted = localStorage.getItem('kroger_reconnect_attempted');
     const storeSelected = localStorage.getItem('kroger_store_selected');
     const storeLocation = localStorage.getItem('kroger_store_location');
-    
+
     console.log('================[ Kroger Auth Check ]================');
     console.log('krogerAuthCode exists:', !!krogerAuthCode);
     console.log('krogerAuthRedirectUri:', krogerAuthRedirectUri);
@@ -1577,7 +1577,7 @@ function CartPage() {
     console.log('reconnectAttempted flag:', reconnectAttempted);
     console.log('storeSelected flag:', storeSelected);
     console.log('storeLocation:', storeLocation);
-    
+
     // Choose the appropriate action based on auth state
     const processKrogerAuth = async () => {
       try {
@@ -1586,26 +1586,26 @@ function CartPage() {
           console.log('CASE 1: Processing Kroger auth code from redirect');
           setSnackbarMessage("Processing Kroger connection...");
           setSnackbarOpen(true);
-          
+
           try {
             // Process the auth code
             const result = await krogerAuthService.processAuthCode(
-              krogerAuthCode, 
+              krogerAuthCode,
               krogerAuthRedirectUri || 'https://smart-meal-planner-multi.vercel.app/kroger/callback'
             );
-            
+
             console.log("Auth code processing result:", result);
-            
+
             if (result && (result.success || result.client_side_fallback)) {
               // Success case - clear session storage
               sessionStorage.removeItem('kroger_auth_code');
               sessionStorage.removeItem('kroger_auth_redirect_uri');
               sessionStorage.removeItem('kroger_auth_timestamp');
-              
+
               // Show success message
               setSnackbarMessage("Successfully connected to Kroger!");
               setSnackbarOpen(true);
-              
+
               // Check if we need to select a store
               if (!storeLocation && !storeSelected) {
                 console.log('Store selection needed after auth code processing');
@@ -1617,20 +1617,20 @@ function CartPage() {
             }
           } catch (processingError) {
             console.error("Error processing auth code:", processingError);
-            
+
             // Even on error, we'll attempt to continue with client-side tracking
             localStorage.setItem('kroger_connected', 'true');
             localStorage.setItem('kroger_connected_at', new Date().toISOString());
-            
+
             // Clean up session storage
             sessionStorage.removeItem('kroger_auth_code');
             sessionStorage.removeItem('kroger_auth_redirect_uri');
             sessionStorage.removeItem('kroger_auth_timestamp');
-            
+
             // Show partial success message
             setSnackbarMessage("Connected to Kroger with limited functionality!");
             setSnackbarOpen(true);
-            
+
             // Still check if we need to select a store
             if (!storeLocation && !storeSelected) {
               console.log('Store selection needed after auth code processing');
@@ -1638,31 +1638,31 @@ function CartPage() {
               setShowStoreSelector(true);
             }
           }
-        } 
+        }
         // CASE 2: Reconnection attempt flag is set
         else if (reconnectAttempted) {
           console.log('CASE 2: Reconnection was attempted');
-          
+
           // Clear reconnect flags
           localStorage.removeItem('kroger_reconnect_attempted');
           localStorage.removeItem('kroger_reconnect_timestamp');
-          
+
           // Check connection status
           try {
             const status = await krogerAuthService.checkKrogerStatus();
             console.log("Connection status after reconnect:", status);
-            
+
             if (status && status.is_connected) {
               console.log("Kroger connection verified after reconnect");
-              
+
               // Update local connection flags
               localStorage.setItem('kroger_connected', 'true');
               localStorage.setItem('kroger_connected_at', new Date().toISOString());
-              
+
               // Show success message
               setSnackbarMessage("Successfully reconnected to Kroger!");
               setSnackbarOpen(true);
-              
+
               // Check if we need to select a store
               if (!status.store_location && !storeLocation && !storeSelected) {
                 console.log('Store selection needed after reconnect');
@@ -1671,7 +1671,7 @@ function CartPage() {
               }
             } else {
               console.warn("Kroger connection verification failed after reconnect");
-              
+
               // Show error dialog
               showKrogerError(
                 "Kroger Connection Issue",
@@ -1681,15 +1681,15 @@ function CartPage() {
             }
           } catch (statusErr) {
             console.error("Error checking status after reconnect:", statusErr);
-            
+
             // Use client-side tracking if API verification fails
             if (krogerConnected === 'true') {
               console.log("Using client-side connection tracking as fallback");
-              
+
               // Show partial success message
               setSnackbarMessage("Connected to Kroger with limited functionality!");
               setSnackbarOpen(true);
-              
+
               // Check if we need to select a store
               if (!storeLocation && !storeSelected) {
                 console.log('Store selection needed after reconnect');
@@ -1709,19 +1709,19 @@ function CartPage() {
         // CASE 3: Connected but no auth code or reconnect attempt
         else if (krogerConnected === 'true') {
           console.log('CASE 3: Kroger already connected');
-          
+
           // Verify connection is still valid
           try {
             const status = await krogerAuthService.checkKrogerStatus();
             console.log("Verifying existing Kroger connection:", status);
-            
+
             if (!status || !status.is_connected) {
               console.warn("Existing Kroger connection is no longer valid");
-              
+
               // Clear invalid connection state
               localStorage.removeItem('kroger_connected');
               localStorage.removeItem('kroger_connected_at');
-              
+
               // Show reconnect dialog only if actually needed for search
               if (internalCart.kroger && internalCart.kroger.length > 0) {
                 showKrogerError(
@@ -1733,7 +1733,7 @@ function CartPage() {
             } else if (!status.store_location && !storeLocation && !storeSelected) {
               // Connection is valid but no store selected
               console.log('Store selection needed for existing connection');
-              
+
               // Show store selector after a brief delay to allow UI to settle
               setTimeout(() => {
                 setCurrentStore('kroger');
@@ -1742,7 +1742,7 @@ function CartPage() {
             }
           } catch (verifyErr) {
             console.error("Error verifying existing connection:", verifyErr);
-            
+
             // Assume connection is still valid if we can't verify
             // We'll find out when the user tries to search
           }
@@ -1750,12 +1750,12 @@ function CartPage() {
         // CASE 4: No Kroger auth state found, do nothing special
       } catch (err) {
         console.error("Unhandled error in Kroger auth processing:", err);
-        
+
         // Clear any partial state
         sessionStorage.removeItem('kroger_auth_code');
         sessionStorage.removeItem('kroger_auth_redirect_uri');
         sessionStorage.removeItem('kroger_auth_timestamp');
-        
+
         // Only show error if actively trying to connect
         if (krogerAuthCode || reconnectAttempted) {
           showKrogerError(
@@ -1766,7 +1766,7 @@ function CartPage() {
         }
       }
     };
-    
+
     // Run the processor if we have any Kroger auth state to handle
     if (krogerAuthCode || krogerConnected === 'true' || reconnectAttempted) {
       processKrogerAuth();
@@ -2085,8 +2085,8 @@ function CartPage() {
       </ErrorBoundary>
 
       {/* Kroger Cart Dialog */}
-      <Dialog 
-        open={showKrogerCartDialog} 
+      <Dialog
+        open={showKrogerCartDialog}
         onClose={() => setShowKrogerCartDialog(false)}
       >
         <DialogTitle>Items Added to Kroger Cart</DialogTitle>
@@ -2100,12 +2100,12 @@ function CartPage() {
           <Button onClick={() => setShowKrogerCartDialog(false)} color="primary">
             Continue Shopping
           </Button>
-          <Button 
+          <Button
             onClick={() => {
               window.open('https://www.kroger.com/cart', '_blank');
               setShowKrogerCartDialog(false);
-            }} 
-            variant="contained" 
+            }}
+            variant="contained"
             color="primary"
             startIcon={<ShoppingCartIcon />}
           >
@@ -2117,9 +2117,9 @@ function CartPage() {
 
       {/* Global loading indicators */}
       {loading.cart && (
-        <Box 
-          position="fixed" 
-          bottom={16} 
+        <Box
+          position="fixed"
+          bottom={16}
           right={16}
           bgcolor="background.paper"
           borderRadius="50%"
@@ -2129,7 +2129,7 @@ function CartPage() {
           <CircularProgress size={30} />
         </Box>
       )}
-      
+
       {/* Search loading overlay */}
       {loading.search && (
         <Box
