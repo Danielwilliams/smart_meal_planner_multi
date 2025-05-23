@@ -89,37 +89,41 @@ const SavedRecipesPage = () => {
         if (scrapedRecipe) {
           console.log('🐛 Raw scraped recipe data:', scrapedRecipe);
 
-          // Parse ingredients - could be JSON string, array, or object
+          // Parse ingredients - use scraped data first, fallback to saved data
           let ingredients = [];
-          if (scrapedRecipe.ingredients) {
-            if (typeof scrapedRecipe.ingredients === 'string') {
+          const ingredientSource = scrapedRecipe.scraped_ingredients || scrapedRecipe.ingredients;
+          if (ingredientSource && ingredientSource !== null) {
+            if (typeof ingredientSource === 'string') {
               try {
-                ingredients = JSON.parse(scrapedRecipe.ingredients);
+                const parsed = JSON.parse(ingredientSource);
+                ingredients = Array.isArray(parsed) ? parsed : [parsed];
               } catch (e) {
-                ingredients = [scrapedRecipe.ingredients]; // Treat as single ingredient
+                ingredients = [ingredientSource]; // Treat as single ingredient
               }
-            } else if (Array.isArray(scrapedRecipe.ingredients)) {
-              ingredients = scrapedRecipe.ingredients;
-            } else if (typeof scrapedRecipe.ingredients === 'object') {
+            } else if (Array.isArray(ingredientSource)) {
+              ingredients = ingredientSource;
+            } else if (typeof ingredientSource === 'object') {
               // Convert object to array
-              ingredients = Object.values(scrapedRecipe.ingredients);
+              ingredients = Object.values(ingredientSource);
             }
           }
 
-          // Parse instructions - could be JSON string, array, or string
+          // Parse instructions - use scraped data first, fallback to saved data
           let instructions = [];
-          if (scrapedRecipe.instructions) {
-            if (typeof scrapedRecipe.instructions === 'string') {
+          const instructionSource = scrapedRecipe.scraped_instructions || scrapedRecipe.instructions;
+          if (instructionSource && instructionSource !== null) {
+            if (typeof instructionSource === 'string') {
               try {
-                instructions = JSON.parse(scrapedRecipe.instructions);
+                const parsed = JSON.parse(instructionSource);
+                instructions = Array.isArray(parsed) ? parsed : [parsed];
               } catch (e) {
-                instructions = [scrapedRecipe.instructions]; // Treat as single instruction
+                instructions = [instructionSource]; // Treat as single instruction
               }
-            } else if (Array.isArray(scrapedRecipe.instructions)) {
-              instructions = scrapedRecipe.instructions;
-            } else if (typeof scrapedRecipe.instructions === 'object') {
+            } else if (Array.isArray(instructionSource)) {
+              instructions = instructionSource;
+            } else if (typeof instructionSource === 'object') {
               // Convert object to array
-              instructions = Object.values(scrapedRecipe.instructions);
+              instructions = Object.values(instructionSource);
             }
           }
 
@@ -131,9 +135,9 @@ const SavedRecipesPage = () => {
             title: scrapedRecipe.recipe_name,
             ingredients: ingredients,
             instructions: instructions,
-            macros: scrapedRecipe.macros,
-            complexity_level: scrapedRecipe.complexity_level,
-            servings: scrapedRecipe.servings,
+            macros: scrapedRecipe.scraped_macros || scrapedRecipe.macros,
+            complexity_level: scrapedRecipe.scraped_complexity || scrapedRecipe.complexity_level,
+            servings: scrapedRecipe.scraped_servings || scrapedRecipe.servings,
             recipe_source: 'scraped'
           };
 

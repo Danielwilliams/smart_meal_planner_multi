@@ -117,18 +117,31 @@ async def save_scraped_recipe(
                     saved_id = existing[0]
                     logger.info(f"Recipe already saved with ID: {saved_id}")
                 else:
-                    # Basic insert with only required fields
+                    # Insert with all available recipe data
+                    import json
+
+                    # Convert complex fields to JSON strings for storage
+                    ingredients_json = json.dumps(req.ingredients) if req.ingredients else None
+                    instructions_json = json.dumps(req.instructions) if req.instructions else None
+                    macros_json = json.dumps(req.macros) if req.macros else None
+
                     cur.execute("""
-                        INSERT INTO saved_recipes 
-                        (user_id, scraped_recipe_id, recipe_name, notes, recipe_source)
-                        VALUES (%s, %s, %s, %s, %s)
+                        INSERT INTO saved_recipes
+                        (user_id, scraped_recipe_id, recipe_name, notes, recipe_source,
+                         ingredients, instructions, macros, complexity_level, servings)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         RETURNING id
                     """, (
-                        user_id, 
-                        req.scraped_recipe_id, 
-                        req.recipe_name, 
-                        req.notes, 
-                        'scraped'
+                        user_id,
+                        req.scraped_recipe_id,
+                        req.recipe_name,
+                        req.notes,
+                        'scraped',
+                        ingredients_json,
+                        instructions_json,
+                        macros_json,
+                        req.complexity_level,
+                        req.servings
                     ))
                     
                     saved_id = cur.fetchone()[0]

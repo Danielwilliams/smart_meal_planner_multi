@@ -305,7 +305,8 @@ def get_user_saved_recipes(user_id):
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("""
                 SELECT sr.*, m.nickname as menu_nickname, sc.image_url, sc.title as scraped_title,
-                       sc.complexity as scraped_complexity, sc.cuisine
+                       sc.complexity as scraped_complexity, sc.cuisine, sc.ingredients as scraped_ingredients,
+                       sc.instructions as scraped_instructions, sc.macros as scraped_macros, sc.servings as scraped_servings
                 FROM saved_recipes sr
                 LEFT JOIN menus m ON sr.menu_id = m.id
                 LEFT JOIN scraped_recipes sc ON sr.scraped_recipe_id = sc.id
