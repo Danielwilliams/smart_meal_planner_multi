@@ -149,8 +149,11 @@ const RecipeSaveButton = ({
         statusText: err.response?.statusText,
         detail: err.response?.data?.detail
       });
-      setError(err.response?.data?.detail || err.message);
-      
+      // Ensure error is always a string to prevent React rendering errors
+      const errorMessage = err.response?.data?.detail || err.message;
+      const errorString = typeof errorMessage === 'string' ? errorMessage : JSON.stringify(errorMessage);
+      setError(errorString);
+
       // Call error callback if provided
       if (onSaveError) {
         onSaveError(err);
@@ -186,8 +189,11 @@ const RecipeSaveButton = ({
         });
       }
     } catch (err) {
-      setError(err.response?.data?.detail || err.message);
-      setSnackbarMessage(`Error: ${err.response?.data?.detail || err.message}`);
+      // Ensure error is always a string to prevent React rendering errors
+      const errorMessage = err.response?.data?.detail || err.message;
+      const errorString = typeof errorMessage === 'string' ? errorMessage : JSON.stringify(errorMessage);
+      setError(errorString);
+      setSnackbarMessage(`Error: ${errorString}`);
       setSnackbarOpen(true);
     } finally {
       setLoading(false);
