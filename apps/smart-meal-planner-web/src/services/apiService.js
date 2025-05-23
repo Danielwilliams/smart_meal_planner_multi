@@ -3129,6 +3129,17 @@ const apiService = {
     }
   },
 
+  getCustomMenuDetails: async (menuId) => {
+    try {
+      console.log(`Fetching custom menu details for ID: ${menuId}`);
+      const response = await axiosInstance.get(`/custom-menu/${menuId}`);
+      return response.data;
+    } catch (err) {
+      console.error(`Error fetching custom menu details for ID ${menuId}:`, err);
+      throw err;
+    }
+  },
+
   suggestCustomMeal: async () => {
     try {
       const response = await axiosInstance.get('/custom-menu/suggest-meal');

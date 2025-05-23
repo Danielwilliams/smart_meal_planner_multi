@@ -277,18 +277,33 @@ function MenuDisplayPage() {
           }
         } catch (menuErr) {
           console.error("Error fetching menu details:", menuErr);
-          
-          // Try alternate endpoint as fallback
+
+          // Try alternate endpoints as fallback
           try {
             if (isClientSourced) {
-              menuDetails = await apiService.getMenuDetails(selectedMenuId);
+              // If client-sourced, try regular menu endpoint first
+              try {
+                menuDetails = await apiService.getMenuDetails(selectedMenuId);
+                console.log("Menu details fetched from regular endpoint:", menuDetails);
+              } catch (regularErr) {
+                // Try custom menu endpoint as second fallback
+                menuDetails = await apiService.getCustomMenuDetails(selectedMenuId);
+                console.log("Menu details fetched from custom menu endpoint:", menuDetails);
+              }
             } else {
-              menuDetails = await apiService.getClientMenu(selectedMenuId);
+              // Try client menu endpoint first, then custom menu endpoint
+              try {
+                menuDetails = await apiService.getClientMenu(selectedMenuId);
+                console.log("Menu details fetched from client endpoint:", menuDetails);
+              } catch (clientErr) {
+                // Try custom menu endpoint as second fallback
+                menuDetails = await apiService.getCustomMenuDetails(selectedMenuId);
+                console.log("Menu details fetched from custom menu endpoint:", menuDetails);
+              }
             }
-            
-            console.log("Menu details fetched from fallback:", menuDetails);
+
             setMenu(menuDetails);
-            
+
             // Initialize selected days
             if (menuDetails.meal_plan?.days) {
               const initialSelectedDays = {};
@@ -298,7 +313,7 @@ function MenuDisplayPage() {
               setSelectedDays(initialSelectedDays);
             }
           } catch (fallbackErr) {
-            console.error("Fallback menu fetch also failed:", fallbackErr);
+            console.error("All fallback menu fetch attempts failed:", fallbackErr);
             throw menuErr; // Re-throw original error for handling
           }
         }

@@ -146,20 +146,20 @@ def generate_custom_meal_plan(req: CustomMealPlanRequest, user = Depends(get_use
 
         # Save the custom meal plan to database
         cursor.execute("""
-            INSERT INTO menus (
-                user_id, 
-                meal_plan_json, 
-                duration_days, 
-                nickname,
-                for_client_id
+            INSERT INTO custom_menus (
+                user_id,
+                organization_id,
+                for_client_id,
+                title,
+                meal_plan_json
             ) VALUES (%s, %s, %s, %s, %s)
             RETURNING id;
         """, (
-            req.user_id, 
-            json.dumps(meal_plan), 
-            req.duration_days,
+            req.user_id,
+            organization_id,
+            client_id,
             req.nickname or f"Custom Menu ({datetime.now().strftime('%Y-%m-%d')})",
-            client_id
+            json.dumps(meal_plan)
         ))
 
         menu_id = cursor.fetchone()[0]
@@ -193,13 +193,13 @@ def add_recipe_to_existing_menu(
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        # Fetch existing menu and check authorization
-        cursor.execute("SELECT user_id, meal_plan_json FROM menus WHERE id = %s", (menu_id,))
+        # Fetch existing custom menu and check authorization
+        cursor.execute("SELECT user_id, meal_plan_json FROM custom_menus WHERE id = %s", (menu_id,))
         menu_data = cursor.fetchone()
 
         if not menu_data:
-            raise HTTPException(status_code=404, detail="Menu not found")
-            
+            raise HTTPException(status_code=404, detail="Custom menu not found")
+
         # Check if user is authorized to modify this menu
         menu_owner_id = menu_data[0]
         if menu_owner_id != user_id and user.get('role') != 'owner':
@@ -218,10 +218,10 @@ def add_recipe_to_existing_menu(
         else:
             selected_day['meals'].append(recipe.dict())
 
-        # Update the menu in database
+        # Update the custom menu in database
         cursor.execute("""
-            UPDATE menus 
-            SET meal_plan_json = %s
+            UPDATE custom_menus
+            SET meal_plan_json = %s, updated_at = CURRENT_TIMESTAMP
             WHERE id = %s
         """, (json.dumps(meal_plan), menu_id))
 
@@ -239,6 +239,80 @@ def add_recipe_to_existing_menu(
             raise
         raise HTTPException(status_code=500, detail=str(e))
     finally:
+        conn.close()
+
+@router.get("/{menu_id}")
+def get_custom_menu_details(
+    menu_id: int,
+    user = Depends(get_user_from_token)
+):
+    """Retrieve full custom menu details for a specific custom menu"""
+    try:
+        user_id = user.get('user_id')
+        organization_id = user.get('organization_id')
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Fetch the custom menu details
+        cursor.execute("""
+            SELECT
+                id,
+                user_id,
+                organization_id,
+                for_client_id,
+                title,
+                meal_plan_json,
+                created_at,
+                updated_at
+            FROM custom_menus
+            WHERE id = %s
+        """, (menu_id,))
+
+        menu_data = cursor.fetchone()
+
+        if not menu_data:
+            raise HTTPException(status_code=404, detail="Custom menu not found")
+
+        # Check authorization
+        menu_user_id, menu_org_id, menu_client_id = menu_data[1], menu_data[2], menu_data[3]
+
+        # User can access if:
+        # 1. They created the menu
+        # 2. It's for them as a client
+        # 3. They're an org owner and menu belongs to their org
+        can_access = (
+            menu_user_id == user_id or
+            menu_client_id == user_id or
+            (user.get('role') == 'owner' and menu_org_id == organization_id)
+        )
+
+        if not can_access:
+            raise HTTPException(status_code=403, detail="Not authorized to view this menu")
+
+        # Parse meal plan JSON
+        meal_plan = json.loads(menu_data[5]) if isinstance(menu_data[5], str) else menu_data[5]
+
+        return {
+            "menu_id": menu_data[0],
+            "user_id": menu_data[1],
+            "organization_id": menu_data[2],
+            "for_client_id": menu_data[3],
+            "title": menu_data[4],
+            "nickname": menu_data[4],  # For compatibility
+            "meal_plan": meal_plan,
+            "meal_plan_json": meal_plan,  # For compatibility
+            "created_at": menu_data[6],
+            "updated_at": menu_data[7]
+        }
+
+    except Exception as e:
+        logger.error(f"Error retrieving custom menu: {str(e)}")
+        if "not authorized" in str(e).lower() or "not found" in str(e).lower():
+            raise
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cursor.close()
         conn.close()
 
 @router.get("/suggest-meal")
