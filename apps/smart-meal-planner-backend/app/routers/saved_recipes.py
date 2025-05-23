@@ -18,14 +18,21 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/saved-recipes", tags=["SavedRecipes"])
 
+@router.get("/test")
+async def test_endpoint():
+    """Test endpoint to verify routing works"""
+    return {"status": "saved-recipes route working"}
+
 @router.post("/")
 async def add_saved_recipe(
     req: SaveRecipeRequest,
-    client_id: Optional[int] = None,  # Optional client ID for organization owners
-    user = Depends(get_user_from_token)
+    user = Depends(get_user_from_token),
+    client_id: Optional[int] = Query(None)  # Optional client ID for organization owners
 ):
     """Save a recipe or entire menu to user's favorites with complete recipe data"""
     user_id = user.get('user_id')
+    logger.info(f"POST /saved-recipes/ called for user {user_id}")
+    logger.info(f"Request data: {req.dict()}")
     
     try:
         # Log the incoming request data in detail
