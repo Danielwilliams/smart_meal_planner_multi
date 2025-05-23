@@ -329,10 +329,15 @@ const InstacartRetailerSelector = ({
                           secondary={
                             <>
                               <Typography variant="body2" component="span">
-                                {retailer.address && (
+                                {retailer.address && retailer.address.city && retailer.address.state ? (
                                   <Box component="span" sx={{ display: 'flex', alignItems: 'center' }}>
                                     <LocationIcon fontSize="small" sx={{ mr: 0.5, fontSize: '1rem' }} />
                                     {`${retailer.address.city}, ${retailer.address.state}`}
+                                  </Box>
+                                ) : (
+                                  <Box component="span" sx={{ display: 'flex', alignItems: 'center', color: 'text.disabled' }}>
+                                    <LocationIcon fontSize="small" sx={{ mr: 0.5, fontSize: '1rem' }} />
+                                    Location information not available
                                   </Box>
                                 )}
                               </Typography>

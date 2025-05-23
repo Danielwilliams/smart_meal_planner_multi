@@ -187,11 +187,7 @@ const getNearbyRetailers = async (zipCode) => {
               name: retailerName,
               logo_url: logoUrl,
               distance: retailer.distance || distance,
-              address: retailer.address || {
-                city: `City ${index % 5 + 1}`,
-                state: 'ST',
-                zip_code: zipCode
-              }
+              address: retailer.address || null // Don't create mock addresses
             };
           });
 
