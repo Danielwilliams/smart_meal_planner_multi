@@ -27,7 +27,7 @@ import {
   Kitchen as KitchenIcon,
   ShoppingCart as ShoppingCartIcon
 } from '@mui/icons-material';
-import StoreSelector from '../components/StoreSelector';
+import StoreSelector, { StoreTypeSelector } from '../components/StoreSelector';
 import { useAuth } from '../context/AuthContext';
 import apiService from '../services/apiService';
 import CATEGORY_MAPPING from '../data/categoryMapping';
@@ -1108,7 +1108,7 @@ const categorizeItems = (mealPlanData) => {
           </FormControl>
         )}
 
-        <StoreSelector
+        <StoreTypeSelector
           selectedStore={selectedStore}
           onStoreChange={setSelectedStore}
           instacartRetailerId={instacartRetailerId}

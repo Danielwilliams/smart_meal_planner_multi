@@ -28,10 +28,34 @@ import {
 } from '@mui/icons-material';
 import apiService, { axiosInstance } from '../services/apiService';
 
-export const StoreSelector = ({ 
-  open, 
-  onClose, 
-  onStoreSelect, 
+// Main store type selector component for ShoppingListPage
+const StoreTypeSelector = ({
+  selectedStore,
+  onStoreChange,
+  instacartRetailerId,
+  onSelectInstacartRetailer
+}) => {
+  return (
+    <FormControl sx={{ minWidth: 150, mr: 2 }}>
+      <InputLabel>Store</InputLabel>
+      <Select
+        value={selectedStore}
+        onChange={(e) => onStoreChange(e.target.value)}
+        label="Store"
+      >
+        <MenuItem value="mixed">Mixed</MenuItem>
+        <MenuItem value="instacart">Instacart</MenuItem>
+        <MenuItem value="kroger">Kroger</MenuItem>
+      </Select>
+    </FormControl>
+  );
+};
+
+// Dialog-based store location selector (existing functionality)
+export const StoreSelector = ({
+  open,
+  onClose,
+  onStoreSelect,
   storeType = 'kroger'
 }) => {
   const [zipCode, setZipCode] = useState('');
@@ -586,5 +610,7 @@ const searchStores = async (lat, lon) => {
     </Dialog>
   );
 };
+
+export { StoreTypeSelector };
 
 export default StoreSelector;
