@@ -232,18 +232,33 @@ async def remove_cart_item(
 ):
     """Remove a specific item from the cart"""
     try:
-        if str(user.get('user_id')) != str(user_id):
+        # Convert user_id to string for consistent comparison
+        user_id = str(user_id)
+        token_user_id = str(user.get('user_id'))
+
+        logger.info(f"Remove item request - URL user_id: '{user_id}', token user_id: '{token_user_id}'")
+
+        if token_user_id != user_id:
             raise HTTPException(403, "Not authorized to access this cart")
-            
+
         # Parse the request body
-        data = await request.json()
+        try:
+            data = await request.json()
+            logger.info(f"Raw request data: {data}")
+        except Exception as json_error:
+            logger.error(f"Failed to parse JSON from request: {json_error}")
+            raise HTTPException(400, f"Invalid JSON in request body: {str(json_error)}")
+
         item_name = data.get('item_name')
         store = data.get('store')
-        
+
+        logger.info(f"Parsed - item_name: '{item_name}', store: '{store}'")
+
         if not item_name or not store:
             raise HTTPException(400, "item_name and store are required")
-            
+
         logger.info(f"Removing item '{item_name}' from '{store}' for user {user_id}")
+        logger.info(f"Current internal_carts keys: {list(internal_carts.keys())}")
 
         if user_id in internal_carts:
             if store not in internal_carts[user_id]:
@@ -279,9 +294,13 @@ async def remove_cart_item(
             logger.warning(f"User {user_id} not found in internal_carts")
             
         return {"status": "success"}
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
     except Exception as e:
-        logger.error(f"Error removing cart item: {str(e)}")
-        raise HTTPException(500, f"Error removing cart item: {str(e)}")
+        logger.error(f"Unexpected error removing cart item: {type(e).__name__}: {str(e)}")
+        logger.error(f"Full exception details:", exc_info=True)
+        raise HTTPException(500, f"Unexpected error removing cart item: {type(e).__name__}: {str(e)}")
 
 @router.patch("/internal/{user_id}/update_quantity")
 async def update_cart_item_quantity(
