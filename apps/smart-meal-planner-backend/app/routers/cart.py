@@ -255,10 +255,20 @@ async def remove_cart_item(
             # Find and remove the item with better error handling
             original_count = len(internal_carts[user_id][store])
             try:
-                internal_carts[user_id][store] = [
-                    item for item in internal_carts[user_id][store]
-                    if getattr(item, 'name', str(item)) != item_name
-                ]
+                # Filter items, handling both dictionary and object formats
+                filtered_items = []
+                for item in internal_carts[user_id][store]:
+                    # Get item name - handle both dict and object formats
+                    if isinstance(item, dict):
+                        current_item_name = item.get('name')
+                    else:
+                        current_item_name = getattr(item, 'name', None)
+
+                    # Keep item if name doesn't match
+                    if current_item_name != item_name:
+                        filtered_items.append(item)
+
+                internal_carts[user_id][store] = filtered_items
                 new_count = len(internal_carts[user_id][store])
                 logger.info(f"Items removed: {original_count - new_count}")
             except Exception as filter_error:
@@ -309,10 +319,18 @@ async def update_cart_item_quantity(
             # Find and update the item
             item_found = False
             for item in internal_carts[user_id][store]:
-                if item.name == item_name:
-                    item.quantity = quantity
-                    item_found = True
-                    break
+                # Handle both dictionary and object formats
+                if isinstance(item, dict):
+                    current_item_name = item.get('name')
+                    if current_item_name == item_name:
+                        item['quantity'] = quantity
+                        item_found = True
+                        break
+                else:
+                    if getattr(item, 'name', None) == item_name:
+                        item.quantity = quantity
+                        item_found = True
+                        break
                     
             if not item_found:
                 raise HTTPException(404, f"Item '{item_name}' not found in '{store}'")
