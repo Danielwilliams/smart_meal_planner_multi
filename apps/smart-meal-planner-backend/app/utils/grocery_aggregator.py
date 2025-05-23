@@ -428,8 +428,20 @@ def standardize_ingredient(ing: Any):
 
         # Special handling for ingredients with potential qualifiers in quantity
         if isinstance(quantity, str):
+            # NEW: Handle quantity strings like "16 oz", "2 cups", etc.
+            # This must come before other checks to properly parse amount and unit
+            quantity_unit_match = re.match(r'^(\d+(?:/\d+)?|\d+(?:\.\d+)?)\s*([a-zA-Z]+)?\s*$', quantity.strip())
+            if quantity_unit_match and not unit:  # Only if unit field is empty
+                amount_str = quantity_unit_match.group(1)
+                unit_str = quantity_unit_match.group(2)
+
+                if unit_str:  # We found a unit in the quantity string
+                    quantity = amount_str  # Set quantity to just the numeric part
+                    unit = unit_str        # Set unit to the unit part
+                    logger.info(f"Parsed quantity with unit: '{ing.get('quantity')}' -> amount={quantity}, unit='{unit}'")
+
             # Check for unit without quantity (e.g., "cup" with no number)
-            if quantity.lower() in ['cup', 'cups', 'tbsp', 'tablespoon', 'tablespoons',
+            elif quantity.lower() in ['cup', 'cups', 'tbsp', 'tablespoon', 'tablespoons',
                                    'tsp', 'teaspoon', 'teaspoons', 'oz', 'ounce', 'ounces',
                                    'lb', 'pound', 'pounds']:
                 unit = quantity
