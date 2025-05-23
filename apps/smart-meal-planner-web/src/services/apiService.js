@@ -3202,7 +3202,10 @@ const apiService = {
   async saveRecipe(saveData, isScraped = false) {
     try {
       const endpoint = isScraped ? '/saved-recipes-alt/scraped' : '/saved-recipes/';
-      console.log(`Saving recipe to ${endpoint}:`, saveData);
+      console.log(`🐛 DEBUG: Saving recipe to ${endpoint}`);
+      console.log(`🐛 DEBUG: axiosInstance baseURL:`, axiosInstance.defaults.baseURL);
+      console.log(`🐛 DEBUG: Full URL will be:`, `${axiosInstance.defaults.baseURL}${endpoint}`);
+      console.log(`🐛 DEBUG: Save data:`, saveData);
 
       const response = await axiosInstance.post(endpoint, saveData);
       return response.data;
