@@ -84,9 +84,16 @@ const SavedRecipesPage = () => {
 
       // Check if this is a scraped recipe (no menu_id)
       if (!menuId || menuId === null) {
+        console.log('🐛 Looking for scraped recipe with recipeId:', recipeId);
+        console.log('🐛 All saved recipes:', savedRecipes);
+
         // For scraped recipes, fetch the full recipe details from the scraped recipes table
         const scrapedRecipe = savedRecipes.find(r => r.recipe_id === recipeId || r.id === recipeId);
+        console.log('🐛 Found scraped recipe:', scrapedRecipe);
+
         if (scrapedRecipe && scrapedRecipe.scraped_recipe_id) {
+          console.log('🐛 Fetching scraped recipe ID:', scrapedRecipe.scraped_recipe_id);
+
           try {
             // Fetch the full scraped recipe details
             const scrapedRecipeDetails = await apiService.getScrapedRecipe(scrapedRecipe.scraped_recipe_id);
