@@ -2054,24 +2054,7 @@ function CartPage() {
                     Found {searchResults.instacart.length} items in Instacart
                   </Typography>
 
-                  {/* Check for retailer ID before showing results */}
-                  {!instacartRetailer?.id ? (
-                    <Alert
-                      severity="warning"
-                      sx={{ mb: 2 }}
-                      action={
-                        <Button
-                          color="inherit"
-                          size="small"
-                          onClick={() => setShowInstacartRetailerSelector(true)}
-                        >
-                          Select Retailer
-                        </Button>
-                      }
-                    >
-                      Please select an Instacart retailer before proceeding
-                    </Alert>
-                  ) : (
+                  {instacartRetailer?.id && (
                     <InstacartResults
                       groceryItems={internalCart.instacart && Array.isArray(internalCart.instacart)
                         ? internalCart.instacart
@@ -2300,11 +2283,7 @@ function CartPage() {
           </Typography>
         </DialogTitle>
         <DialogContent>
-          <Alert severity="success" sx={{ mb: 3, mt: 2 }}>
-            Your Instacart shopping list has been created successfully!
-          </Alert>
-
-          <Typography variant="body1" paragraph>
+          <Typography variant="body1" paragraph sx={{ mt: 2 }}>
             We've created a direct link to Instacart with all your items pre-populated.
             Click the button below to open your shopping list on Instacart.
           </Typography>
