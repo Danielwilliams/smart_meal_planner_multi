@@ -937,6 +937,30 @@ const apiService = {
     }
   },
 
+  async checkForPendingMenuJobs(userId) {
+    try {
+      // This would require a new backend endpoint to list jobs for a user
+      // For now, we'll check if there's a recent menu that might be from a background job
+      const latestMenu = await this.getLatestMenu(userId);
+      const menuTime = new Date(latestMenu.created_at);
+      const timeDiff = Date.now() - menuTime;
+
+      // If there's a menu created in the last 5 minutes, it might be from a recent background job
+      if (timeDiff < 300000) {
+        return {
+          hasRecentMenu: true,
+          menu: latestMenu,
+          timeAgo: Math.round(timeDiff / 60000) // minutes ago
+        };
+      }
+
+      return { hasRecentMenu: false };
+    } catch (err) {
+      console.error('Error checking for pending jobs:', err);
+      return { hasRecentMenu: false };
+    }
+  },
+
   async generateMenuForClient(clientId, menuRequest) {
     // Store the latest menu ID before generation to help with recovery
     let latestMenuIdBeforeGeneration = null;

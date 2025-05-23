@@ -166,7 +166,7 @@ const MenuGenerationProgress = ({ open, onClose, progress, allowClose = false })
               • AI is analyzing your dietary preferences and restrictions
             </Typography>
             <Typography variant="caption" color="textSecondary" display="block">
-              • Creating balanced recipes that meet your nutrition goals  
+              • Creating balanced recipes that meet your nutrition goals
             </Typography>
             <Typography variant="caption" color="textSecondary" display="block">
               • Ensuring variety and avoiding repeated ingredients
@@ -176,10 +176,31 @@ const MenuGenerationProgress = ({ open, onClose, progress, allowClose = false })
             </Typography>
           </Box>
         )}
+
+        {/* Time expectation and navigation info */}
+        {(progress.phase === 'generating' || progress.phase === 'started') && (
+          <Alert severity="info" sx={{ mt: 2 }}>
+            <Typography variant="body2">
+              <strong>⏱️ Expected Time:</strong> 8-12 minutes for detailed meal plans
+            </Typography>
+            <Typography variant="body2" sx={{ mt: 1 }}>
+              <strong>✨ Good news:</strong> You can close this window or navigate away!
+              Your meal plan will continue generating in the background and will be ready when you return.
+            </Typography>
+            <Typography variant="caption" display="block" sx={{ mt: 1 }}>
+              💡 <em>Tip: Check back in 10-15 minutes, or we'll show your completed menu when you return to this page.</em>
+            </Typography>
+          </Alert>
+        )}
       </DialogContent>
 
       <DialogActions>
-        {allowClose && (
+        {(progress?.phase === 'generating' || progress?.phase === 'started') && (
+          <Button onClick={onClose} color="primary" variant="outlined">
+            Close (Continues in Background)
+          </Button>
+        )}
+        {allowClose && progress?.phase !== 'generating' && progress?.phase !== 'started' && (
           <>
             <Button onClick={onClose} color="primary">
               Close

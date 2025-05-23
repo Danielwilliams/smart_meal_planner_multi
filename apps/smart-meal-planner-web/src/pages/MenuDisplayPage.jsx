@@ -212,7 +212,20 @@ function MenuDisplayPage() {
     try {
       setLoading(true);
       setError('');
-      
+
+      // Check for recently completed background jobs
+      if (!selectedMenuId && !searchParams.get('source')) {
+        try {
+          const jobCheck = await apiService.checkForPendingMenuJobs(user.userId);
+          if (jobCheck.hasRecentMenu) {
+            setSnackbarMessage(`🎉 Great news! Your meal plan finished generating ${jobCheck.timeAgo} minute(s) ago and is ready!`);
+            setSnackbarOpen(true);
+          }
+        } catch (err) {
+          console.warn('Could not check for pending jobs:', err);
+        }
+      }
+
       // Check if this is a client-sourced menu
       const isClientSourced = searchParams.get('source') === 'client';
       console.log(`Is client-sourced menu: ${isClientSourced}`, searchParams.toString());
@@ -1481,7 +1494,7 @@ function MenuDisplayPage() {
         open={showProgressDialog}
         onClose={() => setShowProgressDialog(false)}
         progress={generationProgress}
-        allowClose={generationProgress?.phase === 'error'}
+        allowClose={generationProgress?.phase === 'error' || generationProgress?.phase === 'generating' || generationProgress?.phase === 'started'}
       />
     </Container>
   );
