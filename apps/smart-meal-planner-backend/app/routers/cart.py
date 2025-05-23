@@ -181,16 +181,6 @@ async def clear_store_items(
         logger.error(f"Error clearing store items: {str(e)}")
         raise HTTPException(500, f"Error clearing store items: {str(e)}")
 
-# For backward compatibility with old clients
-@router.delete("/internal/{user_id}/{store}")
-async def legacy_clear_store_items(
-    user_id: str,
-    store: str,
-    user = Depends(get_user_from_token)
-):
-    """Legacy endpoint to clear items for a specific store"""
-    return await clear_store_items(user_id, store, user)
-
 @router.get("/internal/{user_id}/store/{store}")
 async def get_store_items(
     user_id: str,
@@ -201,17 +191,17 @@ async def get_store_items(
     try:
         if str(user.get('user_id')) != str(user_id):
             raise HTTPException(403, "Not authorized to access this cart")
-            
+
         if user_id not in internal_carts:
             internal_carts[user_id] = {
                 'instacart': [],
                 'kroger': [],
                 'unassigned': []
             }
-            
+
         if store not in internal_carts[user_id]:
             raise HTTPException(400, f"Invalid store: {store}")
-            
+
         return {
             "status": "success",
             "items": internal_carts[user_id][store]
@@ -358,3 +348,13 @@ async def update_cart_item_quantity(
     except Exception as e:
         logger.error(f"Error updating cart item quantity: {str(e)}")
         raise HTTPException(500, f"Error updating cart item quantity: {str(e)}")
+
+# For backward compatibility with old clients - MUST be at the end due to route matching
+@router.delete("/internal/{user_id}/{store}")
+async def legacy_clear_store_items(
+    user_id: str,
+    store: str,
+    user = Depends(get_user_from_token)
+):
+    """Legacy endpoint to clear items for a specific store"""
+    return await clear_store_items(user_id, store, user)
