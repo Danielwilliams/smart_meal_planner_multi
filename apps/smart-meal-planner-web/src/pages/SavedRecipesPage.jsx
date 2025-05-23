@@ -84,68 +84,57 @@ const SavedRecipesPage = () => {
 
       // Check if this is a scraped recipe (no menu_id)
       if (!menuId || menuId === null) {
-        // For scraped recipes, try to get the stored recipe data directly
+        // For scraped recipes, fetch the full recipe details from the scraped recipes table
         const scrapedRecipe = savedRecipes.find(r => r.recipe_id === recipeId || r.id === recipeId);
-        if (scrapedRecipe) {
-          console.log('🐛 Raw scraped recipe data:', scrapedRecipe);
+        if (scrapedRecipe && scrapedRecipe.scraped_recipe_id) {
+          try {
+            // Fetch the full scraped recipe details
+            const scrapedRecipeDetails = await apiService.getScrapedRecipe(scrapedRecipe.scraped_recipe_id);
 
-          // Parse ingredients - use scraped data first, fallback to saved data
-          let ingredients = [];
-          const ingredientSource = scrapedRecipe.scraped_ingredients || scrapedRecipe.ingredients;
-          if (ingredientSource && ingredientSource !== null) {
-            if (typeof ingredientSource === 'string') {
-              try {
-                const parsed = JSON.parse(ingredientSource);
-                ingredients = Array.isArray(parsed) ? parsed : [parsed];
-              } catch (e) {
-                ingredients = [ingredientSource]; // Treat as single ingredient
-              }
-            } else if (Array.isArray(ingredientSource)) {
-              ingredients = ingredientSource;
-            } else if (typeof ingredientSource === 'object') {
-              // Convert object to array
-              ingredients = Object.values(ingredientSource);
+            console.log('🐛 Full scraped recipe details:', scrapedRecipeDetails);
+
+            // Parse the ingredients and instructions
+            let ingredients = [];
+            let instructions = [];
+
+            if (scrapedRecipeDetails.ingredients) {
+              ingredients = Array.isArray(scrapedRecipeDetails.ingredients)
+                ? scrapedRecipeDetails.ingredients
+                : [scrapedRecipeDetails.ingredients];
             }
-          }
 
-          // Parse instructions - use scraped data first, fallback to saved data
-          let instructions = [];
-          const instructionSource = scrapedRecipe.scraped_instructions || scrapedRecipe.instructions;
-          if (instructionSource && instructionSource !== null) {
-            if (typeof instructionSource === 'string') {
-              try {
-                const parsed = JSON.parse(instructionSource);
-                instructions = Array.isArray(parsed) ? parsed : [parsed];
-              } catch (e) {
-                instructions = [instructionSource]; // Treat as single instruction
-              }
-            } else if (Array.isArray(instructionSource)) {
-              instructions = instructionSource;
-            } else if (typeof instructionSource === 'object') {
-              // Convert object to array
-              instructions = Object.values(instructionSource);
+            if (scrapedRecipeDetails.instructions) {
+              instructions = Array.isArray(scrapedRecipeDetails.instructions)
+                ? scrapedRecipeDetails.instructions
+                : [scrapedRecipeDetails.instructions];
             }
+
+            const recipeDetails = {
+              title: scrapedRecipe.recipe_name || scrapedRecipeDetails.title,
+              ingredients: ingredients,
+              instructions: instructions,
+              macros: scrapedRecipeDetails.macros,
+              complexity_level: scrapedRecipeDetails.complexity,
+              servings: scrapedRecipeDetails.servings,
+              recipe_source: 'scraped'
+            };
+
+            setRecipeDetails(recipeDetails);
+            setLoadingRecipeDetails(false);
+            return;
+          } catch (error) {
+            console.error('Error fetching scraped recipe details:', error);
+            // Fall back to basic recipe info
+            const recipeDetails = {
+              title: scrapedRecipe.recipe_name,
+              ingredients: [],
+              instructions: [],
+              recipe_source: 'scraped'
+            };
+            setRecipeDetails(recipeDetails);
+            setLoadingRecipeDetails(false);
+            return;
           }
-
-          console.log('🐛 Parsed ingredients:', ingredients);
-          console.log('🐛 Parsed instructions:', instructions);
-
-          // Create a recipe object from the stored data
-          const recipeDetails = {
-            title: scrapedRecipe.recipe_name,
-            ingredients: ingredients,
-            instructions: instructions,
-            macros: scrapedRecipe.scraped_macros || scrapedRecipe.macros,
-            complexity_level: scrapedRecipe.scraped_complexity || scrapedRecipe.complexity_level,
-            servings: scrapedRecipe.scraped_servings || scrapedRecipe.servings,
-            recipe_source: 'scraped'
-          };
-
-          console.log('🐛 Final recipe details:', recipeDetails);
-
-          setRecipeDetails(recipeDetails);
-          setLoadingRecipeDetails(false);
-          return;
         }
       }
 

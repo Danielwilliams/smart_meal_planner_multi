@@ -303,40 +303,15 @@ def get_user_saved_recipes(user_id):
         logger.info(f"Getting saved recipes for user: {user_id}")
         conn = get_db_connection()
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            # First check what columns exist in scraped_recipes table
             cur.execute("""
-                SELECT column_name FROM information_schema.columns
-                WHERE table_name = 'scraped_recipes'
-            """)
-            scraped_columns = [row[0] for row in cur.fetchall()]
-            logger.info(f"Scraped recipes columns: {scraped_columns}")
-
-            # Build query based on available columns
-            base_query = """
                 SELECT sr.*, m.nickname as menu_nickname, sc.image_url, sc.title as scraped_title,
                        sc.complexity as scraped_complexity, sc.cuisine
-            """
-
-            # Add optional columns if they exist
-            if 'ingredients' in scraped_columns:
-                base_query += ", sc.ingredients as scraped_ingredients"
-            if 'instructions' in scraped_columns:
-                base_query += ", sc.instructions as scraped_instructions"
-            if 'macros' in scraped_columns:
-                base_query += ", sc.macros as scraped_macros"
-            if 'servings' in scraped_columns:
-                base_query += ", sc.servings as scraped_servings"
-
-            base_query += """
                 FROM saved_recipes sr
                 LEFT JOIN menus m ON sr.menu_id = m.id
                 LEFT JOIN scraped_recipes sc ON sr.scraped_recipe_id = sc.id
                 WHERE sr.user_id = %s
                 ORDER BY sr.created_at DESC
-            """
-
-            logger.info(f"Executing query: {base_query}")
-            cur.execute(base_query, (user_id,))
+            """, (user_id,))
             
             results = cur.fetchall()
             logger.info(f"Found {len(results)} saved recipes for user {user_id}")

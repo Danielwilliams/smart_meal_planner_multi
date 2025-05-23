@@ -3224,6 +3224,16 @@ const apiService = {
       console.error('Delete recipe error:', error);
       throw error;
     }
+  },
+
+  async getScrapedRecipe(scrapedRecipeId) {
+    try {
+      const response = await axiosInstance.get(`/scraped-recipes/${scrapedRecipeId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Get scraped recipe error:', error);
+      throw error;
+    }
   }
 }; // Close the apiService object here
 
