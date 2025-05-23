@@ -11,8 +11,26 @@
   ],
   "routes": [
     {
+      "src": "/saved-recipes/(.*)",
+      "dest": "https://smartmealplannermulti-production.up.railway.app/saved-recipes/$1",
+      "headers": {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+        "Access-Control-Allow-Headers": "X-Requested-With, Content-Type, Authorization"
+      }
+    },
+    {
+      "src": "/saved-recipes-alt/(.*)",
+      "dest": "https://smartmealplannermulti-production.up.railway.app/saved-recipes-alt/$1",
+      "headers": {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+        "Access-Control-Allow-Headers": "X-Requested-With, Content-Type, Authorization"
+      }
+    },
+    {
       "src": "/api/instacart/(.*)",
-      "dest": "https://smartmealplannermulti-development.up.railway.app/instacart/$1",
+      "dest": "https://smartmealplannermulti-production.up.railway.app/instacart/$1",
       "headers": {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
@@ -21,7 +39,7 @@
     },
     {
       "src": "/instacart/(.*)",
-      "dest": "https://smartmealplannermulti-development.up.railway.app/instacart/$1",
+      "dest": "https://smartmealplannermulti-production.up.railway.app/instacart/$1",
       "headers": {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
@@ -30,7 +48,7 @@
     },
     {
       "src": "/api/(.*)",
-      "dest": "https://smartmealplannermulti-development.up.railway.app/$1",
+      "dest": "https://smartmealplannermulti-production.up.railway.app/$1",
       "headers": {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",

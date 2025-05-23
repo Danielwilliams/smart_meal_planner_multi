@@ -3,7 +3,8 @@ import axios from 'axios';
 
 // Ensure we're using the correct API base URL
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://smartmealplannermulti-production.up.railway.app';
-console.log('Using API base URL:', API_BASE_URL);
+console.log('🐛 REACT_APP_API_BASE_URL env var:', process.env.REACT_APP_API_BASE_URL);
+console.log('🐛 Final API_BASE_URL:', API_BASE_URL);
 
 // Store the API URL for use in other methods
 let apiUrl = API_BASE_URL;
