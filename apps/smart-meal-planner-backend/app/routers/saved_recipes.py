@@ -1,5 +1,6 @@
 # app/routers/saved_recipes.py
 from fastapi import APIRouter, HTTPException, Depends, Body, Query
+from pydantic import validator
 from typing import Optional
 import logging
 from ..db import (
@@ -15,6 +16,15 @@ from ..utils.auth_utils import get_user_from_token
 from ..models.user import SaveRecipeRequest
 
 logger = logging.getLogger(__name__)
+
+def parse_optional_int(value: str = None) -> Optional[int]:
+    """Parse optional integer, handling 'null' strings"""
+    if value is None or value == "null" or value == "":
+        return None
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return None
 
 router = APIRouter(prefix="/saved-recipes", tags=["SavedRecipes"])
 
@@ -248,10 +258,10 @@ async def get_client_saved_recipes(
 
 @router.get("/check")
 async def check_recipe_saved(
-    menu_id: Optional[int] = None,
-    recipe_id: Optional[str] = None,
-    meal_time: Optional[str] = None,
-    scraped_recipe_id: Optional[int] = None,
+    menu_id: Optional[str] = Query(None),
+    recipe_id: Optional[str] = Query(None),
+    meal_time: Optional[str] = Query(None),
+    scraped_recipe_id: Optional[str] = Query(None),
     user = Depends(get_user_from_token)
 ):
     """
@@ -262,10 +272,16 @@ async def check_recipe_saved(
     """
     """Check if a recipe is saved by the current user"""
     user_id = user.get('user_id')
-    
+
+    # Parse string parameters to proper types
+    parsed_menu_id = parse_optional_int(menu_id)
+    parsed_scraped_recipe_id = parse_optional_int(scraped_recipe_id)
+
+    logger.info(f"Check recipe saved - menu_id: {menu_id} -> {parsed_menu_id}, scraped_recipe_id: {scraped_recipe_id} -> {parsed_scraped_recipe_id}")
+
     try:
         # Logic to check if recipe is saved
-        if scraped_recipe_id:
+        if parsed_scraped_recipe_id:
             # Special check for scraped recipes using direct query
             conn = get_db_connection()
             cursor = conn.cursor()
@@ -274,7 +290,7 @@ async def check_recipe_saved(
                 cursor.execute("""
                     SELECT id FROM saved_recipes
                     WHERE user_id = %s AND scraped_recipe_id = %s
-                """, (user_id, scraped_recipe_id))
+                """, (user_id, parsed_scraped_recipe_id))
                 
                 result = cursor.fetchone()
                 is_saved = result is not None
@@ -284,11 +300,11 @@ async def check_recipe_saved(
             finally:
                 cursor.close()
                 conn.close()
-        elif menu_id:
+        elif parsed_menu_id:
             # Regular menu recipe check
             is_saved = is_recipe_saved(
                 user_id=user_id,
-                menu_id=menu_id,
+                menu_id=parsed_menu_id,
                 recipe_id=recipe_id,
                 meal_time=meal_time
             )
@@ -298,7 +314,7 @@ async def check_recipe_saved(
             if is_saved:
                 saved_id = get_saved_recipe_id(
                     user_id=user_id,
-                    menu_id=menu_id,
+                    menu_id=parsed_menu_id,
                     recipe_id=recipe_id,
                     meal_time=meal_time
                 )
