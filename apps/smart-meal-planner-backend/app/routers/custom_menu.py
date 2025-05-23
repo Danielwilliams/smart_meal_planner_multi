@@ -113,10 +113,28 @@ def generate_custom_meal_plan(req: CustomMealPlanRequest, user = Depends(get_use
             ]
 
             for recipe in day_recipes_for_day:
+                # Transform recipe to match expected menu format
+                recipe_data = {
+                    "id": recipe.recipe_id or recipe.menu_recipe_id or f"custom_{hash(recipe.title)}",
+                    "title": recipe.title,
+                    "ingredients": recipe.ingredients or [],
+                    "instructions": recipe.instructions or [],
+                    "servings": recipe.servings or 1,
+                    "meal_time": recipe.meal_time,
+                    "image_url": recipe.image_url,
+                    # Add nutrition data with defaults to prevent frontend crashes
+                    "calories": recipe.macros.get("calories", 0) if recipe.macros else 0,
+                    "protein": recipe.macros.get("protein", "0g") if recipe.macros else "0g",
+                    "carbs": recipe.macros.get("carbs", "0g") if recipe.macros else "0g",
+                    "fat": recipe.macros.get("fat", "0g") if recipe.macros else "0g",
+                    # Include full macros for compatibility
+                    "macros": recipe.macros or {}
+                }
+
                 if recipe.meal_time.lower() == 'snack':
-                    day_recipes["snacks"].append(recipe.dict())
+                    day_recipes["snacks"].append(recipe_data)
                 else:
-                    day_recipes["meals"].append(recipe.dict())
+                    day_recipes["meals"].append(recipe_data)
 
             # If no recipes assigned to this day, you might want to add a placeholder
             meal_plan["days"].append(day_recipes)
