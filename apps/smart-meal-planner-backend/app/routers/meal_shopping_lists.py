@@ -69,16 +69,43 @@ async def get_meal_shopping_lists(menu_id: int):
             if menu_data and "days" in menu_data and isinstance(menu_data["days"], list):
                 # Process each day
                 for day_index, day in enumerate(menu_data["days"]):
-                    # Process meals
+                    # Process meals (exclude snacks - they'll be processed separately)
                     if "meals" in day and isinstance(day["meals"], list):
                         for meal_index, meal in enumerate(day["meals"]):
+                            # Skip items that are actually snacks (have snack in title or meal_time)
+                            title = meal.get("title", "")
+                            meal_time = meal.get("meal_time", "")
+
+                            # More comprehensive snack detection
+                            title_lower = title.lower()
+                            meal_time_lower = meal_time.lower()
+
+                            is_snack = (
+                                "snack" in title_lower or
+                                "snack" in meal_time_lower or
+                                "(snack_" in title_lower or
+                                title_lower.startswith("snack") or
+                                meal_time_lower == "snack" or
+                                "snacks" in title_lower or
+                                "_snack" in title_lower or
+                                meal_time_lower.startswith("snack_") or  # Catch "snack_1", "snack_2", etc.
+                                "snack_" in meal_time_lower
+                            )
+
+                            if is_snack:
+                                logger.info(f"Skipping snack in meals array: '{title}' (meal_time: '{meal_time}')")
+                                continue
+
+                            # Log what we're processing from meals array
+                            logger.info(f"Processing meal from meals array: '{title}' (meal_time: '{meal_time}')")
+
                             # Extract meal details
                             meal_data = {
                                 "day_index": day_index,
                                 "day": day.get("dayNumber", day_index + 1),
                                 "meal_index": meal_index,
-                                "title": meal.get("title", f"Meal {meal_index + 1}"),
-                                "meal_time": meal.get("meal_time", ""),
+                                "title": title,
+                                "meal_time": meal_time,
                                 "servings": meal.get("servings", 0),
                                 "is_snack": False,
                                 "ingredients": []
@@ -104,12 +131,15 @@ async def get_meal_shopping_lists(menu_id: int):
                     # Process snacks
                     if "snacks" in day and isinstance(day["snacks"], list):
                         for snack_index, snack in enumerate(day["snacks"]):
+                            snack_title = snack.get("title", f"Snack {snack_index + 1}")
+                            logger.info(f"Processing snack from snacks array: {snack_title}")
+
                             # Extract snack details
                             snack_data = {
                                 "day_index": day_index,
                                 "day": day.get("dayNumber", day_index + 1),
                                 "meal_index": snack_index,
-                                "title": snack.get("title", f"Snack {snack_index + 1}"),
+                                "title": snack_title,
                                 "meal_time": "Snack",
                                 "servings": snack.get("servings", 0),
                                 "is_snack": True,
