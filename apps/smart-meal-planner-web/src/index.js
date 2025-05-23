@@ -10,6 +10,16 @@ import apiService from './services/apiService';
 import { fixShoppingListPolling } from './utils/fixShoppingListPolling';
 import { BrowserRouter } from 'react-router-dom';
 
+// Global error handler to catch extension errors
+window.addEventListener('error', (event) => {
+  // Suppress popup.js errors from browser extensions
+  if (event.filename && event.filename.includes('popup.js')) {
+    event.preventDefault();
+    console.warn('Suppressed external popup.js error from browser extension');
+    return false;
+  }
+});
+
 // Apply shopping list polling fix
 fixShoppingListPolling(apiService);
 
