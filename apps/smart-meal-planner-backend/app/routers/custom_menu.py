@@ -25,6 +25,7 @@ class CustomRecipe(BaseModel):
     servings: Optional[int] = 1
     macros: Optional[Dict[str, Any]] = None
     image_url: Optional[str] = None
+    day: Optional[int] = None  # Which day this recipe is assigned to
 
 class CustomMealPlanRequest(BaseModel):
     user_id: int
@@ -101,15 +102,15 @@ def generate_custom_meal_plan(req: CustomMealPlanRequest, user = Depends(get_use
         # Distribute recipes across days
         for day_number in range(1, req.duration_days + 1):
             day_recipes = {
-                "dayNumber": day_number, 
-                "meals": [], 
+                "dayNumber": day_number,
+                "meals": [],
                 "snacks": []
             }
 
-            # Distribute recipes to this day
+            # Get recipes assigned to this specific day
             day_recipes_for_day = [
-                recipe for recipe in req.recipes 
-                if (day_number - 1) % req.duration_days == len(meal_plan["days"]) % req.duration_days
+                recipe for recipe in req.recipes
+                if recipe.day == day_number
             ]
 
             for recipe in day_recipes_for_day:

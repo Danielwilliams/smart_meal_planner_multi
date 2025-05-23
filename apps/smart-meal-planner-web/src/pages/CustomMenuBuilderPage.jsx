@@ -302,7 +302,8 @@ const CustomMenuBuilderPage = () => {
         meal_time: recipe.mealTime === 'snacks' ? 'snack' : recipe.mealTime,
         servings: recipe.servings || 1,
         macros: recipe.macros || {},
-        image_url: recipe.image_url || null
+        image_url: recipe.image_url || null,
+        day: recipe.day || 1  // Include the day assignment
       }));
 
       // Prepare custom menu request in the format expected by backend
