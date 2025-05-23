@@ -69,8 +69,20 @@ async def get_meal_shopping_lists(menu_id: int):
             if menu_data and "days" in menu_data and isinstance(menu_data["days"], list):
                 # Process each day
                 for day_index, day in enumerate(menu_data["days"]):
+                    logger.info(f"Processing day {day_index + 1}")
+
+                    # Log the structure of this day
+                    day_structure = {
+                        "has_meals": "meals" in day and isinstance(day["meals"], list),
+                        "meals_count": len(day.get("meals", [])) if isinstance(day.get("meals"), list) else 0,
+                        "has_snacks": "snacks" in day and isinstance(day["snacks"], list),
+                        "snacks_count": len(day.get("snacks", [])) if isinstance(day.get("snacks"), list) else 0
+                    }
+                    logger.info(f"Day structure: {day_structure}")
+
                     # Process meals (exclude snacks - they'll be processed separately)
                     if "meals" in day and isinstance(day["meals"], list):
+                        logger.info(f"Processing {len(day['meals'])} items from meals array")
                         for meal_index, meal in enumerate(day["meals"]):
                             # Skip items that are actually snacks (have snack in title or meal_time)
                             title = meal.get("title", "")
@@ -135,9 +147,10 @@ async def get_meal_shopping_lists(menu_id: int):
                     
                     # Process snacks
                     if "snacks" in day and isinstance(day["snacks"], list):
+                        logger.info(f"Processing {len(day['snacks'])} items from snacks array")
                         for snack_index, snack in enumerate(day["snacks"]):
                             snack_title = snack.get("title", f"Snack {snack_index + 1}")
-                            logger.info(f"Processing snack from snacks array: {snack_title}")
+                            logger.info(f"Processing snack from snacks array: '{snack_title}'")
 
                             # Extract snack details
                             snack_data = {
@@ -168,6 +181,11 @@ async def get_meal_shopping_lists(menu_id: int):
                             if snack_data["ingredients"]:
                                 result["meal_lists"].append(snack_data)
             
+            # Log what we have before deduplication
+            logger.info(f"BEFORE DEDUPLICATION - {len(result['meal_lists'])} items:")
+            for i, item in enumerate(result['meal_lists']):
+                logger.info(f"  {i+1}. '{item['title']}' (meal_time: '{item['meal_time']}', is_snack: {item.get('is_snack', False)})")
+
             # Remove duplicates - prefer cleaner format (without snack_1, snack_2, etc.)
             # Group meals by clean title first
             title_groups = {}
@@ -216,6 +234,21 @@ async def get_meal_shopping_lists(menu_id: int):
                 unique_meals.append(chosen['meal'])
 
             result["meal_lists"] = unique_meals
+
+            # Log summary of what we're returning
+            meal_summary = []
+            snack_summary = []
+            for item in result['meal_lists']:
+                if item.get('is_snack', False):
+                    snack_summary.append(f"'{item['title']}' (meal_time: '{item['meal_time']}')")
+                else:
+                    meal_summary.append(f"'{item['title']}' (meal_time: '{item['meal_time']}')")
+
+            logger.info(f"FINAL RESULT SUMMARY:")
+            logger.info(f"Total items: {len(result['meal_lists'])}")
+            logger.info(f"Regular meals: {len(meal_summary)} - {meal_summary}")
+            logger.info(f"Snacks: {len(snack_summary)} - {snack_summary}")
+
             return result
 
         finally:
