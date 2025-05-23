@@ -937,10 +937,32 @@ const apiService = {
     }
   },
 
+  async checkForActiveJobs(userId) {
+    try {
+      const resp = await axiosInstance.get(`/menu/active-jobs/${userId}`, {
+        timeout: 10000 // 10 seconds max
+      });
+
+      return resp.data;
+    } catch (err) {
+      console.error('Error checking for active jobs:', err);
+      return { has_active_jobs: false, active_jobs: [] };
+    }
+  },
+
   async checkForPendingMenuJobs(userId) {
     try {
-      // This would require a new backend endpoint to list jobs for a user
-      // For now, we'll check if there's a recent menu that might be from a background job
+      // Check for active jobs first
+      const activeJobsResult = await this.checkForActiveJobs(userId);
+      if (activeJobsResult.has_active_jobs) {
+        return {
+          hasActiveJob: true,
+          activeJobs: activeJobsResult.active_jobs,
+          hasRecentMenu: false
+        };
+      }
+
+      // If no active jobs, check for recent completed menu
       const latestMenu = await this.getLatestMenu(userId);
       const menuTime = new Date(latestMenu.created_at);
       const timeDiff = Date.now() - menuTime;
@@ -948,16 +970,17 @@ const apiService = {
       // If there's a menu created in the last 5 minutes, it might be from a recent background job
       if (timeDiff < 300000) {
         return {
+          hasActiveJob: false,
           hasRecentMenu: true,
           menu: latestMenu,
           timeAgo: Math.round(timeDiff / 60000) // minutes ago
         };
       }
 
-      return { hasRecentMenu: false };
+      return { hasActiveJob: false, hasRecentMenu: false };
     } catch (err) {
       console.error('Error checking for pending jobs:', err);
-      return { hasRecentMenu: false };
+      return { hasActiveJob: false, hasRecentMenu: false };
     }
   },
 

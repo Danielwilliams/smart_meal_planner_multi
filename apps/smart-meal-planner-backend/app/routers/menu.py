@@ -1104,6 +1104,48 @@ async def get_menu_generation_status(job_id: str):
         logger.error(f"Failed to get job status for {job_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/active-jobs/{user_id}")
+async def get_active_jobs_for_user(user_id: int):
+    """Get any active menu generation jobs for a user"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        cursor.execute("""
+            SELECT job_id, status, progress, message, created_at, updated_at
+            FROM menu_generation_jobs
+            WHERE user_id = %s
+            AND status IN ('started', 'generating', 'processing')
+            ORDER BY created_at DESC
+            LIMIT 5
+        """, (user_id,))
+
+        active_jobs = cursor.fetchall()
+        cursor.close()
+        conn.close()
+
+        # Format the response
+        jobs = []
+        for job in active_jobs:
+            jobs.append({
+                "job_id": job["job_id"],
+                "status": job["status"],
+                "progress": job["progress"],
+                "message": job["message"],
+                "created_at": job["created_at"].isoformat() if job["created_at"] else None,
+                "updated_at": job["updated_at"].isoformat() if job["updated_at"] else None,
+                "time_running": (datetime.now() - job["created_at"]).total_seconds() if job["created_at"] else 0
+            })
+
+        return {
+            "active_jobs": jobs,
+            "has_active_jobs": len(jobs) > 0
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to get active jobs for user {user_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 async def generate_menu_background_task(job_id: str, req: GenerateMealPlanRequest):
     """Background task that performs the actual menu generation"""
     try:

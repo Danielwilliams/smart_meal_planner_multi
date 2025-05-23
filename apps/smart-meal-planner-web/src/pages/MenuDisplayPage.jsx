@@ -113,6 +113,7 @@ function MenuDisplayPage() {
   // Menu generation progress state
   const [generationProgress, setGenerationProgress] = useState(null);
   const [showProgressDialog, setShowProgressDialog] = useState(false);
+  const [activeJobId, setActiveJobId] = useState(null);
 
   // Filter States
   const [mealTimeFilters, setMealTimeFilters] = useState({
@@ -213,11 +214,24 @@ function MenuDisplayPage() {
       setLoading(true);
       setError('');
 
-      // Check for recently completed background jobs
+      // Check for active jobs or recently completed background jobs
       if (!selectedMenuId && !searchParams.get('source')) {
         try {
           const jobCheck = await apiService.checkForPendingMenuJobs(user.userId);
-          if (jobCheck.hasRecentMenu) {
+
+          if (jobCheck.hasActiveJob) {
+            // There's an active job running
+            const activeJob = jobCheck.activeJobs[0]; // Get the most recent
+            const timeRunning = Math.round(activeJob.time_running / 60); // minutes
+
+            setActiveJobId(activeJob.job_id);
+            setSnackbarMessage(`🔄 Your meal plan is still generating (${timeRunning} minutes so far). Click here to watch progress!`);
+            setSnackbarOpen(true);
+
+            console.log('Found active job:', activeJob.job_id);
+
+          } else if (jobCheck.hasRecentMenu) {
+            // Found a recently completed menu
             setSnackbarMessage(`🎉 Great news! Your meal plan finished generating ${jobCheck.timeAgo} minute(s) ago and is ready!`);
             setSnackbarOpen(true);
           }
@@ -710,6 +724,75 @@ function MenuDisplayPage() {
     } catch (err) {
       console.error('Error navigating to shopping list:', err);
       setError('Failed to process shopping list');
+    }
+  };
+
+  // Resume watching active job
+  const handleResumeJobWatching = async () => {
+    if (!activeJobId) return;
+
+    setSnackbarOpen(false);
+    setShowProgressDialog(true);
+
+    try {
+      // Create a polling mechanism to watch the job
+      const pollInterval = setInterval(async () => {
+        try {
+          const statusResp = await apiService.axiosInstance.get(`/menu/job-status/${activeJobId}`, {
+            timeout: 10000
+          });
+
+          const status = statusResp.data;
+
+          setGenerationProgress({
+            phase: status.status,
+            message: status.message,
+            progress: status.progress
+          });
+
+          if (status.status === 'completed') {
+            clearInterval(pollInterval);
+
+            setGenerationProgress({
+              phase: 'complete',
+              message: 'Menu generated successfully!',
+              progress: 100
+            });
+
+            setTimeout(() => {
+              setShowProgressDialog(false);
+              setGenerationProgress(null);
+              setActiveJobId(null);
+              // Refresh the page to load the new menu
+              fetchMenuData();
+            }, 2000);
+
+          } else if (status.status === 'failed') {
+            clearInterval(pollInterval);
+
+            setGenerationProgress({
+              phase: 'error',
+              message: 'Generation failed',
+              progress: 0,
+              error: status.error
+            });
+
+            setActiveJobId(null);
+          }
+
+        } catch (pollError) {
+          console.warn('Status check failed, continuing...', pollError);
+        }
+      }, 3000);
+
+      // Safety timeout
+      setTimeout(() => {
+        clearInterval(pollInterval);
+      }, 1200000); // 20 minutes
+
+    } catch (err) {
+      console.error('Failed to resume job watching:', err);
+      setShowProgressDialog(false);
     }
   };
 
@@ -1484,9 +1567,22 @@ function MenuDisplayPage() {
       <Snackbar
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
         open={snackbarOpen}
-        autoHideDuration={3000}
-        onClose={() => setSnackbarOpen(false)}
+        autoHideDuration={activeJobId ? 8000 : 3000}
+        onClose={() => {
+          setSnackbarOpen(false);
+          setActiveJobId(null);
+        }}
         message={snackbarMessage}
+        onClick={activeJobId ? handleResumeJobWatching : undefined}
+        sx={{
+          cursor: activeJobId ? 'pointer' : 'default',
+          '& .MuiSnackbarContent-root': {
+            backgroundColor: activeJobId ? '#1976d2' : undefined,
+            '&:hover': {
+              backgroundColor: activeJobId ? '#115293' : undefined
+            }
+          }
+        }}
       />
 
       {/* Progress Dialog for Menu Generation */}
