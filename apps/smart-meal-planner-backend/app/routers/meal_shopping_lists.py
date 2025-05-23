@@ -76,20 +76,25 @@ async def get_meal_shopping_lists(menu_id: int):
                             title = meal.get("title", "")
                             meal_time = meal.get("meal_time", "")
 
+                            # Debug log every item in meals array
+                            logger.info(f"Checking meal item: title='{title}', meal_time='{meal_time}'")
+
                             # More comprehensive snack detection
                             title_lower = title.lower()
                             meal_time_lower = meal_time.lower()
 
+                            # Very specific snack detection for your menu structure
                             is_snack = (
-                                "snack" in title_lower or
-                                "snack" in meal_time_lower or
-                                "(snack_" in title_lower or
-                                title_lower.startswith("snack") or
+                                meal_time_lower == "snack_1" or
+                                meal_time_lower == "snack_2" or
+                                meal_time_lower == "snack_3" or
                                 meal_time_lower == "snack" or
-                                "snacks" in title_lower or
+                                "snack" in meal_time_lower or
+                                "snack" in title_lower or
+                                title_lower.startswith("snack") or
+                                "(snack_" in title_lower or
                                 "_snack" in title_lower or
-                                meal_time_lower.startswith("snack_") or  # Catch "snack_1", "snack_2", etc.
-                                "snack_" in meal_time_lower
+                                "_snack" in meal_time_lower
                             )
 
                             if is_snack:

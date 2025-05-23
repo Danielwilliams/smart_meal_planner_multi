@@ -72,17 +72,7 @@ class ErrorBoundary extends React.Component {
 
   render() {
     if (this.state.hasError) {
-      return (
-        <Card sx={{ mb: 4, p: 2 }}>
-          <Typography variant="h6" color="error">Something went wrong.</Typography>
-          <Typography variant="body2" component="pre" sx={{ whiteSpace: 'pre-wrap' }}>
-            {this.state.error && this.state.error.toString()}
-          </Typography>
-          <Typography variant="body2">
-            Check the console for more details or try reloading the page.
-          </Typography>
-        </Card>
-      );
+      return null; // Don't show error UI to users
     }
 
     return this.props.children;
@@ -125,8 +115,7 @@ function CartPage() {
 
   const [internalCart, setInternalCart] = useState({
     kroger: [],
-    instacart: [],
-    unassigned: []
+    instacart: []
   });
 
   const [searchResults, setSearchResults] = useState({
@@ -1791,74 +1780,6 @@ function CartPage() {
         Shopping Cart
       </Typography>
 
-      {/* Unassigned Items */}
-      <ErrorBoundary>
-        <Card sx={{ mb: 4 }}>
-          <CardContent>
-            <Typography variant="h6" gutterBottom>
-              Unassigned Items
-            </Typography>
-            
-            {!internalCart?.unassigned || internalCart.unassigned.length === 0 ? (
-              <Typography color="text.secondary">No unassigned items</Typography>
-            ) : (
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                {Array.isArray(internalCart.unassigned) && internalCart.unassigned.map((item, index) => {
-                  // Extra safety check for null items
-                  if (!item) return null;
-
-                  return (
-                    <Box key={index} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Box display="flex" alignItems="center">
-                        <Typography>{item?.name || "Unnamed item"}</Typography>
-                        <Box display="flex" alignItems="center" ml={2}>
-                          <IconButton
-                            size="small"
-                            onClick={() => item ? updateItemQuantity(item, 'unassigned', -1) : null}
-                            disabled={!item || (item.quantity || 1) <= 1 || loading.cart}
-                          >
-                            <RemoveIcon fontSize="small" />
-                          </IconButton>
-                          <Typography sx={{ mx: 1 }}>
-                            {item?.quantity || 1}
-                          </Typography>
-                          <IconButton
-                            size="small"
-                            onClick={() => item ? updateItemQuantity(item, 'unassigned', 1) : null}
-                            disabled={!item || loading.cart}
-                          >
-                            <AddIcon fontSize="small" />
-                          </IconButton>
-                        </Box>
-                      </Box>
-                      <Box display="flex" alignItems="center">
-                        <FormControl sx={{ minWidth: 120, mr: 1 }}>
-                          <InputLabel>Store</InputLabel>
-                          <Select
-                            label="Store"
-                            onChange={(e) => item ? assignStore([item], e.target.value) : null}
-                            disabled={!item || loading.cart}
-                          >
-                            <MenuItem value="kroger">Kroger</MenuItem>
-                            <MenuItem value="instacart">Instacart</MenuItem>
-                          </Select>
-                        </FormControl>
-                        <IconButton
-                          size="small"
-                          onClick={() => item ? removeItem(item, 'unassigned') : null}
-                          disabled={!item || loading.cart}
-                        >
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
-                      </Box>
-                    </Box>
-                  );
-                })}
-              </Box>
-            )}
-          </CardContent>
-        </Card>
-      </ErrorBoundary>
 
       {/* Store Sections */}
       <ErrorBoundary>
