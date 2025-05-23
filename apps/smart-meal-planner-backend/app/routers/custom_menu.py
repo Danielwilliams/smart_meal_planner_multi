@@ -113,6 +113,10 @@ def generate_custom_meal_plan(req: CustomMealPlanRequest, user = Depends(get_use
                 if recipe.day == day_number
             ]
 
+            logger.info(f"Day {day_number}: Looking for recipes with day={day_number}")
+            logger.info(f"Available recipes: {[(r.title, r.day) for r in req.recipes]}")
+            logger.info(f"Matching recipes: {[r.title for r in day_recipes_for_day]}")
+
             for recipe in day_recipes_for_day:
                 # Transform recipe to match expected menu format
                 recipe_data = {
