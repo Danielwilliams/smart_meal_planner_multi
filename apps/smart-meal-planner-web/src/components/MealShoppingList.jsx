@@ -193,32 +193,48 @@ const MealShoppingList = ({ menuId }) => {
         let name = ingredient.name || "";
         let itemName = name;
 
-        // Add the correct units that might be missing in the original data
-        if (quantity === "16" && name.toLowerCase().includes("pasta")) {
-          itemName = `16 oz ${name}`;
-        } else if (quantity === "2" && name.toLowerCase().includes("spinach")) {
-          itemName = `2 cups ${name}`;
-        } else if (quantity === "2" && name.toLowerCase().includes("olive oil")) {
-          itemName = `2 tbsp ${name}`;
-        } else if (quantity === "2" && name.toLowerCase().includes("italian")) {
-          itemName = `2 tbsp ${name}`;
-        } else if (quantity === "1" && name.toLowerCase().includes("tomato sauce")) {
-          itemName = `1 can ${name}`;
-        } else if (quantity === "1" && name.toLowerCase().includes("cheese") && !name.toLowerCase().includes("cream cheese")) {
-          itemName = `1 cup ${name}`;
-        } else if (quantity === "3" && name.toLowerCase().includes("rice")) {
-          itemName = `3 cups ${name}`;
-        } else if (quantity === "1" && name.toLowerCase().includes("broccoli")) {
-          itemName = `1 head ${name}`;
-        } else if (quantity === "1" && name.toLowerCase().includes("onion")) {
-          itemName = `1 medium ${name}`;
-        } else if (quantity === "4" && name.toLowerCase().includes("garlic")) {
-          itemName = `4 cloves ${name}`;
-        } else if (quantity === "8" && name.toLowerCase().includes("chicken")) {
-          itemName = `8 oz ${name}`;
-        } else if (quantity && quantity.trim()) {
-          // For all other cases with quantity
+        // DEBUG: Log the ingredient processing
+        console.log(`Processing ingredient: name="${name}", quantity="${quantity}"`);
+
+        // If quantity already contains units (like "2 cups", "16 oz"), use it directly
+        if (quantity && quantity.trim() && /\d+.*[a-zA-Z]/.test(quantity.trim())) {
           itemName = `${quantity} ${name}`.trim();
+          console.log(`Using quantity with units: "${itemName}"`);
+        }
+        // If quantity is just a number, apply specific unit rules
+        else if (quantity && quantity.trim() && /^\d+(\.\d+)?$/.test(quantity.trim())) {
+          if (quantity === "16" && name.toLowerCase().includes("pasta")) {
+            itemName = `16 oz ${name}`;
+          } else if (quantity === "2" && name.toLowerCase().includes("spinach")) {
+            itemName = `2 cups ${name}`;
+          } else if (quantity === "2" && name.toLowerCase().includes("olive oil")) {
+            itemName = `2 tbsp ${name}`;
+          } else if (quantity === "2" && name.toLowerCase().includes("italian")) {
+            itemName = `2 tbsp ${name}`;
+          } else if (quantity === "1" && name.toLowerCase().includes("tomato sauce")) {
+            itemName = `1 can ${name}`;
+          } else if (quantity === "1" && name.toLowerCase().includes("cheese") && !name.toLowerCase().includes("cream cheese")) {
+            itemName = `1 cup ${name}`;
+          } else if (quantity === "3" && name.toLowerCase().includes("rice")) {
+            itemName = `3 cups ${name}`;
+          } else if (quantity === "1" && name.toLowerCase().includes("broccoli")) {
+            itemName = `1 head ${name}`;
+          } else if (quantity === "1" && name.toLowerCase().includes("onion")) {
+            itemName = `1 medium ${name}`;
+          } else if (quantity === "4" && name.toLowerCase().includes("garlic")) {
+            itemName = `4 cloves ${name}`;
+          } else if (quantity === "8" && name.toLowerCase().includes("chicken")) {
+            itemName = `8 oz ${name}`;
+          } else {
+            // For numeric quantities without specific rules, just add the number
+            itemName = `${quantity} ${name}`.trim();
+          }
+          console.log(`Using numeric quantity rule: "${itemName}"`);
+        }
+        // If no quantity or empty quantity, use just the name
+        else {
+          itemName = name;
+          console.log(`Using name only: "${itemName}"`);
         }
 
         return {
