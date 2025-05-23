@@ -258,7 +258,7 @@ async def remove_cart_item(
         return {"status": "success"}
     except Exception as e:
         logger.error(f"Error removing cart item: {str(e)}")
-        return {"status": "error", "message": str(e)}
+        raise HTTPException(500, f"Error removing cart item: {str(e)}")
 
 @router.patch("/internal/{user_id}/update_quantity")
 async def update_cart_item_quantity(
@@ -307,4 +307,4 @@ async def update_cart_item_quantity(
         return {"status": "success"}
     except Exception as e:
         logger.error(f"Error updating cart item quantity: {str(e)}")
-        return {"status": "error", "message": str(e)}
+        raise HTTPException(500, f"Error updating cart item quantity: {str(e)}")
