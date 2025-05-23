@@ -2886,11 +2886,11 @@ const apiService = {
   saveCustomMenu: async (menuData, clientId = null) => {
     try {
       // If clientId is provided, we're creating a menu for a client
-      let endpoint = '/menu/custom';
+      let endpoint = '/custom-menu/generate';
       if (clientId) {
-        endpoint = `/menu/client/${clientId}/custom`;
+        endpoint = `/custom-menu/generate-for-client/${clientId}`;
       }
-      
+
       const response = await axiosInstance.post(endpoint, menuData);
       return response.data;
     } catch (err) {
