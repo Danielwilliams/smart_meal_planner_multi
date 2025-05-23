@@ -133,6 +133,28 @@ async def get_meal_shopping_lists(menu_id: int):
                             if snack_data["ingredients"]:
                                 result["meal_lists"].append(snack_data)
             
+            # Remove duplicates - keep the cleaner format (without snack_1, snack_2, etc.)
+            unique_meals = []
+            seen_titles = set()
+
+            for meal in result["meal_lists"]:
+                title = meal.get("title", "")
+
+                # Remove numbered snack suffixes like (snack_1), (snack_2)
+                clean_title = title
+                if " (snack_" in title.lower():
+                    clean_title = title.split(" (snack_")[0]
+
+                # If we've seen this title before, skip it (keep the first/cleaner one)
+                if clean_title.lower() not in seen_titles:
+                    seen_titles.add(clean_title.lower())
+                    # Update the title to the clean version
+                    meal["title"] = clean_title
+                    unique_meals.append(meal)
+                else:
+                    logger.info(f"Removing duplicate meal/snack: {title} (already have {clean_title})")
+
+            result["meal_lists"] = unique_meals
             return result
 
         finally:

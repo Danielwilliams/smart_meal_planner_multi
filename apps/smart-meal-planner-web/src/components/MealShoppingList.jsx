@@ -409,37 +409,55 @@ const MealShoppingList = ({ menuId }) => {
                                         let name = ingredient.name || "Unnamed ingredient";
 
                                         // Common fixes for incorrect/mismatched units
-                                        if (quantity === "16" && name.toLowerCase().includes("pasta")) {
-                                          return "16 oz " + name;
+                                        const lowerName = name.toLowerCase();
+                                        const numericQuantity = parseFloat(quantity);
+
+                                        // Handle meat weight conversions (common issue)
+                                        if (lowerName.includes("chicken") || lowerName.includes("beef") || lowerName.includes("pork") || lowerName.includes("meat")) {
+                                          if (numericQuantity >= 16 && !quantity.includes("oz") && !quantity.includes("lb")) {
+                                            // Large numbers for meat are likely in oz, convert to lb if > 16
+                                            const pounds = numericQuantity / 16;
+                                            return pounds >= 1 ? `${pounds} lb ${name}` : `${numericQuantity} oz ${name}`;
+                                          } else if (numericQuantity <= 8 && !quantity.includes("oz") && !quantity.includes("lb")) {
+                                            return `${numericQuantity} oz ${name}`;
+                                          }
                                         }
-                                        if (quantity === "2" && name.toLowerCase().includes("spinach")) {
+
+                                        // Handle specific ingredient fixes
+                                        if (quantity === "16" && lowerName.includes("pasta")) {
+                                          return "1 lb " + name;  // 16 oz = 1 lb
+                                        }
+                                        if (quantity === "2" && lowerName.includes("spinach")) {
                                           return "2 cups " + name;
                                         }
-                                        if (quantity === "2" && name.toLowerCase().includes("olive oil")) {
+                                        if (quantity === "2" && lowerName.includes("olive oil")) {
                                           return "2 tbsp " + name;
                                         }
-                                        if (quantity === "2" && name.toLowerCase().includes("italian")) {
+                                        if (quantity === "2" && lowerName.includes("italian")) {
                                           return "2 tbsp " + name;
                                         }
-                                        if (quantity === "1" && name.toLowerCase().includes("tomato sauce")) {
+                                        if (quantity === "1" && lowerName.includes("tomato sauce")) {
                                           return "1 can " + name;
                                         }
-                                        if (quantity === "1" && name.toLowerCase().includes("cheese") && !name.toLowerCase().includes("cream cheese")) {
+                                        if (quantity === "1" && lowerName.includes("cheese") && !lowerName.includes("cream cheese")) {
                                           return "1 cup " + name;
                                         }
-                                        if (quantity === "3" && name.toLowerCase().includes("rice")) {
+                                        if (quantity === "3" && lowerName.includes("rice")) {
                                           return "3 cups " + name;
                                         }
-                                        if (quantity === "1" && name.toLowerCase().includes("broccoli")) {
+                                        if (quantity === "2" && lowerName.includes("rice")) {
+                                          return "2 cups " + name;
+                                        }
+                                        if (quantity === "1" && lowerName.includes("broccoli")) {
                                           return "1 head " + name;
                                         }
-                                        if (quantity === "1" && name.toLowerCase().includes("onion")) {
+                                        if (quantity === "1" && lowerName.includes("onion")) {
                                           return "1 medium " + name;
                                         }
-                                        if (quantity === "4" && name.toLowerCase().includes("garlic")) {
+                                        if (quantity === "4" && lowerName.includes("garlic")) {
                                           return "4 cloves " + name;
                                         }
-                                        if (quantity === "8" && name.toLowerCase().includes("chicken")) {
+                                        if (quantity === "8" && lowerName.includes("chicken")) {
                                           return "8 oz " + name;
                                         }
 
