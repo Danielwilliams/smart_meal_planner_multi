@@ -2112,16 +2112,6 @@ function CartPage() {
       </ErrorBoundary>
 
 
-      {/* Error Display */}
-      {error && (
-        <Alert
-          severity="error"
-          sx={{ mt: 2 }}
-          onClose={() => setError(null)}
-        >
-          {error}
-        </Alert>
-      )}
 
       {/* Store Selector Dialog */}
       <ErrorBoundary>
@@ -2220,37 +2210,6 @@ function CartPage() {
         </DialogActions>
       </Dialog>
 
-      {/* Error Dialog with Reconnect Option */}
-      <Dialog
-        open={showErrorDialog}
-        onClose={() => setShowErrorDialog(false)}
-      >
-        <DialogTitle>
-          <Box display="flex" alignItems="center" gap={1}>
-            <ErrorIcon color="error" />
-            {errorDialogContent.title}
-          </Box>
-        </DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            {errorDialogContent.message}
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setShowErrorDialog(false)} color="primary">
-            Close
-          </Button>
-          {errorDialogContent.needsReconnect && (
-            <Button 
-              onClick={handleReconnectKroger} 
-              variant="contained" 
-              color="primary"
-            >
-              Reconnect Kroger Account
-            </Button>
-          )}
-        </DialogActions>
-      </Dialog>
 
       {/* Global loading indicators */}
       {loading.cart && (
@@ -2312,13 +2271,6 @@ function CartPage() {
         </Box>
       )}
 
-      {/* Snackbar notifications */}
-      <Snackbar
-        open={snackbarOpen}
-        autoHideDuration={3000}
-        onClose={() => setSnackbarOpen(false)}
-        message={snackbarMessage}
-      />
 
       {/* Instacart Shopping List Dialog */}
       <Dialog
