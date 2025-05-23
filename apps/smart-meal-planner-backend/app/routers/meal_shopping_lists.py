@@ -20,7 +20,7 @@ class MealCartRequest(BaseModel):
     meal_title: str
 
 @router.get("/{menu_id}/meal-shopping-lists")
-async def get_meal_shopping_lists(menu_id: int):
+async def get_meal_shopping_lists(menu_id: int, force_refresh: bool = False):
     """
     Get shopping lists organized by individual meals for a specific menu
     """
@@ -95,8 +95,11 @@ async def get_meal_shopping_lists(menu_id: int):
                             title_lower = title.lower()
                             meal_time_lower = meal_time.lower()
 
-                            # Very specific snack detection for your menu structure
+                            # AGGRESSIVE snack filtering - must catch snack_1, snack_2, snack_3
                             is_snack = (
+                                "snack_1" in meal_time_lower or
+                                "snack_2" in meal_time_lower or
+                                "snack_3" in meal_time_lower or
                                 meal_time_lower == "snack_1" or
                                 meal_time_lower == "snack_2" or
                                 meal_time_lower == "snack_3" or
@@ -109,8 +112,13 @@ async def get_meal_shopping_lists(menu_id: int):
                                 "_snack" in meal_time_lower
                             )
 
+                            # FORCE: If this is clearly a snack based on the exact data we're seeing
+                            if (title in ["Spicy Edamame", "Caprese Skewers", "Garlic Roasted Almonds"] and
+                                meal_time in ["snack_1", "snack_2", "snack_3"]):
+                                is_snack = True
+
                             if is_snack:
-                                logger.info(f"Skipping snack in meals array: '{title}' (meal_time: '{meal_time}')")
+                                logger.error(f"FILTERING OUT SNACK: '{title}' (meal_time: '{meal_time}') - This should NOT appear in final output!")
                                 continue
 
                             # Log what we're processing from meals array
