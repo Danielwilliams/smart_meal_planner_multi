@@ -88,7 +88,11 @@ const SavedRecipesPage = () => {
         console.log('🐛 All saved recipes:', savedRecipes);
 
         // For scraped recipes, fetch the full recipe details from the scraped recipes table
-        const scrapedRecipe = savedRecipes.find(r => r.recipe_id === recipeId || r.id === recipeId);
+        const scrapedRecipe = savedRecipes.find(r => {
+          // For scraped recipes: recipe_id is null, so match by saved recipe id
+          // For menu recipes: match by recipe_id
+          return r.recipe_id === recipeId || r.id === recipeId;
+        });
         console.log('🐛 Found scraped recipe:', scrapedRecipe);
 
         if (scrapedRecipe && scrapedRecipe.scraped_recipe_id) {
@@ -358,7 +362,7 @@ const SavedRecipesPage = () => {
               }}>
                 <Button
                   startIcon={<ViewIcon />}
-                  onClick={() => handleViewRecipe(recipe.recipe_id, recipe.menu_id, recipe)}
+                  onClick={() => handleViewRecipe(recipe.recipe_id || recipe.id, recipe.menu_id, recipe)}
                   size="small"
                   variant="contained"
                 >
