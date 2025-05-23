@@ -48,12 +48,12 @@ async def check_instacart_status(current_user: dict = Depends(get_current_user))
     """
     try:
         # Get API key from environment
-        api_key = os.environ.get("INSTACARTAPI_DEV")
+        api_key = os.environ.get("INSTACART_API_KEY")
         environment = os.environ.get("ENVIRONMENT", "development")
 
         # Check if API key exists
         if not api_key:
-            logger.warning("INSTACARTAPI_DEV environment variable is not set")
+            logger.warning("INSTACART_API_KEY environment variable is not set")
             return {
                 "is_connected": False,
                 "message": "Instacart API key is not configured",
@@ -63,7 +63,7 @@ async def check_instacart_status(current_user: dict = Depends(get_current_user))
                     "environment": environment
                 },
                 "debug_info": {
-                    "env_variable": "INSTACARTAPI_DEV",
+                    "env_variable": "INSTACART_API_KEY",
                     "api_key_present": False,
                     "timestamp": time.time(),
                     "module_info": str(instacart.__name__),
@@ -88,7 +88,7 @@ async def check_instacart_status(current_user: dict = Depends(get_current_user))
 
         # Debug info
         debug_info = {
-            "env_variable": "INSTACARTAPI_DEV",
+            "env_variable": "INSTACART_API_KEY",
             "api_key_present": True,
             "api_key": api_key,  # ONLY FOR DEBUGGING
             "format": api_format,
@@ -192,22 +192,22 @@ async def get_api_key_info(current_user: dict = Depends(get_current_user)):
     """
     try:
         # Get API key from environment
-        api_key = os.environ.get("INSTACARTAPI_DEV")
+        api_key = os.environ.get("INSTACART_API_KEY")
         environment = os.environ.get("ENVIRONMENT", "development")
 
         # Check if API key exists
         if not api_key:
-            logger.warning("INSTACARTAPI_DEV environment variable is not set")
+            logger.warning("INSTACART_API_KEY environment variable is not set")
             # Show a helpful message about setting the API key
             missing_key_guide = """
-            The INSTACARTAPI_DEV environment variable is not set.
+            The INSTACART_API_KEY environment variable is not set.
 
             To use the Instacart API, you need to:
             1. Get an API key from Instacart Connect
-            2. Set it as an environment variable named INSTACARTAPI_DEV
+            2. Set it as an environment variable named INSTACART_API_KEY
             3. Format it as 'InstacartAPI YOUR_KEY_HERE' (with the prefix)
 
-            Example: export INSTACARTAPI_DEV="InstacartAPI abc123def456"
+            Example: export INSTACART_API_KEY="InstacartAPI abc123def456"
             """
             return {
                 "exists": False,
@@ -259,7 +259,7 @@ async def get_environment_info(current_user: dict = Depends(get_current_user)):
         # Get relevant environment variables (without exposing sensitive data)
         environment_info = {
             "environment": os.environ.get("RAILWAY_ENVIRONMENT", "production"),
-            "instacart_api_configured": bool(os.environ.get("INSTACARTAPI_DEV")),
+            "instacart_api_configured": bool(os.environ.get("INSTACART_API_KEY")),
             "python_version": os.environ.get("PYTHON_VERSION", "unknown"),
             "node_env": os.environ.get("NODE_ENV", "production"),
             "debug_mode": os.environ.get("DEBUG", "false").lower() == "true"

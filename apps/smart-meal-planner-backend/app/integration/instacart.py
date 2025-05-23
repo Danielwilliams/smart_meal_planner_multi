@@ -19,8 +19,8 @@ from fastapi import HTTPException, status
 logger = logging.getLogger(__name__)
 
 # Constants
-BASE_URL = "https://connect.dev.instacart.tools"  # Development server URL
-PROD_BASE_URL = "https://connect.instacart.com"  # Production server for reference
+BASE_URL = "https://connect.instacart.com"  # Production server URL
+DEV_BASE_URL = "https://connect.dev.instacart.tools"  # Development server for reference
 API_VERSION = "idp/v1"  # IDP API version according to docs
 
 class InstacartClient:
@@ -34,7 +34,7 @@ class InstacartClient:
             api_key: The Instacart API key. If not provided, will try to get from environment variable.
         """
         # Get the API key from param or environment
-        self.api_key = api_key or os.environ.get("INSTACARTAPI_DEV")
+        self.api_key = api_key or os.environ.get("INSTACART_API_KEY")
         if not self.api_key:
             logger.error("No Instacart API key provided")
             raise ValueError("Instacart API key is required")

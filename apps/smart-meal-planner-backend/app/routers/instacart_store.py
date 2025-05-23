@@ -65,14 +65,14 @@ async def get_instacart_retailers(
         logger.info("Starting request to get Instacart retailers")
 
         # Get API key information for debugging
-        api_key = os.environ.get("INSTACARTAPI_DEV")
+        api_key = os.environ.get("INSTACART_API_KEY")
         if not api_key:
             logger.error("No Instacart API key configured")
             # Return a proper error response
             return {
                 "error": "Instacart API key is not configured",
                 "status": "error",
-                "details": "The INSTACARTAPI_DEV environment variable must be set with format 'InstacartAPI YOUR_API_KEY'"
+                "details": "The INSTACART_API_KEY environment variable must be set with format 'InstacartAPI YOUR_API_KEY'"
             }
 
         logger.info(f"Using API key: {api_key[:4]}...{api_key[-4:] if len(api_key) > 8 else '***'}")
@@ -145,14 +145,14 @@ async def search_instacart_products(
     """
     try:
         # Get API key information for debugging
-        api_key = os.environ.get("INSTACARTAPI_DEV")
+        api_key = os.environ.get("INSTACART_API_KEY")
         if not api_key:
             logger.error("No Instacart API key configured")
             # Return a proper error response
             return {
                 "error": "Instacart API key is not configured",
                 "status": "error",
-                "details": "The INSTACARTAPI_DEV environment variable must be set with format 'InstacartAPI YOUR_API_KEY'",
+                "details": "The INSTACART_API_KEY environment variable must be set with format 'InstacartAPI YOUR_API_KEY'",
                 "query_info": {
                     "retailer_id": retailer_id,
                     "query": query,

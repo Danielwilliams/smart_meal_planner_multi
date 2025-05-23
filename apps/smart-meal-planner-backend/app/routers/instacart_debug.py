@@ -51,7 +51,7 @@ async def test_api_key_configuration(current_user: dict = Depends(get_current_us
     """
     try:
         # Get API key from environment
-        api_key = os.environ.get("INSTACARTAPI_DEV")
+        api_key = os.environ.get("INSTACART_API_KEY")
         environment = os.environ.get("ENVIRONMENT", "development")
 
         if not api_key:
@@ -60,7 +60,7 @@ async def test_api_key_configuration(current_user: dict = Depends(get_current_us
                 "api_key_masked": None,
                 "environment": environment,
                 "test_status": "failed",
-                "message": "INSTACARTAPI_DEV environment variable is not set"
+                "message": "INSTACART_API_KEY environment variable is not set"
             }
 
         # Mask the API key for safe display
@@ -172,7 +172,7 @@ async def get_api_key_info(current_user: dict = Depends(get_current_user)):
     """
     try:
         # Get API key from environment
-        api_key = os.environ.get("INSTACARTAPI_DEV")
+        api_key = os.environ.get("INSTACART_API_KEY")
 
         # Get all environment variables that might be related to Instacart
         instacart_env_vars = {}
@@ -191,7 +191,7 @@ async def get_api_key_info(current_user: dict = Depends(get_current_user)):
         # Check if API key exists and is properly formatted
         api_key_details = {
             "exists": api_key is not None,
-            "env_var": "INSTACARTAPI_DEV",
+            "env_var": "INSTACART_API_KEY",
             "masked": None,
             "actual_value": None,  # Only for development/debugging
             "length": None,
