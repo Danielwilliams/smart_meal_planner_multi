@@ -159,6 +159,12 @@ def sanitize_unit(unit_str: str, ingredient_name: str = "") -> str:
     
     if ('quinoa' in clean_name or 'rice' in clean_name) and 'cooked' in clean_name:
         return 'cups cooked'
+
+    # Default to cups for common grains/dry goods that shouldn't be in grams
+    grain_items = ['rice', 'quinoa', 'pasta', 'flour', 'sugar', 'oats', 'barley', 'bulgur']
+    for grain in grain_items:
+        if grain in clean_name and not 'cooked' in clean_name:
+            return 'cups'
     
     # If no unit is provided, check if we should apply a default unit based on the ingredient
     if not unit_str:
@@ -784,8 +790,26 @@ def extract_ingredient_quantities_from_menu(menu_data):
         # Find the most common unit
         most_common_unit = max(unit_count.items(), key=lambda x: x[1])[0] if unit_count else 'piece'
 
-        # Sum quantities for this unit
-        matching_qty = sum(o['qty'] for o in occurrences if (o['unit'] or 'piece') == most_common_unit)
+        # Sum quantities for this unit - but handle unit conversions properly
+        total_qty = 0
+        for o in occurrences:
+            o_unit = o['unit'] or 'piece'
+            if o_unit == most_common_unit:
+                total_qty += o['qty']
+            elif o_unit in ['oz', 'ounce', 'ounces'] and most_common_unit in ['lb', 'lbs', 'pound', 'pounds']:
+                # Convert oz to lb for aggregation
+                total_qty += o['qty'] / 16
+            elif o_unit in ['lb', 'lbs', 'pound', 'pounds'] and most_common_unit in ['oz', 'ounce', 'ounces']:
+                # Convert lb to oz for aggregation
+                total_qty += o['qty'] * 16
+            elif o_unit in ['g', 'grams'] and most_common_unit in ['oz', 'ounce', 'ounces']:
+                # Convert grams to oz
+                total_qty += o['qty'] * 0.035274
+            elif o_unit in ['g', 'grams'] and most_common_unit in ['lb', 'lbs', 'pound', 'pounds']:
+                # Convert grams to lb
+                total_qty += o['qty'] * 0.00220462
+
+        matching_qty = total_qty
 
         # Format quantity more carefully - handle decimals better
         if matching_qty == int(matching_qty):
@@ -1119,7 +1143,12 @@ def aggregate_grocery_list(menu_dict: Dict[str, Any]):
                                 logger.info(f"Processing simple snack: {title} - {quantity}")
 
                                 # Directly use the title as name and quantity as amount
-                                simplified_ing = f"{quantity} {title}"
+                                # For snacks, ensure we have a reasonable unit if none provided
+                                if quantity and not any(u in quantity.lower() for u in ['oz', 'lb', 'cup', 'tbsp', 'tsp', 'g', 'ml']):
+                                    # Add default unit for snacks that are likely countable
+                                    simplified_ing = f"{quantity} piece {title}"
+                                else:
+                                    simplified_ing = f"{quantity} {title}"
                                 name, amount, unit = standardize_ingredient(simplified_ing)
 
                                 # Skip empty ingredients
