@@ -277,6 +277,17 @@ const CustomMenuBuilderPage = () => {
 
   const handleSaveCustomMenu = async () => {
     try {
+      // Validate required fields
+      if (!menuNickname || menuNickname.trim() === '') {
+        setError('Menu name is required');
+        return;
+      }
+
+      if (Object.keys(selectedRecipes).length === 0) {
+        setError('Please add at least one recipe to your custom menu');
+        return;
+      }
+
       setLoading(true);
       setError('');
       
@@ -300,7 +311,7 @@ const CustomMenuBuilderPage = () => {
         for_client_id: activeClient?.id || null,
         recipes: recipes,
         duration_days: 7,
-        nickname: menuNickname || `Custom Menu ${new Date().toLocaleDateString()}`
+        nickname: menuNickname.trim()
       };
 
       console.log('Saving custom menu:', customMenuRequest);
@@ -495,21 +506,24 @@ const CustomMenuBuilderPage = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Menu Nickname and Save Button */}
+      {/* Menu Name and Save Button */}
       <Box sx={{ mt: 4, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
         <TextField
-          label="Menu Nickname (Optional)"
+          label="Menu Name *"
           variant="outlined"
           fullWidth
+          required
           sx={{ mb: 2, maxWidth: 400 }}
           value={menuNickname}
           onChange={(e) => setMenuNickname(e.target.value)}
+          error={!menuNickname}
+          helperText={!menuNickname ? "Menu name is required" : ""}
         />
-        <Button 
-          variant="contained" 
+        <Button
+          variant="contained"
           color="primary"
           onClick={handleSaveCustomMenu}
-          disabled={Object.keys(selectedRecipes).length === 0 || loading}
+          disabled={!menuNickname || menuNickname.trim() === '' || Object.keys(selectedRecipes).length === 0 || loading}
           sx={{ minWidth: 200 }}
         >
           {loading ? (

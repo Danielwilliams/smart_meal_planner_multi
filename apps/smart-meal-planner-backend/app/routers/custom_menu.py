@@ -1,5 +1,5 @@
 # app/routers/custom_menu.py
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, Request
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import json
@@ -19,10 +19,10 @@ class CustomRecipe(BaseModel):
     menu_recipe_id: Optional[str] = None  # For existing generated menu recipes
     saved_recipe_id: Optional[int] = None  # For user's saved recipes
     title: str
-    ingredients: List[Dict[str, Any]]
-    instructions: List[str]
+    ingredients: Optional[List[Any]] = []  # Made more flexible to accept different formats
+    instructions: Optional[List[Any]] = []  # Made more flexible to accept different formats
     meal_time: str  # breakfast, lunch, dinner, snack
-    servings: int = 1
+    servings: Optional[int] = 1
     macros: Optional[Dict[str, Any]] = None
     image_url: Optional[str] = None
 
@@ -33,11 +33,32 @@ class CustomMealPlanRequest(BaseModel):
     duration_days: int = 7
     nickname: Optional[str] = None
 
+@router.post("/generate-debug")
+async def debug_custom_menu_request(
+    request: Request,
+    user = Depends(get_user_from_token)
+):
+    """Debug endpoint to see raw request data"""
+    try:
+        raw_data = await request.json()
+        logger.info(f"Raw custom menu request data: {raw_data}")
+        logger.info(f"Data type: {type(raw_data)}")
+        for key, value in raw_data.items():
+            logger.info(f"Key '{key}': {value} (type: {type(value)})")
+        return {"status": "debug", "received_data": raw_data}
+    except Exception as e:
+        logger.error(f"Debug endpoint error: {e}")
+        raise HTTPException(500, str(e))
+
 @router.post("/generate")
 def generate_custom_meal_plan(req: CustomMealPlanRequest, user = Depends(get_user_from_token)):
     """
     Generate a custom meal plan from user-selected recipes
     """
+    logger.info(f"Custom menu generation request received")
+    logger.info(f"Request data: {req.dict()}")
+    logger.info(f"User info: {user}")
+
     try:
         # Ensure the user is authorized
         user_id = user.get('user_id')
