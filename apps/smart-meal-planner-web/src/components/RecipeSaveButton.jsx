@@ -13,6 +13,7 @@ import {
 import BookmarkIcon from '@mui/icons-material/Bookmark';
 import BookmarkBorderIcon from '@mui/icons-material/BookmarkBorder';
 import axios from 'axios';
+import apiService from '../services/apiService';
 
 const RecipeSaveButton = ({ 
   scraped = false,
@@ -27,7 +28,6 @@ const RecipeSaveButton = ({
   onSaveError,
   recipeData = null
 }) => {
-  const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://smartmealplannermulti-production.up.railway.app';
   
   const [open, setOpen] = useState(false);
   const [notes, setNotes] = useState('');
@@ -112,20 +112,10 @@ const RecipeSaveButton = ({
         };
       }
 
-      console.log('Sending to endpoint:', `${API_BASE_URL}/saved-recipes-alt/scraped`);
-      console.log('Payload:', JSON.stringify(saveData, null, 2));
-      
-      // Use the simplified endpoint for scraped recipes
-      const endpoint = scraped 
-        ? `${API_BASE_URL}/saved-recipes-alt/scraped` 
-        : `${API_BASE_URL}/saved-recipes/`;
-      
-      const response = await axios.post(endpoint, saveData, {
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('access_token')}`
-        }
-      });
+      console.log('Saving recipe with data:', JSON.stringify(saveData, null, 2));
+
+      // Use apiService which handles authentication and correct base URL
+      const response = await apiService.saveRecipe(saveData, scraped);
       
       // Log the API response
       console.log('API Response:', response.data);
@@ -182,11 +172,7 @@ const RecipeSaveButton = ({
         throw new Error('No saved ID provided');
       }
       
-      await axios.delete(`${API_BASE_URL}/saved-recipes/${savedId}`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('access_token')}`
-        }
-      });
+      await apiService.deleteRecipe(savedId);
 
       // Show success message
       setSnackbarMessage('Recipe removed from saved');

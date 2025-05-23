@@ -3196,6 +3196,30 @@ const apiService = {
     }
 
     throw new Error('Polling timed out');
+  },
+
+  // Recipe saving methods
+  async saveRecipe(saveData, isScraped = false) {
+    try {
+      const endpoint = isScraped ? '/saved-recipes-alt/scraped' : '/saved-recipes/';
+      console.log(`Saving recipe to ${endpoint}:`, saveData);
+
+      const response = await axiosInstance.post(endpoint, saveData);
+      return response.data;
+    } catch (error) {
+      console.error('Save recipe error:', error);
+      throw error;
+    }
+  },
+
+  async deleteRecipe(savedId) {
+    try {
+      const response = await axiosInstance.delete(`/saved-recipes/${savedId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Delete recipe error:', error);
+      throw error;
+    }
   }
 }; // Close the apiService object here
 
