@@ -255,15 +255,22 @@ def generate_menu_shopping_lists(menu_data: Dict) -> List[Dict]:
             for meal_index, meal in enumerate(meals):
                 if not isinstance(meal, dict):
                     continue
-                
+
+                # FILTER OUT snacks from meals array - we only want snacks from the dedicated snacks array
+                # Skip any items where meal_time starts with "snack_"
+                meal_time = meal.get('meal_time', '')
+                if meal_time.lower().startswith("snack_"):
+                    logger.info(f"FILTERING OUT meal with snack meal_time: '{meal.get('title', '')}' (meal_time: '{meal_time}')")
+                    continue
+
                 # Generate shopping list for this meal
                 meal_list = generate_meal_shopping_list(meal)
-                
+
                 # Add day information
                 meal_list['day'] = day_number
                 meal_list['day_index'] = day_index
                 meal_list['meal_index'] = meal_index
-                
+
                 results.append(meal_list)
         
         # Process snacks

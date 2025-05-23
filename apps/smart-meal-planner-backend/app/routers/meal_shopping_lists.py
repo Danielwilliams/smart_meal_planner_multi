@@ -112,13 +112,10 @@ async def get_meal_shopping_lists(menu_id: int, force_refresh: bool = False):
                                 "_snack" in meal_time_lower
                             )
 
-                            # FORCE: If this is clearly a snack based on the exact data we're seeing
-                            if (title in ["Spicy Edamame", "Caprese Skewers", "Garlic Roasted Almonds"] and
-                                meal_time in ["snack_1", "snack_2", "snack_3"]):
-                                is_snack = True
-
-                            if is_snack:
-                                logger.error(f"FILTERING OUT SNACK: '{title}' (meal_time: '{meal_time}') - This should NOT appear in final output!")
+                            # FILTER OUT snacks from meals array - we only want snacks from the dedicated snacks array
+                            # Skip any items where meal_time starts with "snack_"
+                            if meal_time.lower().startswith("snack_"):
+                                logger.info(f"FILTERING OUT meal with snack meal_time: '{title}' (meal_time: '{meal_time}')")
                                 continue
 
                             # Log what we're processing from meals array
@@ -132,7 +129,7 @@ async def get_meal_shopping_lists(menu_id: int, force_refresh: bool = False):
                                 "title": title,
                                 "meal_time": meal_time,
                                 "servings": meal.get("servings", 0),
-                                "is_snack": False,
+                                "is_snack": False,  # These are regular meals, not snacks
                                 "ingredients": []
                             }
                             
@@ -194,54 +191,9 @@ async def get_meal_shopping_lists(menu_id: int, force_refresh: bool = False):
             for i, item in enumerate(result['meal_lists']):
                 logger.info(f"  {i+1}. '{item['title']}' (meal_time: '{item['meal_time']}', is_snack: {item.get('is_snack', False)})")
 
-            # Remove duplicates - prefer cleaner format (without snack_1, snack_2, etc.)
-            # Group meals by clean title first
-            title_groups = {}
-
-            for meal in result["meal_lists"]:
-                title = meal.get("title", "")
-
-                # Remove numbered snack suffixes like (snack_1), (snack_2)
-                clean_title = title
-                if " (snack_" in title.lower():
-                    clean_title = title.split(" (snack_")[0]
-
-                clean_key = clean_title.lower()
-                if clean_key not in title_groups:
-                    title_groups[clean_key] = []
-
-                # Mark whether this is a numbered version
-                is_numbered = " (snack_" in title.lower()
-                title_groups[clean_key].append({
-                    'meal': meal,
-                    'original_title': title,
-                    'clean_title': clean_title,
-                    'is_numbered': is_numbered
-                })
-
-            # Choose the best version from each group
-            unique_meals = []
-            for clean_key, versions in title_groups.items():
-                if len(versions) == 1:
-                    # Only one version, use it
-                    chosen = versions[0]
-                else:
-                    # Multiple versions - prefer non-numbered (cleaner) version
-                    clean_versions = [v for v in versions if not v['is_numbered']]
-                    if clean_versions:
-                        chosen = clean_versions[0]  # Use clean version
-                        # Log removals
-                        for v in versions:
-                            if v['is_numbered']:
-                                logger.info(f"Removing numbered snack: {v['original_title']}")
-                    else:
-                        chosen = versions[0]  # Fallback
-
-                # Update title and add to results
-                chosen['meal']['title'] = chosen['clean_title']
-                unique_meals.append(chosen['meal'])
-
-            result["meal_lists"] = unique_meals
+            # Since we now filter out snacks from meals array, there should be no duplicates
+            # But let's keep a simple check just in case
+            logger.info(f"AFTER PROCESSING - {len(result['meal_lists'])} items (no deduplication needed)")
 
             # Log summary of what we're returning
             meal_summary = []
