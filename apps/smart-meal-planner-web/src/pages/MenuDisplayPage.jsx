@@ -387,7 +387,7 @@ function MenuDisplayPage() {
         progress: 0
       });
 
-      const newMenu = await apiService.generateMenu(menuRequest, (progress) => {
+      const newMenu = await apiService.generateMenuWithBackgroundJob(menuRequest, (progress) => {
         setGenerationProgress(progress);
 
         // Auto-close dialog on completion

@@ -3,8 +3,9 @@ import time
 import re
 import os
 import asyncio
+import uuid
 from typing import List, Optional, Dict, Any, Set
-from fastapi import APIRouter, HTTPException, Query, Body, Depends, status
+from fastapi import APIRouter, HTTPException, Query, Body, Depends, status, BackgroundTasks
 import openai
 from psycopg2.extras import RealDictCursor
 from ..db import get_db_connection
@@ -314,6 +315,122 @@ else:
         logger.info("OpenAI API key configured successfully")
     except Exception as e:
         logger.error(f"Failed to configure OpenAI API key: {str(e)}")
+
+# Background Job Management Functions
+def save_job_status(job_id: str, status_data: dict):
+    """Save job status to database"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            INSERT INTO menu_generation_jobs
+            (job_id, user_id, client_id, status, progress, message, request_data)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (job_id)
+            DO UPDATE SET
+                status = EXCLUDED.status,
+                progress = EXCLUDED.progress,
+                message = EXCLUDED.message,
+                updated_at = CURRENT_TIMESTAMP
+        """, (
+            job_id,
+            status_data.get('user_id'),
+            status_data.get('client_id'),
+            status_data.get('status', 'started'),
+            status_data.get('progress', 0),
+            status_data.get('message', 'Starting...'),
+            json.dumps(status_data.get('request_data', {}))
+        ))
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+        logger.info(f"Saved job status for {job_id}: {status_data.get('status')} ({status_data.get('progress')}%)")
+
+    except Exception as e:
+        logger.error(f"Failed to save job status for {job_id}: {str(e)}")
+
+def update_job_status(job_id: str, status_data: dict):
+    """Update existing job status"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        update_fields = []
+        update_values = []
+
+        if 'status' in status_data:
+            update_fields.append("status = %s")
+            update_values.append(status_data['status'])
+
+        if 'progress' in status_data:
+            update_fields.append("progress = %s")
+            update_values.append(status_data['progress'])
+
+        if 'message' in status_data:
+            update_fields.append("message = %s")
+            update_values.append(status_data['message'])
+
+        if 'result_data' in status_data:
+            update_fields.append("result_data = %s")
+            update_values.append(json.dumps(status_data['result_data']))
+
+        if 'error_message' in status_data:
+            update_fields.append("error_message = %s")
+            update_values.append(status_data['error_message'])
+
+        if update_fields:
+            update_fields.append("updated_at = CURRENT_TIMESTAMP")
+            update_values.append(job_id)
+
+            query = f"""
+                UPDATE menu_generation_jobs
+                SET {', '.join(update_fields)}
+                WHERE job_id = %s
+            """
+
+            cursor.execute(query, update_values)
+            conn.commit()
+
+        cursor.close()
+        conn.close()
+        logger.info(f"Updated job {job_id}: {status_data.get('status')} ({status_data.get('progress')}%)")
+
+    except Exception as e:
+        logger.error(f"Failed to update job status for {job_id}: {str(e)}")
+
+def get_job_status_from_database(job_id: str) -> Optional[dict]:
+    """Retrieve job status from database"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        cursor.execute("""
+            SELECT job_id, user_id, client_id, status, progress, message,
+                   result_data, error_message, created_at, updated_at
+            FROM menu_generation_jobs
+            WHERE job_id = %s
+        """, (job_id,))
+
+        row = cursor.fetchone()
+        cursor.close()
+        conn.close()
+
+        if row:
+            result = dict(row)
+            # Parse JSON fields
+            if result['result_data']:
+                try:
+                    result['result_data'] = json.loads(result['result_data'])
+                except:
+                    result['result_data'] = None
+            return result
+        return None
+
+    except Exception as e:
+        logger.error(f"Failed to get job status for {job_id}: {str(e)}")
+        return None
 
 def merge_preference(db_value, req_value, default=None):
     """Helper function to merge preferences with precedence to request parameters"""
@@ -918,6 +1035,111 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
     except Exception as e:
         logger.error(f"Error in generate_meal_plan_variety: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+# Background Job Endpoints
+@router.post("/generate-async")
+async def start_menu_generation_async(req: GenerateMealPlanRequest, background_tasks: BackgroundTasks):
+    """Start menu generation as a background job and return job ID immediately"""
+    try:
+        # Generate unique job ID
+        job_id = str(uuid.uuid4())
+
+        # Save initial job status
+        save_job_status(job_id, {
+            "user_id": req.user_id,
+            "client_id": req.for_client_id,
+            "status": "started",
+            "progress": 0,
+            "message": "Starting meal plan generation...",
+            "request_data": req.dict()
+        })
+
+        # Start background task
+        background_tasks.add_task(generate_menu_background_task, job_id, req)
+
+        logger.info(f"Started background menu generation job {job_id} for user {req.user_id}")
+
+        return {
+            "job_id": job_id,
+            "status": "started",
+            "message": "Menu generation started"
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to start background menu generation: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/job-status/{job_id}")
+async def get_menu_generation_status(job_id: str):
+    """Get the status of a background menu generation job"""
+    try:
+        status = get_job_status_from_database(job_id)
+
+        if not status:
+            raise HTTPException(status_code=404, detail="Job not found")
+
+        # Format response
+        response = {
+            "job_id": job_id,
+            "status": status["status"],
+            "progress": status["progress"],
+            "message": status["message"],
+            "created_at": status["created_at"].isoformat() if status["created_at"] else None,
+            "updated_at": status["updated_at"].isoformat() if status["updated_at"] else None
+        }
+
+        # Include result data if completed
+        if status["status"] == "completed" and status["result_data"]:
+            response["result"] = status["result_data"]
+
+        # Include error if failed
+        if status["status"] == "failed" and status["error_message"]:
+            response["error"] = status["error_message"]
+
+        return response
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get job status for {job_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+async def generate_menu_background_task(job_id: str, req: GenerateMealPlanRequest):
+    """Background task that performs the actual menu generation"""
+    try:
+        logger.info(f"Background task started for job {job_id}")
+
+        # Update status: Starting AI generation
+        update_job_status(job_id, {
+            "status": "generating",
+            "progress": 10,
+            "message": "Calling AI to generate your meal plan..."
+        })
+
+        # Call the existing synchronous generation function
+        logger.info(f"Calling generate_meal_plan_variety for job {job_id}")
+        menu_result = generate_meal_plan_variety(req)
+
+        # Update status: Processing complete
+        update_job_status(job_id, {
+            "status": "completed",
+            "progress": 100,
+            "message": "Menu generation completed successfully!",
+            "result_data": menu_result
+        })
+
+        logger.info(f"Background task completed successfully for job {job_id}")
+
+    except Exception as e:
+        logger.error(f"Background task failed for job {job_id}: {str(e)}", exc_info=True)
+
+        # Update status: Failed
+        update_job_status(job_id, {
+            "status": "failed",
+            "progress": 0,
+            "message": "Menu generation failed",
+            "error_message": str(e)
+        })
 
 @router.get("/latest/{user_id}")
 def get_latest_menu(user_id: int):

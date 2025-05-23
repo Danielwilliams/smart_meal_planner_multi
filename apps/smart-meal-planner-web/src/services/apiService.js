@@ -763,7 +763,180 @@ const apiService = {
       throw err;
     }
   },
-  
+
+  async generateMenuWithBackgroundJob(menuRequest, onProgress = null) {
+    try {
+      console.log('Starting background menu generation with request:', menuRequest);
+
+      // Notify start
+      if (onProgress) {
+        onProgress({
+          phase: 'initializing',
+          message: 'Starting meal plan generation...',
+          progress: 0
+        });
+      }
+
+      // Start the background job (quick response)
+      const startResp = await axiosInstance.post('/menu/generate-async', menuRequest, {
+        timeout: 30000 // Only 30 seconds needed to start job
+      });
+
+      const jobId = startResp.data.job_id;
+      console.log(`Background job started with ID: ${jobId}`);
+
+      if (onProgress) {
+        onProgress({
+          phase: 'generating',
+          message: 'Job started! Checking progress...',
+          progress: 5
+        });
+      }
+
+      // Poll for status updates
+      return new Promise((resolve, reject) => {
+        const startTime = Date.now();
+        const maxDuration = 1200000; // 20 minutes max
+
+        const pollInterval = setInterval(async () => {
+          try {
+            // Check if we've exceeded max time
+            if (Date.now() - startTime > maxDuration) {
+              clearInterval(pollInterval);
+              reject(new Error('Job exceeded maximum time limit'));
+              return;
+            }
+
+            // Get job status (fast request)
+            const statusResp = await axiosInstance.get(`/menu/job-status/${jobId}`, {
+              timeout: 10000 // 10 seconds max for status check
+            });
+
+            const status = statusResp.data;
+            console.log(`Job ${jobId} status:`, status.status, `(${status.progress}%)`);
+
+            // Update progress
+            if (onProgress) {
+              onProgress({
+                phase: status.status,
+                message: status.message,
+                progress: status.progress
+              });
+            }
+
+            // Check if completed
+            if (status.status === 'completed') {
+              clearInterval(pollInterval);
+
+              if (onProgress) {
+                onProgress({
+                  phase: 'complete',
+                  message: 'Menu generated successfully!',
+                  progress: 100
+                });
+              }
+
+              console.log('Background job completed successfully');
+              resolve(status.result);
+
+            } else if (status.status === 'failed') {
+              clearInterval(pollInterval);
+
+              if (onProgress) {
+                onProgress({
+                  phase: 'error',
+                  message: 'Generation failed. Checking for recovery...',
+                  progress: 0,
+                  error: status.error
+                });
+              }
+
+              // Try recovery before failing completely
+              try {
+                console.log("Attempting recovery after job failure...");
+                await new Promise(resolve => setTimeout(resolve, 3000));
+
+                const recoveredMenu = await this.getLatestMenu(menuRequest.user_id);
+                const menuTime = new Date(recoveredMenu.created_at);
+                const timeDiff = Date.now() - menuTime;
+
+                if (timeDiff < 1200000) { // Within last 20 minutes
+                  console.log("Recovery successful - found recent menu");
+                  if (onProgress) {
+                    onProgress({
+                      phase: 'complete',
+                      message: 'Menu recovered successfully!',
+                      progress: 100
+                    });
+                  }
+                  resolve(recoveredMenu);
+                  return;
+                }
+              } catch (recoveryErr) {
+                console.error("Recovery failed:", recoveryErr);
+              }
+
+              reject(new Error(status.error || 'Menu generation failed'));
+            }
+
+          } catch (pollError) {
+            // Network error during polling - continue trying
+            console.warn(`Status check failed for job ${jobId}, retrying...`, pollError);
+
+            // If too many consecutive failures, try recovery
+            if (pollError.code === 'ECONNABORTED' || pollError.response?.status >= 500) {
+              console.log("Network issues detected, attempting recovery check...");
+
+              try {
+                const recoveredMenu = await this.getLatestMenu(menuRequest.user_id);
+                const menuTime = new Date(recoveredMenu.created_at);
+                const timeDiff = Date.now() - menuTime;
+
+                if (timeDiff < 600000) { // Within last 10 minutes
+                  clearInterval(pollInterval);
+                  console.log("Recovery successful during polling error");
+
+                  if (onProgress) {
+                    onProgress({
+                      phase: 'complete',
+                      message: 'Menu generated successfully (recovered)!',
+                      progress: 100
+                    });
+                  }
+
+                  resolve(recoveredMenu);
+                  return;
+                }
+              } catch (recoveryErr) {
+                console.warn("Recovery check during polling failed:", recoveryErr);
+              }
+            }
+          }
+        }, 3000); // Poll every 3 seconds
+
+        // Safety timeout
+        setTimeout(() => {
+          clearInterval(pollInterval);
+          reject(new Error('Job polling timeout'));
+        }, maxDuration);
+      });
+
+    } catch (err) {
+      console.error('Background menu generation error:', err);
+
+      if (onProgress) {
+        onProgress({
+          phase: 'error',
+          message: 'Failed to start background job',
+          progress: 0,
+          error: err.message
+        });
+      }
+
+      throw err;
+    }
+  },
+
   async generateMenuForClient(clientId, menuRequest) {
     // Store the latest menu ID before generation to help with recovery
     let latestMenuIdBeforeGeneration = null;
