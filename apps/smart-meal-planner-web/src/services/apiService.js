@@ -1003,8 +1003,8 @@ const apiService = {
         console.warn("Could not fetch latest menu ID before generation:", e);
       }
       
-      // Generate the menu
-      const resp = await axiosInstance.post(`/menu/generate-for-client/${clientId}`, menuRequest, {
+      // Generate and share the menu with the client
+      const resp = await axiosInstance.post(`/menu/generate-and-share/${clientId}`, menuRequest, {
         timeout: 900000 // 15 minutes timeout for menu generation
       });
       
@@ -2600,9 +2600,19 @@ const apiService = {
   getClientMenus: async (clientId) => {
     try {
       console.log(`Fetching menus for client ID: ${clientId}`);
-      const response = await axiosInstance.get(`/menu/client/${clientId}`);
-      console.log('Client menus response:', response.data);
-      return response.data;
+      
+      // Try the correct endpoint first
+      try {
+        const response = await axiosInstance.get(`/organizations/clients/${clientId}/menus`);
+        console.log('Client menus response:', response.data);
+        return response.data;
+      } catch (err) {
+        // If that fails, try the POST method (as the backend supports both)
+        console.log('GET failed, trying POST method');
+        const postResponse = await axiosInstance.post(`/organizations/clients/${clientId}/menus`);
+        console.log('Client menus response (POST):', postResponse.data);
+        return postResponse.data;
+      }
     } catch (err) {
       console.error('Error fetching client menus:', err);
       // Log detailed error information

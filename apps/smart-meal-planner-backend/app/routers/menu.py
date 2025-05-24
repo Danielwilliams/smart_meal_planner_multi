@@ -2225,12 +2225,75 @@ async def generate_and_share_menu(
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         
         try:
-            # Share the menu with this client
+            # First check if shared_menus table exists
             cursor.execute("""
-                INSERT INTO shared_menus (menu_id, shared_with, created_by, organization_id, permission_level) 
-                VALUES (%s, %s, %s, %s, 'read')
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' AND table_name = 'shared_menus'
+                )
+            """)
+            
+            table_exists = cursor.fetchone()
+            
+            if not table_exists or not table_exists['exists']:
+                # Create the shared_menus table if it doesn't exist
+                logger.warning("Creating shared_menus table on-the-fly")
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS shared_menus (
+                        id SERIAL PRIMARY KEY,
+                        menu_id INTEGER NOT NULL,
+                        client_id INTEGER NOT NULL,
+                        organization_id INTEGER NOT NULL,
+                        permission_level VARCHAR(20) DEFAULT 'read',
+                        shared_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        is_active BOOLEAN DEFAULT TRUE,
+                        message TEXT
+                    )
+                """)
+                conn.commit()
+            
+            # Check which columns exist in shared_menus table
+            cursor.execute("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_schema = 'public' 
+                AND table_name = 'shared_menus'
+            """)
+            columns = [col['column_name'] for col in cursor.fetchall()]
+            
+            # Prepare the query based on available columns
+            insert_columns = ['menu_id', 'organization_id', 'permission_level']
+            insert_values = [menu_id, org_id, 'read']
+            
+            # Use client_id if available, otherwise use shared_with
+            if 'client_id' in columns:
+                insert_columns.append('client_id')
+                insert_values.append(client_id)
+            else:
+                insert_columns.append('shared_with')
+                insert_values.append(client_id)
+            
+            if 'created_by' in columns:
+                insert_columns.append('created_by')
+                insert_values.append(user_id)
+                
+            if 'is_active' in columns:
+                insert_columns.append('is_active')
+                insert_values.append(True)
+                
+            if 'message' in columns:
+                insert_columns.append('message')
+                insert_values.append(f'Menu created and shared by {user.get("name", "your nutrition coach")}')
+            
+            # Build the INSERT query dynamically
+            placeholders = ', '.join(['%s' for _ in insert_values])
+            column_str = ', '.join(insert_columns)
+            
+            cursor.execute(f"""
+                INSERT INTO shared_menus ({column_str}) 
+                VALUES ({placeholders})
                 RETURNING id
-            """, (menu_id, client_id, user_id, org_id))
+            """, insert_values)
             conn.commit()
             
             return {

@@ -277,28 +277,33 @@ function ClientProfile() {
               </Grid>
             ) : (
               clientMenus.map((menu) => (
-                <Grid item xs={12} md={6} key={menu.menu_id}>
+                <Grid item xs={12} md={6} key={menu.id || menu.menu_id}>
                   <Card>
                     <CardContent>
                       <Typography variant="h6">
-                        {menu.nickname || `Menu from ${new Date(menu.created_at).toLocaleDateString()}`}
+                        {menu.nickname || menu.title || `Menu from ${new Date(menu.created_at).toLocaleDateString()}`}
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
                         {menu.days_count || 7} days of meals
                       </Typography>
+                      {menu.share_id && (
+                        <Typography variant="caption" color="primary">
+                          Shared with client
+                        </Typography>
+                      )}
                     </CardContent>
                     <Divider />
                     <CardActions>
                       <Button 
                         size="small" 
-                        onClick={() => handleViewMenu(menu.menu_id)}
+                        onClick={() => handleViewMenu(menu.id || menu.menu_id)}
                       >
                         View Menu
                       </Button>
                       <Button 
                         size="small"
                         startIcon={<ShareIcon />}
-                        onClick={() => handleShareMenu(menu.menu_id)}
+                        onClick={() => handleShareMenu(menu.id || menu.menu_id)}
                       >
                         Share Menu
                       </Button>

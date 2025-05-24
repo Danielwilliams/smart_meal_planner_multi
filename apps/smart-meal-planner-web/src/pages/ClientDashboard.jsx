@@ -151,7 +151,7 @@ const ClientDashboard = () => {
                 color="primary" 
                 fullWidth
                 disabled={sharedMenus.length === 0}
-                onClick={() => sharedMenus.length > 0 && handleViewMenu(sharedMenus[0].id)}
+                onClick={() => sharedMenus.length > 0 && handleViewMenu(sharedMenus[0].menu_id || sharedMenus[0].id)}
               >
                 {sharedMenus.length === 0 ? 'No Menus Available' : 'View Latest Menu'}
               </Button>
@@ -178,7 +178,7 @@ const ClientDashboard = () => {
                 color="primary" 
                 fullWidth
                 disabled={sharedMenus.length === 0}
-                onClick={() => sharedMenus.length > 0 && handleViewGroceryList(sharedMenus[0].id)}
+                onClick={() => sharedMenus.length > 0 && handleViewGroceryList(sharedMenus[0].menu_id || sharedMenus[0].id)}
               >
                 {sharedMenus.length === 0 ? 'No Lists Available' : 'View Shopping List'}
               </Button>
@@ -201,55 +201,53 @@ const ClientDashboard = () => {
         ) : (
           <Grid container spacing={3}>
             {sharedMenus.map((menu) => (
-              <Grid item xs={12} sm={6} md={4} key={menu.id}>
+              <Grid item xs={12} sm={6} md={4} key={menu.menu_id || menu.id}>
                 <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
                   <CardContent sx={{ flexGrow: 1 }}>
                     <Typography variant="h6" component="h3" gutterBottom>
-                      {menu.name || menu.nickname || "Meal Plan"}
+                      {menu.title || menu.nickname || menu.name || "Meal Plan"}
                     </Typography>
                     
-                    <Box sx={{ display: 'flex', mb: 1 }}>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 1 }}>
                       <Chip 
                         size="small" 
-                        label={`${menu.meal_count || menu.duration || 0} meals`} 
+                        label={`${menu.meal_count || menu.duration || 7} days`} 
                         color="primary" 
                         variant="outlined" 
-                        sx={{ mr: 1 }} 
                       />
-                      {(menu.shared_at || menu.shared_on) && (
+                      {menu.shared_at && (
                         <Chip 
                           size="small" 
-                          label={`Shared: ${new Date(menu.shared_at || menu.shared_on || Date.now()).toLocaleDateString()}`} 
+                          label={`Shared: ${new Date(menu.shared_at).toLocaleDateString()}`} 
                           color="secondary" 
                           variant="outlined" 
                         />
                       )}
-                      {menu.owner_name && (
+                      {menu.organization_name && (
                         <Chip 
                           size="small" 
-                          label={`By: ${menu.owner_name}`} 
+                          label={`By: ${menu.organization_name}`} 
                           variant="outlined" 
-                          sx={{ ml: 1 }} 
                         />
                       )}
                     </Box>
                     
                     <Typography variant="body2" color="text.secondary">
-                      {menu.description || "A meal plan shared with you by your nutrition expert."}
+                      {menu.description || menu.message || "A personalized meal plan created for you."}
                     </Typography>
                   </CardContent>
                   <CardActions>
                     <Button 
                       size="small" 
                       color="primary"
-                      onClick={() => handleViewMenu(menu.id)}
+                      onClick={() => handleViewMenu(menu.menu_id || menu.id)}
                     >
                       View Menu
                     </Button>
                     <Button 
                       size="small" 
                       color="secondary"
-                      onClick={() => handleViewGroceryList(menu.id)}
+                      onClick={() => handleViewGroceryList(menu.menu_id || menu.id)}
                     >
                       Shopping List
                     </Button>
