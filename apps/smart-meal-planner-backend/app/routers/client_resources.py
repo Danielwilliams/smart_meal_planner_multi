@@ -1,6 +1,6 @@
 # app/routers/client_resources.py
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel
 from psycopg2.extras import RealDictCursor
 from ..db import get_db_connection
