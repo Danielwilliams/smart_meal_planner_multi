@@ -40,6 +40,7 @@ import KrogerAuthCallback from './pages/KrogerAuthCallback';
 import TestInvitation from './TestInvitation';
 import ApiTestPage from './pages/ApiTestPage';
 import InstacartTestPage from './pages/InstacartTestPage';
+import DebugSharedMenus from './pages/DebugSharedMenus';
 
 
 function App() {
@@ -171,6 +172,7 @@ function App() {
               <Route path="/debug/shopping-list-test" element={<ShoppingListTestPage />} />
               <Route path="/debug/api-test" element={<ApiTestPage />} />
               <Route path="/debug/instacart-test" element={<InstacartTestPage />} />
+              <Route path="/debug/shared-menus" element={<DebugSharedMenus />} />
               <Route 
                 path="/cart" 
                 element={

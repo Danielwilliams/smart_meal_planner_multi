@@ -77,14 +77,14 @@ async def get_client_dashboard(user=Depends(get_user_from_token)):
                 total_count = cursor.fetchone()['count']
                 logger.info(f"Total shared menus in database: {total_count}")
                 
-                # Get shared menus using the known schema
+                # Get shared menus using the known schema (no permission_level column)
                 cursor.execute("""
                     SELECT 
                         sm.id as share_id, 
                         sm.menu_id, 
                         sm.client_id, 
                         sm.organization_id, 
-                        sm.permission_level,
+                        'read' as permission_level,
                         sm.shared_at,
                         sm.message,
                         m.title, 
@@ -119,7 +119,7 @@ async def get_client_dashboard(user=Depends(get_user_from_token)):
                     m.id as menu_id,
                     NULL as share_id,
                     m.client_id,
-                    m.organization_id,
+                    NULL as organization_id,
                     'owner' as permission_level,
                     m.created_at as shared_at,
                     NULL as message,
@@ -127,9 +127,8 @@ async def get_client_dashboard(user=Depends(get_user_from_token)):
                     m.nickname,
                     m.description,
                     m.created_at,
-                    o.name as organization_name
+                    NULL as organization_name
                 FROM menus m
-                LEFT JOIN organizations o ON m.organization_id = o.id
                 WHERE m.client_id = %s
                 ORDER BY m.created_at DESC
             """, (client_id,))
@@ -161,7 +160,6 @@ async def get_client_dashboard(user=Depends(get_user_from_token)):
                 SELECT 
                     id,
                     recipe_name,
-                    recipe_type,
                     recipe_id,
                     created_at,
                     updated_at,
@@ -391,7 +389,7 @@ async def get_client_menu(
                         menu_id,
                         client_id,
                         organization_id,
-                        permission_level,
+                        'read' as permission_level,
                         shared_at,
                         message
                     FROM shared_menus
@@ -612,6 +610,10 @@ async def org_get_client_menus(
     user=Depends(get_user_from_token)
 ):
     """Get menus for a specific client (organization owner only)"""
+    logger.info(f"\n=== ORG GET CLIENT MENUS DEBUG ===")
+    logger.info(f"Received client_id: {client_id}")
+    logger.info(f"User token data: {user}")
+    
     if not user:
         raise HTTPException(status_code=401, detail="Authentication required")
 
@@ -620,6 +622,8 @@ async def org_get_client_menus(
     # Get organization ID - either from token or try to determine from user data
     organization_id = user.get('organization_id')
     account_type = user.get('account_type')
+    
+    logger.info(f"user_id: {user_id}, organization_id: {organization_id}, account_type: {account_type}")
     
     # More flexible approach to check if user can access this endpoint
     is_authorized = False
@@ -656,14 +660,29 @@ async def org_get_client_menus(
     try:
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Enable autocommit to prevent transaction issues
+        conn.autocommit = True
 
         # First check if the client belongs to this organization
+        logger.info(f"Checking if client {client_id} belongs to organization {organization_id}")
         cursor.execute("""
             SELECT 1 FROM organization_clients
             WHERE organization_id = %s AND client_id = %s AND status = 'active'
         """, (organization_id, client_id))
         
-        if not cursor.fetchone():
+        client_check = cursor.fetchone()
+        logger.info(f"Client check result: {client_check}")
+        
+        if not client_check:
+            # Let's debug what's in organization_clients
+            cursor.execute("""
+                SELECT * FROM organization_clients
+                WHERE organization_id = %s
+            """, (organization_id,))
+            all_org_clients = cursor.fetchall()
+            logger.info(f"All clients in organization {organization_id}: {all_org_clients}")
+            
             raise HTTPException(status_code=404, detail="Client not found in your organization")
 
         # First check if shared_menus table exists
@@ -676,12 +695,14 @@ async def org_get_client_menus(
         """)
         
         has_shared_menus_table = cursor.fetchone()['exists']
+        logger.info(f"shared_menus table exists: {has_shared_menus_table}")
         
         shared_menus = []
         
         if has_shared_menus_table:
             try:
                 # Get all menus shared with this client using known schema
+                logger.info(f"Querying shared menus for client_id={client_id}, organization_id={organization_id}")
                 cursor.execute("""
                     SELECT 
                         m.id,
@@ -691,7 +712,7 @@ async def org_get_client_menus(
                         m.nickname,
                         m.published,
                         m.image_url,
-                        ms.permission_level,
+                        'read' as permission_level,
                         ms.shared_at,
                         ms.id as share_id,
                         ms.message
@@ -703,6 +724,16 @@ async def org_get_client_menus(
                 
                 shared_menus = cursor.fetchall()
                 logger.info(f"Found {len(shared_menus)} shared menus for client {client_id}")
+                
+                # Debug: check what's in shared_menus table for this client
+                cursor.execute("""
+                    SELECT * FROM shared_menus WHERE client_id = %s
+                """, (client_id,))
+                all_shared = cursor.fetchall()
+                logger.info(f"All shared_menus records for client {client_id}: {len(all_shared)} records")
+                if all_shared:
+                    logger.info(f"First record sample: {all_shared[0]}")
+                    
             except Exception as e:
                 logger.error(f"Error fetching shared menus for client {client_id}: {e}")
                 logger.error(f"Full traceback: {traceback.format_exc()}")
@@ -711,6 +742,7 @@ async def org_get_client_menus(
             logger.warning("shared_menus table does not exist in the database")
 
         # Also get menus directly created for this client
+        logger.info(f"Querying direct menus for client_id={client_id}, organization_id={organization_id}")
         cursor.execute("""
             SELECT 
                 id,
@@ -730,9 +762,11 @@ async def org_get_client_menus(
         """, (client_id, organization_id))
 
         direct_menus = cursor.fetchall()
+        logger.info(f"Found {len(direct_menus)} direct menus for client {client_id}")
 
         # Combine the results
         all_menus = direct_menus + shared_menus
+        logger.info(f"Returning total of {len(all_menus)} menus")
 
         return all_menus
 
@@ -1072,17 +1106,15 @@ async def org_create_client_menu(
                     menu_id, 
                     client_id, 
                     organization_id, 
-                    permission_level, 
                     message, 
                     is_active
                 )
-                VALUES (%s, %s, %s, %s, %s, TRUE)
+                VALUES (%s, %s, %s, %s, TRUE)
                 RETURNING id
             """, (
                 menu_id,
                 client_id,
                 organization_id,
-                'read',
                 f'Menu created for you: {title}'
             ))
             
@@ -1131,3 +1163,62 @@ async def client_get_preferences(
     """Alternative endpoint to get preferences for a client - compatible with mobile app"""
     # This is just a proxy to the organization client preferences endpoint
     return await org_get_client_preferences(client_id, user)
+
+@router.get("/{client_id}/menus/debug")
+async def debug_client_menus(client_id: int, request: Request):
+    """Debug endpoint to check what menus exist for a client without any organization filtering"""
+    logger.info(f"\n=== DEBUG CLIENT MENUS ===")
+    logger.info(f"Client ID: {client_id}")
+    
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        conn.autocommit = True
+        
+        # Get all shared menus for this client
+        cursor.execute("""
+            SELECT sm.*, m.title, m.nickname, m.organization_id as menu_org_id
+            FROM shared_menus sm
+            LEFT JOIN menus m ON sm.menu_id = m.id
+            WHERE sm.client_id = %s
+            ORDER BY sm.shared_at DESC
+        """, (client_id,))
+        
+        shared_menus = cursor.fetchall()
+        logger.info(f"Found {len(shared_menus)} shared menu records")
+        
+        # Get client info
+        cursor.execute("""
+            SELECT id, email, role, organization_id
+            FROM users
+            WHERE id = %s
+        """, (client_id,))
+        
+        client_info = cursor.fetchone()
+        logger.info(f"Client info: {client_info}")
+        
+        # Get organization client relationships
+        cursor.execute("""
+            SELECT *
+            FROM organization_clients
+            WHERE client_id = %s
+        """, (client_id,))
+        
+        org_relationships = cursor.fetchall()
+        logger.info(f"Organization relationships: {org_relationships}")
+        
+        cursor.close()
+        conn.close()
+        
+        return {
+            "client_info": client_info,
+            "shared_menus_count": len(shared_menus),
+            "shared_menus": shared_menus,
+            "organization_relationships": org_relationships
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in debug: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
