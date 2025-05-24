@@ -77,14 +77,14 @@ async def get_client_dashboard(user=Depends(get_user_from_token)):
                 total_count = cursor.fetchone()['count']
                 logger.info(f"Total shared menus in database: {total_count}")
                 
-                # Get shared menus using the known schema (no permission_level column)
+                # Get shared menus using the actual schema
                 cursor.execute("""
                     SELECT 
                         sm.id as share_id, 
                         sm.menu_id, 
                         sm.client_id, 
                         sm.organization_id, 
-                        'read' as permission_level,
+                        sm.permission_level,
                         sm.shared_at,
                         sm.message,
                         m.nickname as title, 
@@ -1182,9 +1182,14 @@ async def get_my_organization_shared_menus(user=Depends(get_user_from_token)):
         logger.info(f"Total shared_menus in database: {total_count}")
         
         # Debug: Check organization_ids in shared_menus
-        cursor.execute("SELECT DISTINCT organization_id FROM shared_menus WHERE organization_id IS NOT NULL")
+        cursor.execute("SELECT DISTINCT organization_id FROM shared_menus")
         org_ids = cursor.fetchall()
-        logger.info(f"Distinct organization_ids in shared_menus: {[row['organization_id'] for row in org_ids]}")
+        logger.info(f"All distinct organization_ids in shared_menus (including NULL): {[row['organization_id'] for row in org_ids]}")
+        
+        # Debug: Check if any shared_menus have NULL organization_id
+        cursor.execute("SELECT COUNT(*) FROM shared_menus WHERE organization_id IS NULL")
+        null_count = cursor.fetchone()['count']
+        logger.info(f"Shared menus with NULL organization_id: {null_count}")
         
         # Get all menus shared by this organization
         cursor.execute("""
@@ -1196,6 +1201,7 @@ async def get_my_organization_shared_menus(user=Depends(get_user_from_token)):
                 sm.shared_at,
                 sm.message,
                 sm.is_active,
+                sm.permission_level,
                 m.nickname as menu_nickname,
                 m.duration_days,
                 m.created_at as menu_created_at,
@@ -1214,7 +1220,7 @@ async def get_my_organization_shared_menus(user=Depends(get_user_from_token)):
         # Process the results for frontend
         for menu in shared_menus:
             menu['shared_with_name'] = menu['client_name']
-            menu['permission_level'] = 'read'
+            # Keep permission_level from database
             menu['nickname'] = menu['menu_nickname'] or f"{menu.get('duration_days', 7)}-day meal plan"
             
         cursor.close()
@@ -1268,6 +1274,7 @@ async def get_organization_shared_menus(
                 sm.shared_at,
                 sm.message,
                 sm.is_active,
+                sm.permission_level,
                 m.nickname as menu_nickname,
                 m.duration_days,
                 m.created_at as menu_created_at,
@@ -1286,7 +1293,7 @@ async def get_organization_shared_menus(
         # Process the results for frontend
         for menu in shared_menus:
             menu['shared_with_name'] = menu['client_name']
-            menu['permission_level'] = 'read'
+            # Keep permission_level from database
             menu['nickname'] = menu['menu_nickname'] or f"{menu.get('duration_days', 7)}-day meal plan"
             
         cursor.close()
