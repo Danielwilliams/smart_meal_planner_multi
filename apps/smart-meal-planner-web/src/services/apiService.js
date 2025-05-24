@@ -2764,72 +2764,12 @@ const apiService = {
         }
       }
       
-      // Try the shared endpoint without userId parameter first
-      try {
-        console.log('Trying /menu/shared endpoint');
-        const generalResponse = await axiosInstance.get('/menu/shared');
-        console.log('Shared menus response from general endpoint:', generalResponse.data);
-        
-        if (Array.isArray(generalResponse.data) && generalResponse.data.length > 0) {
-          const processedMenus = generalResponse.data.map(menu => {
-            // Add shared_at if missing
-            if (!menu.shared_at) {
-              menu.shared_at = new Date().toISOString();
-            }
-            return menu;
-          });
-          return processedMenus;
-        }
-      } catch (generalErr) {
-        console.warn('General shared endpoint failed, trying with user ID:', generalErr);
-      }
+      // Skip the /menu/shared endpoints as they conflict with /menu/{menu_id} route
+      // For clients, the dashboard endpoint is the primary source of shared menus
       
-      // Fall back to the user-specific shared menus endpoint
-      console.log(`Trying /menu/shared/${userId} endpoint`);
-      const response = await axiosInstance.get(`/menu/shared/${userId}`);
-      console.log('Shared menus response from user-specific endpoint:', response.data);
-      
-      // Process shared menus to ensure dates are valid
-      if (Array.isArray(response.data)) {
-        const processedMenus = response.data.map(menu => {
-          // Check if shared_at is valid date and format it if needed
-          if (menu.shared_at) {
-            try {
-              const date = new Date(menu.shared_at);
-              if (!isNaN(date.getTime())) {
-                menu.shared_at = date.toISOString();
-              }
-            } catch (e) {
-              // If date parsing fails, use current time
-              menu.shared_at = new Date().toISOString();
-            }
-          } else {
-            menu.shared_at = new Date().toISOString();
-          }
-          return menu;
-        });
-        return processedMenus;
-      }
-      
-      // Last resort: try to get menu history and filter for shared menus
-      try {
-        console.log('Trying menu history as last resort');
-        const historyResponse = await axiosInstance.get(`/menu/history/${userId}`);
-        console.log('Menu history response:', historyResponse.data);
-        
-        if (Array.isArray(historyResponse.data)) {
-          // Look for menus with sharing info or from other users
-          return historyResponse.data.filter(menu => 
-            menu.is_shared === true || 
-            menu.shared_with !== undefined || 
-            menu.created_by !== userId
-          );
-        }
-      } catch (historyErr) {
-        console.warn('Menu history endpoint also failed:', historyErr);
-      }
-      
-      return response.data || [];
+      // For non-client users, just return empty array
+      console.log('User is not a client, returning empty shared menus array');
+      return [];
     } catch (err) {
       console.error('Error fetching shared menus:', err);
       // Log detailed error information
