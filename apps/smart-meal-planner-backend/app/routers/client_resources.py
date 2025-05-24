@@ -42,9 +42,14 @@ async def get_client_dashboard(user=Depends(get_user_from_token)):
     if not is_client:
         raise HTTPException(status_code=403, detail="User is not a client")
 
+    conn = None
+    cursor = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Enable autocommit to prevent transaction issues
+        conn.autocommit = True
         
         # The user_id from the token is the user's profile ID
         # For shared menus, we need to use this same ID as the client_id
@@ -99,102 +104,115 @@ async def get_client_dashboard(user=Depends(get_user_from_token)):
             except Exception as e:
                 logger.error(f"Error fetching shared menus for user {user_id}: {e}")
                 logger.error(f"Full traceback: {traceback.format_exc()}")
+                # If autocommit is off, rollback the transaction
+                if not conn.autocommit:
+                    conn.rollback()
                 shared_menus = []
         else:
             logger.warning("shared_menus table does not exist in the database")
 
         # Also check for menus created directly for this client
-        cursor.execute("""
-            SELECT 
-                m.id as menu_id,
-                NULL as share_id,
-                m.client_id,
-                m.organization_id,
-                'owner' as permission_level,
-                m.created_at as shared_at,
-                NULL as message,
-                m.title,
-                m.nickname,
-                m.description,
-                m.created_at,
-                o.name as organization_name
-            FROM menus m
-            LEFT JOIN organizations o ON m.organization_id = o.id
-            WHERE m.client_id = %s
-            ORDER BY m.created_at DESC
-        """, (client_id,))
-        
-        direct_menus = cursor.fetchall()
-        logger.info(f"Found {len(direct_menus)} menus created directly for client {client_id}")
+        direct_menus = []
+        try:
+            cursor.execute("""
+                SELECT 
+                    m.id as menu_id,
+                    NULL as share_id,
+                    m.client_id,
+                    m.organization_id,
+                    'owner' as permission_level,
+                    m.created_at as shared_at,
+                    NULL as message,
+                    m.title,
+                    m.nickname,
+                    m.description,
+                    m.created_at,
+                    o.name as organization_name
+                FROM menus m
+                LEFT JOIN organizations o ON m.organization_id = o.id
+                WHERE m.client_id = %s
+                ORDER BY m.created_at DESC
+            """, (client_id,))
+            
+            direct_menus = cursor.fetchall()
+            logger.info(f"Found {len(direct_menus)} menus created directly for client {client_id}")
+        except Exception as e:
+            logger.error(f"Error fetching direct menus: {e}")
+            logger.error(f"Full traceback: {traceback.format_exc()}")
+            if not conn.autocommit:
+                conn.rollback()
         
         # Combine shared menus and direct menus
         all_menus = shared_menus + direct_menus
         
-        # Sort by date (shared_at/created_at)
-        all_menus.sort(key=lambda x: x.get('shared_at', x.get('created_at', '')), reverse=True)
+        # Sort by date (shared_at/created_at) - handle datetime objects
+        try:
+            all_menus.sort(key=lambda x: x.get('shared_at') or x.get('created_at') or '', reverse=True)
+        except Exception as sort_error:
+            logger.warning(f"Error sorting menus: {sort_error}")
         
         # Use all_menus instead of shared_menus
         shared_menus = all_menus
 
         # Get saved recipes
-        cursor.execute("""
-            SELECT 
-                id,
-                recipe_name,
-                recipe_type,
-                recipe_id,
-                created_at,
-                updated_at,
-                scraped_recipe_id,
-                user_id,
-                url,
-                ingredients,
-                instructions,
-                servings,
-                rating,
-                image_url
-            FROM saved_recipes
-            WHERE user_id = %s
-            ORDER BY created_at DESC
-        """, (user_id,))
-
-        saved_recipes = cursor.fetchall()
-
-        # Get user preferences data (summary)
-        cursor.execute("""
-            SELECT 
-                has_preferences,
-                diet_type,
-                dietary_restrictions,
-                calorie_goal,
-                macro_protein,
-                macro_carbs,
-                macro_fat,
-                prep_complexity
-            FROM user_profiles
-            WHERE id = %s
-        """, (user_id,))
-
-        preferences_summary = cursor.fetchone()
-
-        # Get organization data
-        if organization_id:
+        saved_recipes = []
+        try:
             cursor.execute("""
                 SELECT 
                     id,
-                    name,
-                    description,
-                    owner_id,
-                    created_at
-                FROM organizations
+                    recipe_name,
+                    recipe_type,
+                    recipe_id,
+                    created_at,
+                    updated_at,
+                    scraped_recipe_id,
+                    user_id,
+                    url,
+                    ingredients,
+                    instructions,
+                    servings,
+                    rating,
+                    image_url
+                FROM saved_recipes
+                WHERE user_id = %s
+                ORDER BY created_at DESC
+            """, (user_id,))
+
+            saved_recipes = cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Error fetching saved recipes: {e}")
+            if not conn.autocommit:
+                conn.rollback()
+            saved_recipes = []
+
+        # Get user preferences data (summary)
+        preferences_summary = None
+        try:
+            cursor.execute("""
+                SELECT 
+                    has_preferences,
+                    diet_type,
+                    dietary_restrictions,
+                    calorie_goal,
+                    macro_protein,
+                    macro_carbs,
+                    macro_fat,
+                    prep_complexity
+                FROM user_profiles
                 WHERE id = %s
-            """, (organization_id,))
-            organization = cursor.fetchone()
-        else:
-            # Try to find the organization from menu shares
-            organization = None
-            if shared_menus and len(shared_menus) > 0:
-                organization_id = shared_menus[0]['organization_id']
+            """, (user_id,))
+
+            preferences_summary = cursor.fetchone()
+        except Exception as e:
+            logger.error(f"Error fetching preferences: {e}")
+            if not conn.autocommit:
+                conn.rollback()
+            preferences_summary = None
+
+        # Get organization data
+        organization = None
+        try:
+            if organization_id:
                 cursor.execute("""
                     SELECT 
                         id,
@@ -206,6 +224,27 @@ async def get_client_dashboard(user=Depends(get_user_from_token)):
                     WHERE id = %s
                 """, (organization_id,))
                 organization = cursor.fetchone()
+            else:
+                # Try to find the organization from menu shares
+                if shared_menus and len(shared_menus) > 0:
+                    organization_id = shared_menus[0].get('organization_id')
+                    if organization_id:
+                        cursor.execute("""
+                            SELECT 
+                                id,
+                                name,
+                                description,
+                                owner_id,
+                                created_at
+                            FROM organizations
+                            WHERE id = %s
+                        """, (organization_id,))
+                        organization = cursor.fetchone()
+        except Exception as e:
+            logger.error(f"Error fetching organization: {e}")
+            if not conn.autocommit:
+                conn.rollback()
+            organization = None
 
         return {
             "user_id": user_id,
@@ -218,9 +257,19 @@ async def get_client_dashboard(user=Depends(get_user_from_token)):
 
     except Exception as e:
         logger.error(f"Error in get_client_dashboard: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        # Return a more detailed error for debugging
+        error_detail = {
+            "error": str(e),
+            "type": type(e).__name__,
+            "user_id": user_id if 'user_id' in locals() else None,
+            "client_id": client_id if 'client_id' in locals() else None,
+            "traceback": traceback.format_exc()
+        }
+        raise HTTPException(status_code=500, detail=error_detail)
     finally:
-        if conn:
+        if 'cursor' in locals() and cursor:
+            cursor.close()
+        if 'conn' in locals() and conn:
             conn.close()
 
 @router.get("/client/menus/{menu_id}")
