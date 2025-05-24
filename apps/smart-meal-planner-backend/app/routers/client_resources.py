@@ -16,6 +16,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Client Resources"])
 
+# Helper function removed - using direct queries with known schema
+
 class MenuShare(BaseModel):
     client_id: int
     menu_id: int
@@ -43,6 +45,12 @@ async def get_client_dashboard(user=Depends(get_user_from_token)):
     try:
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # The user_id from the token is the user's profile ID
+        # For shared menus, we need to use this same ID as the client_id
+        # since client_id in shared_menus refers to the user profile ID of the client
+        client_id = user_id
+        logger.info(f"Looking for shared menus for client_id/user_id: {client_id}")
 
         # Check if shared_menus table exists
         cursor.execute("""
@@ -59,7 +67,12 @@ async def get_client_dashboard(user=Depends(get_user_from_token)):
         
         if has_shared_menus_table:
             try:
-                # Get shared menus
+                # First check if there are any shared menus at all (for debugging)
+                cursor.execute("SELECT COUNT(*) as count FROM shared_menus")
+                total_count = cursor.fetchone()['count']
+                logger.info(f"Total shared menus in database: {total_count}")
+                
+                # Get shared menus using the known schema
                 cursor.execute("""
                     SELECT 
                         sm.id as share_id, 
@@ -76,18 +89,52 @@ async def get_client_dashboard(user=Depends(get_user_from_token)):
                         o.name as organization_name
                     FROM shared_menus sm
                     JOIN menus m ON sm.menu_id = m.id
-                    JOIN organizations o ON sm.organization_id = o.id
+                    LEFT JOIN organizations o ON sm.organization_id = o.id
                     WHERE sm.client_id = %s AND sm.is_active = TRUE
                     ORDER BY sm.shared_at DESC
-                """, (user_id,))
+                """, (client_id,))
                 
                 shared_menus = cursor.fetchall()
                 logger.info(f"Found {len(shared_menus)} shared menus for user {user_id}")
             except Exception as e:
-                logger.error(f"Error fetching shared menus: {e}")
+                logger.error(f"Error fetching shared menus for user {user_id}: {e}")
+                logger.error(f"Full traceback: {traceback.format_exc()}")
                 shared_menus = []
         else:
             logger.warning("shared_menus table does not exist in the database")
+
+        # Also check for menus created directly for this client
+        cursor.execute("""
+            SELECT 
+                m.id as menu_id,
+                NULL as share_id,
+                m.client_id,
+                m.organization_id,
+                'owner' as permission_level,
+                m.created_at as shared_at,
+                NULL as message,
+                m.title,
+                m.nickname,
+                m.description,
+                m.created_at,
+                o.name as organization_name
+            FROM menus m
+            LEFT JOIN organizations o ON m.organization_id = o.id
+            WHERE m.client_id = %s
+            ORDER BY m.created_at DESC
+        """, (client_id,))
+        
+        direct_menus = cursor.fetchall()
+        logger.info(f"Found {len(direct_menus)} menus created directly for client {client_id}")
+        
+        # Combine shared menus and direct menus
+        all_menus = shared_menus + direct_menus
+        
+        # Sort by date (shared_at/created_at)
+        all_menus.sort(key=lambda x: x.get('shared_at', x.get('created_at', '')), reverse=True)
+        
+        # Use all_menus instead of shared_menus
+        shared_menus = all_menus
 
         # Get saved recipes
         cursor.execute("""
@@ -217,7 +264,7 @@ async def get_client_menu(
                 # Clients can only access menus shared with them
                 cursor.execute("""
                     SELECT 1 FROM shared_menus
-                    WHERE menu_id = %s AND client_id = %s AND is_active = TRUE
+                    WHERE menu_id = %s AND client_id = %s
                 """, (menu_id, user_id))
                 has_access = cursor.fetchone() is not None
             else:
@@ -299,7 +346,7 @@ async def get_client_menu(
                         shared_at,
                         message
                     FROM shared_menus
-                    WHERE menu_id = %s AND client_id = %s AND is_active = TRUE
+                    WHERE menu_id = %s AND client_id = %s
                 """, (menu_id, user_id))
                 share_info = cursor.fetchone()
                 if share_info:
@@ -359,7 +406,7 @@ async def get_client_menu_grocery_list(
                 # Clients can only access menus shared with them
                 cursor.execute("""
                     SELECT 1 FROM shared_menus
-                    WHERE menu_id = %s AND client_id = %s AND is_active = TRUE
+                    WHERE menu_id = %s AND client_id = %s
                 """, (menu_id, user_id))
                 has_access = cursor.fetchone() is not None
             else:
@@ -585,7 +632,7 @@ async def org_get_client_menus(
         
         if has_shared_menus_table:
             try:
-                # Get all menus created for and shared with this client
+                # Get all menus shared with this client using known schema
                 cursor.execute("""
                     SELECT 
                         m.id,
@@ -608,7 +655,8 @@ async def org_get_client_menus(
                 shared_menus = cursor.fetchall()
                 logger.info(f"Found {len(shared_menus)} shared menus for client {client_id}")
             except Exception as e:
-                logger.error(f"Error fetching shared menus: {e}")
+                logger.error(f"Error fetching shared menus for client {client_id}: {e}")
+                logger.error(f"Full traceback: {traceback.format_exc()}")
                 shared_menus = []
         else:
             logger.warning("shared_menus table does not exist in the database")
