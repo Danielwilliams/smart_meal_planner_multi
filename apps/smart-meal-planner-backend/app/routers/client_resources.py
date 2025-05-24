@@ -1194,10 +1194,25 @@ async def get_my_organization_shared_menus(user=Depends(get_user_from_token)):
         # Debug: Check what's in shared_menus for this organization before JOIN
         cursor.execute("""
             SELECT COUNT(*) FROM shared_menus 
+            WHERE organization_id = %s
+        """, (organization_id,))
+        total_org_count = cursor.fetchone()['count']
+        logger.info(f"Total shared menus for org {organization_id} (any is_active): {total_org_count}")
+        
+        cursor.execute("""
+            SELECT COUNT(*) FROM shared_menus 
             WHERE organization_id = %s AND is_active = TRUE
         """, (organization_id,))
         basic_count = cursor.fetchone()['count']
         logger.info(f"Shared menus for org {organization_id} with is_active=TRUE (before JOIN): {basic_count}")
+        
+        # Debug: Check is_active values for this organization
+        cursor.execute("""
+            SELECT DISTINCT is_active FROM shared_menus 
+            WHERE organization_id = %s
+        """, (organization_id,))
+        is_active_values = [row['is_active'] for row in cursor.fetchall()]
+        logger.info(f"Distinct is_active values for org {organization_id}: {is_active_values}")
         
         # Debug: Check what menu_ids exist for this organization
         cursor.execute("""
@@ -1250,8 +1265,8 @@ async def get_my_organization_shared_menus(user=Depends(get_user_from_token)):
                 c.name as client_name,
                 c.email as client_email
             FROM shared_menus sm
-            JOIN menus m ON sm.menu_id = m.id
-            JOIN users c ON sm.client_id = c.id
+            LEFT JOIN menus m ON sm.menu_id = m.id
+            LEFT JOIN users c ON sm.client_id = c.id
             WHERE sm.organization_id = %s AND sm.is_active = TRUE
             ORDER BY sm.shared_at DESC
         """, (organization_id,))
@@ -1323,8 +1338,8 @@ async def get_organization_shared_menus(
                 c.name as client_name,
                 c.email as client_email
             FROM shared_menus sm
-            JOIN menus m ON sm.menu_id = m.id
-            JOIN users c ON sm.client_id = c.id
+            LEFT JOIN menus m ON sm.menu_id = m.id
+            LEFT JOIN users c ON sm.client_id = c.id
             WHERE sm.organization_id = %s AND sm.is_active = TRUE
             ORDER BY sm.shared_at DESC
         """, (organization_id,))
