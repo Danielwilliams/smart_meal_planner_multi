@@ -89,7 +89,7 @@ async def get_client_dashboard(user=Depends(get_user_from_token)):
                         sm.message,
                         m.nickname as title, 
                         m.nickname,
-                        m.menu_data as description,
+                        m.meal_plan_json as description,
                         m.created_at,
                         o.name as organization_name
                     FROM shared_menus sm
@@ -139,12 +139,11 @@ async def get_client_dashboard(user=Depends(get_user_from_token)):
                     created_at,
                     scraped_recipe_id,
                     user_id,
-                    url,
                     ingredients,
                     instructions,
                     servings,
-                    rating,
-                    image_url
+                    macros,
+                    prep_time
                 FROM saved_recipes
                 WHERE user_id = %s
                 ORDER BY created_at DESC
@@ -301,15 +300,11 @@ async def get_client_menu(
                 id,
                 user_id,
                 nickname as title,
-                menu_data as description,
+                meal_plan_json as description,
                 created_at,
-                meal_plan,
                 meal_plan_json,
                 nickname,
-                published,
-                updated_at,
-                metadata,
-                image_url
+                created_at as updated_at
             FROM menus
             WHERE id = %s
         """, (menu_id,))
@@ -326,20 +321,15 @@ async def get_client_menu(
                     menu['meal_plan_json'] = json.loads(menu['meal_plan_json'])
                 except:
                     pass
-
-        if menu.get('meal_plan'):
-            if isinstance(menu['meal_plan'], str):
-                try:
-                    menu['meal_plan'] = json.loads(menu['meal_plan'])
-                except:
-                    pass
-
-        if menu.get('metadata'):
-            if isinstance(menu['metadata'], str):
-                try:
-                    menu['metadata'] = json.loads(menu['metadata'])
-                except:
-                    pass
+            # Also use meal_plan_json for description if it's a dict with title/description
+            if isinstance(menu['meal_plan_json'], dict):
+                menu['description'] = menu['meal_plan_json']
+            
+        # Set default values for missing fields
+        menu['meal_plan'] = menu.get('meal_plan_json', {})
+        menu['metadata'] = {}
+        menu['published'] = True
+        menu['image_url'] = None
 
         # Get share information if client is accessing
         if user.get('account_type') != 'organization':
@@ -679,11 +669,9 @@ async def org_get_client_menus(
                     SELECT 
                         m.id,
                         m.nickname as title,
-                        m.menu_data as description,
+                        m.meal_plan_json as description,
                         m.created_at,
                         m.nickname,
-                        m.published,
-                        m.image_url,
                         'read' as permission_level,
                         ms.shared_at,
                         ms.id as share_id,
@@ -1011,24 +999,16 @@ async def org_create_client_menu(
             INSERT INTO menus (
                 user_id, 
                 nickname,
-                menu_data,
-                meal_plan, 
-                meal_plan_json, 
-                published, 
-                image_url, 
-                metadata
+                meal_plan_json,
+                for_client_id
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s)
             RETURNING id
         """, (
             user_id,
             nickname or title,
-            json.dumps({"title": title, "description": description}),
-            meal_plan,
             meal_plan_json,
-            published,
-            image_url,
-            metadata
+            client_id
         ))
         
         menu_id = cursor.fetchone()['id']
