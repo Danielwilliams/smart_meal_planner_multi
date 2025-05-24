@@ -87,9 +87,9 @@ async def get_client_dashboard(user=Depends(get_user_from_token)):
                         'read' as permission_level,
                         sm.shared_at,
                         sm.message,
-                        m.title, 
+                        m.nickname as title, 
                         m.nickname,
-                        m.description,
+                        m.menu_data as description,
                         m.created_at,
                         o.name as organization_name
                     FROM shared_menus sm
@@ -112,34 +112,9 @@ async def get_client_dashboard(user=Depends(get_user_from_token)):
             logger.warning("shared_menus table does not exist in the database")
 
         # Also check for menus created directly for this client
+        # Note: menus table doesn't have client_id column, so we skip this query
         direct_menus = []
-        try:
-            cursor.execute("""
-                SELECT 
-                    m.id as menu_id,
-                    NULL as share_id,
-                    m.client_id,
-                    NULL as organization_id,
-                    'owner' as permission_level,
-                    m.created_at as shared_at,
-                    NULL as message,
-                    m.title,
-                    m.nickname,
-                    m.description,
-                    m.created_at,
-                    NULL as organization_name
-                FROM menus m
-                WHERE m.client_id = %s
-                ORDER BY m.created_at DESC
-            """, (client_id,))
-            
-            direct_menus = cursor.fetchall()
-            logger.info(f"Found {len(direct_menus)} menus created directly for client {client_id}")
-        except Exception as e:
-            logger.error(f"Error fetching direct menus: {e}")
-            logger.error(f"Full traceback: {traceback.format_exc()}")
-            if not conn.autocommit:
-                conn.rollback()
+        logger.info("Skipping direct menus query - menus table doesn't have client_id column")
         
         # Combine shared menus and direct menus
         all_menus = shared_menus + direct_menus
@@ -162,7 +137,6 @@ async def get_client_dashboard(user=Depends(get_user_from_token)):
                     recipe_name,
                     recipe_id,
                     created_at,
-                    updated_at,
                     scraped_recipe_id,
                     user_id,
                     url,
@@ -326,8 +300,8 @@ async def get_client_menu(
             SELECT 
                 id,
                 user_id,
-                title,
-                description,
+                nickname as title,
+                menu_data as description,
                 created_at,
                 meal_plan,
                 meal_plan_json,
@@ -335,9 +309,7 @@ async def get_client_menu(
                 published,
                 updated_at,
                 metadata,
-                image_url,
-                organization_id,
-                client_id
+                image_url
             FROM menus
             WHERE id = %s
         """, (menu_id,))
@@ -706,8 +678,8 @@ async def org_get_client_menus(
                 cursor.execute("""
                     SELECT 
                         m.id,
-                        m.title,
-                        m.description,
+                        m.nickname as title,
+                        m.menu_data as description,
                         m.created_at,
                         m.nickname,
                         m.published,
@@ -741,28 +713,9 @@ async def org_get_client_menus(
         else:
             logger.warning("shared_menus table does not exist in the database")
 
-        # Also get menus directly created for this client
-        logger.info(f"Querying direct menus for client_id={client_id}, organization_id={organization_id}")
-        cursor.execute("""
-            SELECT 
-                id,
-                title,
-                description,
-                created_at,
-                nickname,
-                published,
-                image_url,
-                'owner' as permission_level,
-                created_at as shared_at,
-                NULL as share_id,
-                NULL as message
-            FROM menus
-            WHERE client_id = %s AND organization_id = %s
-            ORDER BY created_at DESC
-        """, (client_id, organization_id))
-
-        direct_menus = cursor.fetchall()
-        logger.info(f"Found {len(direct_menus)} direct menus for client {client_id}")
+        # Skip direct menus query - menus table doesn't have client_id column
+        direct_menus = []
+        logger.info("Skipping direct menus query - menus table doesn't have client_id column")
 
         # Combine the results
         all_menus = direct_menus + shared_menus
@@ -1057,31 +1010,25 @@ async def org_create_client_menu(
         cursor.execute("""
             INSERT INTO menus (
                 user_id, 
-                title, 
-                description, 
+                nickname,
+                menu_data,
                 meal_plan, 
                 meal_plan_json, 
-                nickname, 
                 published, 
                 image_url, 
-                metadata, 
-                organization_id, 
-                client_id
+                metadata
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
         """, (
             user_id,
-            title,
-            description,
+            nickname or title,
+            json.dumps({"title": title, "description": description}),
             meal_plan,
             meal_plan_json,
-            nickname,
             published,
             image_url,
-            metadata,
-            organization_id,
-            client_id
+            metadata
         ))
         
         menu_id = cursor.fetchone()['id']
@@ -1177,7 +1124,7 @@ async def debug_client_menus(client_id: int, request: Request):
         
         # Get all shared menus for this client
         cursor.execute("""
-            SELECT sm.*, m.title, m.nickname, m.organization_id as menu_org_id
+            SELECT sm.*, m.nickname as title, m.nickname, m.user_id as menu_org_id
             FROM shared_menus sm
             LEFT JOIN menus m ON sm.menu_id = m.id
             WHERE sm.client_id = %s
