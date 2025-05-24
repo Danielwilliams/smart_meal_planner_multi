@@ -1191,6 +1191,48 @@ async def get_my_organization_shared_menus(user=Depends(get_user_from_token)):
         null_count = cursor.fetchone()['count']
         logger.info(f"Shared menus with NULL organization_id: {null_count}")
         
+        # Debug: Check what's in shared_menus for this organization before JOIN
+        cursor.execute("""
+            SELECT COUNT(*) FROM shared_menus 
+            WHERE organization_id = %s AND is_active = TRUE
+        """, (organization_id,))
+        basic_count = cursor.fetchone()['count']
+        logger.info(f"Shared menus for org {organization_id} with is_active=TRUE (before JOIN): {basic_count}")
+        
+        # Debug: Check what menu_ids exist for this organization
+        cursor.execute("""
+            SELECT menu_id FROM shared_menus 
+            WHERE organization_id = %s AND is_active = TRUE
+        """, (organization_id,))
+        menu_ids = [row['menu_id'] for row in cursor.fetchall()]
+        logger.info(f"Menu IDs in shared_menus for org {organization_id}: {menu_ids}")
+        
+        # Debug: Check if these menu_ids exist in menus table
+        if menu_ids:
+            cursor.execute("""
+                SELECT id FROM menus WHERE id = ANY(%s)
+            """, (menu_ids,))
+            existing_menu_ids = [row['id'] for row in cursor.fetchall()]
+            logger.info(f"Existing menu IDs in menus table: {existing_menu_ids}")
+            logger.info(f"Missing menu IDs: {set(menu_ids) - set(existing_menu_ids)}")
+        
+        # Debug: Check client_ids
+        cursor.execute("""
+            SELECT client_id FROM shared_menus 
+            WHERE organization_id = %s AND is_active = TRUE
+        """, (organization_id,))
+        client_ids = [row['client_id'] for row in cursor.fetchall()]
+        logger.info(f"Client IDs in shared_menus for org {organization_id}: {client_ids}")
+        
+        # Debug: Check if these client_ids exist in users table
+        if client_ids:
+            cursor.execute("""
+                SELECT id FROM users WHERE id = ANY(%s)
+            """, (client_ids,))
+            existing_client_ids = [row['id'] for row in cursor.fetchall()]
+            logger.info(f"Existing client IDs in users table: {existing_client_ids}")
+            logger.info(f"Missing client IDs: {set(client_ids) - set(existing_client_ids)}")
+
         # Get all menus shared by this organization
         cursor.execute("""
             SELECT 
