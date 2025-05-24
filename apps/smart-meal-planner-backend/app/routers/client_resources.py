@@ -1140,6 +1140,84 @@ async def client_get_preferences(
     # This is just a proxy to the organization client preferences endpoint
     return await org_get_client_preferences(client_id, user)
 
+@router.get("/organization/shared-menus")
+async def get_my_organization_shared_menus(user=Depends(get_user_from_token)):
+    """Get all menus shared by the authenticated user's organization"""
+    logger.info(f"\n=== GET MY ORGANIZATION SHARED MENUS ===")
+    logger.info(f"User token data: {user}")
+    
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
+    user_id = user.get('user_id')
+    account_type = user.get('account_type')
+    
+    # Check if user is an organization account
+    if account_type != 'organization':
+        raise HTTPException(status_code=403, detail="This endpoint is only for organization accounts")
+    
+    # Get the organization ID for this user
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        conn.autocommit = True
+        
+        # Find the organization owned by this user
+        cursor.execute("""
+            SELECT id FROM organizations 
+            WHERE owner_id = %s
+            LIMIT 1
+        """, (user_id,))
+        
+        org_result = cursor.fetchone()
+        if not org_result:
+            raise HTTPException(status_code=404, detail="No organization found for this user")
+        
+        organization_id = org_result['id']
+        logger.info(f"Found organization {organization_id} for user {user_id}")
+        
+        # Get all menus shared by this organization
+        cursor.execute("""
+            SELECT 
+                sm.id as share_id,
+                sm.menu_id,
+                sm.client_id,
+                sm.organization_id,
+                sm.shared_at,
+                sm.message,
+                sm.is_active,
+                m.nickname as menu_nickname,
+                m.duration_days,
+                m.created_at as menu_created_at,
+                c.name as client_name,
+                c.email as client_email
+            FROM shared_menus sm
+            JOIN menus m ON sm.menu_id = m.id
+            JOIN users c ON sm.client_id = c.id
+            WHERE sm.organization_id = %s AND sm.is_active = TRUE
+            ORDER BY sm.shared_at DESC
+        """, (organization_id,))
+        
+        shared_menus = cursor.fetchall()
+        logger.info(f"Found {len(shared_menus)} shared menus for organization {organization_id}")
+        
+        # Process the results for frontend
+        for menu in shared_menus:
+            menu['shared_with_name'] = menu['client_name']
+            menu['permission_level'] = 'read'
+            menu['nickname'] = menu['menu_nickname'] or f"{menu.get('duration_days', 7)}-day meal plan"
+            
+        cursor.close()
+        conn.close()
+        
+        return shared_menus
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching organization shared menus: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/organizations/{organization_id}/shared-menus")
 async def get_organization_shared_menus(
     organization_id: int = Path(..., description="The ID of the organization"),

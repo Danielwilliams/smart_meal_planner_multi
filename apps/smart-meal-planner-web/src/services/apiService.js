@@ -2704,10 +2704,10 @@ const apiService = {
   getSharedMenus: async () => {
     try {
       const userData = JSON.parse(localStorage.getItem('user') || '{}');
-      const userId = userData.userId;
+      const userId = userData.userId || userData.user_id;
       const role = userData.role || null;
-      const organizationId = userData.organizationId || userData.organization_id || null;
-      const accountType = userData.account_type || null;
+      const organizationId = userData.organizationId || userData.organization_id || userData.organizationID || null;
+      const accountType = userData.account_type || userData.accountType || null;
       
       console.log('Getting shared menus for user:', {
         userId,
@@ -2768,14 +2768,15 @@ const apiService = {
       // For clients, the dashboard endpoint is the primary source of shared menus
       
       // For organization users, fetch shared menus from organization endpoint
-      if (accountType === 'organization' && organizationId) {
+      if (accountType === 'organization') {
         try {
-          console.log('Fetching shared menus for organization:', organizationId);
-          const response = await axiosInstance.get(`/organizations/${organizationId}/shared-menus`);
+          console.log('Fetching shared menus for organization account');
+          const response = await axiosInstance.get('/organization/shared-menus');
           console.log('Organization shared menus response:', response.data);
           return response.data || [];
         } catch (orgErr) {
           console.error('Error fetching organization shared menus:', orgErr);
+          // If organization-specific endpoint fails, return empty array
           return [];
         }
       }
