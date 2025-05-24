@@ -89,9 +89,14 @@ async def get_client_dashboard(user=Depends(get_user_from_token)):
                         sm.message,
                         m.nickname as title, 
                         m.nickname,
-                        m.meal_plan_json as description,
+                        CASE 
+                            WHEN m.nickname IS NOT NULL AND m.nickname != '' THEN m.nickname
+                            ELSE 'Meal Plan'
+                        END as description,
                         m.created_at,
-                        o.name as organization_name
+                        o.name as organization_name,
+                        m.duration_days,
+                        m.meal_plan_json
                     FROM shared_menus sm
                     JOIN menus m ON sm.menu_id = m.id
                     LEFT JOIN organizations o ON sm.organization_id = o.id
@@ -101,6 +106,24 @@ async def get_client_dashboard(user=Depends(get_user_from_token)):
                 
                 shared_menus = cursor.fetchall()
                 logger.info(f"Found {len(shared_menus)} shared menus for user {user_id}")
+                
+                # Process menus to ensure proper data types
+                for menu in shared_menus:
+                    # Parse meal_plan_json if it's a string
+                    if menu.get('meal_plan_json') and isinstance(menu['meal_plan_json'], str):
+                        try:
+                            menu['meal_plan_json'] = json.loads(menu['meal_plan_json'])
+                        except:
+                            menu['meal_plan_json'] = {}
+                    
+                    # Extract meal count from meal_plan_json if available
+                    if isinstance(menu.get('meal_plan_json'), dict):
+                        days = menu['meal_plan_json'].get('days', [])
+                        menu['meal_count'] = len(days)
+                    
+                    # Ensure description is a string
+                    if not menu.get('description') or menu['description'] == menu.get('nickname'):
+                        menu['description'] = menu.get('message') or f"A {menu.get('duration_days', 7)}-day meal plan created for you."
             except Exception as e:
                 logger.error(f"Error fetching shared menus for user {user_id}: {e}")
                 logger.error(f"Full traceback: {traceback.format_exc()}")
@@ -669,13 +692,18 @@ async def org_get_client_menus(
                     SELECT 
                         m.id,
                         m.nickname as title,
-                        m.meal_plan_json as description,
+                        CASE 
+                            WHEN m.nickname IS NOT NULL AND m.nickname != '' THEN m.nickname
+                            ELSE 'Meal Plan'
+                        END as description,
                         m.created_at,
                         m.nickname,
                         'read' as permission_level,
                         ms.shared_at,
                         ms.id as share_id,
-                        ms.message
+                        ms.message,
+                        m.duration_days,
+                        m.meal_plan_json
                     FROM menus m
                     JOIN shared_menus ms ON m.id = ms.menu_id
                     WHERE ms.client_id = %s AND ms.organization_id = %s AND ms.is_active = TRUE
@@ -684,6 +712,27 @@ async def org_get_client_menus(
                 
                 shared_menus = cursor.fetchall()
                 logger.info(f"Found {len(shared_menus)} shared menus for client {client_id}")
+                
+                # Process menus to ensure proper data types
+                for menu in shared_menus:
+                    # Parse meal_plan_json if it's a string
+                    if menu.get('meal_plan_json') and isinstance(menu['meal_plan_json'], str):
+                        try:
+                            menu['meal_plan_json'] = json.loads(menu['meal_plan_json'])
+                        except:
+                            menu['meal_plan_json'] = {}
+                    
+                    # Extract meal count from meal_plan_json if available
+                    if isinstance(menu.get('meal_plan_json'), dict):
+                        days = menu['meal_plan_json'].get('days', [])
+                        menu['meal_count'] = len(days)
+                    
+                    # Ensure description is a string
+                    if not menu.get('description') or menu['description'] == menu.get('nickname'):
+                        menu['description'] = menu.get('message') or f"A {menu.get('duration_days', 7)}-day meal plan created for you."
+                    
+                    # Add menu_id field for frontend compatibility
+                    menu['menu_id'] = menu['id']
                 
                 # Debug: check what's in shared_menus table for this client
                 cursor.execute("""
