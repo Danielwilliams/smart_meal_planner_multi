@@ -1176,6 +1176,16 @@ async def get_my_organization_shared_menus(user=Depends(get_user_from_token)):
         organization_id = org_result['id']
         logger.info(f"Found organization {organization_id} for user {user_id}")
         
+        # Debug: Check what's in shared_menus table
+        cursor.execute("SELECT COUNT(*) FROM shared_menus")
+        total_count = cursor.fetchone()['count']
+        logger.info(f"Total shared_menus in database: {total_count}")
+        
+        # Debug: Check organization_ids in shared_menus
+        cursor.execute("SELECT DISTINCT organization_id FROM shared_menus WHERE organization_id IS NOT NULL")
+        org_ids = cursor.fetchall()
+        logger.info(f"Distinct organization_ids in shared_menus: {[row['organization_id'] for row in org_ids]}")
+        
         # Get all menus shared by this organization
         cursor.execute("""
             SELECT 
