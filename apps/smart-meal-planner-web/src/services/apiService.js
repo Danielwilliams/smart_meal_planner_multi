@@ -2767,8 +2767,21 @@ const apiService = {
       // Skip the /menu/shared endpoints as they conflict with /menu/{menu_id} route
       // For clients, the dashboard endpoint is the primary source of shared menus
       
-      // For non-client users, just return empty array
-      console.log('User is not a client, returning empty shared menus array');
+      // For organization users, fetch shared menus from organization endpoint
+      if (accountType === 'organization' && organizationId) {
+        try {
+          console.log('Fetching shared menus for organization:', organizationId);
+          const response = await axiosInstance.get(`/organizations/${organizationId}/shared-menus`);
+          console.log('Organization shared menus response:', response.data);
+          return response.data || [];
+        } catch (orgErr) {
+          console.error('Error fetching organization shared menus:', orgErr);
+          return [];
+        }
+      }
+      
+      // For other users, just return empty array
+      console.log('User is not a client or organization, returning empty shared menus array');
       return [];
     } catch (err) {
       console.error('Error fetching shared menus:', err);
