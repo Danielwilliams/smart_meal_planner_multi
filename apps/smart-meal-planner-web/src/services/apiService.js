@@ -3233,6 +3233,27 @@ const apiService = {
       console.error('Reset password error:', error);
       throw error;
     }
+  },
+
+  // Invitation management methods
+  async listInvitations(orgId) {
+    try {
+      const response = await axiosInstance.get(`/org-invitations/list/${orgId}`);
+      return response.data;
+    } catch (error) {
+      console.error('List invitations error:', error);
+      throw error;
+    }
+  },
+
+  async resendInvitation(invitationId) {
+    try {
+      const response = await axiosInstance.post(`/org-invitations/resend/${invitationId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Resend invitation error:', error);
+      throw error;
+    }
   }
 }; // Close the apiService object here
 

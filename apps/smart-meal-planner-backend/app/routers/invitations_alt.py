@@ -369,3 +369,146 @@ async def accept_invitation(
         )
     finally:
         conn.close()
+
+@router.get("/list/{org_id}")
+async def list_invitations(
+    org_id: int,
+    user=Depends(require_organization_owner)
+):
+    """List all invitations for an organization"""
+    # Verify user is the organization owner
+    if user.get('organization_id') != org_id:
+        raise HTTPException(
+            status_code=403,
+            detail="You don't have permission to view invitations for this organization"
+        )
+    
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            # Get all invitations for the organization with additional details
+            cur.execute("""
+                SELECT 
+                    ci.id,
+                    ci.email,
+                    ci.status,
+                    ci.created_at,
+                    ci.expires_at,
+                    ci.invitation_token,
+                    up.id as user_id,
+                    up.name as user_name,
+                    up.account_type,
+                    oc.status as client_status
+                FROM client_invitations ci
+                LEFT JOIN user_profiles up ON ci.email = up.email
+                LEFT JOIN organization_clients oc ON (up.id = oc.client_id AND oc.organization_id = %s)
+                WHERE ci.organization_id = %s
+                ORDER BY ci.created_at DESC
+            """, (org_id, org_id))
+            
+            invitations = cur.fetchall()
+            
+            result = []
+            for inv in invitations:
+                invitation_data = {
+                    "id": inv[0],
+                    "email": inv[1],
+                    "status": inv[2],
+                    "created_at": inv[3].isoformat() if inv[3] else None,
+                    "expires_at": inv[4].isoformat() if inv[4] else None,
+                    "is_expired": inv[4] < datetime.utcnow() if inv[4] else False,
+                    "user_exists": inv[6] is not None,
+                    "user_name": inv[7],
+                    "user_account_type": inv[8],
+                    "client_status": inv[9],
+                    "is_attached": inv[9] == 'active' if inv[9] else False
+                }
+                result.append(invitation_data)
+            
+            return {
+                "invitations": result,
+                "total": len(result)
+            }
+    finally:
+        conn.close()
+
+@router.post("/resend/{invitation_id}")
+async def resend_invitation(
+    invitation_id: int,
+    user=Depends(require_organization_owner)
+):
+    """Resend an invitation email"""
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            # Get invitation details and verify ownership
+            cur.execute("""
+                SELECT 
+                    ci.id,
+                    ci.email,
+                    ci.organization_id,
+                    ci.invitation_token,
+                    ci.status,
+                    ci.expires_at,
+                    o.name as organization_name
+                FROM client_invitations ci
+                JOIN organizations o ON ci.organization_id = o.id
+                WHERE ci.id = %s
+            """, (invitation_id,))
+            
+            invitation = cur.fetchone()
+            
+            if not invitation:
+                raise HTTPException(status_code=404, detail="Invitation not found")
+            
+            org_id = invitation[2]
+            
+            # Verify user is the organization owner
+            if user.get('organization_id') != org_id:
+                raise HTTPException(
+                    status_code=403,
+                    detail="You don't have permission to resend this invitation"
+                )
+            
+            email = invitation[1]
+            current_token = invitation[3]
+            current_status = invitation[4]
+            expires_at = invitation[5]
+            organization_name = invitation[6]
+            
+            # Check if invitation is already accepted
+            if current_status == 'accepted':
+                raise HTTPException(
+                    status_code=400,
+                    detail="Cannot resend an already accepted invitation"
+                )
+            
+            # Generate new token and extend expiration if needed
+            new_token = secrets.token_urlsafe(32)
+            new_expires_at = datetime.utcnow() + timedelta(days=7)
+            
+            # Update invitation with new token and expiration
+            cur.execute("""
+                UPDATE client_invitations
+                SET invitation_token = %s, expires_at = %s, status = 'pending'
+                WHERE id = %s
+            """, (new_token, new_expires_at, invitation_id))
+            
+            conn.commit()
+            
+            # Check if user already exists
+            cur.execute("""
+                SELECT id FROM user_profiles WHERE email = %s
+            """, (email,))
+            user_exists = cur.fetchone() is not None
+            
+            # Send the invitation email with new token
+            await send_invitation_email(email, new_token, org_id, user_exists, organization_name)
+            
+            return {
+                "message": "Invitation resent successfully",
+                "email": email,
+                "new_expires_at": new_expires_at.isoformat()
+            }
+    finally:
+        conn.close()

@@ -46,6 +46,8 @@ function OrganizationDashboard() {
   const [error, setError] = useState('');
   const [selectedClient, setSelectedClient] = useState(null);
   const [clientTab, setClientTab] = useState(0);
+  const [invitations, setInvitations] = useState([]);
+  const [invitationsLoading, setInvitationsLoading] = useState(false);
 
   // Redirect if not authenticated or not an organization account
   useEffect(() => {
@@ -143,6 +145,10 @@ function OrganizationDashboard() {
           setSnackbarMessage('Invitation sent successfully');
           setSnackbarOpen(true);
           handleCloseInviteDialog();
+          // Refresh invitations list if we're on the invitations tab
+          if (tabValue === 1) {
+            loadInvitations();
+          }
         } catch (orgErr) {
           console.error('Error fetching organization:', orgErr);
           setInviteError('Failed to load organization data. Please refresh the page.');
@@ -154,6 +160,10 @@ function OrganizationDashboard() {
         setSnackbarMessage('Invitation sent successfully');
         setSnackbarOpen(true);
         handleCloseInviteDialog();
+        // Refresh invitations list if we're on the invitations tab
+        if (tabValue === 1) {
+          loadInvitations();
+        }
       }
     } catch (err) {
       console.error('Invite error:', err);
@@ -162,6 +172,41 @@ function OrganizationDashboard() {
       setInviteLoading(false);
     }
   };
+
+  const loadInvitations = async () => {
+    if (!organization?.id) return;
+    
+    try {
+      setInvitationsLoading(true);
+      const response = await apiService.listInvitations(organization.id);
+      setInvitations(response.invitations || []);
+    } catch (error) {
+      console.error('Error loading invitations:', error);
+      setError('Failed to load invitations');
+    } finally {
+      setInvitationsLoading(false);
+    }
+  };
+
+  const handleResendInvitation = async (invitationId) => {
+    try {
+      await apiService.resendInvitation(invitationId);
+      setSnackbarMessage('Invitation resent successfully');
+      setSnackbarOpen(true);
+      loadInvitations(); // Refresh the list
+    } catch (error) {
+      console.error('Error resending invitation:', error);
+      setSnackbarMessage('Failed to resend invitation');
+      setSnackbarOpen(true);
+    }
+  };
+
+  // Load invitations when organization changes or tab switches to invitations
+  useEffect(() => {
+    if (organization?.id && tabValue === 1) {
+      loadInvitations();
+    }
+  }, [organization?.id, tabValue]);
 
   const handleViewClient = (client) => {
     // Set the selected client to show details in the dashboard
@@ -226,6 +271,7 @@ function OrganizationDashboard() {
           variant="fullWidth"
         >
           <Tab label="Clients" icon={<PersonIcon />} />
+          <Tab label="Invitations" icon={<EmailIcon />} />
           <Tab label="Shared Menus" icon={<MenuIcon />} />
           <Tab label="Client Recipes" icon={<FavoriteIcon />} />
           <Tab label="Settings" icon={<SettingsIcon />} />
@@ -308,8 +354,128 @@ function OrganizationDashboard() {
         </>
       )}
 
-      {/* Shared Menus Tab */}
+      {/* Invitations Tab */}
       {tabValue === 1 && (
+        <Box>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
+            <Typography variant="h5">
+              Client Invitations
+            </Typography>
+            <Button
+              variant="contained"
+              startIcon={<EmailIcon />}
+              onClick={handleOpenInviteDialog}
+            >
+              Send Invitation
+            </Button>
+          </Box>
+
+          {invitationsLoading ? (
+            <Box display="flex" justifyContent="center" p={4}>
+              <CircularProgress />
+            </Box>
+          ) : (
+            <Grid container spacing={2}>
+              {invitations.length === 0 ? (
+                <Grid item xs={12}>
+                  <Card>
+                    <CardContent sx={{ textAlign: 'center', py: 6 }}>
+                      <EmailIcon sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
+                      <Typography variant="h6" color="text.secondary" gutterBottom>
+                        No invitations sent yet
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                        Start by sending your first client invitation
+                      </Typography>
+                      <Button
+                        variant="contained"
+                        startIcon={<EmailIcon />}
+                        onClick={handleOpenInviteDialog}
+                      >
+                        Send First Invitation
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              ) : (
+                invitations.map((invitation) => (
+                  <Grid item xs={12} md={6} lg={4} key={invitation.id}>
+                    <Card>
+                      <CardContent>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+                          <Typography variant="h6" sx={{ wordBreak: 'break-word' }}>
+                            {invitation.email}
+                          </Typography>
+                          <Chip
+                            label={invitation.status}
+                            color={
+                              invitation.status === 'accepted' ? 'success' :
+                              invitation.status === 'pending' ? 'warning' : 'default'
+                            }
+                            size="small"
+                          />
+                        </Box>
+
+                        {invitation.user_name && (
+                          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                            Name: {invitation.user_name}
+                          </Typography>
+                        )}
+
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                          Sent: {new Date(invitation.created_at).toLocaleDateString()}
+                        </Typography>
+
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                          Expires: {new Date(invitation.expires_at).toLocaleDateString()}
+                        </Typography>
+
+                        {invitation.is_expired && (
+                          <Chip label="Expired" color="error" size="small" sx={{ mb: 1 }} />
+                        )}
+
+                        {invitation.is_attached && (
+                          <Chip label="Client Active" color="success" size="small" sx={{ mb: 1 }} />
+                        )}
+
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                          Status: {invitation.user_exists ? 'Account Created' : 'Pending Signup'} 
+                          {invitation.is_attached && ' • Attached to Organization'}
+                        </Typography>
+                      </CardContent>
+
+                      <CardActions>
+                        {invitation.status === 'pending' && !invitation.is_expired && (
+                          <Button
+                            size="small"
+                            onClick={() => handleResendInvitation(invitation.id)}
+                            startIcon={<EmailIcon />}
+                          >
+                            Resend
+                          </Button>
+                        )}
+                        {invitation.is_expired && (
+                          <Button
+                            size="small"
+                            onClick={() => handleResendInvitation(invitation.id)}
+                            startIcon={<EmailIcon />}
+                            color="warning"
+                          >
+                            Send New Invitation
+                          </Button>
+                        )}
+                      </CardActions>
+                    </Card>
+                  </Grid>
+                ))
+              )}
+            </Grid>
+          )}
+        </Box>
+      )}
+
+      {/* Shared Menus Tab */}
+      {tabValue === 2 && (
         <>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
             <Typography variant="h5">
@@ -396,7 +562,7 @@ function OrganizationDashboard() {
       )}
 
       {/* Client Recipes Tab */}
-      {tabValue === 2 && (
+      {tabValue === 3 && (
         <>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
             <Typography variant="h5">
@@ -480,7 +646,7 @@ function OrganizationDashboard() {
       )}
 
       {/* Settings Tab */}
-      {tabValue === 3 && (
+      {tabValue === 4 && (
         <Paper sx={{ p: 3 }}>
           <Typography variant="h6" gutterBottom>
             Organization Settings
