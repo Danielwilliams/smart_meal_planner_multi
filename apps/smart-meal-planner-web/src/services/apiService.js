@@ -3285,6 +3285,19 @@ const apiService = {
       console.error('Get default client preferences error:', error);
       throw error;
     }
+  },
+
+  // Client Status Management methods
+  async updateClientStatus(orgId, clientId, status) {
+    try {
+      const response = await axiosInstance.put(`/organization-clients/${orgId}/clients/${clientId}/status`, {
+        status: status
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Update client status error:', error);
+      throw error;
+    }
   }
 }; // Close the apiService object here
 

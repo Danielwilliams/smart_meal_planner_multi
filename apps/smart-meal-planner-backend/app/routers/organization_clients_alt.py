@@ -17,6 +17,10 @@ class ClientAddRequest(BaseModel):
     role: str = "client"
     organization_id: int
 
+class ClientStatusUpdate(BaseModel):
+    """Request model for updating client status"""
+    status: str  # 'active' or 'inactive'
+
 @router.get("/{org_id}")
 @router.post("/{org_id}")  # Add POST method support too
 async def get_organization_clients(
@@ -246,5 +250,99 @@ async def add_client_by_email(
                 "message": "Client added to organization successfully",
                 "client_id": client_id
             }
+    finally:
+        conn.close()
+
+@router.put("/{org_id}/clients/{client_id}/status")
+async def update_client_status(
+    org_id: int,
+    client_id: int,
+    status_update: ClientStatusUpdate,
+    user=Depends(get_user_from_token)
+):
+    """
+    Update a client's status (active/inactive) - only accessible by organization owner
+    """
+    logger = logging.getLogger(__name__)
+    logger.info(f"update_client_status called for org_id={org_id}, client_id={client_id}, status={status_update.status}")
+    
+    # Validate status value
+    if status_update.status not in ['active', 'inactive']:
+        raise HTTPException(
+            status_code=400,
+            detail="Status must be 'active' or 'inactive'"
+        )
+    
+    # Check if user is authenticated
+    if not user:
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required"
+        )
+    
+    # Check if user is organization owner
+    if user.get('organization_id') != org_id or user.get('role') != 'owner':
+        raise HTTPException(
+            status_code=403,
+            detail="Only organization owners can update client status"
+        )
+    
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            # Verify the client belongs to this organization
+            cur.execute("""
+                SELECT id, status FROM organization_clients
+                WHERE organization_id = %s AND client_id = %s
+            """, (org_id, client_id))
+            
+            client_record = cur.fetchone()
+            if not client_record:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Client not found in this organization"
+                )
+            
+            current_status = client_record[1]
+            
+            # Update the client status
+            cur.execute("""
+                UPDATE organization_clients
+                SET status = %s
+                WHERE organization_id = %s AND client_id = %s
+            """, (status_update.status, org_id, client_id))
+            
+            # Get client info for response
+            cur.execute("""
+                SELECT up.name, up.email
+                FROM user_profiles up
+                WHERE up.id = %s
+            """, (client_id,))
+            
+            client_info = cur.fetchone()
+            client_name = client_info[0] if client_info else "Unknown"
+            client_email = client_info[1] if client_info else "Unknown"
+            
+            conn.commit()
+            
+            logger.info(f"Client {client_id} status updated from {current_status} to {status_update.status}")
+            
+            return {
+                "message": f"Client status updated successfully",
+                "client_id": client_id,
+                "client_name": client_name,
+                "client_email": client_email,
+                "old_status": current_status,
+                "new_status": status_update.status
+            }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating client status: {str(e)}")
+        conn.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to update client status"
+        )
     finally:
         conn.close()

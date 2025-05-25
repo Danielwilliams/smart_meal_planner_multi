@@ -82,19 +82,29 @@ async def get_user_organization_role(user_id: int):
                     "is_admin": True
                 }
             
-            # Check if user is a client of any organization
+            # Check if user is a client of any organization (including inactive)
             cur.execute("""
-                SELECT organization_id, role FROM organization_clients
-                WHERE client_id = %s AND status = 'active'
+                SELECT organization_id, role, status FROM organization_clients
+                WHERE client_id = %s
             """, (user_id,))
             org_client = cur.fetchone()
             
             if org_client:
-                return {
-                    "organization_id": org_client["organization_id"],
-                    "role": org_client["role"],
-                    "is_admin": org_client["role"] == "admin"
-                }
+                if org_client["status"] == 'active':
+                    return {
+                        "organization_id": org_client["organization_id"],
+                        "role": org_client["role"],
+                        "is_admin": org_client["role"] == "admin",
+                        "client_status": "active"
+                    }
+                else:
+                    # Return inactive status info for proper error handling
+                    return {
+                        "organization_id": org_client["organization_id"],
+                        "role": org_client["role"],
+                        "is_admin": False,
+                        "client_status": "inactive"
+                    }
             
             # Check if user has admin role in the system
             cur.execute("""

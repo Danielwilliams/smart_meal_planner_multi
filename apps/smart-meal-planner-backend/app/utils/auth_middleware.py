@@ -42,6 +42,57 @@ def require_client_or_owner(user=Depends(get_user_from_token)):
     
     return user
 
+def require_active_client(user=Depends(get_user_from_token)):
+    """Ensure the user is an active client or organization owner"""
+    if not user:
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required"
+        )
+    
+    # Organization owners always have access
+    if user.get('role') == 'owner':
+        return user
+    
+    # Check if client is active
+    client_status = user.get('client_status')
+    if client_status == 'inactive':
+        # Get organization info for the error message
+        org_id = user.get('organization_id')
+        conn = get_db_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT o.name, up.email as owner_email
+                    FROM organizations o
+                    JOIN user_profiles up ON o.owner_id = up.id
+                    WHERE o.id = %s
+                """, (org_id,))
+                org_info = cur.fetchone()
+                
+                org_name = org_info[0] if org_info else "your organization"
+                owner_email = org_info[1] if org_info else "your organization administrator"
+                
+        except Exception:
+            org_name = "your organization"
+            owner_email = "your organization administrator"
+        finally:
+            conn.close()
+        
+        raise HTTPException(
+            status_code=403,
+            detail=f"Your account has been deactivated by {org_name}. Please contact {owner_email} to reactivate your account."
+        )
+    
+    # For clients, ensure they have organization membership and are active
+    if not user.get('organization_id') or user.get('role') != 'client':
+        raise HTTPException(
+            status_code=403,
+            detail="Client membership required"
+        )
+    
+    return user
+
 def check_menu_access(menu_id: int, user=Depends(get_user_from_token)):
     """
     Check if user has access to a specific menu

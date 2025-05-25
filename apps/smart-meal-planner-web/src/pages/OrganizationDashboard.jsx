@@ -5,7 +5,8 @@ import {
   Container, Typography, Paper, Box, Button, TextField, 
   Grid, Card, CardContent, CardActions, Divider, Tabs,
   Tab, Alert, CircularProgress, Dialog, DialogTitle,
-  DialogContent, DialogActions, Snackbar, Chip
+  DialogContent, DialogActions, Snackbar, Chip, Switch,
+  FormControlLabel, Tooltip
 } from '@mui/material';
 import { 
   Add as AddIcon,
@@ -14,7 +15,9 @@ import {
   Menu as MenuIcon,
   Share as ShareIcon,
   Settings as SettingsIcon,
-  Favorite as FavoriteIcon
+  Favorite as FavoriteIcon,
+  CheckCircle as ActiveIcon,
+  Cancel as InactiveIcon
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import { useOrganization } from '../context/OrganizationContext';
@@ -236,6 +239,28 @@ function OrganizationDashboard() {
     setSelectedClient(null);
   };
 
+  const handleClientStatusToggle = async (client) => {
+    try {
+      const newStatus = client.status === 'active' ? 'inactive' : 'active';
+      
+      await apiService.updateClientStatus(organization.id, client.id, newStatus);
+      
+      setSnackbarMessage(
+        `${client.name} has been ${newStatus === 'active' ? 'activated' : 'deactivated'} successfully`
+      );
+      setSnackbarOpen(true);
+      
+      // Refresh the clients list - this should happen automatically via OrganizationContext
+      // but we can trigger a manual refresh if needed
+      window.location.reload(); // Simple refresh for now
+      
+    } catch (err) {
+      console.error('Error updating client status:', err);
+      setSnackbarMessage(`Failed to update ${client.name}'s status`);
+      setSnackbarOpen(true);
+    }
+  };
+
   if (loading || orgLoading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="80vh">
@@ -314,13 +339,35 @@ function OrganizationDashboard() {
                       <Typography color="text.secondary">
                         {client.email}
                       </Typography>
-                      <Box sx={{ mt: 1 }}>
+                      <Box sx={{ mt: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
                         <Chip 
                           label={client.role || 'Client'} 
                           size="small"
                           color="primary"
                           variant="outlined"
                         />
+                        <Chip 
+                          icon={client.status === 'active' ? <ActiveIcon /> : <InactiveIcon />}
+                          label={client.status === 'active' ? 'Active' : 'Inactive'} 
+                          size="small"
+                          color={client.status === 'active' ? 'success' : 'error'}
+                          variant="outlined"
+                        />
+                      </Box>
+                      <Box sx={{ mt: 2 }}>
+                        <Tooltip title={`${client.status === 'active' ? 'Deactivate' : 'Activate'} client account`}>
+                          <FormControlLabel
+                            control={
+                              <Switch
+                                checked={client.status === 'active'}
+                                onChange={() => handleClientStatusToggle(client)}
+                                size="small"
+                              />
+                            }
+                            label={client.status === 'active' ? 'Active' : 'Inactive'}
+                            labelPlacement="start"
+                          />
+                        </Tooltip>
                       </Box>
                     </CardContent>
                     <Divider />

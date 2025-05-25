@@ -1,10 +1,13 @@
 import React from 'react';
 import { Navigate, useLocation, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useOrganization } from '../context/OrganizationContext';
 import { CircularProgress, Box } from '@mui/material';
+import InactiveClientNotice from './InactiveClientNotice';
 
 function PrivateRoute({ children }) {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, user } = useAuth();
+  const { organization } = useOrganization();
   const location = useLocation();
   const [searchParams] = useSearchParams();
   
@@ -48,6 +51,36 @@ function PrivateRoute({ children }) {
   if (!isAuthenticated && (inClientSignup || isClientInvitationFlow || hasInvitationParams || hasStoredInvitationParams)) {
     console.log('Allowing access to protected route without authentication due to client invitation flow');
     return children;
+  }
+
+  // Check if user is an inactive client (after authentication)
+  if (isAuthenticated && user) {
+    // Parse user data - it might be stored as JSON string
+    let userData = user;
+    if (typeof user === 'string') {
+      try {
+        userData = JSON.parse(user);
+      } catch (e) {
+        userData = user;
+      }
+    }
+
+    // Check if user is an inactive client
+    const role = userData?.role || userData?.userRole;
+    const clientStatus = userData?.client_status;
+    
+    if (role === 'client' && clientStatus === 'inactive') {
+      // Get organization contact info for the notice
+      const orgName = organization?.name || 'your organization';
+      const contactEmail = organization?.contact_email || userData?.organization_contact_email;
+      
+      return (
+        <InactiveClientNotice 
+          organizationName={orgName}
+          contactEmail={contactEmail}
+        />
+      );
+    }
   }
 
   // For regular protected routes, redirect to login if not authenticated
