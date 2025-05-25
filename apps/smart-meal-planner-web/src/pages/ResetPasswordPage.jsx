@@ -57,10 +57,16 @@ function ResetPasswordPage() {
     setLoading(true);
 
     try {
+      console.log('🔄 Attempting password reset with token:', token?.substring(0, 20) + '...');
       const response = await apiService.resetPassword(token, newPassword);
+      console.log('✅ Password reset response:', response);
       
       if (response) {
+        console.log('✅ Setting success to true');
         setSuccess(true);
+      } else {
+        console.log('❌ No response received');
+        setError('No response from server');
       }
     } catch (err) {
       console.error('Reset password error:', err);
@@ -84,7 +90,10 @@ function ResetPasswordPage() {
     }
   };
 
+  console.log('🔍 ResetPasswordPage render - success state:', success);
+  
   if (success) {
+    console.log('✅ Rendering success UI');
     return (
       <Container maxWidth="sm">
         <Box sx={{ 
