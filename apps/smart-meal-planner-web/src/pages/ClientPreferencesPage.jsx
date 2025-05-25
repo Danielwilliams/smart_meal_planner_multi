@@ -26,6 +26,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import apiService from '../services/apiService';
 import MacroDefaults from '../components/MacroDefaults';
+import PreferencesForm from '../components/PreferencesForm';
 
 function ClientPreferencesPage() {
   const { user } = useAuth();
@@ -179,49 +180,76 @@ function ClientPreferencesPage() {
         const clientPrefs = await apiService.getUserPreferences(clientId);
         
         if (clientPrefs) {
-          // Parse stored preferences
+          // Parse stored preferences - handle both new camelCase and legacy snake_case
+          const savedDietTypes = clientPrefs.diet_type ? 
+            clientPrefs.diet_type.split(',').map(t => t.trim()) : [];
+          const savedRecipeTypes = clientPrefs.recipe_type ? 
+            clientPrefs.recipe_type.split(',').map(t => t.trim()) : [];
+          
+          // Convert diet types from string to object
+          const dietTypesObj = { ...preferences.dietTypes };
+          savedDietTypes.forEach(type => {
+            if (dietTypesObj.hasOwnProperty(type)) {
+              dietTypesObj[type] = true;
+            }
+          });
+          
+          // Convert recipe types from string to object
+          const recipeTypesObj = { ...preferences.recipeTypes };
+          savedRecipeTypes.forEach(type => {
+            if (recipeTypesObj.hasOwnProperty(type)) {
+              recipeTypesObj[type] = true;
+            }
+          });
+          
           const updatedPrefs = {
             ...preferences,
-            diet_type: clientPrefs.diet_type || '',
-            dietary_restrictions: clientPrefs.dietary_restrictions || '',
-            disliked_ingredients: clientPrefs.disliked_ingredients || '',
-            recipe_type: clientPrefs.recipe_type || '',
-            meal_times: clientPrefs.meal_times || preferences.meal_times,
-            macro_protein: clientPrefs.macro_protein || 40,
-            macro_carbs: clientPrefs.macro_carbs || 30,
-            macro_fat: clientPrefs.macro_fat || 30,
-            calorie_goal: clientPrefs.calorie_goal || 2000,
-            snacks_per_day: clientPrefs.snacks_per_day || 0,
-            servings_per_meal: clientPrefs.servings_per_meal || 1,
+            servingsPerMeal: clientPrefs.servingsPerMeal || clientPrefs.servings_per_meal || 1,
             appliances: clientPrefs.appliances || preferences.appliances,
-            prep_complexity: clientPrefs.prep_complexity || 50
+            prepComplexity: clientPrefs.prepComplexity || clientPrefs.prep_complexity || 50,
+            dietTypes: clientPrefs.dietTypes || dietTypesObj,
+            otherDietType: clientPrefs.otherDietType || '',
+            recipeTypes: clientPrefs.recipeTypes || recipeTypesObj,
+            otherRecipeType: clientPrefs.otherRecipeType || '',
+            dietaryRestrictions: clientPrefs.dietaryRestrictions || clientPrefs.dietary_restrictions || '',
+            dislikedIngredients: clientPrefs.dislikedIngredients || clientPrefs.disliked_ingredients || '',
+            mealTimes: clientPrefs.mealTimes || clientPrefs.meal_times || preferences.mealTimes,
+            snacksPerDay: clientPrefs.snacksPerDay || clientPrefs.snacks_per_day || 1,
+            macroGoals: clientPrefs.macroGoals || {
+              protein: clientPrefs.macro_protein || '',
+              carbs: clientPrefs.macro_carbs || '',
+              fat: clientPrefs.macro_fat || '',
+              calories: clientPrefs.calorie_goal || ''
+            },
+            krogerUsername: clientPrefs.krogerUsername || clientPrefs.kroger_username || '',
+            krogerPassword: clientPrefs.krogerPassword || clientPrefs.kroger_password || ''
           };
           
           setPreferences(updatedPrefs);
           
-          // Load new preference types if they exist
-          if (clientPrefs.flavor_preferences) {
-            setFlavorPreferences(clientPrefs.flavor_preferences);
+          // Load advanced preference types - support both camelCase and snake_case
+          if (clientPrefs.flavorPreferences || clientPrefs.flavor_preferences) {
+            setFlavorPreferences(clientPrefs.flavorPreferences || clientPrefs.flavor_preferences);
           }
           
-          if (clientPrefs.spice_level) {
-            setSpiceLevel(clientPrefs.spice_level);
+          if (clientPrefs.spiceLevel || clientPrefs.spice_level) {
+            setSpiceLevel(clientPrefs.spiceLevel || clientPrefs.spice_level);
           }
           
-          if (clientPrefs.recipe_type_preferences) {
-            setRecipeTypePreferences(clientPrefs.recipe_type_preferences);
+          if (clientPrefs.recipeTypePreferences || clientPrefs.recipe_type_preferences) {
+            setRecipeTypePreferences(clientPrefs.recipeTypePreferences || clientPrefs.recipe_type_preferences);
           }
           
-          if (clientPrefs.meal_time_preferences) {
-            setMealTimePreferences(clientPrefs.meal_time_preferences);
+          if (clientPrefs.mealTimePreferences || clientPrefs.meal_time_preferences) {
+            setMealTimePreferences(clientPrefs.mealTimePreferences || clientPrefs.meal_time_preferences);
           }
           
-          if (clientPrefs.time_constraints) {
-            setTimeConstraints(clientPrefs.time_constraints);
+          if (clientPrefs.timeConstraints || clientPrefs.time_constraints) {
+            setTimeConstraints(clientPrefs.timeConstraints || clientPrefs.time_constraints);
           }
           
-          if (clientPrefs.prep_preferences) {
-            setPrepPreferences(clientPrefs.prep_preferences);
+          if (clientPrefs.prepPreferences || clientPrefs.prep_preferences) {
+            setPrepPreferences(clientPrefs.prepPreferences || clientPrefs.prep_preferences);
           }
         }
       } catch (err) {
@@ -317,13 +345,23 @@ function ClientPreferencesPage() {
     }));
   };
 
-  // Save client preferences
-  const handleSave = async () => {
+  // Save client preferences - updated for new structure
+  const handleSave = async (e) => {
+    e.preventDefault();
     try {
       setSaving(true);
       setError('');
       setSuccess('');
       
+      // Convert nested objects to comma-separated strings for backward compatibility
+      const selectedDietTypes = Object.keys(preferences.dietTypes)
+        .filter(key => preferences.dietTypes[key])
+        .join(', ');
+      
+      const selectedRecipeTypes = Object.keys(preferences.recipeTypes)
+        .filter(key => preferences.recipeTypes[key])
+        .join(', ');
+
       // Calculate snacks per day based on meal time preferences
       const selectedSnackTimes = 
         [mealTimePreferences['morning-snack'], 
@@ -333,26 +371,48 @@ function ClientPreferencesPage() {
       
       const prefsToSave = {
         user_id: clientId,
-        diet_type: preferences.diet_type,
-        dietary_restrictions: preferences.dietary_restrictions,
-        disliked_ingredients: preferences.disliked_ingredients,
-        recipe_type: preferences.recipe_type,
-        meal_times: preferences.meal_times,
-        macro_protein: preferences.macro_protein,
-        macro_carbs: preferences.macro_carbs,
-        macro_fat: preferences.macro_fat,
-        calorie_goal: preferences.calorie_goal,
-        snacks_per_day: selectedSnackTimes > 0 ? preferences.snacks_per_day : 0,
-        servings_per_meal: preferences.servings_per_meal,
+        // New camelCase structure (primary)
+        servingsPerMeal: preferences.servingsPerMeal,
         appliances: preferences.appliances,
-        prep_complexity: preferences.prep_complexity,
-        // New preference fields
+        prepComplexity: preferences.prepComplexity,
+        dietTypes: preferences.dietTypes,
+        otherDietType: preferences.otherDietType,
+        recipeTypes: preferences.recipeTypes,
+        otherRecipeType: preferences.otherRecipeType,
+        dietaryRestrictions: preferences.dietaryRestrictions,
+        dislikedIngredients: preferences.dislikedIngredients,
+        mealTimes: preferences.mealTimes,
+        snacksPerDay: selectedSnackTimes > 0 ? preferences.snacksPerDay : 0,
+        macroGoals: preferences.macroGoals,
+        krogerUsername: preferences.krogerUsername,
+        krogerPassword: preferences.krogerPassword,
+        flavorPreferences: flavorPreferences,
+        spiceLevel: spiceLevel,
+        recipeTypePreferences: recipeTypePreferences,
+        mealTimePreferences: mealTimePreferences,
+        timeConstraints: timeConstraints,
+        prepPreferences: prepPreferences,
+        
+        // Legacy snake_case for backward compatibility
+        diet_type: selectedDietTypes,
+        dietary_restrictions: preferences.dietaryRestrictions,
+        disliked_ingredients: preferences.dislikedIngredients,
+        recipe_type: selectedRecipeTypes,
+        meal_times: preferences.mealTimes,
+        macro_protein: parseInt(preferences.macroGoals.protein) || 0,
+        macro_carbs: parseInt(preferences.macroGoals.carbs) || 0,
+        macro_fat: parseInt(preferences.macroGoals.fat) || 0,
+        calorie_goal: parseInt(preferences.macroGoals.calories) || 0,
+        snacks_per_day: selectedSnackTimes > 0 ? preferences.snacksPerDay : 0,
+        servings_per_meal: preferences.servingsPerMeal,
+        prep_complexity: preferences.prepComplexity,
         flavor_preferences: flavorPreferences,
-        spice_level: spiceLevel,
         recipe_type_preferences: recipeTypePreferences,
         meal_time_preferences: mealTimePreferences,
         time_constraints: timeConstraints,
-        prep_preferences: prepPreferences
+        prep_preferences: prepPreferences,
+        kroger_username: preferences.krogerUsername,
+        kroger_password: preferences.krogerPassword
       };
       
       const response = await apiService.savePreferences(prefsToSave);
@@ -383,460 +443,28 @@ function ClientPreferencesPage() {
   return (
     <Container maxWidth="md">
       <Paper elevation={3} sx={{ p: 4, mt: 4 }}>
-        <Typography variant="h4" gutterBottom>
-          {client ? `${client.name}'s Preferences` : 'Client Preferences'}
-        </Typography>
-        
-        {error && (
-          <Alert severity="error" sx={{ mb: 3 }}>
-            {error}
-          </Alert>
-        )}
-        
-        {success && (
-          <Alert severity="success" sx={{ mb: 3 }}>
-            {success}
-          </Alert>
-        )}
-
-        <Box sx={{ mb: 4 }}>
-          <Typography variant="h6" gutterBottom>
-            Dietary Preferences
-          </Typography>
-          
-          {/* Diet Types - Using checkboxes like the user preferences page */}
-          <Typography variant="subtitle1" gutterBottom>
-            Diet Types
-          </Typography>
-          <Grid container spacing={2}>
-            {[
-              'Vegetarian', 'Vegan', 'Pescatarian', 'Mediterranean', 
-              'Ketogenic', 'Paleo', 'Low-Carb', 'Low-Fat', 
-              'Gluten-Free', 'Dairy-Free'
-            ].map((dietType) => (
-              <Grid item xs={6} sm={4} key={dietType}>
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      checked={preferences.diet_type.includes(dietType)}
-                      onChange={(e) => {
-                        let currentDietTypes = preferences.diet_type ? 
-                          preferences.diet_type.split(',').map(t => t.trim()) : [];
-                        
-                        if (e.target.checked) {
-                          if (!currentDietTypes.includes(dietType)) {
-                            currentDietTypes.push(dietType);
-                          }
-                        } else {
-                          currentDietTypes = currentDietTypes.filter(t => t !== dietType);
-                        }
-                        
-                        handleChange('diet_type', currentDietTypes.join(', '));
-                      }}
-                    />
-                  }
-                  label={dietType}
-                />
-              </Grid>
-            ))}
-          </Grid>
-          
-          <TextField
-            label="Other Diet Types"
-            fullWidth
-            margin="normal"
-            value={preferences.diet_type}
-            onChange={(e) => handleChange('diet_type', e.target.value)}
-            helperText="Edit or add other diet types separated by commas"
-          />
-          
-          <TextField
-            label="Dietary Restrictions"
-            fullWidth
-            margin="normal"
-            value={preferences.dietary_restrictions}
-            onChange={(e) => handleChange('dietary_restrictions', e.target.value)}
-            helperText="Enter any restrictions separated by commas"
-          />
-          
-          <TextField
-            label="Disliked Ingredients"
-            fullWidth
-            margin="normal"
-            value={preferences.disliked_ingredients}
-            onChange={(e) => handleChange('disliked_ingredients', e.target.value)}
-            helperText="Enter ingredients to avoid, separated by commas"
-          />
-          
-          {/* Recipe Types - Using checkboxes like the user preferences page */}
-          <Typography variant="subtitle1" sx={{ mt: 2 }} gutterBottom>
-            Recipe Types
-          </Typography>
-          <Grid container spacing={2}>
-            {[
-              'American', 'Italian', 'Mexican', 'Asian', 'Mediterranean',
-              'Indian', 'French', 'Greek', 'Japanese', 'Thai', 'Chinese'
-            ].map((recipeType) => (
-              <Grid item xs={6} sm={4} key={recipeType}>
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      checked={preferences.recipe_type.includes(recipeType)}
-                      onChange={(e) => {
-                        let currentRecipeTypes = preferences.recipe_type ? 
-                          preferences.recipe_type.split(',').map(t => t.trim()) : [];
-                        
-                        if (e.target.checked) {
-                          if (!currentRecipeTypes.includes(recipeType)) {
-                            currentRecipeTypes.push(recipeType);
-                          }
-                        } else {
-                          currentRecipeTypes = currentRecipeTypes.filter(t => t !== recipeType);
-                        }
-                        
-                        handleChange('recipe_type', currentRecipeTypes.join(', '));
-                      }}
-                    />
-                  }
-                  label={recipeType}
-                />
-              </Grid>
-            ))}
-          </Grid>
-          
-          <TextField
-            label="Other Recipe Types"
-            fullWidth
-            margin="normal"
-            value={preferences.recipe_type}
-            onChange={(e) => handleChange('recipe_type', e.target.value)}
-            helperText="Edit or add other cuisine types separated by commas"
-          />
-        </Box>
-
-        <Divider sx={{ my: 3 }} />
-        
-        <Box sx={{ mb: 4 }}>
-          <Typography variant="h6" gutterBottom>
-            Meal Times
-          </Typography>
-          
-          <FormGroup row>
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={preferences.meal_times.breakfast}
-                  onChange={(e) => handleCheckboxChange('meal_times', 'breakfast', e.target.checked)}
-                />
-              }
-              label="Breakfast"
-            />
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={preferences.meal_times.lunch}
-                  onChange={(e) => handleCheckboxChange('meal_times', 'lunch', e.target.checked)}
-                />
-              }
-              label="Lunch"
-            />
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={preferences.meal_times.dinner}
-                  onChange={(e) => handleCheckboxChange('meal_times', 'dinner', e.target.checked)}
-                />
-              }
-              label="Dinner"
-            />
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={preferences.meal_times.snacks}
-                  onChange={(e) => handleCheckboxChange('meal_times', 'snacks', e.target.checked)}
-                />
-              }
-              label="Snacks"
-            />
-          </FormGroup>
-          
-          {preferences.meal_times.snacks && (
-            <FormControl fullWidth margin="normal">
-              <InputLabel>Snacks Per Day</InputLabel>
-              <Select
-                value={preferences.snacks_per_day}
-                label="Snacks Per Day"
-                onChange={(e) => handleChange('snacks_per_day', e.target.value)}
-              >
-                <MenuItem value={1}>1 Snack</MenuItem>
-                <MenuItem value={2}>2 Snacks</MenuItem>
-                <MenuItem value={3}>3 Snacks</MenuItem>
-              </Select>
-            </FormControl>
-          )}
-          
-          <FormControl fullWidth margin="normal">
-            <InputLabel>Servings Per Meal</InputLabel>
-            <Select
-              value={preferences.servings_per_meal}
-              label="Servings Per Meal"
-              onChange={(e) => handleChange('servings_per_meal', e.target.value)}
-            >
-              {[1, 2, 3, 4, 5, 6].map(num => (
-                <MenuItem key={num} value={num}>{num} {num === 1 ? 'serving' : 'servings'}</MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        </Box>
-
-        <Divider sx={{ my: 3 }} />
-        
-        <Box sx={{ mb: 4 }}>
-          <Typography variant="h6" gutterBottom>
-            Cooking Preferences
-          </Typography>
-          
-          <Typography variant="subtitle1" gutterBottom>
-            Available Appliances
-          </Typography>
-          <FormGroup row>
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={preferences.appliances.airFryer}
-                  onChange={(e) => handleCheckboxChange('appliances', 'airFryer', e.target.checked)}
-                />
-              }
-              label="Air Fryer"
-            />
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={preferences.appliances.instapot}
-                  onChange={(e) => handleCheckboxChange('appliances', 'instapot', e.target.checked)}
-                />
-              }
-              label="Instant Pot"
-            />
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={preferences.appliances.crockpot}
-                  onChange={(e) => handleCheckboxChange('appliances', 'crockpot', e.target.checked)}
-                />
-              }
-              label="Crock Pot"
-            />
-          </FormGroup>
-          
-          <Box sx={{ mt: 3 }}>
-            <Typography variant="subtitle1" gutterBottom>
-              Recipe Complexity
-            </Typography>
-            <Box sx={{ px: 2 }}>
-              <Slider
-                value={preferences.prep_complexity}
-                onChange={(e, value) => handleChange('prep_complexity', value)}
-                valueLabelDisplay="auto"
-                valueLabelFormat={getPrepComplexityLabel}
-                step={25}
-                marks={[
-                  { value: 0, label: 'Minimal' },
-                  { value: 25, label: 'Easy' },
-                  { value: 50, label: 'Moderate' },
-                  { value: 75, label: 'Standard' },
-                  { value: 100, label: 'Complex' }
-                ]}
-              />
-            </Box>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 1, textAlign: 'center' }}>
-              {getPrepComplexityLabel(preferences.prep_complexity)}
-            </Typography>
-          </Box>
-        </Box>
-
-        {/* Flavor Preferences (NEW) */}
-        <Box sx={{ mt: 3, mb: 2 }}>
-          <Typography variant="subtitle1" gutterBottom>
-            Flavor Preferences
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Select the flavors your client enjoys most in their meals
-          </Typography>
-          <Grid container spacing={2}>
-            {Object.entries(flavorPreferences).map(([flavor, checked]) => (
-              <Grid item xs={6} sm={4} key={flavor}>
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      checked={checked}
-                      onChange={(e) => handleFlavorPreferenceChange(flavor, e.target.checked)}
-                    />
-                  }
-                  label={flavor.charAt(0).toUpperCase() + flavor.slice(1)}
-                />
-              </Grid>
-            ))}
-          </Grid>
-        </Box>
-
-        {/* Spice Level (NEW) */}
-        <Box sx={{ mt: 3, mb: 2 }}>
-          <Typography variant="subtitle1" gutterBottom>
-            Spice Level Preference
-          </Typography>
-          <FormControl component="fieldset">
-            <RadioGroup
-              row
-              name="spice-level"
-              value={spiceLevel}
-              onChange={(e) => handleSpiceLevelChange(e.target.value)}
-            >
-              <FormControlLabel value="mild" control={<Radio />} label="Mild" />
-              <FormControlLabel value="medium" control={<Radio />} label="Medium" />
-              <FormControlLabel value="hot" control={<Radio />} label="Hot" />
-            </RadioGroup>
-          </FormControl>
-        </Box>
-
-        {/* Recipe Type Preferences (NEW) */}
-        <Box sx={{ mt: 3, mb: 2 }}>
-          <Typography variant="subtitle1" gutterBottom>
-            Recipe Format Preferences
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Select the types of meal formats your client prefers
-          </Typography>
-          <Grid container spacing={2}>
-            {Object.entries(recipeTypePreferences).map(([type, checked]) => (
-              <Grid item xs={6} sm={4} key={type}>
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      checked={checked}
-                      onChange={(e) => handleRecipeTypePreferenceChange(type, e.target.checked)}
-                    />
-                  }
-                  label={type.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
-                />
-              </Grid>
-            ))}
-          </Grid>
-        </Box>
-
-        {/* Enhanced Meal Schedule */}
-        <Box sx={{ mt: 3, mb: 2 }}>
-          <Typography variant="subtitle1" gutterBottom>
-            Detailed Meal Schedule
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Select all meal times to include in the client's plan
-          </Typography>
-          <Grid container spacing={2}>
-            {Object.entries(mealTimePreferences).map(([mealTime, checked]) => (
-              <Grid item xs={6} sm={4} key={mealTime}>
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      checked={checked}
-                      onChange={(e) => handleMealTimePreferenceChange(mealTime, e.target.checked)}
-                    />
-                  }
-                  label={mealTime.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
-                />
-              </Grid>
-            ))}
-          </Grid>
-        </Box>
-
-        {/* Time Constraints (NEW) */}
-        <Box sx={{ mt: 3, mb: 2 }}>
-          <Typography variant="subtitle1" gutterBottom>
-            Time Constraints
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Maximum prep time (minutes) for each meal
-          </Typography>
-          {Object.entries(timeConstraints).map(([mealType, minutes]) => (
-            <Box key={mealType} sx={{ mb: 2 }}>
-              <Typography variant="body2">
-                {mealType.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
-              </Typography>
-              <Slider
-                value={minutes}
-                min={5}
-                max={60}
-                step={5}
-                marks
-                valueLabelDisplay="auto"
-                onChange={(e, value) => handleTimeConstraintChange(mealType, value)}
-              />
-            </Box>
-          ))}
-        </Box>
-
-        {/* Meal Preparation Preferences (NEW) */}
-        <Box sx={{ mt: 3, mb: 2 }}>
-          <Typography variant="subtitle1" gutterBottom>
-            Meal Preparation Preferences
-          </Typography>
-          <Grid container spacing={2}>
-            {Object.entries(prepPreferences).map(([prep, checked]) => (
-              <Grid item xs={6} sm={4} key={prep}>
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      checked={checked}
-                      onChange={(e) => handlePrepPreferenceChange(prep, e.target.checked)}
-                    />
-                  }
-                  label={prep.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
-                />
-              </Grid>
-            ))}
-          </Grid>
-        </Box>
-
-        <Divider sx={{ my: 3 }} />
-        
-        <Box sx={{ mb: 4 }}>
-          <Typography variant="h6" gutterBottom>
-            Nutrition Goals
-          </Typography>
-          
-          <MacroDefaults
-            initialValues={{
-              protein: preferences.macro_protein,
-              carbs: preferences.macro_carbs,
-              fat: preferences.macro_fat,
-              calories: preferences.calorie_goal
-            }}
-            onChange={handleMacroChange}
-          />
-        </Box>
-
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 4 }}>
-          <Button 
-            variant="outlined" 
-            onClick={() => navigate(`/organization/clients/${clientId}`)}
-          >
-            Cancel
-          </Button>
-          <Button
-            variant="contained"
-            onClick={handleSave}
-            disabled={saving}
-          >
-            {saving ? (
-              <>
-                <CircularProgress size={24} sx={{ mr: 1 }} />
-                Saving...
-              </>
-            ) : (
-              'Save Preferences'
-            )}
-          </Button>
-        </Box>
+        <PreferencesForm
+          preferences={preferences}
+          setPreferences={setPreferences}
+          flavorPreferences={flavorPreferences}
+          setFlavorPreferences={setFlavorPreferences}
+          spiceLevel={spiceLevel}
+          setSpiceLevel={setSpiceLevel}
+          recipeTypePreferences={recipeTypePreferences}
+          setRecipeTypePreferences={setRecipeTypePreferences}
+          mealTimePreferences={mealTimePreferences}
+          setMealTimePreferences={setMealTimePreferences}
+          timeConstraints={timeConstraints}
+          setTimeConstraints={setTimeConstraints}
+          prepPreferences={prepPreferences}
+          setPrepPreferences={setPrepPreferences}
+          loading={saving}
+          message={success}
+          error={error}
+          onSubmit={handleSave}
+          submitButtonText="Save Client Preferences"
+          title={client ? `${client.name}'s Preferences` : 'Client Preferences'}
+        />
       </Paper>
     </Container>
   );
