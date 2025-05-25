@@ -3209,6 +3209,30 @@ const apiService = {
       console.error('Get scraped recipe error:', error);
       throw error;
     }
+  },
+
+  // Forgot Password methods
+  async forgotPassword(email) {
+    try {
+      const response = await axiosInstance.post('/auth/forgot-password', { email });
+      return response.data;
+    } catch (error) {
+      console.error('Forgot password error:', error);
+      throw error;
+    }
+  },
+
+  async resetPassword(token, newPassword) {
+    try {
+      const response = await axiosInstance.post('/auth/reset-password', { 
+        token, 
+        new_password: newPassword 
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Reset password error:', error);
+      throw error;
+    }
   }
 }; // Close the apiService object here
 

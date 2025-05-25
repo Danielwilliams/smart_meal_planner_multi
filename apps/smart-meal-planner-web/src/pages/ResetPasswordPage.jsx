@@ -57,12 +57,9 @@ function ResetPasswordPage() {
     setLoading(true);
 
     try {
-      const response = await apiService.post('/auth/reset-password', {
-        reset_token: token,
-        new_password: newPassword
-      });
+      const response = await apiService.resetPassword(token, newPassword);
       
-      if (response.data) {
+      if (response) {
         setSuccess(true);
       }
     } catch (err) {

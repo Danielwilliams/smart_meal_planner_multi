@@ -28,9 +28,9 @@ function ForgotPasswordPage() {
     setLoading(true);
 
     try {
-      const response = await apiService.post('/auth/forgot-password', { email });
+      const response = await apiService.forgotPassword(email);
       
-      if (response.data) {
+      if (response) {
         setSuccess(true);
       }
     } catch (err) {
