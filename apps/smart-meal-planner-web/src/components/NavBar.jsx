@@ -193,7 +193,7 @@ function NavBar() {
                 e.target.style.display = 'none';
               }}
             />
-            Smart Meal Planner
+            Smart Meal Planner IO
             {organization && !isMobile && (
               <Chip
                 label={organization.name}

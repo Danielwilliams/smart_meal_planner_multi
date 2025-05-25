@@ -355,10 +355,10 @@ function OrganizationDashboard() {
                     <Card>
                       <CardContent>
                         <Typography variant="h6">
-                          {menu.nickname || dateStr}
+                          {menu.shared_with_name || menu.client_name || 'Client'}
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
-                          Shared with: {menu.shared_with_name || menu.client_name || 'Client'}
+                          {menu.nickname || dateStr}
                         </Typography>
                         <Box sx={{ mt: 1 }}>
                           <Chip 

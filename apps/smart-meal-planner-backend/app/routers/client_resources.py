@@ -1239,13 +1239,13 @@ async def get_my_organization_shared_menus(user=Depends(get_user_from_token)):
         client_ids = [row['client_id'] for row in cursor.fetchall()]
         logger.info(f"Client IDs in shared_menus for org {organization_id}: {client_ids}")
         
-        # Debug: Check if these client_ids exist in users table
+        # Debug: Check if these client_ids exist in user_profiles table
         if client_ids:
             cursor.execute("""
-                SELECT id FROM users WHERE id = ANY(%s)
+                SELECT id FROM user_profiles WHERE id = ANY(%s)
             """, (client_ids,))
             existing_client_ids = [row['id'] for row in cursor.fetchall()]
-            logger.info(f"Existing client IDs in users table: {existing_client_ids}")
+            logger.info(f"Existing client IDs in user_profiles table: {existing_client_ids}")
             logger.info(f"Missing client IDs: {set(client_ids) - set(existing_client_ids)}")
 
         # Get all menus shared by this organization
@@ -1266,7 +1266,7 @@ async def get_my_organization_shared_menus(user=Depends(get_user_from_token)):
                 c.email as client_email
             FROM shared_menus sm
             LEFT JOIN menus m ON sm.menu_id = m.id
-            LEFT JOIN users c ON sm.client_id = c.id
+            LEFT JOIN user_profiles c ON sm.client_id = c.id
             WHERE sm.organization_id = %s AND sm.is_active = TRUE
             ORDER BY sm.shared_at DESC
         """, (organization_id,))
@@ -1339,7 +1339,7 @@ async def get_organization_shared_menus(
                 c.email as client_email
             FROM shared_menus sm
             LEFT JOIN menus m ON sm.menu_id = m.id
-            LEFT JOIN users c ON sm.client_id = c.id
+            LEFT JOIN user_profiles c ON sm.client_id = c.id
             WHERE sm.organization_id = %s AND sm.is_active = TRUE
             ORDER BY sm.shared_at DESC
         """, (organization_id,))
