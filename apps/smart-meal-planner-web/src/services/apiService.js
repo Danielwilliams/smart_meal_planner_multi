@@ -3254,6 +3254,37 @@ const apiService = {
       console.error('Resend invitation error:', error);
       throw error;
     }
+  },
+
+  // Organization Settings methods
+  async getOrganizationSettings(organizationId) {
+    try {
+      const response = await axiosInstance.get(`/organization-settings/${organizationId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Get organization settings error:', error);
+      throw error;
+    }
+  },
+
+  async updateOrganizationSettings(organizationId, settings) {
+    try {
+      const response = await axiosInstance.put(`/organization-settings/${organizationId}`, settings);
+      return response.data;
+    } catch (error) {
+      console.error('Update organization settings error:', error);
+      throw error;
+    }
+  },
+
+  async getDefaultClientPreferences(organizationId) {
+    try {
+      const response = await axiosInstance.get(`/organization-settings/${organizationId}/default-preferences`);
+      return response.data;
+    } catch (error) {
+      console.error('Get default client preferences error:', error);
+      throw error;
+    }
   }
 }; // Close the apiService object here
 

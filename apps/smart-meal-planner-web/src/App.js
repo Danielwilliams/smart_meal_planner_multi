@@ -30,6 +30,7 @@ import RecipeDetailPage from './pages/RecipeDetailPage';
 import CustomMenuBuilderPage from './pages/CustomMenuBuilderPage';
 import { OrganizationProvider } from './context/OrganizationContext';
 import OrganizationDashboard from './pages/OrganizationDashboard';
+import OrganizationSettingsPage from './pages/OrganizationSettingsPage';
 import ClientProfile from './pages/ClientProfile';
 import AcceptInvitation from './pages/AcceptInvitation';
 import ClientPreferencesPage from './pages/ClientPreferencesPage';
@@ -198,6 +199,14 @@ function App() {
                 element={
                   <PrivateRoute>
                     <OrganizationDashboard />
+                  </PrivateRoute>
+                } 
+              />
+              <Route 
+                path="/organization/settings" 
+                element={
+                  <PrivateRoute>
+                    <OrganizationSettingsPage />
                   </PrivateRoute>
                 } 
               />

@@ -271,3 +271,42 @@ class ClientInvitation(BaseModel):
 class InvitationResponse(BaseModel):
     message: str
     invitation_id: int
+
+class OrganizationSettingsUpdate(BaseModel):
+    # Default Client Preferences (uses same structure as individual preferences)
+    default_client_preferences: Optional[Dict[str, Any]] = None
+    
+    # Client Management Settings
+    max_client_capacity: Optional[int] = None
+    invitation_approval_required: Optional[bool] = None
+    auto_assign_default_preferences: Optional[bool] = None
+    
+    # Basic Organization Information
+    business_type: Optional[str] = None  # 'nutritionist', 'meal_prep', 'corporate_wellness', 'healthcare'
+    service_area: Optional[str] = None
+    operating_hours: Optional[Dict[str, Any]] = None
+    timezone: Optional[str] = None
+    
+    # Contact and Profile
+    contact_email: Optional[str] = None
+    contact_phone: Optional[str] = None
+    website_url: Optional[str] = None
+    logo_url: Optional[str] = None
+
+class OrganizationSettings(BaseModel):
+    id: int
+    organization_id: int
+    default_client_preferences: Dict[str, Any]
+    max_client_capacity: Optional[int]
+    invitation_approval_required: bool
+    auto_assign_default_preferences: bool
+    business_type: Optional[str]
+    service_area: Optional[str]
+    operating_hours: Dict[str, Any]
+    timezone: str
+    contact_email: Optional[str]
+    contact_phone: Optional[str]
+    website_url: Optional[str]
+    logo_url: Optional[str]
+    created_at: datetime
+    updated_at: datetime

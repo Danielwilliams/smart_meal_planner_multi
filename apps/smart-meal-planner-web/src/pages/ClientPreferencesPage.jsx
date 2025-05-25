@@ -179,7 +179,18 @@ function ClientPreferencesPage() {
         // Fetch client preferences
         const clientPrefs = await apiService.getUserPreferences(clientId);
         
-        if (clientPrefs) {
+        // Check if client has existing preferences or if we should load organization defaults
+        const hasExistingPreferences = clientPrefs && (
+          clientPrefs.diet_type || 
+          clientPrefs.dietary_restrictions ||
+          clientPrefs.servings_per_meal ||
+          clientPrefs.prepComplexity ||
+          clientPrefs.prep_complexity ||
+          Object.keys(clientPrefs.appliances || {}).some(key => clientPrefs.appliances[key]) ||
+          Object.keys(clientPrefs.mealTimes || clientPrefs.meal_times || {}).some(key => (clientPrefs.mealTimes || clientPrefs.meal_times)[key])
+        );
+        
+        if (hasExistingPreferences) {
           // Parse stored preferences - handle both new camelCase and legacy snake_case
           const savedDietTypes = clientPrefs.diet_type ? 
             clientPrefs.diet_type.split(',').map(t => t.trim()) : [];
@@ -250,6 +261,103 @@ function ClientPreferencesPage() {
           
           if (clientPrefs.prepPreferences || clientPrefs.prep_preferences) {
             setPrepPreferences(clientPrefs.prepPreferences || clientPrefs.prep_preferences);
+          }
+        } else {
+          // Client has no existing preferences - load organization defaults
+          try {
+            console.log('Loading organization defaults for new client...');
+            
+            // Get client's organization ID from client data
+            const organizationId = clientData.organization_id;
+            if (organizationId) {
+              const defaultPrefs = await apiService.getDefaultClientPreferences(organizationId);
+              
+              if (defaultPrefs.auto_assign_default_preferences && defaultPrefs.default_client_preferences) {
+                console.log('Applying organization defaults:', defaultPrefs.default_client_preferences);
+                
+                const orgDefaults = defaultPrefs.default_client_preferences;
+                
+                // Apply organization default preferences to client
+                if (orgDefaults.dietTypes) {
+                  setPreferences(prev => ({
+                    ...prev,
+                    dietTypes: orgDefaults.dietTypes,
+                    otherDietType: orgDefaults.otherDietType || ''
+                  }));
+                }
+                
+                if (orgDefaults.recipeTypes) {
+                  setPreferences(prev => ({
+                    ...prev,
+                    recipeTypes: orgDefaults.recipeTypes,
+                    otherRecipeType: orgDefaults.otherRecipeType || ''
+                  }));
+                }
+                
+                if (orgDefaults.appliances) {
+                  setPreferences(prev => ({
+                    ...prev,
+                    appliances: orgDefaults.appliances
+                  }));
+                }
+                
+                if (orgDefaults.mealTimes) {
+                  setPreferences(prev => ({
+                    ...prev,
+                    mealTimes: orgDefaults.mealTimes
+                  }));
+                }
+                
+                if (orgDefaults.macroGoals) {
+                  setPreferences(prev => ({
+                    ...prev,
+                    macroGoals: orgDefaults.macroGoals
+                  }));
+                }
+                
+                // Apply other default settings
+                setPreferences(prev => ({
+                  ...prev,
+                  servingsPerMeal: orgDefaults.servingsPerMeal || prev.servingsPerMeal,
+                  prepComplexity: orgDefaults.prepComplexity || prev.prepComplexity,
+                  snacksPerDay: orgDefaults.snacksPerDay || prev.snacksPerDay,
+                  dietaryRestrictions: orgDefaults.dietaryRestrictions || '',
+                  dislikedIngredients: orgDefaults.dislikedIngredients || '',
+                  krogerUsername: orgDefaults.krogerUsername || '',
+                  krogerPassword: orgDefaults.krogerPassword || ''
+                }));
+                
+                // Apply advanced preferences
+                if (orgDefaults.flavorPreferences) {
+                  setFlavorPreferences(orgDefaults.flavorPreferences);
+                }
+                
+                if (orgDefaults.spiceLevel) {
+                  setSpiceLevel(orgDefaults.spiceLevel);
+                }
+                
+                if (orgDefaults.recipeTypePreferences) {
+                  setRecipeTypePreferences(orgDefaults.recipeTypePreferences);
+                }
+                
+                if (orgDefaults.mealTimePreferences) {
+                  setMealTimePreferences(orgDefaults.mealTimePreferences);
+                }
+                
+                if (orgDefaults.timeConstraints) {
+                  setTimeConstraints(orgDefaults.timeConstraints);
+                }
+                
+                if (orgDefaults.prepPreferences) {
+                  setPrepPreferences(orgDefaults.prepPreferences);
+                }
+                
+                console.log('Organization defaults applied successfully');
+              }
+            }
+          } catch (defaultsErr) {
+            console.warn('Could not load organization defaults:', defaultsErr);
+            // Continue with empty preferences - this is not a critical error
           }
         }
       } catch (err) {

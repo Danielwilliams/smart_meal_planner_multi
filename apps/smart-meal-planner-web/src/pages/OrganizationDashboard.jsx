@@ -652,14 +652,38 @@ function OrganizationDashboard() {
             Organization Settings
           </Typography>
           <Typography variant="body1" paragraph>
-            Manage your organization profile and subscription.
+            Manage your organization settings, default client preferences, and client management options.
           </Typography>
-          <Button 
-            variant="contained" 
-            onClick={() => navigate('/preferences-page')}
-          >
-            Update Profile
-          </Button>
+          <Grid container spacing={2}>
+            <Grid item xs={12} sm={6}>
+              <Button 
+                variant="contained" 
+                fullWidth
+                startIcon={<SettingsIcon />}
+                onClick={() => navigate('/organization/settings')}
+                sx={{ mb: 2 }}
+              >
+                Organization Settings
+              </Button>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <Button 
+                variant="outlined" 
+                fullWidth
+                onClick={() => navigate('/preferences-page')}
+                sx={{ mb: 2 }}
+              >
+                Update Personal Profile
+              </Button>
+            </Grid>
+          </Grid>
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="body2" color="text.secondary">
+              • Set default preferences for new clients<br/>
+              • Configure client management settings<br/>
+              • Update organization contact information
+            </Typography>
+          </Box>
         </Paper>
       )}
 
