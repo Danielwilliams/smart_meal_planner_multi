@@ -90,10 +90,10 @@ async def get_organization_clients(
         with conn.cursor() as cur:
             cur.execute("""
                 SELECT up.id, up.email, up.name, up.profile_complete, 
-                       oc.organization_id, oc.role
+                       oc.organization_id, oc.role, oc.status
                 FROM user_profiles up
                 JOIN organization_clients oc ON up.id = oc.client_id
-                WHERE oc.organization_id = %s AND oc.status = 'active'
+                WHERE oc.organization_id = %s
             """, (org_id,))
             
             clients = cur.fetchall()
@@ -107,7 +107,8 @@ async def get_organization_clients(
                 "name": client[2],
                 "profile_complete": client[3],
                 "organization_id": client[4],
-                "role": client[5]
+                "role": client[5],
+                "status": client[6]
             } for client in clients]
             
             return {

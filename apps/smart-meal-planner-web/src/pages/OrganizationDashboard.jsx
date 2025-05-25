@@ -32,7 +32,8 @@ function OrganizationDashboard() {
     loading: orgLoading, 
     error: orgError, 
     isOwner,
-    inviteClient 
+    inviteClient,
+    refreshClients 
   } = useOrganization();
   
   const navigate = useNavigate();
@@ -250,9 +251,8 @@ function OrganizationDashboard() {
       );
       setSnackbarOpen(true);
       
-      // Refresh the clients list - this should happen automatically via OrganizationContext
-      // but we can trigger a manual refresh if needed
-      window.location.reload(); // Simple refresh for now
+      // Refresh the clients list to show updated status
+      await refreshClients();
       
     } catch (err) {
       console.error('Error updating client status:', err);

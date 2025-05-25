@@ -274,6 +274,32 @@ export const OrganizationProvider = ({ children }) => {
     }
   };
 
+  const refreshClients = async () => {
+    try {
+      if (!organization) {
+        console.log('No organization available for client refresh');
+        return;
+      }
+      
+      console.log('Refreshing clients for organization:', organization.id);
+      const clientsResponse = await apiService.getOrganizationClients(organization.id);
+      
+      if (clientsResponse && clientsResponse.clients && Array.isArray(clientsResponse.clients)) {
+        console.log(`Refreshed ${clientsResponse.clients.length} clients`);
+        setClients(clientsResponse.clients);
+      } else if (Array.isArray(clientsResponse)) {
+        console.log(`Refreshed ${clientsResponse.length} clients`);
+        setClients(clientsResponse);
+      } else {
+        console.warn('Unexpected format from client refresh');
+        setClients([]);
+      }
+    } catch (err) {
+      console.error('Error refreshing clients:', err);
+      setError('Failed to refresh clients');
+    }
+  };
+
   // Create a value object with all the context data
   const contextValue = {
     organization,
@@ -283,7 +309,8 @@ export const OrganizationProvider = ({ children }) => {
     isOwner,
     inviteClient,
     addClientToOrganization,
-    shareMenuWithClient
+    shareMenuWithClient,
+    refreshClients
   };
 
   return (
