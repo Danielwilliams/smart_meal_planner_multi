@@ -2,7 +2,7 @@
 from fastapi import APIRouter, HTTPException, Depends, status
 from app.db import get_db_connection
 from app.models.user import OrganizationSettings, OrganizationSettingsUpdate
-from app.utils.auth_middleware import get_current_user
+from app.utils.auth_utils import get_user_from_token
 import json
 import logging
 from typing import Dict, Any
@@ -35,11 +35,11 @@ def get_user_organization_id(user_id: int) -> int:
 @router.get("/{organization_id}", response_model=OrganizationSettings)
 async def get_organization_settings(
     organization_id: int,
-    current_user = Depends(get_current_user)
+    current_user = Depends(get_user_from_token)
 ):
     """Get organization settings - only accessible by organization owner"""
     # Verify user owns this organization
-    user_org_id = get_user_organization_id(current_user.userId)
+    user_org_id = get_user_organization_id(current_user['user_id'])
     if user_org_id != organization_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -107,11 +107,11 @@ async def get_organization_settings(
 async def update_organization_settings(
     organization_id: int,
     settings_update: OrganizationSettingsUpdate,
-    current_user = Depends(get_current_user)
+    current_user = Depends(get_user_from_token)
 ):
     """Update organization settings - only accessible by organization owner"""
     # Verify user owns this organization
-    user_org_id = get_user_organization_id(current_user.userId)
+    user_org_id = get_user_organization_id(current_user['user_id'])
     if user_org_id != organization_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -239,7 +239,7 @@ async def update_organization_settings(
 @router.get("/{organization_id}/default-preferences")
 async def get_default_client_preferences(
     organization_id: int,
-    current_user = Depends(get_current_user)
+    current_user = Depends(get_user_from_token)
 ):
     """Get default client preferences for an organization"""
     # Verify user has access to this organization (owner or client)
@@ -253,7 +253,7 @@ async def get_default_client_preferences(
                 SELECT 1 FROM organization_clients oc 
                 JOIN user_profiles up ON oc.client_id = up.id
                 WHERE oc.organization_id = %s AND up.id = %s AND oc.status = 'active'
-            """, (organization_id, current_user.userId, organization_id, current_user.userId))
+            """, (organization_id, current_user['user_id'], organization_id, current_user['user_id']))
             
             if not cur.fetchone():
                 raise HTTPException(
