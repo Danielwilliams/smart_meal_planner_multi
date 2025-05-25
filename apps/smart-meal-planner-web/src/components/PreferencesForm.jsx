@@ -47,11 +47,11 @@ const PreferencesForm = ({
   title = "Set Your Meal Preferences"
 }) => {
 
-  const getComplexityLabel = (value) => {
+  const getPrepComplexityLabel = (value) => {
     if (value <= 25) return 'Minimal Prep (Quick & Easy)';
-    if (value <= 50) return 'Simple (Moderate Prep)';
-    if (value <= 75) return 'Involved (More Complex)';
-    return 'Advanced (Complex Techniques)';
+    if (value <= 50) return 'Moderate Prep';
+    if (value <= 75) return 'Standard Cooking';
+    return 'Complex Recipes';
   };
 
   return (
@@ -306,30 +306,37 @@ const PreferencesForm = ({
         </Grid>
       </Grid>
 
-      {/* Prep Complexity Slider */}
-      <Box sx={{ mt: 4, mb: 2 }}>
+      {/* Prep Complexity Slider - matching individual preferences */}
+      <Box sx={{ mt: 4, mb: 4 }}>
         <Typography variant="subtitle1" gutterBottom>
-          Prep Complexity: {getComplexityLabel(preferences.prepComplexity)}
+          Meal Preparation Complexity
         </Typography>
-        <Slider
-          value={preferences.prepComplexity}
-          onChange={(e, value) => {
-            setPreferences(prev => ({
-              ...prev,
-              prepComplexity: value
-            }));
-          }}
-          step={25}
-          marks={[
-            { value: 25, label: 'Quick' },
-            { value: 50, label: 'Simple' },
-            { value: 75, label: 'Involved' },
-            { value: 100, label: 'Advanced' }
-          ]}
-          min={25}
-          max={100}
-          valueLabelDisplay="auto"
-        />
+        <Box sx={{ px: 2 }}>
+          <Slider
+            value={preferences.prepComplexity}
+            onChange={(e, newValue) => {
+              setPreferences(prev => ({
+                ...prev,
+                prepComplexity: newValue
+              }));
+            }}
+            valueLabelDisplay="auto"
+            valueLabelFormat={getPrepComplexityLabel}
+            step={25}
+            marks={[
+              { value: 0, label: 'Minimal' },
+              { value: 25, label: 'Easy' },
+              { value: 50, label: 'Moderate' },
+              { value: 75, label: 'Standard' },
+              { value: 100, label: 'Complex' }
+            ]}
+            min={0}
+            max={100}
+          />
+        </Box>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 1, textAlign: 'center' }}>
+          {getPrepComplexityLabel(preferences.prepComplexity)}
+        </Typography>
       </Box>
 
       <Divider sx={{ my: 3 }} />
@@ -461,32 +468,35 @@ const PreferencesForm = ({
 
       <Divider sx={{ my: 3 }} />
 
-      {/* Time Constraints */}
+      {/* Time Constraints - using sliders like individual preferences */}
       <Box sx={{ mt: 3, mb: 2 }}>
         <Typography variant="subtitle1" gutterBottom>
-          Time Constraints (Minutes)
+          Time Constraints
         </Typography>
-        <Grid container spacing={2}>
-          {Object.keys(timeConstraints).map((timeSlot) => (
-            <Grid item xs={6} sm={4} key={timeSlot}>
-              <TextField
-                fullWidth
-                type="number"
-                label={timeSlot.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                value={timeConstraints[timeSlot]}
-                onChange={(e) => {
-                  setTimeConstraints(prev => ({
-                    ...prev,
-                    [timeSlot]: parseInt(e.target.value) || 0
-                  }));
-                }}
-                InputProps={{
-                  inputProps: { min: 5, max: 120 }
-                }}
-              />
-            </Grid>
-          ))}
-        </Grid>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Maximum prep time (minutes) for each meal
+        </Typography>
+        {Object.entries(timeConstraints).map(([mealType, minutes]) => (
+          <Box key={mealType} sx={{ mb: 2 }}>
+            <Typography variant="body2">
+              {mealType.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+            </Typography>
+            <Slider
+              value={minutes}
+              min={5}
+              max={60}
+              step={5}
+              marks
+              valueLabelDisplay="auto"
+              onChange={(e, value) => {
+                setTimeConstraints(prev => ({
+                  ...prev,
+                  [mealType]: value
+                }));
+              }}
+            />
+          </Box>
+        ))}
       </Box>
 
       <Divider sx={{ my: 3 }} />
