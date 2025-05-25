@@ -262,6 +262,18 @@ async def update_preferences(id: int, preferences: PreferencesUpdate):
             params.append(preferences.kroger_username)
         
         if preferences.kroger_password is not None:
+            # Hash the password before storing
+            from ..utils.password_utils import hash_kroger_password
+            hashed_password, salt = hash_kroger_password(preferences.kroger_password)
+            
+            # Update both the hash and salt
+            update_fields.append("kroger_password_hash = %s")
+            params.append(hashed_password)
+            update_fields.append("kroger_password_salt = %s")
+            params.append(salt)
+            
+            # Optionally keep the plain text for backward compatibility during migration
+            # Remove this line after full migration is complete
             update_fields.append("kroger_password = %s")
             params.append(preferences.kroger_password)
         

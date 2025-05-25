@@ -1,0 +1,1 @@
+# Migrations module for Smart Meal Planner

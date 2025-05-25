@@ -233,9 +233,12 @@ async def startup_event():
         
         # Run database migrations to update schema if needed
         logger.info("Running database migrations...")
-        from app.migrations import run_migrations
-        run_migrations()
-        logger.info("Database migrations completed")
+        from app.migrations.migration_runner import run_startup_migrations
+        migration_success = run_startup_migrations()
+        if migration_success:
+            logger.info("Database migrations completed successfully")
+        else:
+            logger.warning("Some migrations failed - check logs for details")
         
         # Check S3 configuration
         logger.info("Checking S3 configuration...")
