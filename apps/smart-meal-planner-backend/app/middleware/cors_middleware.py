@@ -28,8 +28,6 @@ def setup_cors_middleware(app: FastAPI) -> None:
         "https://api.smartmealplannerio.com",
         "https://smartmealplannerio.com",
         "https://smart-meal-planner-multi.vercel.app",
-        # For testing during development
-        "*"
     ]
     
     logger.info("Setting up enhanced CORS middleware to allow direct frontend requests")
@@ -38,7 +36,7 @@ def setup_cors_middleware(app: FastAPI) -> None:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=origins,
-        allow_credentials=False,  # Set to False to support wildcard origins
+        allow_credentials=True,  # Enable credentials for authentication
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
         allow_headers=[
             "Content-Type", 
