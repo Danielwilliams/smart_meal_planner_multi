@@ -64,7 +64,7 @@ SMTP_USERNAME = os.getenv("SMTP_USERNAME", "signup@smartmealplannerio.com")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", ".*+~?00D7y;,bV1t")
 SMTP_SERVER = os.getenv("SMTP_SERVER", "mboxhosting.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
-FRONTEND_URL = os.getenv("FRONTEND_URL", "https://smartmealplannerio.com").rstrip('/')
+FRONTEND_URL = "https://smartmealplannerio.com"
 
 
 def debug_environment_vars():
