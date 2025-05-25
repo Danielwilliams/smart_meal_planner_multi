@@ -26,6 +26,8 @@ function ResetPasswordPage() {
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
 
+  console.log('🔍 ResetPasswordPage render - success state:', success);
+
   // Check if token is present on mount
   useEffect(() => {
     if (!token) {
@@ -90,8 +92,6 @@ function ResetPasswordPage() {
     }
   };
 
-  console.log('🔍 ResetPasswordPage render - success state:', success);
-  
   if (success) {
     console.log('✅ Rendering success UI');
     return (
