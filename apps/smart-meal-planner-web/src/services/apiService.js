@@ -3259,7 +3259,7 @@ const apiService = {
   // Organization Settings methods
   async getOrganizationSettings(organizationId) {
     try {
-      const response = await axiosInstance.get(`/organization-settings/${organizationId}`);
+      const response = await axiosInstance.get(`/api/organization-settings/${organizationId}`);
       return response.data;
     } catch (error) {
       console.error('Get organization settings error:', error);
@@ -3269,7 +3269,7 @@ const apiService = {
 
   async updateOrganizationSettings(organizationId, settings) {
     try {
-      const response = await axiosInstance.put(`/organization-settings/${organizationId}`, settings);
+      const response = await axiosInstance.put(`/api/organization-settings/${organizationId}`, settings);
       return response.data;
     } catch (error) {
       console.error('Update organization settings error:', error);
@@ -3279,7 +3279,7 @@ const apiService = {
 
   async getDefaultClientPreferences(organizationId) {
     try {
-      const response = await axiosInstance.get(`/organization-settings/${organizationId}/default-preferences`);
+      const response = await axiosInstance.get(`/api/organization-settings/${organizationId}/default-preferences`);
       return response.data;
     } catch (error) {
       console.error('Get default client preferences error:', error);
