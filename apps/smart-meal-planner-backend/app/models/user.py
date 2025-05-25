@@ -42,27 +42,64 @@ class ResetPasswordRequest(BaseModel):
     new_password: str
 
 class PreferencesUpdate(BaseModel):
-    diet_type: Optional[str] = None
-    dietary_restrictions: Optional[str] = None
-    disliked_ingredients: Optional[str] = None
-    recipe_type: Optional[str] = None
-    macro_protein: Optional[int] = None
-    macro_carbs: Optional[int] = None
-    macro_fat: Optional[int] = None
-    calorie_goal: Optional[int] = None
-    meal_times: Optional[Dict[str, bool]] = None
-    kroger_username: Optional[str] = None
-    kroger_password: Optional[str] = None
+    # Basic settings
+    servingsPerMeal: Optional[int] = Field(default=1, ge=1, le=10)
+    prepComplexity: Optional[int] = Field(default=50, ge=0, le=100)
+    snacksPerDay: Optional[int] = Field(default=1, ge=0, le=3)
+    
+    # Appliances (nested object)
     appliances: Optional[Dict[str, bool]] = None
-    prep_complexity: Optional[int] = None
-    servings_per_meal: Optional[int] = Field(default=1, ge=1, le=10)
-    snacks_per_day: Optional[int] = Field(default=0, ge=0, le=3)
-    flavor_preferences: Optional[Dict[str, bool]] = None
-    spice_level: Optional[str] = None
-    recipe_type_preferences: Optional[Dict[str, bool]] = None
-    meal_time_preferences: Optional[Dict[str, bool]] = None
-    time_constraints: Optional[Dict[str, int]] = None
-    prep_preferences: Optional[Dict[str, bool]] = None
+    
+    # Diet types (nested object with multiple selections)
+    dietTypes: Optional[Dict[str, bool]] = None
+    otherDietType: Optional[str] = None
+    
+    # Recipe types (nested object with cuisine selections)
+    recipeTypes: Optional[Dict[str, bool]] = None
+    otherRecipeType: Optional[str] = None
+    
+    # Text preferences
+    dietaryRestrictions: Optional[str] = None
+    dislikedIngredients: Optional[str] = None
+    
+    # Meal times (nested object)
+    mealTimes: Optional[Dict[str, bool]] = None
+    
+    # Macro goals (nested object)
+    macroGoals: Optional[Dict[str, Union[int, str]]] = None
+    
+    # Kroger credentials
+    krogerUsername: Optional[str] = None
+    krogerPassword: Optional[str] = None
+    
+    # Advanced preferences (matching individual user model)
+    flavorPreferences: Optional[Dict[str, bool]] = None
+    spiceLevel: Optional[str] = None
+    recipeTypePreferences: Optional[Dict[str, bool]] = None
+    mealTimePreferences: Optional[Dict[str, bool]] = None
+    timeConstraints: Optional[Dict[str, int]] = None
+    prepPreferences: Optional[Dict[str, bool]] = None
+    
+    # Legacy field mapping for backward compatibility
+    diet_type: Optional[str] = None  # Will be converted from dietTypes
+    recipe_type: Optional[str] = None  # Will be converted from recipeTypes
+    dietary_restrictions: Optional[str] = None  # Alias for dietaryRestrictions
+    disliked_ingredients: Optional[str] = None  # Alias for dislikedIngredients
+    meal_times: Optional[Dict[str, bool]] = None  # Alias for mealTimes
+    macro_protein: Optional[int] = None  # Will be extracted from macroGoals
+    macro_carbs: Optional[int] = None  # Will be extracted from macroGoals
+    macro_fat: Optional[int] = None  # Will be extracted from macroGoals
+    calorie_goal: Optional[int] = None  # Will be extracted from macroGoals
+    kroger_username: Optional[str] = None  # Alias for krogerUsername
+    kroger_password: Optional[str] = None  # Alias for krogerPassword
+    prep_complexity: Optional[int] = None  # Alias for prepComplexity
+    servings_per_meal: Optional[int] = None  # Alias for servingsPerMeal
+    snacks_per_day: Optional[int] = None  # Alias for snacksPerDay
+    flavor_preferences: Optional[Dict[str, bool]] = None  # Alias for flavorPreferences
+    recipe_type_preferences: Optional[Dict[str, bool]] = None  # Alias for recipeTypePreferences
+    meal_time_preferences: Optional[Dict[str, bool]] = None  # Alias for mealTimePreferences
+    time_constraints: Optional[Dict[str, int]] = None  # Alias for timeConstraints
+    prep_preferences: Optional[Dict[str, bool]] = None  # Alias for prepPreferences
 
 
 class GenerateMenuRequest(BaseModel):

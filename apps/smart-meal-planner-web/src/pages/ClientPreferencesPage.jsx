@@ -38,30 +38,68 @@ function ClientPreferencesPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   
-  // Preferences state
+  // Preferences state - matching individual user preference structure
   const [preferences, setPreferences] = useState({
-    diet_type: '',
-    dietary_restrictions: '',
-    disliked_ingredients: '',
-    recipe_type: '',
-    meal_times: {
-      breakfast: false,
-      lunch: false,
-      dinner: false,
-      snacks: false
-    },
-    macro_protein: 40,
-    macro_carbs: 30,
-    macro_fat: 30,
-    calorie_goal: 2000,
-    snacks_per_day: 0,
-    servings_per_meal: 1,
+    servingsPerMeal: 1,
     appliances: {
       airFryer: false,
       instapot: false,
       crockpot: false
     },
-    prep_complexity: 50
+    prepComplexity: 50,
+    
+    dietTypes: {
+      Vegetarian: false,
+      Vegan: false,
+      Pescatarian: false,
+      Mediterranean: false,
+      Ketogenic: false,
+      Paleo: false,
+      'Low-Carb': false,
+      'Low-Fat': false,
+      'Gluten-Free': false,
+      'Dairy-Free': false,
+      Other: false
+    },
+    otherDietType: '',
+    dietaryRestrictions: '',
+    dislikedIngredients: '',
+    recipeTypes: {
+      American: false,
+      Italian: false,
+      Mexican: false,
+      Asian: false,
+      Mediterranean: false,
+      Indian: false,
+      French: false,
+      Greek: false,
+      Japanese: false,
+      Thai: false,
+      Chinese: false,
+      Korean: false,
+      Spanish: false,
+      'Middle Eastern': false,
+      Vietnamese: false,
+      Brazilian: false,
+      Caribbean: false,
+      Other: false
+    },
+    otherRecipeType: '',
+    mealTimes: {
+      breakfast: false,
+      lunch: false,
+      dinner: false,
+      snacks: false
+    },
+    snacksPerDay: 1,
+    macroGoals: {
+      protein: '',
+      carbs: '',
+      fat: '',
+      calories: ''
+    },
+    krogerUsername: '',
+    krogerPassword: ''
   });
   
   // New preference states
