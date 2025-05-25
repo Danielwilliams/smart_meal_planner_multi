@@ -39,6 +39,9 @@ function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [invitationInfo, setInvitationInfo] = useState(null);
   const [organizationName, setOrganizationName] = useState('');
+  const [showResendVerification, setShowResendVerification] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
+  const [resendSuccess, setResendSuccess] = useState(false);
 
   // Fetch invitation info if we have an invitation token and org id
   useEffect(() => {
@@ -126,15 +129,36 @@ function LoginPage() {
         message: err.message
       });
       
-      setError(
-        err.response?.data?.detail || 
-        err.message || 
-        'An unexpected error occurred during login'
-      );
+      const errorDetail = err.response?.data?.detail || err.message || 'An unexpected error occurred during login';
+      setError(errorDetail);
+      
+      // Check if this is a verification error
+      if (errorDetail.includes('verify') || errorDetail.includes('verification')) {
+        setShowResendVerification(true);
+      }
     } finally {
       setLoading(false);
     }
   }, [email, password, executeRecaptcha, navigate, login, isInvitation, invitationToken, organizationId]);
+
+  const handleResendVerification = async () => {
+    if (!email) {
+      setError('Please enter your email address first');
+      return;
+    }
+
+    try {
+      setResendLoading(true);
+      await apiService.resendVerificationEmail(email);
+      setResendSuccess(true);
+      setError('Verification email sent successfully! Please check your inbox and spam folder.');
+      setShowResendVerification(false);
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to resend verification email. Please try again.');
+    } finally {
+      setResendLoading(false);
+    }
+  };
 
   const handleSignUp = () => {
     if (isInvitation && invitationToken && organizationId) {
@@ -259,8 +283,26 @@ function LoginPage() {
             </Typography>
 
             {error && (
-              <Alert severity="error" sx={{ mb: 2 }}>
+              <Alert severity={resendSuccess ? "success" : "error"} sx={{ mb: 2 }}>
                 {error}
+              </Alert>
+            )}
+
+            {showResendVerification && !resendSuccess && (
+              <Alert severity="info" sx={{ mb: 2 }}>
+                <Box>
+                  <Typography variant="body2" sx={{ mb: 2 }}>
+                    Your email hasn't been verified yet. Please check your inbox for the verification email, or request a new one.
+                  </Typography>
+                  <Button 
+                    variant="outlined" 
+                    size="small"
+                    onClick={handleResendVerification}
+                    disabled={resendLoading}
+                  >
+                    {resendLoading ? 'Sending...' : 'Resend Verification Email'}
+                  </Button>
+                </Box>
               </Alert>
             )}
 
