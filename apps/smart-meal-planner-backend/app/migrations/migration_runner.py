@@ -217,7 +217,7 @@ def run_startup_migrations():
     """Entry point for running migrations on server startup."""
     try:
         # Import configuration here to avoid circular imports
-        from app.config.migration_config import get_migration_config
+        from app.migrations_config import get_migration_config
         
         config = get_migration_config()
         config.log_configuration()
