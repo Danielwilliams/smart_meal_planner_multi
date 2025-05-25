@@ -41,6 +41,8 @@ import TestInvitation from './TestInvitation';
 import ApiTestPage from './pages/ApiTestPage';
 import InstacartTestPage from './pages/InstacartTestPage';
 import DebugSharedMenus from './pages/DebugSharedMenus';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
 
 
 function App() {
@@ -65,6 +67,8 @@ function App() {
               <Route path="/" element={<LandingPage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/signup" element={<SignUpPage />} />
+              <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+              <Route path="/reset-password" element={<ResetPasswordPage />} />
               {/* Client signup routes - simplified direct access */}
               <Route 
                 path="/client-signup" 

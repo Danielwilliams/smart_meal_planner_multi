@@ -118,14 +118,43 @@ async def sign_up(user_data: UserSignUp, background_tasks: BackgroundTasks):
 @router.get("/verify-email/{token}")
 async def verify_email(token: str):
     try:
+        print(f"🔍 Verifying email with token: {token[:20]}...")
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         email = payload.get('email')
         
         if not email:
             raise HTTPException(status_code=400, detail="Invalid verification token")
         
+        print(f"🔍 Token decoded successfully for email: {email}")
+        
         conn = get_db_connection()
         cursor = conn.cursor()
+        
+        # First, check if user exists and current verification status
+        cursor.execute("""
+            SELECT id, verified, verification_token
+            FROM user_profiles
+            WHERE email = %s
+        """, (email,))
+        
+        user_result = cursor.fetchone()
+        if not user_result:
+            print(f"❌ User not found for email: {email}")
+            raise HTTPException(status_code=400, detail="User not found")
+        
+        user_id, is_verified, stored_token = user_result
+        print(f"🔍 User found - ID: {user_id}, Verified: {is_verified}, Has token: {bool(stored_token)}")
+        
+        if is_verified:
+            print(f"✅ User {email} is already verified")
+            return {"message": "Email already verified"}
+        
+        # Check if stored token matches
+        if stored_token != token:
+            print(f"❌ Token mismatch for {email}")
+            print(f"   Stored token: {stored_token[:20] if stored_token else 'None'}...")
+            print(f"   Provided token: {token[:20]}...")
+            raise HTTPException(status_code=400, detail="Invalid verification token")
         
         # Update user verification status
         cursor.execute("""
@@ -136,18 +165,27 @@ async def verify_email(token: str):
         """, (email, token))
         
         if cursor.rowcount == 0:
-            raise HTTPException(status_code=400, detail="Invalid or expired verification token")
-            
+            print(f"❌ Update failed for {email}")
+            raise HTTPException(status_code=400, detail="Failed to verify email")
+        
         conn.commit()
+        print(f"✅ Email verification successful for {email}")
         return {"message": "Email verified successfully"}
         
     except jwt.ExpiredSignatureError:
+        print(f"❌ Token expired for verification")
         raise HTTPException(status_code=400, detail="Verification token has expired")
-    except jwt.JWTError:
+    except jwt.JWTError as e:
+        print(f"❌ JWT decode error: {e}")
         raise HTTPException(status_code=400, detail="Invalid verification token")
+    except Exception as e:
+        print(f"❌ Unexpected error in email verification: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
     finally:
-        cursor.close()
-        conn.close()
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conn' in locals():
+            conn.close()
 
 @router.post("/resend-verification")
 async def resend_verification_email(request: ResendVerificationRequest, background_tasks: BackgroundTasks):
@@ -456,4 +494,160 @@ async def update_user_progress(user_id: int, progress: UserProgress):
     finally:
         cursor.close()
         conn.close()
+
+@router.post("/forgot-password")
+async def forgot_password(request: ForgotPasswordRequest, background_tasks: BackgroundTasks):
+    """Send a password reset email to the user"""
+    try:
+        email = request.email
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Check if user exists
+        cursor.execute("""
+            SELECT id, name, verified
+            FROM user_profiles 
+            WHERE email = %s
+        """, (email,))
+        
+        user = cursor.fetchone()
+        
+        if not user:
+            # Return success even if email doesn't exist (security best practice)
+            return {"message": "If an account with that email exists, we've sent a password reset link."}
+        
+        user_id, name, verified = user
+        
+        if not verified:
+            raise HTTPException(status_code=400, detail="Please verify your email before resetting your password")
+        
+        # Generate password reset token
+        reset_token = jwt.encode({
+            'user_id': user_id,
+            'email': email,
+            'type': 'password_reset',
+            'exp': datetime.utcnow() + timedelta(hours=1)  # Token expires in 1 hour
+        }, JWT_SECRET, algorithm=JWT_ALGORITHM)
+        
+        # Store reset token in database
+        cursor.execute("""
+            UPDATE user_profiles
+            SET reset_password_token = %s
+            WHERE id = %s
+        """, (reset_token, user_id))
+        conn.commit()
+        
+        # Send password reset email in background
+        background_tasks.add_task(send_password_reset_email, email, name, reset_token)
+        
+        return {"message": "If an account with that email exists, we've sent a password reset link."}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Forgot password error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conn' in locals():
+            conn.close()
+
+@router.post("/reset-password")
+async def reset_password(request: ResetPasswordRequest):
+    """Reset user password using reset token"""
+    try:
+        reset_token = request.reset_token
+        new_password = request.new_password
+        
+        # Verify and decode the reset token
+        try:
+            payload = jwt.decode(reset_token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+            user_id = payload.get('user_id')
+            email = payload.get('email')
+            token_type = payload.get('type')
+            
+            if token_type != 'password_reset':
+                raise HTTPException(status_code=400, detail="Invalid reset token")
+                
+        except jwt.ExpiredSignatureError:
+            raise HTTPException(status_code=400, detail="Reset token has expired")
+        except jwt.JWTError:
+            raise HTTPException(status_code=400, detail="Invalid reset token")
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Verify token exists in database and user exists
+        cursor.execute("""
+            SELECT id, reset_password_token
+            FROM user_profiles 
+            WHERE id = %s AND email = %s
+        """, (user_id, email))
+        
+        user = cursor.fetchone()
+        
+        if not user or user[1] != reset_token:
+            raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+        
+        # Hash new password
+        hashed_password = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt())
+        
+        # Update password and clear reset token
+        cursor.execute("""
+            UPDATE user_profiles
+            SET hashed_password = %s, reset_password_token = NULL
+            WHERE id = %s
+        """, (hashed_password.decode('utf-8'), user_id))
+        
+        conn.commit()
+        
+        return {"message": "Password reset successful. You can now log in with your new password."}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Reset password error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conn' in locals():
+            conn.close()
+
+async def send_password_reset_email(email: str, name: str, reset_token: str):
+    """Send password reset email to user"""
+    try:
+        reset_link = f"{FRONTEND_URL}/reset-password?token={reset_token}"
+        
+        msg = MIMEText(f"""
+        Hi {name},
+        
+        We received a request to reset your password for your Smart Meal Planner account.
+        
+        Click the link below to reset your password:
+        {reset_link}
+        
+        This link will expire in 1 hour for security reasons.
+        
+        If you didn't request this password reset, please ignore this email.
+        Your password will not be changed unless you click the link above.
+        
+        Best regards,
+        Smart Meal Planner Team
+        """)
+        
+        msg['Subject'] = 'Reset your Smart Meal Planner password'
+        msg['From'] = SMTP_USERNAME
+        msg['To'] = email
+        
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+            server.starttls()
+            server.login(SMTP_USERNAME, SMTP_PASSWORD)
+            server.send_message(msg)
+            
+    except Exception as e:
+        logger.error(f"Error sending password reset email: {str(e)}")
+        raise
 
