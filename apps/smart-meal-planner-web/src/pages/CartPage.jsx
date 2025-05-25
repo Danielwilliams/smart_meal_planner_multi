@@ -2276,6 +2276,38 @@ function CartPage() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Kroger Error Dialog */}
+      <Dialog
+        open={showErrorDialog}
+        onClose={() => setShowErrorDialog(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>{errorDialogContent.title}</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            {errorDialogContent.message}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowErrorDialog(false)} color="primary">
+            Cancel
+          </Button>
+          {errorDialogContent.needsReconnect && (
+            <Button
+              onClick={() => {
+                setShowErrorDialog(false);
+                handleReconnectKroger();
+              }}
+              variant="contained"
+              color="primary"
+            >
+              Reconnect Kroger
+            </Button>
+          )}
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 }
