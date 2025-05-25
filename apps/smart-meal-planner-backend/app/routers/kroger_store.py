@@ -145,6 +145,69 @@ async def search_products(
 
 # In app/routers/kroger_store.py
 
+@router.post("/search-and-suggest")
+async def search_and_suggest_kroger_items(
+    req: KrogerSearchRequest,
+    user = Depends(get_user_from_token)
+):
+    """Search for items and return suggestions with UPC codes for cart operations"""
+    try:
+        user_id = user.get('user_id')
+        logger.info(f"Searching and suggesting Kroger items for user {user_id}")
+
+        # Get store location ID from user preferences
+        user_creds = get_user_kroger_credentials(user_id)
+        location_id = user_creds.get('store_location_id') if user_creds else None
+        
+        if not location_id:
+            return {
+                "success": False,
+                "message": "Please select a Kroger store location first",
+                "needs_setup": True
+            }
+        
+        # Search for each item and return suggestions
+        suggestions = []
+        for item_name in req.items:
+            try:
+                # Use the existing search function
+                search_result = kroger_search_item(item_name, location_id)
+                
+                if search_result.get("success") and search_result.get("results"):
+                    # Take the top 3 results for user selection
+                    item_suggestions = search_result["results"][:3]
+                    suggestions.append({
+                        "original_item": item_name,
+                        "suggestions": item_suggestions
+                    })
+                else:
+                    # No results found
+                    suggestions.append({
+                        "original_item": item_name,
+                        "suggestions": [],
+                        "message": f"No results found for '{item_name}'"
+                    })
+                    
+            except Exception as search_error:
+                logger.error(f"Error searching for item '{item_name}': {search_error}")
+                suggestions.append({
+                    "original_item": item_name,
+                    "suggestions": [],
+                    "error": str(search_error)
+                })
+        
+        return {
+            "success": True,
+            "suggestions": suggestions
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in search and suggest: {str(e)}")
+        return {
+            "success": False,
+            "message": str(e)
+        }
+
 @router.post("/cart/add")
 async def add_to_kroger_cart(
     req: KrogerCartRequest,
@@ -230,11 +293,18 @@ async def add_to_kroger_cart(
         
         # Format items for Kroger API
         kroger_items = []
+        items_without_upc = []
+        
         for item in req.items:
             # Ensure UPC is properly formatted
             upc = item.get("upc", "")
             if not upc:
                 logger.warning(f"Item missing UPC: {item}")
+                # Store items without UPC for search-first workflow
+                items_without_upc.append({
+                    "name": item.get("name", ""),
+                    "quantity": item.get("quantity", 1)
+                })
                 continue
                 
             kroger_items.append({
@@ -242,11 +312,20 @@ async def add_to_kroger_cart(
                 "quantity": item.get("quantity", 1)
             })
         
+        # If no items have UPC codes, return a needs_search response instead of error
         if not kroger_items:
-            return {
-                "success": False,
-                "message": "No valid items with UPC codes"
-            }
+            if items_without_upc:
+                return {
+                    "success": False,
+                    "needs_search": True,
+                    "items_to_search": items_without_upc,
+                    "message": "Items need to be searched for and selected before adding to cart"
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": "No valid items provided"
+                }
         
         # First attempt to add to cart
         logger.info(f"Attempting cart operation with access token length: {len(access_token) if access_token else 0}")

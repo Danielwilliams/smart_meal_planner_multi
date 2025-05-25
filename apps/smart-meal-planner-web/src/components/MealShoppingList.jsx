@@ -170,7 +170,7 @@ const MealShoppingList = ({ menuId }) => {
     return normalizedTime ? ` (${mealTime})` : '';
   };
 
-  // Add meal ingredients to internal cart assigned to the specified store
+  // Add meal ingredients to cart with proper workflow based on store
   const addMealToCart = async (meal, store) => {
     if (!meal.ingredients || meal.ingredients.length === 0) {
       setSnackbarMessage('No ingredients to add to cart');
@@ -186,87 +186,199 @@ const MealShoppingList = ({ menuId }) => {
       const formattedToken = token && token.startsWith('Bearer ') ? token : `Bearer ${token}`;
       const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://smartmealplannermulti-production.up.railway.app';
 
-      // Convert ingredients to cart items format with correct quantity formatting
-      const cartItems = meal.ingredients.map(ingredient => {
-        // Process ingredient with proper units
-        let quantity = ingredient.quantity || "";
-        let name = ingredient.name || "";
-        let itemName = name;
+      // For Kroger, we need to use the search-first workflow
+      if (store === 'kroger') {
+        // First, search for products to get UPC codes
+        const ingredientNames = meal.ingredients.map(ingredient => {
+          let quantity = ingredient.quantity || "";
+          let name = ingredient.name || "";
+          let itemName = name;
 
-        // DEBUG: Log the ingredient processing
-        console.log(`Processing ingredient: name="${name}", quantity="${quantity}"`);
-
-        // If quantity already contains units (like "2 cups", "16 oz"), use it directly
-        if (quantity && quantity.trim() && /\d+.*[a-zA-Z]/.test(quantity.trim())) {
-          itemName = `${quantity} ${name}`.trim();
-          console.log(`Using quantity with units: "${itemName}"`);
-        }
-        // If quantity is just a number, apply specific unit rules
-        else if (quantity && quantity.trim() && /^\d+(\.\d+)?$/.test(quantity.trim())) {
-          if (quantity === "16" && name.toLowerCase().includes("pasta")) {
-            itemName = `16 oz ${name}`;
-          } else if (quantity === "2" && name.toLowerCase().includes("spinach")) {
-            itemName = `2 cups ${name}`;
-          } else if (quantity === "2" && name.toLowerCase().includes("olive oil")) {
-            itemName = `2 tbsp ${name}`;
-          } else if (quantity === "2" && name.toLowerCase().includes("italian")) {
-            itemName = `2 tbsp ${name}`;
-          } else if (quantity === "1" && name.toLowerCase().includes("tomato sauce")) {
-            itemName = `1 can ${name}`;
-          } else if (quantity === "1" && name.toLowerCase().includes("cheese") && !name.toLowerCase().includes("cream cheese")) {
-            itemName = `1 cup ${name}`;
-          } else if (quantity === "3" && name.toLowerCase().includes("rice")) {
-            itemName = `3 cups ${name}`;
-          } else if (quantity === "1" && name.toLowerCase().includes("broccoli")) {
-            itemName = `1 head ${name}`;
-          } else if (quantity === "1" && name.toLowerCase().includes("onion")) {
-            itemName = `1 medium ${name}`;
-          } else if (quantity === "4" && name.toLowerCase().includes("garlic")) {
-            itemName = `4 cloves ${name}`;
-          } else if (quantity === "8" && name.toLowerCase().includes("chicken")) {
-            itemName = `8 oz ${name}`;
-          } else {
-            // For numeric quantities without specific rules, just add the number
+          // Apply the same quantity formatting logic as before
+          if (quantity && quantity.trim() && /\d+.*[a-zA-Z]/.test(quantity.trim())) {
             itemName = `${quantity} ${name}`.trim();
+          } else if (quantity && quantity.trim() && /^\d+(\.\d+)?$/.test(quantity.trim())) {
+            // Apply specific unit rules (same as before)
+            if (quantity === "16" && name.toLowerCase().includes("pasta")) {
+              itemName = `16 oz ${name}`;
+            } else if (quantity === "2" && name.toLowerCase().includes("spinach")) {
+              itemName = `2 cups ${name}`;
+            } else if (quantity === "2" && name.toLowerCase().includes("olive oil")) {
+              itemName = `2 tbsp ${name}`;
+            } else if (quantity === "2" && name.toLowerCase().includes("italian")) {
+              itemName = `2 tbsp ${name}`;
+            } else if (quantity === "1" && name.toLowerCase().includes("tomato sauce")) {
+              itemName = `1 can ${name}`;
+            } else if (quantity === "1" && name.toLowerCase().includes("cheese") && !name.toLowerCase().includes("cream cheese")) {
+              itemName = `1 cup ${name}`;
+            } else if (quantity === "3" && name.toLowerCase().includes("rice")) {
+              itemName = `3 cups ${name}`;
+            } else if (quantity === "1" && name.toLowerCase().includes("broccoli")) {
+              itemName = `1 head ${name}`;
+            } else if (quantity === "1" && name.toLowerCase().includes("onion")) {
+              itemName = `1 medium ${name}`;
+            } else if (quantity === "4" && name.toLowerCase().includes("garlic")) {
+              itemName = `4 cloves ${name}`;
+            } else if (quantity === "8" && name.toLowerCase().includes("chicken")) {
+              itemName = `8 oz ${name}`;
+            } else {
+              itemName = `${quantity} ${name}`.trim();
+            }
           }
-          console.log(`Using numeric quantity rule: "${itemName}"`);
-        }
-        // If no quantity or empty quantity, use just the name
-        else {
-          itemName = name;
-          console.log(`Using name only: "${itemName}"`);
-        }
 
-        return {
-          name: itemName,
-          quantity: 1,  // This is the item count, not the measurement quantity
-          store_preference: store
-        };
-      });
+          return itemName;
+        });
 
-      // Add items to internal cart assigned to the specified store
-      const response = await axios.post(
-        `${API_BASE_URL}/cart/internal/add_items`,
-        {
-          items: cartItems,
-          store: store
-        },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': formattedToken
+        try {
+          // Search for products first
+          const searchResponse = await axios.post(
+            `${API_BASE_URL}/kroger/search-and-suggest`,
+            { items: ingredientNames },
+            {
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': formattedToken
+              }
+            }
+          );
+
+          if (searchResponse.data && searchResponse.data.success) {
+            // For now, automatically select the first result for each item
+            // TODO: In the future, show a selection UI for users to choose specific products
+            const itemsWithUpc = [];
+            
+            searchResponse.data.suggestions.forEach(suggestion => {
+              if (suggestion.suggestions && suggestion.suggestions.length > 0) {
+                const bestMatch = suggestion.suggestions[0]; // Take first/best result
+                if (bestMatch.upc) {
+                  itemsWithUpc.push({
+                    name: suggestion.original_item,
+                    upc: bestMatch.upc,
+                    quantity: 1,
+                    store_preference: store
+                  });
+                }
+              }
+            });
+
+            if (itemsWithUpc.length === 0) {
+              setSnackbarMessage('No products found in Kroger for these ingredients');
+              setSnackbarOpen(true);
+              return;
+            }
+
+            // Now add the items with UPC codes to cart
+            const addResponse = await axios.post(
+              `${API_BASE_URL}/kroger/cart/add`,
+              { items: itemsWithUpc },
+              {
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': formattedToken
+                }
+              }
+            );
+
+            if (addResponse.data && addResponse.data.success) {
+              setSnackbarMessage(
+                `Added ${itemsWithUpc.length} items from "${meal.title}" to Kroger cart`
+              );
+              setSnackbarOpen(true);
+            } else {
+              throw new Error(addResponse.data?.message || 'Failed to add items to Kroger cart');
+            }
+          } else {
+            throw new Error(searchResponse.data?.message || 'Failed to search for products');
           }
+        } catch (krogerError) {
+          console.error('Kroger-specific error:', krogerError);
+          setSnackbarMessage(`Error with Kroger: ${krogerError.response?.data?.detail || krogerError.message}`);
+          setSnackbarOpen(true);
+          return;
         }
-      );
-
-      if (response.data && response.data.status === 'success') {
-        setSnackbarMessage(
-          `Added ${meal.ingredients.length} items from "${meal.title}" to ${store.charAt(0).toUpperCase() + store.slice(1)} cart`
-        );
-        setSnackbarOpen(true);
       } else {
-        setSnackbarMessage(`Failed to add items to ${store} cart`);
-        setSnackbarOpen(true);
+        // For other stores (like Instacart), use the original workflow
+        const cartItems = meal.ingredients.map(ingredient => {
+          // Process ingredient with proper units
+          let quantity = ingredient.quantity || "";
+          let name = ingredient.name || "";
+          let itemName = name;
+
+          // DEBUG: Log the ingredient processing
+          console.log(`Processing ingredient: name="${name}", quantity="${quantity}"`);
+
+          // If quantity already contains units (like "2 cups", "16 oz"), use it directly
+          if (quantity && quantity.trim() && /\d+.*[a-zA-Z]/.test(quantity.trim())) {
+            itemName = `${quantity} ${name}`.trim();
+            console.log(`Using quantity with units: "${itemName}"`);
+          }
+          // If quantity is just a number, apply specific unit rules
+          else if (quantity && quantity.trim() && /^\d+(\.\d+)?$/.test(quantity.trim())) {
+            if (quantity === "16" && name.toLowerCase().includes("pasta")) {
+              itemName = `16 oz ${name}`;
+            } else if (quantity === "2" && name.toLowerCase().includes("spinach")) {
+              itemName = `2 cups ${name}`;
+            } else if (quantity === "2" && name.toLowerCase().includes("olive oil")) {
+              itemName = `2 tbsp ${name}`;
+            } else if (quantity === "2" && name.toLowerCase().includes("italian")) {
+              itemName = `2 tbsp ${name}`;
+            } else if (quantity === "1" && name.toLowerCase().includes("tomato sauce")) {
+              itemName = `1 can ${name}`;
+            } else if (quantity === "1" && name.toLowerCase().includes("cheese") && !name.toLowerCase().includes("cream cheese")) {
+              itemName = `1 cup ${name}`;
+            } else if (quantity === "3" && name.toLowerCase().includes("rice")) {
+              itemName = `3 cups ${name}`;
+            } else if (quantity === "1" && name.toLowerCase().includes("broccoli")) {
+              itemName = `1 head ${name}`;
+            } else if (quantity === "1" && name.toLowerCase().includes("onion")) {
+              itemName = `1 medium ${name}`;
+            } else if (quantity === "4" && name.toLowerCase().includes("garlic")) {
+              itemName = `4 cloves ${name}`;
+            } else if (quantity === "8" && name.toLowerCase().includes("chicken")) {
+              itemName = `8 oz ${name}`;
+            } else {
+              // For numeric quantities without specific rules, just add the number
+              itemName = `${quantity} ${name}`.trim();
+            }
+            console.log(`Using numeric quantity rule: "${itemName}"`);
+          }
+          // If no quantity or empty quantity, use just the name
+          else {
+            itemName = name;
+            console.log(`Using name only: "${itemName}"`);
+          }
+
+          return {
+            name: itemName,
+            quantity: 1,  // This is the item count, not the measurement quantity
+            store_preference: store
+          };
+        });
+
+        // Add items to internal cart assigned to the specified store
+        const response = await axios.post(
+          `${API_BASE_URL}/cart/internal/add_items`,
+          {
+            items: cartItems,
+            store: store
+          },
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': formattedToken
+            }
+          }
+        );
+
+        if (response.data && response.data.status === 'success') {
+          setSnackbarMessage(
+            `Added ${meal.ingredients.length} items from "${meal.title}" to ${store.charAt(0).toUpperCase() + store.slice(1)} cart`
+          );
+          setSnackbarOpen(true);
+        } else {
+          setSnackbarMessage(`Failed to add items to ${store} cart`);
+          setSnackbarOpen(true);
+        }
       }
     } catch (err) {
       console.error('Error adding meal to cart:', err);

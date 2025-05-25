@@ -190,6 +190,189 @@ def create_app() -> FastAPI:
             "s3_environment_vars": s3_vars,
             "s3_helper_status": helper_status
         }
+    
+    @app.get("/verify-password-hashing")
+    async def verify_password_hashing():
+        """Verify that Kroger password hashing is working correctly"""
+        try:
+            from app.db import get_db_connection
+            from app.utils.password_utils import hash_kroger_password, verify_kroger_password
+            from psycopg2.extras import RealDictCursor
+            
+            results = {}
+            
+            # Check migration status
+            conn = get_db_connection()
+            try:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    # Get overall statistics
+                    cur.execute("""
+                        SELECT 
+                            COUNT(*) as total_users,
+                            COUNT(kroger_username) as users_with_username,
+                            COUNT(kroger_password) as users_with_plain_password,
+                            COUNT(kroger_password_hash) as users_with_hashed_password,
+                            COUNT(kroger_password_salt) as users_with_salt,
+                            COUNT(CASE WHEN kroger_password IS NOT NULL AND kroger_password_hash IS NOT NULL THEN 1 END) as users_with_both
+                        FROM user_profiles;
+                    """)
+                    results["migration_stats"] = dict(cur.fetchone())
+                    
+                    # Check applied migrations
+                    cur.execute("""
+                        SELECT EXISTS (
+                            SELECT 1 FROM information_schema.tables 
+                            WHERE table_name = 'applied_migrations'
+                        ) as table_exists;
+                    """)
+                    table_exists = cur.fetchone()['table_exists']
+                    
+                    if table_exists:
+                        cur.execute("""
+                            SELECT migration_name, status, applied_at, execution_time_seconds
+                            FROM applied_migrations 
+                            WHERE migration_name = '001_hash_kroger_passwords'
+                            ORDER BY applied_at DESC
+                            LIMIT 1;
+                        """)
+                        migration_record = cur.fetchone()
+                        results["migration_record"] = dict(migration_record) if migration_record else None
+                    else:
+                        results["migration_record"] = None
+                    
+                    # Test password verification with a sample user
+                    cur.execute("""
+                        SELECT id, kroger_password, kroger_password_hash, kroger_password_salt
+                        FROM user_profiles 
+                        WHERE kroger_password IS NOT NULL 
+                        AND kroger_password_hash IS NOT NULL 
+                        AND kroger_password_salt IS NOT NULL
+                        LIMIT 1;
+                    """)
+                    test_user = cur.fetchone()
+                    
+                    if test_user:
+                        # Test verification
+                        is_valid = verify_kroger_password(
+                            test_user['kroger_password'],
+                            test_user['kroger_password_hash'],
+                            test_user['kroger_password_salt']
+                        )
+                        results["verification_test"] = {
+                            "user_id": test_user['id'],
+                            "verification_successful": is_valid
+                        }
+                    else:
+                        results["verification_test"] = None
+                        
+            finally:
+                conn.close()
+            
+            # Test new password hashing
+            test_password = "test_password_123"
+            hashed, salt = hash_kroger_password(test_password)
+            verification_works = verify_kroger_password(test_password, hashed, salt)
+            wrong_password_fails = not verify_kroger_password("wrong_password", hashed, salt)
+            
+            results["new_password_test"] = {
+                "hash_generated": bool(hashed and salt),
+                "verification_works": verification_works,
+                "wrong_password_fails": wrong_password_fails,
+                "hash_length": len(hashed) if hashed else 0,
+                "salt_length": len(salt) if salt else 0
+            }
+            
+            # Overall assessment
+            all_good = (
+                results["migration_stats"]["users_with_hashed_password"] > 0 and
+                results["new_password_test"]["verification_works"] and
+                results["new_password_test"]["wrong_password_fails"] and
+                (results["verification_test"] is None or results["verification_test"]["verification_successful"])
+            )
+            
+            results["overall_status"] = "PASS" if all_good else "FAIL"
+            results["safe_to_clear_plaintext"] = all_good
+            
+            return results
+            
+        except Exception as e:
+            return {
+                "error": str(e),
+                "overall_status": "ERROR"
+            }
+    
+    @app.post("/clear-plaintext-passwords")
+    async def clear_plaintext_passwords():
+        """Clear plain text Kroger passwords (only if verification passes)"""
+        try:
+            from app.db import get_db_connection
+            from psycopg2.extras import RealDictCursor
+            
+            # First verify the system is working
+            verification_result = await verify_password_hashing()
+            
+            if verification_result.get("overall_status") != "PASS":
+                return {
+                    "error": "Password verification failed - will not clear plain text passwords",
+                    "verification_result": verification_result
+                }
+            
+            # Get count before clearing
+            conn = get_db_connection()
+            try:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    # Count passwords to be cleared
+                    cur.execute("""
+                        SELECT COUNT(*) as count_to_clear
+                        FROM user_profiles 
+                        WHERE kroger_password IS NOT NULL 
+                        AND kroger_password_hash IS NOT NULL;
+                    """)
+                    count_before = cur.fetchone()['count_to_clear']
+                    
+                    if count_before == 0:
+                        return {
+                            "status": "success",
+                            "message": "No plain text passwords to clear",
+                            "passwords_cleared": 0
+                        }
+                    
+                    # Clear plain text passwords
+                    cur.execute("""
+                        UPDATE user_profiles 
+                        SET kroger_password = NULL 
+                        WHERE kroger_password IS NOT NULL 
+                        AND kroger_password_hash IS NOT NULL;
+                    """)
+                    
+                    cleared_count = cur.rowcount
+                    conn.commit()
+                    
+                    # Verify the clearing worked
+                    cur.execute("""
+                        SELECT COUNT(*) as remaining_plain_text
+                        FROM user_profiles 
+                        WHERE kroger_password IS NOT NULL 
+                        AND kroger_password_hash IS NOT NULL;
+                    """)
+                    remaining = cur.fetchone()['remaining_plain_text']
+                    
+                    return {
+                        "status": "success",
+                        "message": f"Successfully cleared {cleared_count} plain text passwords",
+                        "passwords_cleared": cleared_count,
+                        "remaining_plain_text": remaining,
+                        "verification_passed": True
+                    }
+                    
+            finally:
+                conn.close()
+                
+        except Exception as e:
+            return {
+                "error": str(e),
+                "status": "error"
+            }
 
     logger.info(f"FastAPI application created successfully in {ENVIRONMENT} mode")
     return app

@@ -880,6 +880,14 @@ function CartPage() {
         if (!response.success) {
           console.log('Kroger error response:', response);
 
+          // Check for needs_search flag (items without UPC codes)
+          if (response.needs_search) {
+            console.log('Items need to be searched first before adding to cart');
+            setError('These items need to be searched for and selected before adding to cart. Please use the "Search Kroger" button first to find specific products.');
+            setLoading(prev => ({ ...prev, cart: false }));
+            return;
+          }
+
           // Check for needs_setup flag (store selection needed)
           if (response.needs_setup) {
             console.log('Store selection needed according to response');

@@ -332,6 +332,72 @@ const addToKrogerCart = async (items) => {
   }));
   
   try {
+    // Check if items have UPC codes - if not, we need to search first
+    const itemsWithoutUpc = items.filter(item => !item.upc);
+    
+    if (itemsWithoutUpc.length > 0) {
+      console.log('Some items missing UPC codes, attempting search-first workflow');
+      
+      try {
+        // Search for products first
+        const searchResponse = await authAxios.post('/kroger/search-and-suggest', {
+          items: itemsWithoutUpc.map(item => item.name || item.description || 'Unknown item')
+        });
+        
+        if (searchResponse.data && searchResponse.data.success) {
+          // Auto-select first result for each item
+          const itemsWithUpc = [];
+          
+          searchResponse.data.suggestions.forEach(suggestion => {
+            if (suggestion.suggestions && suggestion.suggestions.length > 0) {
+              const bestMatch = suggestion.suggestions[0];
+              if (bestMatch.upc) {
+                itemsWithUpc.push({
+                  name: suggestion.original_item,
+                  upc: bestMatch.upc,
+                  quantity: 1
+                });
+              }
+            }
+          });
+          
+          // Add any items that already had UPC codes
+          items.forEach(item => {
+            if (item.upc) {
+              itemsWithUpc.push(item);
+            }
+          });
+          
+          // Update krogerItems with the items that now have UPC codes
+          krogerItems = itemsWithUpc.map(item => ({
+            upc: item.upc,
+            quantity: item.quantity || 1
+          }));
+          
+          if (krogerItems.length === 0) {
+            return {
+              success: false,
+              needs_search: true,
+              message: 'No products found in Kroger for these items'
+            };
+          }
+        } else {
+          return {
+            success: false,
+            needs_search: true,
+            message: 'Failed to search for products in Kroger'
+          };
+        }
+      } catch (searchError) {
+        console.error('Error in search-first workflow:', searchError);
+        return {
+          success: false,
+          needs_search: true,
+          message: 'Error searching for products. Please try again.'
+        };
+      }
+    }
+
     // First try the backend API
     console.log('Trying to add items through backend API with user-authorized token');
     try {
@@ -351,6 +417,11 @@ const addToKrogerCart = async (items) => {
           (parseInt(localStorage.getItem('kroger_cart_success_count') || '0', 10) + 1).toString());
         
         return response.data || { success: true };
+      }
+      
+      // Handle the needs_search response from backend
+      if (response.data && response.data.needs_search) {
+        return response.data;
       }
     } catch (cartError) {
       console.error('Error adding to Kroger cart via backend:', cartError);
