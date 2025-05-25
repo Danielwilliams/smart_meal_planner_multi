@@ -3225,7 +3225,7 @@ const apiService = {
   async resetPassword(token, newPassword) {
     try {
       const response = await axiosInstance.post('/auth/reset-password', { 
-        token, 
+        reset_token: token, 
         new_password: newPassword 
       });
       return response.data;
