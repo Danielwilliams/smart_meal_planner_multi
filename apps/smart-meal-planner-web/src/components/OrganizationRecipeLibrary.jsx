@@ -314,8 +314,7 @@ const OrganizationRecipeLibrary = () => {
   const handleSubmitForApproval = async (recipe) => {
     try {
       await apiService.updateOrganizationRecipe(organization.id, recipe.id, {
-        approval_status: 'pending',
-        submitted_for_approval_at: new Date().toISOString()
+        approval_status: 'pending'
       });
 
       // Update local state
