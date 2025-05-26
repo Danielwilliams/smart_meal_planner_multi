@@ -49,14 +49,7 @@ def upgrade():
                     created_by INTEGER REFERENCES user_profiles(id),
                     updated_by INTEGER REFERENCES user_profiles(id),
                     
-                    -- Ensure organization has access to client
-                    CONSTRAINT valid_org_client_relationship CHECK (
-                        organization_id IN (
-                            SELECT organization_id 
-                            FROM organization_clients 
-                            WHERE client_id = client_notes.client_id
-                        )
-                    )
+                    -- Note: Organization-client relationship validation handled in application logic
                 )
             """)
             
@@ -174,51 +167,55 @@ def upgrade():
                 'Reusable note templates for common client note scenarios'
             """)
             
-            # Insert some default note templates
-            cur.execute("""
-                INSERT INTO client_note_templates 
-                (organization_id, name, template_content, note_type, suggested_tags, created_by)
-                SELECT 
-                    o.id,
-                    'Initial Consultation',
-                    'Client Goals:\n- \n\nCurrent Challenges:\n- \n\nKey Observations:\n- \n\nNext Steps:\n- ',
-                    'consultation',
-                    '["initial", "consultation", "goals"]',
-                    o.created_by
-                FROM organizations o
-                WHERE o.id IS NOT NULL
-                ON CONFLICT (organization_id, name) DO NOTHING
-            """)
-            
-            cur.execute("""
-                INSERT INTO client_note_templates 
-                (organization_id, name, template_content, note_type, suggested_tags, created_by)
-                SELECT 
-                    o.id,
-                    'Progress Check',
-                    'Progress Since Last Session:\n- \n\nChallenges Discussed:\n- \n\nAdjustments Made:\n- \n\nNext Session Goals:\n- ',
-                    'consultation',
-                    '["progress", "follow-up", "consultation"]',
-                    o.created_by
-                FROM organizations o
-                WHERE o.id IS NOT NULL
-                ON CONFLICT (organization_id, name) DO NOTHING
-            """)
-            
-            cur.execute("""
-                INSERT INTO client_note_templates 
-                (organization_id, name, template_content, note_type, suggested_tags, created_by)
-                SELECT 
-                    o.id,
-                    'Preference Update',
-                    'Updated Preferences:\n- \n\nReason for Change:\n- \n\nImpact on Meal Plans:\n- \n\nClient Feedback:\n- ',
-                    'preference',
-                    '["preferences", "update", "dietary"]',
-                    o.created_by
-                FROM organizations o
-                WHERE o.id IS NOT NULL
-                ON CONFLICT (organization_id, name) DO NOTHING
-            """)
+            # Insert some default note templates (skip if organizations table structure unknown)
+            try:
+                cur.execute("""
+                    INSERT INTO client_note_templates 
+                    (organization_id, name, template_content, note_type, suggested_tags, created_by)
+                    SELECT 
+                        o.id,
+                        'Initial Consultation',
+                        'Client Goals:\n- \n\nCurrent Challenges:\n- \n\nKey Observations:\n- \n\nNext Steps:\n- ',
+                        'consultation',
+                        '["initial", "consultation", "goals"]',
+                        COALESCE(o.owner_id, o.created_by, 1)
+                    FROM organizations o
+                    WHERE o.id IS NOT NULL
+                    ON CONFLICT (organization_id, name) DO NOTHING
+                """)
+                
+                cur.execute("""
+                    INSERT INTO client_note_templates 
+                    (organization_id, name, template_content, note_type, suggested_tags, created_by)
+                    SELECT 
+                        o.id,
+                        'Progress Check',
+                        'Progress Since Last Session:\n- \n\nChallenges Discussed:\n- \n\nAdjustments Made:\n- \n\nNext Session Goals:\n- ',
+                        'consultation',
+                        '["progress", "follow-up", "consultation"]',
+                        COALESCE(o.owner_id, o.created_by, 1)
+                    FROM organizations o
+                    WHERE o.id IS NOT NULL
+                    ON CONFLICT (organization_id, name) DO NOTHING
+                """)
+                
+                cur.execute("""
+                    INSERT INTO client_note_templates 
+                    (organization_id, name, template_content, note_type, suggested_tags, created_by)
+                    SELECT 
+                        o.id,
+                        'Preference Update',
+                        'Updated Preferences:\n- \n\nReason for Change:\n- \n\nImpact on Meal Plans:\n- \n\nClient Feedback:\n- ',
+                        'preference',
+                        '["preferences", "update", "dietary"]',
+                        COALESCE(o.owner_id, o.created_by, 1)
+                    FROM organizations o
+                    WHERE o.id IS NOT NULL
+                    ON CONFLICT (organization_id, name) DO NOTHING
+                """)
+            except Exception as template_error:
+                logger.warning(f"Could not create default templates: {template_error}")
+                # Continue without templates - they can be created later
             
             conn.commit()
             logger.info("✅ Created client notes system successfully")
