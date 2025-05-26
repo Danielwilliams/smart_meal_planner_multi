@@ -159,7 +159,23 @@ def create_app() -> FastAPI:
 
     @app.get("/health")
     async def health_check():
-        return {"status": "healthy"}
+        # Check if client notes tables exist
+        try:
+            from app.db import get_db_connection
+            conn = get_db_connection()
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1 FROM client_notes LIMIT 1")
+                client_notes_exists = True
+        except:
+            client_notes_exists = False
+        finally:
+            if 'conn' in locals():
+                conn.close()
+        
+        return {
+            "status": "healthy",
+            "client_notes_migration": "completed" if client_notes_exists else "pending"
+        }
 
     @app.get("/api-test")
     async def api_test():
@@ -173,6 +189,26 @@ def create_app() -> FastAPI:
             },
             "environment": os.environ.get("ENVIRONMENT", "unknown")
         }
+    
+    @app.post("/admin/run-migrations")
+    async def manual_migration_trigger():
+        """Manually trigger database migrations - use with caution"""
+        try:
+            from app.migrations.migration_runner import run_startup_migrations
+            logger.info("Manual migration trigger requested")
+            
+            result = run_startup_migrations()
+            
+            return {
+                "status": "success" if result else "failed",
+                "message": "Migration execution completed" if result else "Migration execution failed"
+            }
+        except Exception as e:
+            logger.error(f"Manual migration failed: {e}")
+            return {
+                "status": "error",
+                "message": f"Migration failed: {str(e)}"
+            }
         
     @app.get("/check-s3-vars")
     async def check_s3_vars():
