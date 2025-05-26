@@ -665,3 +665,112 @@ async def delete_user_recipe(
         )
     finally:
         conn.close()
+
+# Get Recipes by Organization
+
+@router.get("/organization/{organization_id}", response_model=List[UserRecipeListItem])
+async def get_user_recipes_by_organization(
+    organization_id: int,
+    search: Optional[str] = Query(None, description="Search recipes by title"),
+    cuisine: Optional[str] = Query(None, description="Filter by cuisine"),
+    limit: int = Query(50, ge=1, le=200, description="Number of recipes to return"),
+    offset: int = Query(0, ge=0, description="Number of recipes to skip"),
+    current_user = Depends(get_user_from_token)
+):
+    """Get custom recipes created by a specific organization (only accessible to organization members)"""
+    
+    user_id = current_user['user_id']
+    user_organization_id = get_user_organization_id(user_id)
+    
+    # Check if user has access to this organization's recipes
+    if user_organization_id != organization_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: You can only view recipes from your own organization"
+        )
+    
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            # Build query conditions
+            where_conditions = [
+                "ur.is_active = TRUE",
+                "ur.created_by_organization_id = %s"
+            ]
+            params = [organization_id]
+            
+            # Add search filter
+            if search:
+                where_conditions.append("ur.title ILIKE %s")
+                params.append(f"%{search}%")
+            
+            # Add cuisine filter
+            if cuisine:
+                where_conditions.append("ur.cuisine ILIKE %s")
+                params.append(f"%{cuisine}%")
+            
+            where_clause = " AND ".join(where_conditions)
+            
+            query = f"""
+                SELECT 
+                    ur.id, ur.title, ur.description, ur.prep_time, ur.cook_time, ur.total_time,
+                    ur.servings, ur.cuisine, ur.complexity, ur.meal_category, ur.diet_tags,
+                    ur.custom_tags, ur.image_url, ur.calories_per_serving, ur.is_public,
+                    ur.created_at, ur.created_by_user_id, ur.created_by_organization_id,
+                    COALESCE((
+                        SELECT COUNT(*) 
+                        FROM user_recipe_ingredients 
+                        WHERE recipe_id = ur.id
+                    ), 0) as ingredients_count,
+                    COALESCE((
+                        SELECT COUNT(*) 
+                        FROM user_recipe_steps 
+                        WHERE recipe_id = ur.id
+                    ), 0) as steps_count
+                FROM user_recipes ur
+                WHERE {where_clause}
+                ORDER BY ur.updated_at DESC
+                LIMIT %s OFFSET %s
+            """
+            
+            params.extend([limit, offset])
+            cur.execute(query, params)
+            results = cur.fetchall()
+            
+            recipes = []
+            for row in results:
+                recipes.append({
+                    "id": row[0],
+                    "title": row[1],
+                    "description": row[2],
+                    "prep_time": row[3],
+                    "cook_time": row[4],
+                    "total_time": row[5],
+                    "servings": row[6],
+                    "cuisine": row[7],
+                    "complexity": row[8],
+                    "meal_category": row[9],
+                    "diet_tags": json.loads(row[10]) if row[10] else [],
+                    "custom_tags": json.loads(row[11]) if row[11] else [],
+                    "image_url": row[12],
+                    "calories_per_serving": row[13],
+                    "is_public": row[14],
+                    "created_at": row[15],
+                    "created_by_user_id": row[16],
+                    "created_by_organization_id": row[17],
+                    "ingredients_count": row[18],
+                    "steps_count": row[19]
+                })
+            
+            return recipes
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting organization recipes: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get organization recipes"
+        )
+    finally:
+        conn.close()

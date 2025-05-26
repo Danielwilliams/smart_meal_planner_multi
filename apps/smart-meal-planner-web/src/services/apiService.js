@@ -3637,6 +3637,16 @@ const apiService = {
     }
   },
 
+  async getUserRecipesByOrganization(organizationId, params = {}) {
+    try {
+      const response = await axiosInstance.get(`/api/user-recipes/organization/${organizationId}`, { params });
+      return response.data;
+    } catch (error) {
+      console.error('Get user recipes by organization error:', error);
+      throw error;
+    }
+  },
+
   // Generic request method for compatibility
   async request(url, options = {}) {
     try {

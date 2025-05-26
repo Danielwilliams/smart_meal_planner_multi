@@ -32,6 +32,7 @@ import OnboardingFormsGettingStarted from '../components/OnboardingFormsGettingS
 import OrganizationGettingStarted from '../components/OrganizationGettingStarted';
 import ClientNotesManager from '../components/ClientNotesManager';
 import OrganizationRecipeLibrary from '../components/OrganizationRecipeLibrary';
+import OrganizationCustomRecipes from '../components/OrganizationCustomRecipes';
 
 function OrganizationDashboard() {
   const { user } = useAuth();
@@ -47,6 +48,7 @@ function OrganizationDashboard() {
   
   const navigate = useNavigate();
   const [tabValue, setTabValue] = useState(0);
+  const [menuManagementTab, setMenuManagementTab] = useState(0);
   const [selectedClientForRecipes, setSelectedClientForRecipes] = useState(null);
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
@@ -944,9 +946,32 @@ function OrganizationDashboard() {
             Menu & Recipe Management
           </Typography>
           <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-            Manage your organization's recipe library, menu defaults, and nutritional standards.
+            Manage your organization's recipe library, custom recipes, menu defaults, and nutritional standards.
           </Typography>
-          <OrganizationRecipeLibrary />
+          
+          {/* Sub-tabs for Menu Management */}
+          <Paper sx={{ mb: 3 }}>
+            <Tabs 
+              value={menuManagementTab} 
+              onChange={(e, newValue) => setMenuManagementTab(newValue)}
+              indicatorColor="primary"
+              textColor="primary"
+              variant="fullWidth"
+            >
+              <Tab label="Recipe Library" icon={<RestaurantMenuIcon />} />
+              <Tab label="Custom Recipes" icon={<AddIcon />} />
+            </Tabs>
+          </Paper>
+
+          {/* Recipe Library Sub-tab */}
+          {menuManagementTab === 0 && (
+            <OrganizationRecipeLibrary />
+          )}
+
+          {/* Custom Recipes Sub-tab */}
+          {menuManagementTab === 1 && (
+            <OrganizationCustomRecipes />
+          )}
         </Box>
       )}
 
