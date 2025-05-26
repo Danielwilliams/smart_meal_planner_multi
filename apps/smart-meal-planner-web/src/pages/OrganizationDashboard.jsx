@@ -18,7 +18,8 @@ import {
   Favorite as FavoriteIcon,
   CheckCircle as ActiveIcon,
   Cancel as InactiveIcon,
-  Assignment as FormIcon
+  Assignment as FormIcon,
+  Notes as NotesIcon
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import { useOrganization } from '../context/OrganizationContext';
@@ -28,6 +29,7 @@ import OnboardingFormBuilder from '../components/OnboardingFormBuilder';
 import OnboardingResponseViewer from '../components/OnboardingResponseViewer';
 import OnboardingFormsGettingStarted from '../components/OnboardingFormsGettingStarted';
 import OrganizationGettingStarted from '../components/OrganizationGettingStarted';
+import ClientNotesManager from '../components/ClientNotesManager';
 
 function OrganizationDashboard() {
   const { user } = useAuth();
@@ -61,6 +63,7 @@ function OrganizationDashboard() {
   const [showGettingStarted, setShowGettingStarted] = useState(false);
   const [hasOnboardingForms, setHasOnboardingForms] = useState(false);
   const [showComprehensiveGuide, setShowComprehensiveGuide] = useState(false);
+  const [selectedClientForNotes, setSelectedClientForNotes] = useState(null);
 
   // Redirect if not authenticated or not an organization account
   useEffect(() => {
@@ -386,6 +389,7 @@ function OrganizationDashboard() {
           <Tab label="Shared Menus" icon={<MenuIcon />} />
           <Tab label="Client Recipes" icon={<FavoriteIcon />} />
           <Tab label="Onboarding Forms" icon={<FormIcon />} />
+          <Tab label="Client Notes" icon={<NotesIcon />} />
           <Tab label="Settings" icon={<SettingsIcon />} />
         </Tabs>
       </Paper>
@@ -463,13 +467,17 @@ function OrganizationDashboard() {
                         size="small" 
                         onClick={() => navigate(`/organization/clients/${client.id}/preferences`)}
                       >
-                        Set Preferences
+                        Preferences
                       </Button>
                       <Button 
                         size="small" 
-                        onClick={() => handleViewClient(client)}
+                        startIcon={<NotesIcon />}
+                        onClick={() => {
+                          setSelectedClientForNotes(client);
+                          setTabValue(5); // Navigate to notes tab
+                        }}
                       >
-                        Manage Profile
+                        Notes
                       </Button>
                       <Button 
                         size="small" 
@@ -851,8 +859,83 @@ function OrganizationDashboard() {
         </Box>
       )}
 
-      {/* Settings Tab */}
+      {/* Client Notes Tab */}
       {tabValue === 5 && (
+        <Box>
+          <Typography variant="h5" gutterBottom>
+            Client Notes Management
+          </Typography>
+          <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
+            Manage private notes for your clients to track consultations, preferences, and observations.
+          </Typography>
+          
+          {selectedClientForNotes ? (
+            <ClientNotesManager
+              organizationId={organization?.id}
+              clientId={selectedClientForNotes.id}
+              clientName={selectedClientForNotes.name}
+              onClose={() => setSelectedClientForNotes(null)}
+            />
+          ) : (
+            <Paper sx={{ p: 3 }}>
+              <Typography variant="h6" gutterBottom>
+                Select a Client
+              </Typography>
+              <Typography variant="body1" paragraph>
+                Choose a client to view and manage their notes:
+              </Typography>
+              {!clients || clients.length === 0 ? (
+                <Alert severity="info">
+                  You don't have any clients yet. Invite clients to start managing their notes.
+                </Alert>
+              ) : (
+                <Grid container spacing={2}>
+                  {clients.map((client) => (
+                    <Grid item xs={12} sm={6} md={4} key={client.id}>
+                      <Card sx={{ 
+                        cursor: 'pointer', 
+                        '&:hover': { boxShadow: 6 },
+                        height: '100%'
+                      }}>
+                        <CardContent onClick={() => setSelectedClientForNotes(client)}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                            <NotesIcon color="primary" />
+                            <Typography variant="h6">
+                              {client.name}
+                            </Typography>
+                          </Box>
+                          <Typography color="text.secondary">
+                            {client.email}
+                          </Typography>
+                          <Chip 
+                            label={client.status === 'active' ? 'Active' : 'Inactive'} 
+                            size="small"
+                            color={client.status === 'active' ? 'success' : 'default'}
+                            sx={{ mt: 1 }}
+                          />
+                        </CardContent>
+                        <CardActions>
+                          <Button 
+                            fullWidth
+                            variant="contained"
+                            startIcon={<NotesIcon />}
+                            onClick={() => setSelectedClientForNotes(client)}
+                          >
+                            Manage Notes
+                          </Button>
+                        </CardActions>
+                      </Card>
+                    </Grid>
+                  ))}
+                </Grid>
+              )}
+            </Paper>
+          )}
+        </Box>
+      )}
+
+      {/* Settings Tab */}
+      {tabValue === 6 && (
         <Paper sx={{ p: 3 }}>
           <Typography variant="h6" gutterBottom>
             Organization Settings

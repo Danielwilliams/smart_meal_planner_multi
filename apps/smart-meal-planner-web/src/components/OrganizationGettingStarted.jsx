@@ -42,7 +42,8 @@ import {
   Share as ShareIcon,
   Favorite as RecipesIcon,
   ShoppingCart as ShoppingIcon,
-  School as LearnIcon
+  School as LearnIcon,
+  Notes as NotesIcon
 } from '@mui/icons-material';
 
 const OrganizationGettingStarted = ({ onNavigateToTab, onComplete, organizationName }) => {
@@ -60,7 +61,7 @@ const OrganizationGettingStarted = ({ onNavigateToTab, onComplete, organizationN
     {
       label: 'Set Up Your Organization Profile',
       description: 'Complete your organization information and preferences',
-      action: () => onNavigateToTab(5), // Settings tab
+      action: () => onNavigateToTab(6), // Settings tab
       icon: <OrgIcon color="primary" />,
       estimatedTime: '5 minutes'
     },
@@ -196,6 +197,34 @@ const OrganizationGettingStarted = ({ onNavigateToTab, onComplete, organizationN
           description: 'Manage who can access your organization and their permissions',
           benefits: ['Security control', 'Team collaboration', 'Organized workflow'],
           howTo: 'Settings tab → Manage team access and permissions',
+          tab: 6
+        }
+      ]
+    },
+    {
+      title: 'Client Notes & Documentation',
+      icon: <NotesIcon color="info" />,
+      description: 'Keep private notes about your clients for better service delivery',
+      features: [
+        {
+          name: 'Client Notes',
+          description: 'Create and manage private notes for each client including consultations, observations, and goals',
+          benefits: ['Track client progress', 'Prepare for sessions', 'Record important observations', 'Maintain professional documentation'],
+          howTo: 'Client Notes tab → Select client → Add notes with different types and priorities',
+          tab: 5
+        },
+        {
+          name: 'Note Templates',
+          description: 'Create reusable note templates for common consultation scenarios',
+          benefits: ['Consistent documentation', 'Time-saving', 'Professional structure', 'Standardized approach'],
+          howTo: 'Client Notes tab → Use template when creating notes',
+          tab: 5
+        },
+        {
+          name: 'Note Organization',
+          description: 'Organize notes by type, priority, tags, and search through content',
+          benefits: ['Easy retrieval', 'Categorized information', 'Quick search', 'Priority management'],
+          howTo: 'Client Notes tab → Use filters, search, and tags to organize notes',
           tab: 5
         }
       ]

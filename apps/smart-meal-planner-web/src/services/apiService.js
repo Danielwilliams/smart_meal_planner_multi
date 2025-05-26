@@ -3379,6 +3379,86 @@ const apiService = {
       console.error('Update response notes error:', error);
       throw error;
     }
+  },
+
+  // Client Notes API methods
+  async getClientNotes(organizationId, clientId, filters = {}) {
+    try {
+      const params = new URLSearchParams();
+      if (filters.note_type) params.append('note_type', filters.note_type);
+      if (filters.priority) params.append('priority', filters.priority);
+      if (filters.tags) params.append('tags', filters.tags);
+      if (filters.include_archived) params.append('include_archived', filters.include_archived);
+      
+      const queryString = params.toString();
+      const url = `/api/client-notes/${organizationId}/clients/${clientId}${queryString ? '?' + queryString : ''}`;
+      
+      const response = await axiosInstance.get(url);
+      return response.data;
+    } catch (error) {
+      console.error('Get client notes error:', error);
+      throw error;
+    }
+  },
+
+  async createClientNote(organizationId, noteData) {
+    try {
+      const response = await axiosInstance.post(`/api/client-notes/${organizationId}`, noteData);
+      return response.data;
+    } catch (error) {
+      console.error('Create client note error:', error);
+      throw error;
+    }
+  },
+
+  async updateClientNote(organizationId, noteId, noteData) {
+    try {
+      const response = await axiosInstance.put(`/api/client-notes/${organizationId}/notes/${noteId}`, noteData);
+      return response.data;
+    } catch (error) {
+      console.error('Update client note error:', error);
+      throw error;
+    }
+  },
+
+  async deleteClientNote(organizationId, noteId) {
+    try {
+      const response = await axiosInstance.delete(`/api/client-notes/${organizationId}/notes/${noteId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Delete client note error:', error);
+      throw error;
+    }
+  },
+
+  async getNoteTemplates(organizationId) {
+    try {
+      const response = await axiosInstance.get(`/api/client-notes/${organizationId}/templates`);
+      return response.data;
+    } catch (error) {
+      console.error('Get note templates error:', error);
+      throw error;
+    }
+  },
+
+  async createNoteTemplate(organizationId, templateData) {
+    try {
+      const response = await axiosInstance.post(`/api/client-notes/${organizationId}/templates`, templateData);
+      return response.data;
+    } catch (error) {
+      console.error('Create note template error:', error);
+      throw error;
+    }
+  },
+
+  async getNotesOverview(organizationId) {
+    try {
+      const response = await axiosInstance.get(`/api/client-notes/${organizationId}/overview`);
+      return response.data;
+    } catch (error) {
+      console.error('Get notes overview error:', error);
+      throw error;
+    }
   }
 }; // Close the apiService object here
 

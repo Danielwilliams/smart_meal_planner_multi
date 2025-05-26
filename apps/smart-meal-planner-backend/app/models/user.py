@@ -372,3 +372,67 @@ class OnboardingResponse(BaseModel):
     reviewed_by: Optional[int]
     reviewed_at: Optional[datetime]
     notes: Optional[str]
+
+# Client Notes Models
+class ClientNoteCreate(BaseModel):
+    """Model for creating a new client note"""
+    client_id: int
+    title: Optional[str] = None
+    content: str
+    note_type: str = 'general'  # 'general', 'consultation', 'preference', 'goal', 'observation'
+    priority: str = 'normal'    # 'low', 'normal', 'high', 'urgent'
+    is_private: bool = True
+    tags: List[str] = []
+
+class ClientNoteUpdate(BaseModel):
+    """Model for updating a client note"""
+    title: Optional[str] = None
+    content: Optional[str] = None
+    note_type: Optional[str] = None
+    priority: Optional[str] = None
+    is_private: Optional[bool] = None
+    tags: Optional[List[str]] = None
+    is_archived: Optional[bool] = None
+
+class ClientNote(BaseModel):
+    """Complete client note model"""
+    id: int
+    organization_id: int
+    client_id: int
+    title: Optional[str]
+    content: str
+    note_type: str
+    priority: str
+    is_private: bool
+    is_archived: bool
+    tags: List[str]
+    created_at: datetime
+    updated_at: datetime
+    created_by: int
+    updated_by: Optional[int]
+    
+    # Additional fields populated by joins
+    client_name: Optional[str] = None
+    created_by_name: Optional[str] = None
+    updated_by_name: Optional[str] = None
+
+class ClientNoteTemplateCreate(BaseModel):
+    """Model for creating a note template"""
+    name: str
+    template_content: str
+    note_type: str = 'general'
+    suggested_tags: List[str] = []
+
+class ClientNoteTemplate(BaseModel):
+    """Complete note template model"""
+    id: int
+    organization_id: int
+    name: str
+    template_content: str
+    note_type: str
+    suggested_tags: List[str]
+    is_active: bool
+    usage_count: int
+    created_at: datetime
+    updated_at: datetime
+    created_by: int
