@@ -1244,25 +1244,48 @@ const OrganizationRecipeLibrary = () => {
                 />
               ))}
             </Box>
-            <TextField
-              fullWidth
-              size="small"
-              placeholder="Type a tag and press Enter"
-              helperText="Press Enter to add each tag"
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' && event.target.value.trim()) {
-                  event.preventDefault();
-                  const newTag = event.target.value.trim();
-                  const currentTags = recipeForm.tags || [];
-                  if (!currentTags.includes(newTag)) {
-                    const updatedTags = [...currentTags, newTag];
-                    console.log('Adding tag:', newTag, 'Updated tags:', updatedTags);
-                    setRecipeForm(prev => ({...prev, tags: updatedTags}));
-                    event.target.value = '';
+            <Box display="flex" gap={1}>
+              <TextField
+                fullWidth
+                size="small"
+                placeholder="Type a tag and press Enter"
+                helperText="Press Enter to add each tag"
+                id="tag-input"
+                onKeyDown={(event) => {
+                  console.log('Key pressed:', event.key, 'Input value:', event.target.value);
+                  if (event.key === 'Enter' && event.target.value.trim()) {
+                    event.preventDefault();
+                    const newTag = event.target.value.trim();
+                    const currentTags = recipeForm.tags || [];
+                    if (!currentTags.includes(newTag)) {
+                      const updatedTags = [...currentTags, newTag];
+                      console.log('Adding tag:', newTag, 'Updated tags:', updatedTags);
+                      setRecipeForm(prev => ({...prev, tags: updatedTags}));
+                      event.target.value = '';
+                    }
                   }
-                }
-              }}
-            />
+                }}
+              />
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={() => {
+                  const input = document.getElementById('tag-input');
+                  const newTag = input.value.trim();
+                  if (newTag) {
+                    const currentTags = recipeForm.tags || [];
+                    if (!currentTags.includes(newTag)) {
+                      const updatedTags = [...currentTags, newTag];
+                      console.log('Adding tag via button:', newTag, 'Updated tags:', updatedTags);
+                      setRecipeForm(prev => ({...prev, tags: updatedTags}));
+                      input.value = '';
+                    }
+                  }
+                }}
+              >
+                Add
+              </Button>
+            </Box>
           </Box>
           <TextField
             margin="dense"
