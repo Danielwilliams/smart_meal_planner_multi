@@ -592,7 +592,6 @@ class RecipeApprovalRequest(BaseModel):
 
 class RecipeApprovalResponse(BaseModel):
     """Model for responding to recipe approval requests"""
-    recipe_id: int
     approved: bool
     approval_notes: Optional[str] = None
     compliance_notes: Optional[str] = None
