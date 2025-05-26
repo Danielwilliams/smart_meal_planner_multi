@@ -3298,6 +3298,87 @@ const apiService = {
       console.error('Update client status error:', error);
       throw error;
     }
+  },
+
+  // Onboarding Forms methods
+  async getOnboardingForms(organizationId) {
+    try {
+      const response = await axiosInstance.get(`/api/onboarding-forms/${organizationId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Get onboarding forms error:', error);
+      throw error;
+    }
+  },
+
+  async createOnboardingForm(organizationId, formData) {
+    try {
+      const response = await axiosInstance.post(`/api/onboarding-forms/${organizationId}`, formData);
+      return response.data;
+    } catch (error) {
+      console.error('Create onboarding form error:', error);
+      throw error;
+    }
+  },
+
+  async updateOnboardingForm(organizationId, formId, formData) {
+    try {
+      const response = await axiosInstance.put(`/api/onboarding-forms/${organizationId}/${formId}`, formData);
+      return response.data;
+    } catch (error) {
+      console.error('Update onboarding form error:', error);
+      throw error;
+    }
+  },
+
+  async deleteOnboardingForm(organizationId, formId) {
+    try {
+      const response = await axiosInstance.delete(`/api/onboarding-forms/${organizationId}/${formId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Delete onboarding form error:', error);
+      throw error;
+    }
+  },
+
+  async getActiveFormsForClient(organizationId) {
+    try {
+      const response = await axiosInstance.get(`/api/onboarding-forms/${organizationId}/active`);
+      return response.data;
+    } catch (error) {
+      console.error('Get active forms error:', error);
+      throw error;
+    }
+  },
+
+  async submitFormResponse(organizationId, formId, responseData) {
+    try {
+      const response = await axiosInstance.post(`/api/onboarding-forms/${organizationId}/${formId}/submit`, responseData);
+      return response.data;
+    } catch (error) {
+      console.error('Submit form response error:', error);
+      throw error;
+    }
+  },
+
+  async getFormResponses(organizationId) {
+    try {
+      const response = await axiosInstance.get(`/api/onboarding-forms/${organizationId}/responses`);
+      return response.data;
+    } catch (error) {
+      console.error('Get form responses error:', error);
+      throw error;
+    }
+  },
+
+  async updateResponseNotes(responseId, notes) {
+    try {
+      const response = await axiosInstance.put(`/api/onboarding-forms/responses/${responseId}/notes`, { notes });
+      return response.data;
+    } catch (error) {
+      console.error('Update response notes error:', error);
+      throw error;
+    }
   }
 }; // Close the apiService object here
 

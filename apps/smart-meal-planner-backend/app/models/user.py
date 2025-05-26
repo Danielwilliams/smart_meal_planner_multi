@@ -310,3 +310,65 @@ class OrganizationSettings(BaseModel):
     logo_url: Optional[str]
     created_at: datetime
     updated_at: datetime
+
+# Onboarding Forms Models
+class FormFieldDefinition(BaseModel):
+    """Definition of a single form field"""
+    id: str
+    type: str  # 'text', 'textarea', 'select', 'radio', 'checkbox', 'number', 'email', 'date'
+    label: str
+    placeholder: Optional[str] = None
+    required: bool = False
+    options: Optional[List[str]] = None  # For select, radio, checkbox fields
+    validation: Optional[Dict[str, Any]] = None  # Custom validation rules
+    help_text: Optional[str] = None
+
+class OnboardingFormCreate(BaseModel):
+    """Model for creating a new onboarding form"""
+    name: str
+    description: Optional[str] = None
+    is_active: bool = True
+    is_required: bool = False
+    form_fields: List[FormFieldDefinition]
+    settings: Optional[Dict[str, Any]] = {}
+
+class OnboardingFormUpdate(BaseModel):
+    """Model for updating an onboarding form"""
+    name: Optional[str] = None
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
+    is_required: Optional[bool] = None
+    form_fields: Optional[List[FormFieldDefinition]] = None
+    settings: Optional[Dict[str, Any]] = None
+
+class OnboardingForm(BaseModel):
+    """Complete onboarding form model"""
+    id: int
+    organization_id: int
+    name: str
+    description: Optional[str]
+    is_active: bool
+    is_required: bool
+    form_fields: List[FormFieldDefinition]
+    settings: Dict[str, Any]
+    created_at: datetime
+    updated_at: datetime
+    created_by: Optional[int]
+
+class OnboardingResponseSubmit(BaseModel):
+    """Model for submitting form responses"""
+    form_id: int
+    response_data: Dict[str, Any]
+
+class OnboardingResponse(BaseModel):
+    """Complete onboarding response model"""
+    id: int
+    form_id: int
+    client_id: int
+    organization_id: int
+    response_data: Dict[str, Any]
+    status: str
+    completed_at: datetime
+    reviewed_by: Optional[int]
+    reviewed_at: Optional[datetime]
+    notes: Optional[str]

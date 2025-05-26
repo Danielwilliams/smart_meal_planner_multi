@@ -17,12 +17,15 @@ import {
   Settings as SettingsIcon,
   Favorite as FavoriteIcon,
   CheckCircle as ActiveIcon,
-  Cancel as InactiveIcon
+  Cancel as InactiveIcon,
+  Assignment as FormIcon
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import { useOrganization } from '../context/OrganizationContext';
 import apiService from '../services/apiService';
 import ClientSavedRecipes from '../components/ClientSavedRecipes';
+import OnboardingFormBuilder from '../components/OnboardingFormBuilder';
+import OnboardingResponseViewer from '../components/OnboardingResponseViewer';
 
 function OrganizationDashboard() {
   const { user } = useAuth();
@@ -52,6 +55,7 @@ function OrganizationDashboard() {
   const [clientTab, setClientTab] = useState(0);
   const [invitations, setInvitations] = useState([]);
   const [invitationsLoading, setInvitationsLoading] = useState(false);
+  const [onboardingTab, setOnboardingTab] = useState(0);
 
   // Redirect if not authenticated or not an organization account
   useEffect(() => {
@@ -293,12 +297,14 @@ function OrganizationDashboard() {
           onChange={handleTabChange}
           indicatorColor="primary"
           textColor="primary"
-          variant="fullWidth"
+          variant="scrollable"
+          scrollButtons="auto"
         >
           <Tab label="Clients" icon={<PersonIcon />} />
           <Tab label="Invitations" icon={<EmailIcon />} />
           <Tab label="Shared Menus" icon={<MenuIcon />} />
           <Tab label="Client Recipes" icon={<FavoriteIcon />} />
+          <Tab label="Onboarding Forms" icon={<FormIcon />} />
           <Tab label="Settings" icon={<SettingsIcon />} />
         </Tabs>
       </Paper>
@@ -692,8 +698,49 @@ function OrganizationDashboard() {
         </>
       )}
 
-      {/* Settings Tab */}
+      {/* Onboarding Forms Tab */}
       {tabValue === 4 && (
+        <Box>
+          <Typography variant="h5" gutterBottom>
+            Custom Onboarding Forms
+          </Typography>
+          <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
+            Create custom intake forms for new clients and view their responses.
+          </Typography>
+          
+          {organization?.id ? (
+            <Box>
+              <Paper sx={{ mb: 3 }}>
+                <Tabs 
+                  value={onboardingTab} 
+                  onChange={(e, newValue) => setOnboardingTab(newValue)}
+                  indicatorColor="primary"
+                  textColor="primary"
+                  variant="fullWidth"
+                >
+                  <Tab label="Form Builder" />
+                  <Tab label="Client Responses" />
+                </Tabs>
+              </Paper>
+              
+              {onboardingTab === 0 && (
+                <OnboardingFormBuilder organizationId={organization.id} />
+              )}
+              
+              {onboardingTab === 1 && (
+                <OnboardingResponseViewer organizationId={organization.id} />
+              )}
+            </Box>
+          ) : (
+            <Alert severity="info">
+              Organization information is loading...
+            </Alert>
+          )}
+        </Box>
+      )}
+
+      {/* Settings Tab */}
+      {tabValue === 5 && (
         <Paper sx={{ p: 3 }}>
           <Typography variant="h6" gutterBottom>
             Organization Settings

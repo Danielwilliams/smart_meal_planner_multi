@@ -22,6 +22,7 @@ import { Link as RouterLink, useNavigate, useLocation } from 'react-router-dom';
 import { useGoogleReCaptcha } from 'react-google-recaptcha-v3';
 import apiService from '../services/apiService';
 import { useAuth } from '../context/AuthContext';
+import ClientOnboardingForm from '../components/ClientOnboardingForm';
 
 // Helper function to parse query parameters
 function useQuery() {
@@ -63,6 +64,7 @@ const ClientSignupPage = () => {
   const [error, setError] = useState('');
   const [tokenValid, setTokenValid] = useState(true);
   const [invitationAccepted, setInvitationAccepted] = useState(false);
+  const [newUserId, setNewUserId] = useState(null);
   const [signupData, setSignupData] = useState({
     name: '',
     email: '',
@@ -201,7 +203,7 @@ const ClientSignupPage = () => {
       });
       
       // First create the user account
-      await apiService.signUp({
+      const signupResponse = await apiService.signUp({
         name: signupData.name,
         email: signupData.email,
         password: signupData.password,
@@ -209,6 +211,11 @@ const ClientSignupPage = () => {
         captchaToken: captchaToken,        // Add the captcha token
         organization_id: signupData.organization_id  // Make sure organization ID is included
       });
+      
+      // Capture the new user ID for onboarding forms
+      if (signupResponse && signupResponse.user_id) {
+        setNewUserId(signupResponse.user_id);
+      }
       
       // Move to next step
       setActiveStep(1);
@@ -237,7 +244,7 @@ const ClientSignupPage = () => {
       localStorage.setItem('user', JSON.stringify(userData));
       
       setInvitationAccepted(true);
-      setActiveStep(2);
+      setActiveStep(2); // Go to onboarding forms after accepting invitation
     } catch (err) {
       console.error('Error accepting invitation:', err);
       
@@ -379,6 +386,38 @@ const ClientSignupPage = () => {
         );
       case 2:
         return (
+          <Box sx={{ mt: 3 }}>
+            <Typography variant="h6" gutterBottom textAlign="center">
+              Complete Your Onboarding
+            </Typography>
+            <Typography variant="body1" color="text.secondary" sx={{ mb: 3, textAlign: 'center' }}>
+              Please fill out the custom forms from {orgName} to complete your setup.
+            </Typography>
+            
+            {orgId && newUserId ? (
+              <ClientOnboardingForm
+                organizationId={parseInt(orgId)}
+                clientId={newUserId}
+                onComplete={() => setActiveStep(3)}
+                onSkip={() => setActiveStep(3)}
+              />
+            ) : (
+              <Box sx={{ textAlign: 'center' }}>
+                <Alert severity="info" sx={{ mb: 3 }}>
+                  Unable to load onboarding forms. You can complete these later in your profile.
+                </Alert>
+                <Button
+                  variant="contained"
+                  onClick={() => setActiveStep(3)}
+                >
+                  Continue
+                </Button>
+              </Box>
+            )}
+          </Box>
+        );
+      case 3:
+        return (
           <Box sx={{ mt: 3, textAlign: 'center' }}>
             <Box sx={{ mb: 3, display: 'flex', justifyContent: 'center' }}>
               <Alert severity="success" sx={{ display: 'inline-flex' }}>
@@ -477,6 +516,9 @@ const ClientSignupPage = () => {
           </Step>
           <Step>
             <StepLabel>Verify Email</StepLabel>
+          </Step>
+          <Step>
+            <StepLabel>Onboarding</StepLabel>
           </Step>
           <Step>
             <StepLabel>Complete</StepLabel>
