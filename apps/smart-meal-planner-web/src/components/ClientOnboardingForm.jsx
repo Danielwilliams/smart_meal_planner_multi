@@ -20,6 +20,9 @@ import {
   StepLabel,
   Divider
 } from '@mui/material';
+import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import apiService from '../services/apiService';
 
 const ClientOnboardingForm = ({ organizationId, clientId, onComplete, onSkip }) => {
@@ -300,21 +303,26 @@ const ClientOnboardingForm = ({ organizationId, clientId, onComplete, onSkip }) 
 
       case 'date':
         return (
-          <TextField
-            key={field.id}
-            fullWidth
-            label={field.label}
-            type="date"
-            value={value}
-            onChange={(e) => handleFieldChange(formId, field.id, e.target.value)}
-            required={field.required}
-            error={hasError}
-            helperText={validationErrors[errorKey] || field.help_text}
-            margin="normal"
-            InputLabelProps={{
-              shrink: true,
-            }}
-          />
+          <LocalizationProvider key={field.id} dateAdapter={AdapterDateFns}>
+            <DatePicker
+              label={field.label}
+              value={value ? new Date(value) : null}
+              onChange={(newValue) => {
+                const dateString = newValue ? newValue.toISOString().split('T')[0] : '';
+                handleFieldChange(formId, field.id, dateString);
+              }}
+              slotProps={{
+                textField: {
+                  fullWidth: true,
+                  margin: "normal",
+                  required: field.required,
+                  error: hasError,
+                  helperText: validationErrors[errorKey] || field.help_text,
+                  placeholder: field.placeholder
+                }
+              }}
+            />
+          </LocalizationProvider>
         );
 
       default:

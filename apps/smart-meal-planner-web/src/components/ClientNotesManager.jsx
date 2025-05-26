@@ -43,7 +43,7 @@ import {
   Schedule as ScheduleIcon,
   Priority as PriorityIcon,
   Label as TagIcon,
-  Template as TemplateIcon,
+  Description as TemplateIcon,
   Search as SearchIcon,
   FilterList as FilterIcon,
   Archive as ArchiveIcon,

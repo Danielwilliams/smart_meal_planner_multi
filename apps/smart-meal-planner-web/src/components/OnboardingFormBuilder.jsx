@@ -47,6 +47,9 @@ import {
   Visibility as PreviewIcon,
   Save as SaveIcon
 } from '@mui/icons-material';
+import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 
 const FIELD_TYPES = [
   { value: 'text', label: 'Short Text', icon: <ShortTextIcon /> },
@@ -278,7 +281,22 @@ const OnboardingFormBuilder = ({ organizationId, onSave, onCancel, editingForm =
         return <TextField {...commonProps} type="number" />;
       
       case 'date':
-        return <TextField {...commonProps} type="date" InputLabelProps={{ shrink: true }} />;
+        return (
+          <LocalizationProvider dateAdapter={AdapterDateFns}>
+            <DatePicker
+              label={field.label}
+              slotProps={{
+                textField: {
+                  fullWidth: true,
+                  margin: "normal",
+                  required: field.required,
+                  helperText: field.help_text,
+                  placeholder: field.placeholder
+                }
+              }}
+            />
+          </LocalizationProvider>
+        );
       
       case 'select':
         return (
