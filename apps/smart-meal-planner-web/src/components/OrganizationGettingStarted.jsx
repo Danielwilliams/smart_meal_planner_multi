@@ -85,6 +85,13 @@ const OrganizationGettingStarted = ({ onNavigateToTab, onComplete, organizationN
       action: () => window.open('/menu', '_blank'),
       icon: <MenuIcon color="warning" />,
       estimatedTime: '15 minutes'
+    },
+    {
+      label: 'Set Up Client Notes System',
+      description: 'Create note templates and add your first client note',
+      action: () => onNavigateToTab(5), // Client Notes tab
+      icon: <NotesIcon color="info" />,
+      estimatedTime: '5 minutes'
     }
   ];
 
@@ -239,6 +246,7 @@ const OrganizationGettingStarted = ({ onNavigateToTab, onComplete, organizationN
         'Complete organization profile in Settings',
         'Set default client preferences',
         'Create your first onboarding form',
+        'Set up note templates for common scenarios',
         'Test the client signup process'
       ]
     },
@@ -248,8 +256,9 @@ const OrganizationGettingStarted = ({ onNavigateToTab, onComplete, organizationN
       tasks: [
         'Send invitation email to client',
         'Client creates account and completes onboarding forms',
-        'Review client responses and add notes',
-        'Set specific preferences for the client'
+        'Review client responses and add initial consultation notes',
+        'Set specific preferences for the client',
+        'Create client profile notes based on intake information'
       ]
     },
     {
@@ -258,17 +267,21 @@ const OrganizationGettingStarted = ({ onNavigateToTab, onComplete, organizationN
       tasks: [
         'Create personalized meal plans',
         'Share menus with clients',
+        'Document consultation sessions in client notes',
         'Monitor client recipe preferences',
-        'Update plans based on client feedback'
+        'Update plans based on client feedback',
+        'Track client progress and goals in notes'
       ]
     },
     {
       title: 'Ongoing Management',
       description: 'Maintain and grow your practice',
       tasks: [
-        'Review client responses regularly',
+        'Review client notes and update priorities',
+        'Review client onboarding responses regularly',
         'Update onboarding forms as needed',
         'Analyze shared menu performance',
+        'Archive old notes and maintain client records',
         'Invite additional clients'
       ]
     }
@@ -294,6 +307,14 @@ const OrganizationGettingStarted = ({ onNavigateToTab, onComplete, organizationN
     {
       title: 'Regular Reviews',
       content: 'Check client responses and shared menu activity weekly to stay engaged with your clients.'
+    },
+    {
+      title: 'Document Everything',
+      content: 'Use client notes to track consultations, preferences changes, and progress. This creates better continuity of care and professional documentation.'
+    },
+    {
+      title: 'Use Note Priorities',
+      content: 'Mark urgent or high-priority notes for clients who need immediate follow-up or have important health considerations.'
     }
   ];
 
