@@ -1529,10 +1529,6 @@ function CartPage() {
 
                 {hasSearchResults && (
                   <Box sx={{ mt: 2 }}>
-                    <Typography variant="subtitle2">⚠️ DEBUG: Search Results</Typography>
-                    <pre>
-                      {JSON.stringify(searchResults[store].slice(0, 2), null, 2)}...
-                    </pre>
                     <ErrorBoundary>
                       <ResultsComponent
                         results={searchResults[store]}
