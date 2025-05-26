@@ -59,7 +59,7 @@ const FIELD_TYPES = [
   { value: 'checkbox', label: 'Checkboxes', icon: <CheckboxIcon /> }
 ];
 
-const OnboardingFormBuilder = ({ organizationId, onSave, onCancel, editingForm = null }) => {
+const OnboardingFormBuilder = ({ organizationId, onSave, onCancel, editingForm = null, onFormCreated }) => {
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -195,7 +195,38 @@ const OnboardingFormBuilder = ({ organizationId, onSave, onCancel, editingForm =
     }
 
     try {
-      await onSave(formData);
+      if (onSave) {
+        // If parent component provides save handler, use it
+        await onSave(formData);
+      } else {
+        // Handle save internally using API service
+        const apiService = await import('../services/apiService');
+        if (editingForm) {
+          await apiService.default.updateOnboardingForm(organizationId, editingForm.id, formData);
+        } else {
+          await apiService.default.createOnboardingForm(organizationId, formData);
+        }
+        
+        // Notify parent that form was created/updated
+        if (onFormCreated) {
+          onFormCreated();
+        }
+        
+        // Reset form for new form creation
+        if (!editingForm) {
+          setFormData({
+            name: '',
+            description: '',
+            is_active: true,
+            is_required: false,
+            form_fields: [],
+            settings: {}
+          });
+          setPreviewMode(false);
+        }
+        
+        alert(editingForm ? 'Form updated successfully!' : 'Form created successfully!');
+      }
     } catch (error) {
       console.error('Error saving form:', error);
       alert('Failed to save form. Please try again.');

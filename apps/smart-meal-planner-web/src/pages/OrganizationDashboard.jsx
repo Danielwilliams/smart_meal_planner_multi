@@ -26,6 +26,8 @@ import apiService from '../services/apiService';
 import ClientSavedRecipes from '../components/ClientSavedRecipes';
 import OnboardingFormBuilder from '../components/OnboardingFormBuilder';
 import OnboardingResponseViewer from '../components/OnboardingResponseViewer';
+import OnboardingFormsGettingStarted from '../components/OnboardingFormsGettingStarted';
+import OrganizationGettingStarted from '../components/OrganizationGettingStarted';
 
 function OrganizationDashboard() {
   const { user } = useAuth();
@@ -56,6 +58,9 @@ function OrganizationDashboard() {
   const [invitations, setInvitations] = useState([]);
   const [invitationsLoading, setInvitationsLoading] = useState(false);
   const [onboardingTab, setOnboardingTab] = useState(0);
+  const [showGettingStarted, setShowGettingStarted] = useState(false);
+  const [hasOnboardingForms, setHasOnboardingForms] = useState(false);
+  const [showComprehensiveGuide, setShowComprehensiveGuide] = useState(false);
 
   // Redirect if not authenticated or not an organization account
   useEffect(() => {
@@ -112,6 +117,52 @@ function OrganizationDashboard() {
       setSharedMenus([]);
     }
   }, [user]);
+
+  // Check if organization has onboarding forms
+  useEffect(() => {
+    const checkOnboardingForms = async () => {
+      if (organization?.id && tabValue === 4) {
+        try {
+          const forms = await apiService.getOnboardingForms(organization.id);
+          const hasForms = forms && forms.length > 0;
+          setHasOnboardingForms(hasForms);
+          setShowGettingStarted(!hasForms);
+        } catch (err) {
+          console.error('Error checking onboarding forms:', err);
+          setShowGettingStarted(true);
+        }
+      }
+    };
+
+    checkOnboardingForms();
+  }, [organization?.id, tabValue]);
+
+  // Check if organization is new and should show comprehensive guide
+  useEffect(() => {
+    const checkIfNewOrganization = async () => {
+      if (organization?.id && !showComprehensiveGuide) {
+        try {
+          // Check if organization has any activity
+          const hasClients = clients && clients.length > 0;
+          const hasSharedMenus = sharedMenus && sharedMenus.length > 0;
+          
+          // If no clients and no shared menus, this might be a new organization
+          const isNewOrganization = !hasClients && !hasSharedMenus && !hasOnboardingForms;
+          
+          // Check if user has dismissed the guide before (stored in localStorage)
+          const guideDismissed = localStorage.getItem(`org_guide_dismissed_${organization.id}`);
+          
+          if (isNewOrganization && !guideDismissed) {
+            setShowComprehensiveGuide(true);
+          }
+        } catch (err) {
+          console.error('Error checking organization status:', err);
+        }
+      }
+    };
+
+    checkIfNewOrganization();
+  }, [organization?.id, clients, sharedMenus, hasOnboardingForms, showComprehensiveGuide]);
 
   const handleTabChange = (event, newValue) => {
     setTabValue(newValue);
@@ -273,16 +324,46 @@ function OrganizationDashboard() {
     );
   }
 
+  // Show comprehensive getting started guide if needed
+  if (showComprehensiveGuide) {
+    return (
+      <Container maxWidth="lg">
+        <OrganizationGettingStarted
+          organizationName={organization?.name || user?.name}
+          onNavigateToTab={(tabIndex) => {
+            setShowComprehensiveGuide(false);
+            setTabValue(tabIndex);
+          }}
+          onComplete={() => {
+            setShowComprehensiveGuide(false);
+            if (organization?.id) {
+              localStorage.setItem(`org_guide_dismissed_${organization.id}`, 'true');
+            }
+          }}
+        />
+      </Container>
+    );
+  }
+
   // Just show the standard organization dashboard that focuses on client management
   return (
     <Container maxWidth="lg">
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="h4" gutterBottom>
-          {organization?.name || user?.name || 'Organization Dashboard'}
-        </Typography>
-        <Typography variant="body1" color="text.secondary">
-          {organization?.description || 'Manage your clients and meal plans'}
-        </Typography>
+      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Box>
+          <Typography variant="h4" gutterBottom>
+            {organization?.name || user?.name || 'Organization Dashboard'}
+          </Typography>
+          <Typography variant="body1" color="text.secondary">
+            {organization?.description || 'Manage your clients and meal plans'}
+          </Typography>
+        </Box>
+        <Button
+          variant="outlined"
+          startIcon={<SettingsIcon />}
+          onClick={() => setShowComprehensiveGuide(true)}
+        >
+          Getting Started Guide
+        </Button>
       </Box>
 
       {(error || orgError) && (
@@ -710,25 +791,56 @@ function OrganizationDashboard() {
           
           {organization?.id ? (
             <Box>
-              <Paper sx={{ mb: 3 }}>
-                <Tabs 
-                  value={onboardingTab} 
-                  onChange={(e, newValue) => setOnboardingTab(newValue)}
-                  indicatorColor="primary"
-                  textColor="primary"
-                  variant="fullWidth"
-                >
-                  <Tab label="Form Builder" />
-                  <Tab label="Client Responses" />
-                </Tabs>
-              </Paper>
-              
-              {onboardingTab === 0 && (
-                <OnboardingFormBuilder organizationId={organization.id} />
-              )}
-              
-              {onboardingTab === 1 && (
-                <OnboardingResponseViewer organizationId={organization.id} />
+              {showGettingStarted ? (
+                <OnboardingFormsGettingStarted
+                  onGetStarted={() => {
+                    setShowGettingStarted(false);
+                    setOnboardingTab(0);
+                  }}
+                  onUseTemplate={(template) => {
+                    setShowGettingStarted(false);
+                    setOnboardingTab(0);
+                    // Could pass template data to form builder here
+                  }}
+                />
+              ) : (
+                <Box>
+                  <Paper sx={{ mb: 3 }}>
+                    <Tabs 
+                      value={onboardingTab} 
+                      onChange={(e, newValue) => setOnboardingTab(newValue)}
+                      indicatorColor="primary"
+                      textColor="primary"
+                      variant="fullWidth"
+                    >
+                      <Tab label="Form Builder" />
+                      <Tab label="Client Responses" />
+                    </Tabs>
+                  </Paper>
+                  
+                  {onboardingTab === 0 && (
+                    <OnboardingFormBuilder 
+                      organizationId={organization.id}
+                      onFormCreated={() => setHasOnboardingForms(true)}
+                    />
+                  )}
+                  
+                  {onboardingTab === 1 && (
+                    <OnboardingResponseViewer organizationId={organization.id} />
+                  )}
+                  
+                  {hasOnboardingForms && (
+                    <Box sx={{ mt: 2, textAlign: 'center' }}>
+                      <Button
+                        variant="text"
+                        size="small"
+                        onClick={() => setShowGettingStarted(true)}
+                      >
+                        View Getting Started Guide
+                      </Button>
+                    </Box>
+                  )}
+                </Box>
               )}
             </Box>
           ) : (
