@@ -23,6 +23,7 @@ import { useAuth } from '../context/AuthContext';
 import { useOrganization } from '../context/OrganizationContext';
 import apiService from '../services/apiService';
 import PreferencesForm from '../components/PreferencesForm';
+import MenuDefaultsSettings from '../components/MenuDefaultsSettings';
 
 function TabPanel({ children, value, index, ...other }) {
   return (
@@ -304,6 +305,7 @@ export default function OrganizationSettingsPage() {
             <Tab label="Default Client Preferences" />
             <Tab label="Organization Info" />
             <Tab label="Client Management" />
+            <Tab label="Menu Defaults" />
           </Tabs>
         </Box>
 

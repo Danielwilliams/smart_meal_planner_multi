@@ -19,7 +19,8 @@ import {
   CheckCircle as ActiveIcon,
   Cancel as InactiveIcon,
   Assignment as FormIcon,
-  Notes as NotesIcon
+  Notes as NotesIcon,
+  Restaurant as RestaurantMenuIcon
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import { useOrganization } from '../context/OrganizationContext';
@@ -30,6 +31,7 @@ import OnboardingResponseViewer from '../components/OnboardingResponseViewer';
 import OnboardingFormsGettingStarted from '../components/OnboardingFormsGettingStarted';
 import OrganizationGettingStarted from '../components/OrganizationGettingStarted';
 import ClientNotesManager from '../components/ClientNotesManager';
+import OrganizationRecipeLibrary from '../components/OrganizationRecipeLibrary';
 
 function OrganizationDashboard() {
   const { user } = useAuth();
@@ -390,6 +392,7 @@ function OrganizationDashboard() {
           <Tab label="Client Recipes" icon={<FavoriteIcon />} />
           <Tab label="Onboarding Forms" icon={<FormIcon />} />
           <Tab label="Client Notes" icon={<NotesIcon />} />
+          <Tab label="Menu Management" icon={<RestaurantMenuIcon />} />
           <Tab label="Settings" icon={<SettingsIcon />} />
         </Tabs>
       </Paper>

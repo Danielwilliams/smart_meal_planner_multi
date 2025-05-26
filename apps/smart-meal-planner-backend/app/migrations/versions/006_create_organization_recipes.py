@@ -48,7 +48,7 @@ def upgrade():
                 CREATE TABLE IF NOT EXISTS organization_recipes (
                     id SERIAL PRIMARY KEY,
                     organization_id INTEGER REFERENCES organizations(id) ON DELETE CASCADE,
-                    recipe_id INTEGER REFERENCES recipes(id) ON DELETE CASCADE,
+                    recipe_id INTEGER REFERENCES scraped_recipes(id) ON DELETE CASCADE,
                     
                     -- Organization-specific recipe data
                     category_id INTEGER REFERENCES organization_recipe_categories(id) ON DELETE SET NULL,
