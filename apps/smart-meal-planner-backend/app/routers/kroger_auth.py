@@ -214,13 +214,20 @@ async def get_kroger_connection_status(
     logger.info(f"Has access token: {bool(credentials.get('access_token'))}")
     logger.info(f"Store location in DB: {store_location}")
     
+    # Check if tokens are fresh and valid
+    has_access_token = bool(credentials.get('access_token'))
+    has_refresh_token = bool(credentials.get('refresh_token'))
+    
     return {
-        "is_connected": bool(credentials.get('access_token')),
+        "is_connected": has_access_token,
+        "has_valid_tokens": has_access_token and has_refresh_token,
         "store_location_id": store_location,
         "store_location": store_location,  # Add this for consistency with frontend naming
         "connected_at": credentials.get('connected_at'),
         "client_id_exists": bool(credentials.get('client_id')),
-        "needs_login": not bool(credentials.get('access_token'))
+        "needs_login": not has_access_token,
+        "can_refresh": has_refresh_token,
+        "session_valid": has_access_token and has_refresh_token
     }
 
 @router.get("/verify-credentials")
@@ -470,9 +477,9 @@ async def kroger_callback(
             logger.error(f"Failed to store tokens for user {user_id}")
             return RedirectResponse(url=f"{FRONTEND_URL}/kroger-auth-callback?error=storage_failed")
         
-        # Redirect to frontend with success
+        # Redirect to frontend with success - use cart page since user was likely trying to add items
         logger.info(f"Authentication successful, redirecting to frontend")
-        return RedirectResponse(url=f"{FRONTEND_URL}/kroger-auth-callback?success=true")
+        return RedirectResponse(url=f"{FRONTEND_URL}/cart?kroger_connected=true")
         
     except Exception as e:
         logger.error(f"Kroger callback error: {str(e)}")

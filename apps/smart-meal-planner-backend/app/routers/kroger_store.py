@@ -337,55 +337,82 @@ async def add_to_kroger_cart(
             items=kroger_items
         )
         
-        # If token is invalid, attempt to refresh
+        # If token is invalid, attempt to refresh and improve error handling
         if not result.get('success'):
-            token_refresh_error_keywords = ['token', 'authentication', 'expired', 'invalid']
+            error_msg = str(result.get('message', '')).lower()
+            token_refresh_error_keywords = ['token', 'authentication', 'expired', 'invalid', 'unauthorized', '401']
             
             logger.info(f"Cart operation failed: {result.get('message', '')}")
             
-            if any(keyword in str(result.get('message', '')).lower() for keyword in token_refresh_error_keywords):
+            if any(keyword in error_msg for keyword in token_refresh_error_keywords):
                 logger.info(f"Token appears invalid. Attempting to refresh for user {user_id}")
                 
                 try:
-                    # Attempt to refresh the token
-                    try:
-                        new_access_token = refresh_kroger_token(user_id)
-                    except Exception as refresh_err:
-                        logger.error(f"Refresh function error: {refresh_err}")
-                        new_access_token = None
+                    # Get current credentials to check refresh token
+                    current_credentials = get_user_kroger_credentials(user_id)
+                    refresh_token = current_credentials.get('refresh_token')
                     
-                    if new_access_token:
-                        # Retry cart addition with new token
-                        logger.info("Retrying cart operation with refreshed token")
-                        result = add_to_kroger_cart(
-                            access_token=new_access_token,
-                            location_id=location_id,
-                            items=kroger_items
-                        )
-                        
-                        # If retry fails, indicate reconnection needed
-                        if not result.get('success'):
-                            logger.error("Retry with refreshed token also failed")
-                            result.update({
-                                "needs_reconnect": True,
-                                "message": "Unable to complete cart addition after token refresh"
-                            })
-                    else:
-                        # Token refresh failed
-                        logger.error("Token refresh failed")
+                    if not refresh_token:
+                        logger.error("No refresh token available - full reconnection needed")
                         result = {
                             "success": False,
                             "needs_reconnect": True,
-                            "message": "Token refresh failed. Please reconnect your Kroger account."
+                            "message": "Session expired. Please reconnect your Kroger account to continue.",
+                            "redirect_to_login": True
                         }
+                    else:
+                        # Attempt to refresh the token
+                        try:
+                            new_access_token = refresh_kroger_token(user_id)
+                        except Exception as refresh_err:
+                            logger.error(f"Refresh function error: {refresh_err}")
+                            new_access_token = None
+                        
+                        if new_access_token:
+                            # Retry cart addition with new token
+                            logger.info("Retrying cart operation with refreshed token")
+                            result = add_to_kroger_cart(
+                                access_token=new_access_token,
+                                location_id=location_id,
+                                items=kroger_items
+                            )
+                            
+                            # If retry succeeds, mark as successful
+                            if result.get('success'):
+                                logger.info("Cart operation successful after token refresh")
+                                result['refreshed_token'] = True
+                            else:
+                                logger.error("Retry with refreshed token also failed")
+                                result.update({
+                                    "needs_reconnect": True,
+                                    "message": "Cart operation failed even after token refresh. Please try reconnecting your Kroger account.",
+                                    "redirect_to_login": True
+                                })
+                        else:
+                            # Token refresh failed
+                            logger.error("Token refresh failed")
+                            result = {
+                                "success": False,
+                                "needs_reconnect": True,
+                                "message": "Your Kroger session has expired. Please reconnect your account to continue.",
+                                "redirect_to_login": True
+                            }
                 
                 except Exception as refresh_error:
                     logger.error(f"Token refresh error: {str(refresh_error)}")
                     result = {
                         "success": False,
                         "needs_reconnect": True,
-                        "message": "Unexpected error during token refresh"
+                        "message": "Authentication error. Please reconnect your Kroger account.",
+                        "redirect_to_login": True
                     }
+            else:
+                # Non-authentication error
+                logger.error(f"Cart operation failed with non-auth error: {result.get('message', '')}")
+                result.update({
+                    "success": False,
+                    "message": f"Failed to add items to cart: {result.get('message', 'Unknown error')}"
+                })
         
         return result
         

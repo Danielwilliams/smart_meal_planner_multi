@@ -391,11 +391,27 @@ def add_to_kroger_cart(access_token: str, location_id: str, items: List[Dict[str
                 "message": "Items added to cart successfully",
                 "details": response.json()
             }
+        elif response.status_code == 401:
+            logger.error(f"Unauthorized - token invalid or expired: {response.text}")
+            return {
+                "success": False,
+                "message": "Authentication failed - token expired or invalid",
+                "error_code": "token_invalid",
+                "needs_refresh": True
+            }
+        elif response.status_code == 403:
+            logger.error(f"Forbidden - insufficient permissions: {response.text}")
+            return {
+                "success": False,
+                "message": "Insufficient permissions - cart write access required",
+                "error_code": "permission_denied"
+            }
         else:
             logger.error(f"Failed to add items to Kroger cart: {response.status_code} - {response.text}")
             return {
                 "success": False,
-                "message": f"Failed to add items to cart: {response.text}"
+                "message": f"Failed to add items to cart: {response.text}",
+                "status_code": response.status_code
             }
     except Exception as e:
         logger.error(f"Error adding items to Kroger cart: {str(e)}")
