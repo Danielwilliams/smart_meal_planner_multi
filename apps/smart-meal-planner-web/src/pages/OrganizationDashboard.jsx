@@ -937,8 +937,21 @@ function OrganizationDashboard() {
         </Box>
       )}
 
-      {/* Settings Tab */}
+      {/* Menu Management Tab */}
       {tabValue === 6 && (
+        <Box>
+          <Typography variant="h5" gutterBottom>
+            Menu & Recipe Management
+          </Typography>
+          <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
+            Manage your organization's recipe library, menu defaults, and nutritional standards.
+          </Typography>
+          <OrganizationRecipeLibrary />
+        </Box>
+      )}
+
+      {/* Settings Tab */}
+      {tabValue === 7 && (
         <Paper sx={{ p: 3 }}>
           <Typography variant="h6" gutterBottom>
             Organization Settings
