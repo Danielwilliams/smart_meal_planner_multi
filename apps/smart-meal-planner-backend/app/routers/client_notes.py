@@ -431,29 +431,47 @@ async def get_note_templates(
             
             result = []
             for template in templates:
-                result.append({
-                    "id": template[0],
-                    "organization_id": template[1],
-                    "name": template[2],
-                    "template_content": template[3],
-                    "note_type": template[4],
-                    "suggested_tags": json.loads(template[5]) if template[5] else [],
-                    "is_active": template[6],
-                    "usage_count": template[7],
-                    "created_at": template[8],
-                    "updated_at": template[9],
-                    "created_by": template[10]
-                })
+                try:
+                    # Safely parse suggested_tags JSON
+                    suggested_tags = []
+                    if template[5]:
+                        if isinstance(template[5], str):
+                            suggested_tags = json.loads(template[5])
+                        elif isinstance(template[5], list):
+                            suggested_tags = template[5]
+                        else:
+                            suggested_tags = []
+                    
+                    result.append({
+                        "id": template[0],
+                        "organization_id": template[1],
+                        "name": template[2],
+                        "template_content": template[3],
+                        "note_type": template[4],
+                        "suggested_tags": suggested_tags,
+                        "is_active": template[6],
+                        "usage_count": template[7],
+                        "created_at": template[8],
+                        "updated_at": template[9],
+                        "created_by": template[10]
+                    })
+                except Exception as template_error:
+                    logger.warning(f"Error processing template {template[0]}: {template_error}")
+                    # Skip malformed templates rather than failing the entire request
+                    continue
             
             return result
             
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting note templates: {str(e)}")
+        logger.error(f"Error getting note templates for org {organization_id}: {str(e)}")
+        logger.error(f"Exception type: {type(e).__name__}")
+        import traceback
+        logger.error(f"Full traceback: {traceback.format_exc()}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to get note templates"
+            detail=f"Failed to get note templates: {str(e)}"
         )
     finally:
         conn.close()
