@@ -671,6 +671,7 @@ async def get_available_recipes(
                 recipes.append({
                     "id": row[0],
                     "title": row[1],
+                    "recipe_name": row[1],  # Add for consistency
                     "source": row[2],
                     "cuisine": row[3],
                     "image_url": row[4],
