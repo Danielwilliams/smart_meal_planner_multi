@@ -292,7 +292,7 @@ async def add_recipe_to_organization(
                 )
             
             # Verify recipe exists
-            cur.execute("SELECT id FROM recipes WHERE id = %s", (recipe_data.recipe_id,))
+            cur.execute("SELECT id FROM scraped_recipes WHERE id = %s", (recipe_data.recipe_id,))
             if not cur.fetchone():
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
