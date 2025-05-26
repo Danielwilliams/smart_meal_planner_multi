@@ -204,9 +204,15 @@ async def get_organization_recipes(
                     or_r.meets_standards, or_r.compliance_notes, or_r.usage_count, or_r.last_used_at,
                     or_r.approved_by, or_r.approved_at, or_r.submitted_for_approval_at,
                     or_r.created_at, or_r.updated_at, or_r.created_by, or_r.updated_by,
-                    sr.title as recipe_name, sr.cuisine, sr.total_time, sr.servings, sr.image_url
+                    COALESCE(sr.title, ur.title, 'Unknown Recipe') as recipe_name, 
+                    COALESCE(sr.cuisine, ur.cuisine) as cuisine, 
+                    COALESCE(sr.total_time, ur.total_time) as total_time, 
+                    COALESCE(sr.servings, ur.servings) as servings, 
+                    COALESCE(sr.image_url, ur.image_url) as image_url,
+                    or_r.user_recipe_id
                 FROM organization_recipes or_r
                 LEFT JOIN scraped_recipes sr ON or_r.recipe_id = sr.id
+                LEFT JOIN user_recipes ur ON or_r.user_recipe_id = ur.id
                 WHERE {where_clause}
                 ORDER BY or_r.updated_at DESC
             """, params)
@@ -249,7 +255,8 @@ async def get_organization_recipes(
                         "cuisine": recipe[21],
                         "total_time": recipe[22],
                         "servings": recipe[23],
-                        "image_url": recipe[24]
+                        "image_url": recipe[24],
+                        "user_recipe_id": recipe[25]
                     })
                 except Exception as recipe_error:
                     logger.warning(f"Error processing recipe {recipe[0]}: {recipe_error}")
@@ -361,6 +368,162 @@ async def add_recipe_to_organization(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to add recipe to organization"
+        )
+    finally:
+        conn.close()
+
+@router.put("/{organization_id}/recipes/{recipe_id}", response_model=OrganizationRecipe)
+async def update_organization_recipe(
+    organization_id: int,
+    recipe_id: int,
+    recipe_data: OrganizationRecipeUpdate,
+    current_user = Depends(get_user_from_token)
+):
+    """Update an organization recipe's settings"""
+    # Verify user owns this organization
+    user_org_id = get_user_organization_id(current_user['user_id'])
+    if user_org_id != organization_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied to this organization"
+        )
+    
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            # Check if organization recipe exists
+            cur.execute("""
+                SELECT id FROM organization_recipes 
+                WHERE organization_id = %s AND id = %s
+            """, (organization_id, recipe_id))
+            
+            if not cur.fetchone():
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Organization recipe not found"
+                )
+            
+            # Build update query
+            update_fields = []
+            params = []
+            
+            if recipe_data.category_id is not None:
+                update_fields.append("category_id = %s")
+                params.append(recipe_data.category_id)
+                
+            if recipe_data.tags is not None:
+                update_fields.append("tags = %s")
+                params.append(json.dumps(recipe_data.tags))
+                
+            if recipe_data.internal_notes is not None:
+                update_fields.append("internal_notes = %s")
+                params.append(recipe_data.internal_notes)
+                
+            if recipe_data.client_notes is not None:
+                update_fields.append("client_notes = %s")
+                params.append(recipe_data.client_notes)
+                
+            if recipe_data.meets_standards is not None:
+                update_fields.append("meets_standards = %s")
+                params.append(recipe_data.meets_standards)
+                
+            if recipe_data.compliance_notes is not None:
+                update_fields.append("compliance_notes = %s")
+                params.append(recipe_data.compliance_notes)
+            
+            if not update_fields:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="No update fields provided"
+                )
+            
+            # Add updated timestamp and user
+            update_fields.extend(["updated_at = NOW()", "updated_by = %s"])
+            params.extend([current_user['user_id'], organization_id, recipe_id])
+            
+            update_query = f"""
+                UPDATE organization_recipes 
+                SET {', '.join(update_fields)}
+                WHERE organization_id = %s AND id = %s
+                RETURNING id, organization_id, recipe_id, category_id, is_approved,
+                         approval_status, tags, internal_notes, client_notes,
+                         meets_standards, compliance_notes, usage_count, last_used_at,
+                         approved_by, approved_at, submitted_for_approval_at,
+                         created_at, updated_at, created_by, updated_by
+            """
+            
+            cur.execute(update_query, params)
+            updated_recipe = cur.fetchone()
+            
+            # Get recipe name and details from either scraped_recipes or user_recipes
+            recipe_details = None
+            if updated_recipe[2]:  # recipe_id (scraped recipe)
+                cur.execute("""
+                    SELECT title, cuisine, total_time, servings, image_url
+                    FROM scraped_recipes 
+                    WHERE id = %s
+                """, (updated_recipe[2],))
+                recipe_details = cur.fetchone()
+            else:  # user_recipe_id (custom recipe) - need to get user_recipe_id from updated record
+                cur.execute("""
+                    SELECT user_recipe_id FROM organization_recipes 
+                    WHERE id = %s
+                """, (updated_recipe[0],))
+                user_recipe_result = cur.fetchone()
+                if user_recipe_result and user_recipe_result[0]:
+                    cur.execute("""
+                        SELECT title, cuisine, total_time, servings, image_url
+                        FROM user_recipes 
+                        WHERE id = %s
+                    """, (user_recipe_result[0],))
+                    recipe_details = cur.fetchone()
+            
+            conn.commit()
+            
+            # Parse tags JSON
+            tags = []
+            if updated_recipe[6]:
+                if isinstance(updated_recipe[6], str):
+                    tags = json.loads(updated_recipe[6])
+                elif isinstance(updated_recipe[6], list):
+                    tags = updated_recipe[6]
+            
+            return {
+                "id": updated_recipe[0],
+                "organization_id": updated_recipe[1],
+                "recipe_id": updated_recipe[2],
+                "category_id": updated_recipe[3],
+                "is_approved": updated_recipe[4],
+                "approval_status": updated_recipe[5],
+                "tags": tags,
+                "internal_notes": updated_recipe[7],
+                "client_notes": updated_recipe[8],
+                "meets_standards": updated_recipe[9],
+                "compliance_notes": updated_recipe[10],
+                "usage_count": updated_recipe[11],
+                "last_used_at": updated_recipe[12],
+                "approved_by": updated_recipe[13],
+                "approved_at": updated_recipe[14],
+                "submitted_for_approval_at": updated_recipe[15],
+                "created_at": updated_recipe[16],
+                "updated_at": updated_recipe[17],
+                "created_by": updated_recipe[18],
+                "updated_by": updated_recipe[19],
+                "recipe_name": recipe_details[0] if recipe_details else None,
+                "cuisine": recipe_details[1] if recipe_details else None,
+                "total_time": recipe_details[2] if recipe_details else None,
+                "servings": recipe_details[3] if recipe_details else None,
+                "image_url": recipe_details[4] if recipe_details else None
+            }
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating organization recipe: {str(e)}")
+        conn.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update organization recipe"
         )
     finally:
         conn.close()
