@@ -1228,41 +1228,42 @@ const OrganizationRecipeLibrary = () => {
               ))}
             </Select>
           </FormControl>
-          <Autocomplete
-            multiple
-            freeSolo
-            options={[]}
-            value={recipeForm.tags || []}
-            onChange={(event, newValue) => {
-              console.log('Tag autocomplete changed:', newValue);
-              setRecipeForm(prev => ({...prev, tags: newValue}));
-            }}
-            onInputChange={(event, value, reason) => {
-              console.log('Autocomplete input change:', value, reason);
-            }}
-            renderInput={(params) => (
-              <TextField
-                {...params}
-                margin="dense"
-                label="Tags"
-                placeholder="Add tags..."
-                helperText="Type and press Enter to add tags"
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' && event.target.value.trim()) {
-                    event.preventDefault();
-                    const newTag = event.target.value.trim();
-                    const currentTags = recipeForm.tags || [];
-                    if (!currentTags.includes(newTag)) {
-                      const updatedTags = [...currentTags, newTag];
-                      console.log('Manually adding tag:', newTag, 'Updated tags:', updatedTags);
-                      setRecipeForm(prev => ({...prev, tags: updatedTags}));
-                      event.target.value = '';
-                    }
+          <Box>
+            <Typography variant="body2" sx={{ mb: 1 }}>Tags</Typography>
+            <Box display="flex" flexWrap="wrap" gap={1} mb={1}>
+              {(recipeForm.tags || []).map((tag, index) => (
+                <Chip
+                  key={index}
+                  label={tag}
+                  onDelete={() => {
+                    const updatedTags = recipeForm.tags.filter((_, i) => i !== index);
+                    console.log('Removing tag:', tag, 'Updated tags:', updatedTags);
+                    setRecipeForm(prev => ({...prev, tags: updatedTags}));
+                  }}
+                  size="small"
+                />
+              ))}
+            </Box>
+            <TextField
+              fullWidth
+              size="small"
+              placeholder="Type a tag and press Enter"
+              helperText="Press Enter to add each tag"
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && event.target.value.trim()) {
+                  event.preventDefault();
+                  const newTag = event.target.value.trim();
+                  const currentTags = recipeForm.tags || [];
+                  if (!currentTags.includes(newTag)) {
+                    const updatedTags = [...currentTags, newTag];
+                    console.log('Adding tag:', newTag, 'Updated tags:', updatedTags);
+                    setRecipeForm(prev => ({...prev, tags: updatedTags}));
+                    event.target.value = '';
                   }
-                }}
-              />
-            )}
-          />
+                }
+              }}
+            />
+          </Box>
           <TextField
             margin="dense"
             label="Internal Notes"
@@ -1422,38 +1423,42 @@ const OrganizationRecipeLibrary = () => {
                     </Select>
                   </FormControl>
                   
-                  <Autocomplete
-                    multiple
-                    freeSolo
-                    options={[]}
-                    value={recipeForm.tags || []}
-                    onChange={(event, newValue) => {
-                      console.log('Recipe dialog tag autocomplete changed:', newValue);
-                      setRecipeForm(prev => ({...prev, tags: newValue}));
-                    }}
-                    renderInput={(params) => (
-                      <TextField
-                        {...params}
-                        margin="dense"
-                        label="Tags"
-                        placeholder="Add tags..."
-                        helperText="Type and press Enter to add tags"
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter' && event.target.value.trim()) {
-                            event.preventDefault();
-                            const newTag = event.target.value.trim();
-                            const currentTags = recipeForm.tags || [];
-                            if (!currentTags.includes(newTag)) {
-                              const updatedTags = [...currentTags, newTag];
-                              console.log('Manually adding tag in recipe dialog:', newTag, 'Updated tags:', updatedTags);
-                              setRecipeForm(prev => ({...prev, tags: updatedTags}));
-                              event.target.value = '';
-                            }
+                  <Box>
+                    <Typography variant="body2" sx={{ mb: 1 }}>Tags</Typography>
+                    <Box display="flex" flexWrap="wrap" gap={1} mb={1}>
+                      {(recipeForm.tags || []).map((tag, index) => (
+                        <Chip
+                          key={index}
+                          label={tag}
+                          onDelete={() => {
+                            const updatedTags = recipeForm.tags.filter((_, i) => i !== index);
+                            console.log('Removing tag:', tag, 'Updated tags:', updatedTags);
+                            setRecipeForm(prev => ({...prev, tags: updatedTags}));
+                          }}
+                          size="small"
+                        />
+                      ))}
+                    </Box>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      placeholder="Type a tag and press Enter"
+                      helperText="Press Enter to add each tag"
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' && event.target.value.trim()) {
+                          event.preventDefault();
+                          const newTag = event.target.value.trim();
+                          const currentTags = recipeForm.tags || [];
+                          if (!currentTags.includes(newTag)) {
+                            const updatedTags = [...currentTags, newTag];
+                            console.log('Adding tag in recipe dialog:', newTag, 'Updated tags:', updatedTags);
+                            setRecipeForm(prev => ({...prev, tags: updatedTags}));
+                            event.target.value = '';
                           }
-                        }}
-                      />
-                    )}
-                  />
+                        }
+                      }}
+                    />
+                  </Box>
                   
                   <TextField
                     margin="dense"
