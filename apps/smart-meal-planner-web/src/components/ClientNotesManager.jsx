@@ -103,9 +103,15 @@ const ClientNotesManager = ({ organizationId, clientId, clientName, onClose }) =
       setLoading(true);
       const notesData = await apiService.getClientNotes(organizationId, clientId, filters);
       setNotes(notesData);
+      setError(''); // Clear any previous errors
     } catch (err) {
       console.error('Error loading notes:', err);
-      setError('Failed to load client notes');
+      if (err.response && err.response.status === 500) {
+        setError('Client notes system is being set up. Please try again in a few minutes.');
+      } else {
+        setError('Failed to load client notes. Please refresh the page.');
+      }
+      setNotes([]); // Set empty array so UI doesn't break
     } finally {
       setLoading(false);
     }
