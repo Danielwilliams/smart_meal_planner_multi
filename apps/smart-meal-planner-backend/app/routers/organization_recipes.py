@@ -604,3 +604,87 @@ async def approve_recipe(
         )
     finally:
         conn.close()
+
+# Available Recipes for Adding to Organization
+
+@router.get("/{organization_id}/available-recipes")
+async def get_available_recipes(
+    organization_id: int,
+    search: Optional[str] = Query(None, description="Search recipes by title"),
+    cuisine: Optional[str] = Query(None, description="Filter by cuisine"),
+    limit: int = Query(100, ge=1, le=200, description="Number of recipes to return"),
+    offset: int = Query(0, ge=0, description="Number of recipes to skip"),
+    current_user = Depends(get_user_from_token)
+):
+    """Get available scraped recipes that can be added to organization library"""
+    # Verify user owns this organization
+    user_org_id = get_user_organization_id(current_user['user_id'])
+    if user_org_id != organization_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: User does not own this organization"
+        )
+    
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            # Get recipes that are not already in this organization's library
+            where_clauses = ["sr.id NOT IN (SELECT recipe_id FROM organization_recipes WHERE organization_id = %s)"]
+            params = [organization_id]
+            
+            # Add search filter
+            if search:
+                where_clauses.append("sr.title ILIKE %s")
+                params.append(f"%{search}%")
+            
+            # Add cuisine filter
+            if cuisine:
+                where_clauses.append("sr.cuisine ILIKE %s")
+                params.append(f"%{cuisine}%")
+            
+            where_clause = " AND ".join(where_clauses)
+            
+            query = f"""
+                SELECT 
+                    sr.id, sr.title, sr.source, sr.cuisine, sr.image_url,
+                    sr.prep_time, sr.cook_time, sr.total_time, sr.servings,
+                    sr.complexity, sr.diet_tags, sr.is_verified
+                FROM scraped_recipes sr
+                WHERE {where_clause}
+                ORDER BY sr.title ASC
+                LIMIT %s OFFSET %s
+            """
+            
+            params.extend([limit, offset])
+            cur.execute(query, params)
+            results = cur.fetchall()
+            
+            recipes = []
+            for row in results:
+                recipes.append({
+                    "id": row[0],
+                    "title": row[1],
+                    "source": row[2],
+                    "cuisine": row[3],
+                    "image_url": row[4],
+                    "prep_time": row[5],
+                    "cook_time": row[6],
+                    "total_time": row[7],
+                    "servings": row[8],
+                    "complexity": row[9],
+                    "diet_tags": row[10] if row[10] else [],
+                    "is_verified": row[11]
+                })
+            
+            return recipes
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting available recipes: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get available recipes"
+        )
+    finally:
+        conn.close()

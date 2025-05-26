@@ -200,7 +200,7 @@ const OrganizationRecipeLibrary = () => {
   const loadAvailableRecipes = async () => {
     try {
       setLoadingAvailableRecipes(true);
-      const response = await apiService.getAvailableRecipes({
+      const response = await apiService.getAvailableRecipes(organization.id, {
         limit: 100, // Get first 100 recipes
         search: recipeSearchTerm
       });
