@@ -281,15 +281,20 @@ const OrganizationRecipeLibrary = () => {
     if (!selectedRecipe) return;
 
     try {
+      const updateData = {
+        category_id: recipeForm.category_id,
+        tags: recipeForm.tags || [],
+        internal_notes: recipeForm.internal_notes,
+        client_notes: recipeForm.client_notes
+      };
+      
+      console.log('Updating recipe with data:', updateData);
+      console.log('Recipe form tags:', recipeForm.tags);
+      
       const response = await apiService.updateOrganizationRecipe(
         organization.id, 
         selectedRecipe.id, 
-        {
-          category_id: recipeForm.category_id,
-          tags: recipeForm.tags || [],
-          internal_notes: recipeForm.internal_notes,
-          client_notes: recipeForm.client_notes
-        }
+        updateData
       );
 
       // Update local state
@@ -352,7 +357,13 @@ const OrganizationRecipeLibrary = () => {
     try {
       setLoadingRecipeDetails(true);
       // Try to load from scraped_recipes first, then user_recipes if needed
-      const response = await fetch(`${process.env.REACT_APP_API_BASE_URL || 'https://smartmealplannermulti-production.up.railway.app'}/api/scraped-recipes/${recipe.recipe_id}`);
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${process.env.REACT_APP_API_BASE_URL || 'https://smartmealplannermulti-production.up.railway.app'}/scraped-recipes/${recipe.recipe_id}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
       
       if (response.ok) {
         const recipeData = await response.json();
@@ -1223,6 +1234,7 @@ const OrganizationRecipeLibrary = () => {
             options={[]}
             value={recipeForm.tags || []}
             onChange={(event, newValue) => {
+              console.log('Tag autocomplete changed:', newValue);
               setRecipeForm(prev => ({...prev, tags: newValue}));
             }}
             renderInput={(params) => (
