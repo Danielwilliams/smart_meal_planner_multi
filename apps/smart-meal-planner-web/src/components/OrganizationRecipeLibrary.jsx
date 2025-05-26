@@ -99,6 +99,8 @@ const OrganizationRecipeLibrary = () => {
   const [recipeDetailDialogOpen, setRecipeDetailDialogOpen] = useState(false);
   const [editRecipeDialogOpen, setEditRecipeDialogOpen] = useState(false);
   const [selectedRecipe, setSelectedRecipe] = useState(null);
+  const [fullRecipeDetails, setFullRecipeDetails] = useState(null);
+  const [loadingRecipeDetails, setLoadingRecipeDetails] = useState(false);
   
   // Category Form State
   const [categoryForm, setCategoryForm] = useState({
@@ -344,6 +346,35 @@ const OrganizationRecipeLibrary = () => {
     }
   };
 
+  const loadFullRecipeDetails = async (recipe) => {
+    if (!recipe.recipe_id) return;
+
+    try {
+      setLoadingRecipeDetails(true);
+      // Try to load from scraped_recipes first, then user_recipes if needed
+      const response = await fetch(`${process.env.REACT_APP_API_BASE_URL || 'https://smartmealplannermulti-production.up.railway.app'}/api/scraped-recipes/${recipe.recipe_id}`);
+      
+      if (response.ok) {
+        const recipeData = await response.json();
+        setFullRecipeDetails(recipeData);
+      } else {
+        // If scraped recipe not found, might be a user recipe
+        setFullRecipeDetails(null);
+      }
+    } catch (err) {
+      console.error('Error loading full recipe details:', err);
+      setFullRecipeDetails(null);
+    } finally {
+      setLoadingRecipeDetails(false);
+    }
+  };
+
+  const handleViewRecipe = (recipe) => {
+    setSelectedRecipe(recipe);
+    setRecipeDetailDialogOpen(true);
+    loadFullRecipeDetails(recipe);
+  };
+
 
   const filteredRecipes = recipes.filter(recipe => {
     const matchesSearch = !searchTerm || 
@@ -546,6 +577,19 @@ const OrganizationRecipeLibrary = () => {
                     />
                   </Box>
 
+                  {/* Recipe Details */}
+                  <Box display="flex" flexWrap="wrap" gap={1} mb={2}>
+                    {recipe.cuisine && (
+                      <Chip label={recipe.cuisine} size="small" variant="outlined" />
+                    )}
+                    {recipe.total_time && (
+                      <Chip label={`${recipe.total_time} min`} size="small" variant="outlined" />
+                    )}
+                    {recipe.servings && (
+                      <Chip label={`${recipe.servings} servings`} size="small" variant="outlined" />
+                    )}
+                  </Box>
+
                   {/* Category */}
                   {recipe.category_id && (
                     <Box display="flex" alignItems="center" mb={1}>
@@ -608,10 +652,7 @@ const OrganizationRecipeLibrary = () => {
                         fullWidth
                         size="small"
                         startIcon={<ViewIcon />}
-                        onClick={() => {
-                          setSelectedRecipe(recipe);
-                          setRecipeDetailDialogOpen(true);
-                        }}
+                        onClick={() => handleViewRecipe(recipe)}
                       >
                         View
                       </Button>
@@ -899,13 +940,75 @@ const OrganizationRecipeLibrary = () => {
         <DialogContent>
           {selectedRecipe && (
             <Box>
+              {/* Recipe Image */}
+              {(fullRecipeDetails?.image_url || selectedRecipe.image_url) && (
+                <Box mb={3}>
+                  <img
+                    src={fullRecipeDetails?.image_url || selectedRecipe.image_url}
+                    alt={selectedRecipe.recipe_name}
+                    style={{
+                      width: '100%',
+                      maxHeight: '300px',
+                      objectFit: 'cover',
+                      borderRadius: '8px'
+                    }}
+                  />
+                </Box>
+              )}
+
+              {/* Recipe Description */}
+              {fullRecipeDetails?.description && (
+                <Box mb={3}>
+                  <Typography variant="body1" paragraph>
+                    {fullRecipeDetails.description}
+                  </Typography>
+                </Box>
+              )}
+
               <Grid container spacing={3}>
                 <Grid item xs={12} md={6}>
-                  <Typography variant="h6" gutterBottom>Basic Information</Typography>
+                  <Typography variant="h6" gutterBottom>Recipe Information</Typography>
+                  
+                  {loadingRecipeDetails && (
+                    <Box display="flex" alignItems="center" mb={2}>
+                      <CircularProgress size={16} sx={{ mr: 1 }} />
+                      <Typography variant="body2">Loading recipe details...</Typography>
+                    </Box>
+                  )}
+
                   <Box mb={2}>
                     <Typography variant="body2" color="text.secondary">Recipe ID</Typography>
                     <Typography variant="body1">{selectedRecipe.recipe_id}</Typography>
                   </Box>
+
+                  {(fullRecipeDetails?.cuisine || selectedRecipe.cuisine) && (
+                    <Box mb={2}>
+                      <Typography variant="body2" color="text.secondary">Cuisine</Typography>
+                      <Typography variant="body1">{fullRecipeDetails?.cuisine || selectedRecipe.cuisine}</Typography>
+                    </Box>
+                  )}
+
+                  {(fullRecipeDetails?.total_time || selectedRecipe.total_time) && (
+                    <Box mb={2}>
+                      <Typography variant="body2" color="text.secondary">Total Time</Typography>
+                      <Typography variant="body1">{fullRecipeDetails?.total_time || selectedRecipe.total_time} minutes</Typography>
+                    </Box>
+                  )}
+
+                  {(fullRecipeDetails?.servings || selectedRecipe.servings) && (
+                    <Box mb={2}>
+                      <Typography variant="body2" color="text.secondary">Servings</Typography>
+                      <Typography variant="body1">{fullRecipeDetails?.servings || selectedRecipe.servings}</Typography>
+                    </Box>
+                  )}
+
+                  {fullRecipeDetails?.difficulty && (
+                    <Box mb={2}>
+                      <Typography variant="body2" color="text.secondary">Difficulty</Typography>
+                      <Chip label={fullRecipeDetails.difficulty} size="small" />
+                    </Box>
+                  )}
+
                   <Box mb={2}>
                     <Typography variant="body2" color="text.secondary">Status</Typography>
                     <Chip 
@@ -914,16 +1017,19 @@ const OrganizationRecipeLibrary = () => {
                       sx={{ backgroundColor: statusColors[selectedRecipe.approval_status] || '#9e9e9e', color: 'white' }}
                     />
                   </Box>
+
                   <Box mb={2}>
                     <Typography variant="body2" color="text.secondary">Category</Typography>
                     <Typography variant="body1">
                       {categories.find(cat => cat.id === selectedRecipe.category_id)?.name || 'No Category'}
                     </Typography>
                   </Box>
+
                   <Box mb={2}>
                     <Typography variant="body2" color="text.secondary">Usage Count</Typography>
                     <Typography variant="body1">{selectedRecipe.usage_count || 0} times</Typography>
                   </Box>
+
                   {selectedRecipe.last_used_at && (
                     <Box mb={2}>
                       <Typography variant="body2" color="text.secondary">Last Used</Typography>
@@ -931,8 +1037,10 @@ const OrganizationRecipeLibrary = () => {
                     </Box>
                   )}
                 </Grid>
+
                 <Grid item xs={12} md={6}>
                   <Typography variant="h6" gutterBottom>Organization Settings</Typography>
+                  
                   {selectedRecipe.tags && selectedRecipe.tags.length > 0 && (
                     <Box mb={2}>
                       <Typography variant="body2" color="text.secondary">Tags</Typography>
@@ -943,6 +1051,7 @@ const OrganizationRecipeLibrary = () => {
                       </Box>
                     </Box>
                   )}
+
                   {selectedRecipe.internal_notes && (
                     <Box mb={2}>
                       <Typography variant="body2" color="text.secondary">Internal Notes</Typography>
@@ -951,6 +1060,7 @@ const OrganizationRecipeLibrary = () => {
                       </Paper>
                     </Box>
                   )}
+
                   {selectedRecipe.client_notes && (
                     <Box mb={2}>
                       <Typography variant="body2" color="text.secondary">Client Notes</Typography>
@@ -959,8 +1069,96 @@ const OrganizationRecipeLibrary = () => {
                       </Paper>
                     </Box>
                   )}
+
+                  {/* Diet Tags */}
+                  {fullRecipeDetails?.diet_tags && fullRecipeDetails.diet_tags.length > 0 && (
+                    <Box mb={2}>
+                      <Typography variant="body2" color="text.secondary">Diet Tags</Typography>
+                      <Box mt={1}>
+                        {fullRecipeDetails.diet_tags.map((tag, idx) => (
+                          <Chip key={idx} label={tag} size="small" color="success" sx={{ mr: 0.5, mb: 0.5 }} />
+                        ))}
+                      </Box>
+                    </Box>
+                  )}
                 </Grid>
               </Grid>
+
+              {/* Ingredients */}
+              {fullRecipeDetails?.ingredients && fullRecipeDetails.ingredients.length > 0 && (
+                <Box mt={3}>
+                  <Typography variant="h6" gutterBottom>Ingredients</Typography>
+                  <Paper sx={{ p: 2 }}>
+                    <Box component="ul" sx={{ pl: 2, m: 0 }}>
+                      {fullRecipeDetails.ingredients.map((ingredient, idx) => (
+                        <Typography key={idx} component="li" variant="body2" sx={{ mb: 0.5 }}>
+                          {ingredient.quantity && ingredient.unit 
+                            ? `${ingredient.quantity} ${ingredient.unit} ${ingredient.name}`
+                            : ingredient.quantity 
+                              ? `${ingredient.quantity} ${ingredient.name}`
+                              : ingredient.name || ingredient
+                          }
+                        </Typography>
+                      ))}
+                    </Box>
+                  </Paper>
+                </Box>
+              )}
+
+              {/* Instructions */}
+              {fullRecipeDetails?.instructions && (
+                <Box mt={3}>
+                  <Typography variant="h6" gutterBottom>Instructions</Typography>
+                  <Paper sx={{ p: 2 }}>
+                    {typeof fullRecipeDetails.instructions === 'string' ? (
+                      <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
+                        {fullRecipeDetails.instructions}
+                      </Typography>
+                    ) : fullRecipeDetails.instructions.map ? (
+                      <Box component="ol" sx={{ pl: 2, m: 0 }}>
+                        {fullRecipeDetails.instructions.map((step, idx) => (
+                          <Typography key={idx} component="li" variant="body2" sx={{ mb: 1 }}>
+                            {step.instruction || step}
+                          </Typography>
+                        ))}
+                      </Box>
+                    ) : null}
+                  </Paper>
+                </Box>
+              )}
+
+              {/* Nutritional Information */}
+              {fullRecipeDetails?.calories && (
+                <Box mt={3}>
+                  <Typography variant="h6" gutterBottom>Nutritional Information</Typography>
+                  <Paper sx={{ p: 2 }}>
+                    <Grid container spacing={2}>
+                      <Grid item xs={6} sm={3}>
+                        <Typography variant="body2" color="text.secondary">Calories</Typography>
+                        <Typography variant="body1">{fullRecipeDetails.calories}</Typography>
+                      </Grid>
+                      {fullRecipeDetails.protein && (
+                        <Grid item xs={6} sm={3}>
+                          <Typography variant="body2" color="text.secondary">Protein</Typography>
+                          <Typography variant="body1">{fullRecipeDetails.protein}g</Typography>
+                        </Grid>
+                      )}
+                      {fullRecipeDetails.carbs && (
+                        <Grid item xs={6} sm={3}>
+                          <Typography variant="body2" color="text.secondary">Carbs</Typography>
+                          <Typography variant="body1">{fullRecipeDetails.carbs}g</Typography>
+                        </Grid>
+                      )}
+                      {fullRecipeDetails.fat && (
+                        <Grid item xs={6} sm={3}>
+                          <Typography variant="body2" color="text.secondary">Fat</Typography>
+                          <Typography variant="body1">{fullRecipeDetails.fat}g</Typography>
+                        </Grid>
+                      )}
+                    </Grid>
+                  </Paper>
+                </Box>
+              )}
             </Box>
           )}
         </DialogContent>
