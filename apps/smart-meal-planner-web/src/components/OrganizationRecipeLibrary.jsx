@@ -209,9 +209,10 @@ const OrganizationRecipeLibrary = () => {
   const loadAvailableRecipes = async () => {
     try {
       setLoadingAvailableRecipes(true);
-      const response = await apiService.getAvailableRecipes(organization.id, {
+      const response = await apiService.getAllAvailableRecipes(organization.id, {
         limit: 100, // Get first 100 recipes
-        search: recipeSearchTerm
+        search: recipeSearchTerm,
+        source: 'all' // Include both scraped and user recipes
       });
       
       setAvailableRecipes(response || []);
@@ -1070,7 +1071,20 @@ const OrganizationRecipeLibrary = () => {
           <Box sx={{ display: 'flex', gap: 3 }}>
             {/* Recipe Browser Section */}
             <Box sx={{ flex: 1 }}>
-              <Typography variant="h6" gutterBottom>Browse Available Recipes</Typography>
+              <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                <Typography variant="h6">Browse Available Recipes</Typography>
+                <Button
+                  variant="outlined"
+                  startIcon={<AddIcon />}
+                  onClick={() => {
+                    // TODO: Open custom recipe creation dialog
+                    setError('Custom recipe creation coming soon!');
+                  }}
+                  size="small"
+                >
+                  Create Recipe
+                </Button>
+              </Box>
               
               <TextField
                 fullWidth
@@ -1123,14 +1137,27 @@ const OrganizationRecipeLibrary = () => {
                             />
                           )}
                           <Box flex={1}>
-                            <Typography variant="subtitle2" fontWeight="bold">
-                              {recipe.title}
-                            </Typography>
+                            <Box display="flex" alignItems="center" gap={1} mb={0.5}>
+                              <Typography variant="subtitle2" fontWeight="bold">
+                                {recipe.title}
+                              </Typography>
+                              <Chip 
+                                label={recipe.recipe_type === 'user' ? 'Custom' : 'Catalog'}
+                                size="small"
+                                color={recipe.recipe_type === 'user' ? 'primary' : 'default'}
+                                sx={{ fontSize: '0.65rem', height: 18 }}
+                              />
+                            </Box>
                             <Typography variant="body2" color="text.secondary">
                               {recipe.cuisine && `${recipe.cuisine} • `}
                               {recipe.total_time && `${recipe.total_time} min • `}
                               {recipe.servings && `${recipe.servings} servings`}
                             </Typography>
+                            {recipe.source && recipe.recipe_type === 'scraped' && (
+                              <Typography variant="caption" color="text.secondary">
+                                Source: {recipe.source}
+                              </Typography>
+                            )}
                             {recipe.diet_tags && recipe.diet_tags.length > 0 && (
                               <Box mt={1}>
                                 {recipe.diet_tags.slice(0, 3).map((tag, idx) => (

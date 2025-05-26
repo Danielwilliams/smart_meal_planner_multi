@@ -696,3 +696,155 @@ async def get_available_recipes(
         )
     finally:
         conn.close()
+
+@router.get("/{organization_id}/all-available-recipes")
+async def get_all_available_recipes(
+    organization_id: int,
+    search: Optional[str] = Query(None, description="Search recipes by title"),
+    cuisine: Optional[str] = Query(None, description="Filter by cuisine"),
+    source: Optional[str] = Query(None, description="Filter by source: 'scraped', 'user', or 'all'"),
+    limit: int = Query(100, ge=1, le=200, description="Number of recipes to return"),
+    offset: int = Query(0, ge=0, description="Number of recipes to skip"),
+    current_user = Depends(get_user_from_token)
+):
+    """Get all available recipes (both scraped and user-created) that can be added to organization library"""
+    # Verify user owns this organization
+    user_org_id = get_user_organization_id(current_user['user_id'])
+    if user_org_id != organization_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: User does not own this organization"
+        )
+    
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            all_recipes = []
+            
+            # Get scraped recipes (if requested)
+            if source in [None, 'all', 'scraped']:
+                # Get scraped recipes that are not already in this organization's library
+                where_clauses = ["sr.id NOT IN (SELECT recipe_id FROM organization_recipes WHERE organization_id = %s AND recipe_id IS NOT NULL)"]
+                params = [organization_id]
+                
+                # Add search filter
+                if search:
+                    where_clauses.append("sr.title ILIKE %s")
+                    params.append(f"%{search}%")
+                
+                # Add cuisine filter
+                if cuisine:
+                    where_clauses.append("sr.cuisine ILIKE %s")
+                    params.append(f"%{cuisine}%")
+                
+                where_clause = " AND ".join(where_clauses)
+                
+                query = f"""
+                    SELECT 
+                        sr.id, sr.title, sr.source, sr.cuisine, sr.image_url,
+                        sr.prep_time, sr.cook_time, sr.total_time, sr.servings,
+                        sr.complexity, sr.diet_tags, sr.is_verified,
+                        'scraped' as recipe_source
+                    FROM scraped_recipes sr
+                    WHERE {where_clause}
+                    ORDER BY sr.title ASC
+                    LIMIT %s OFFSET %s
+                """
+                
+                scraped_params = params + [limit // 2 if source == 'all' else limit, offset]
+                cur.execute(query, scraped_params)
+                scraped_results = cur.fetchall()
+                
+                for row in scraped_results:
+                    all_recipes.append({
+                        "id": row[0],
+                        "title": row[1],
+                        "recipe_name": row[1],  # For consistency
+                        "source": row[2],
+                        "cuisine": row[3],
+                        "image_url": row[4],
+                        "prep_time": row[5],
+                        "cook_time": row[6],
+                        "total_time": row[7],
+                        "servings": row[8],
+                        "complexity": row[9],
+                        "diet_tags": row[10] if row[10] else [],
+                        "is_verified": row[11],
+                        "recipe_source": row[12],
+                        "recipe_type": "scraped"
+                    })
+            
+            # Get user recipes (if requested)
+            if source in [None, 'all', 'user']:
+                # Get user recipes that are not already in this organization's library
+                # Include organization's own recipes and public recipes from other users
+                where_clauses = [
+                    "ur.id NOT IN (SELECT user_recipe_id FROM organization_recipes WHERE organization_id = %s AND user_recipe_id IS NOT NULL)",
+                    "ur.is_active = TRUE",
+                    "(ur.created_by_organization_id = %s OR ur.is_public = TRUE)"
+                ]
+                params = [organization_id, organization_id]
+                
+                # Add search filter
+                if search:
+                    where_clauses.append("ur.title ILIKE %s")
+                    params.append(f"%{search}%")
+                
+                # Add cuisine filter
+                if cuisine:
+                    where_clauses.append("ur.cuisine ILIKE %s")
+                    params.append(f"%{cuisine}%")
+                
+                where_clause = " AND ".join(where_clauses)
+                
+                query = f"""
+                    SELECT 
+                        ur.id, ur.title, ur.created_by_organization_id, ur.cuisine, ur.image_url,
+                        ur.prep_time, ur.cook_time, ur.total_time, ur.servings,
+                        ur.complexity, ur.diet_tags, ur.is_verified,
+                        'custom' as recipe_source, ur.is_public
+                    FROM user_recipes ur
+                    WHERE {where_clause}
+                    ORDER BY ur.title ASC
+                    LIMIT %s OFFSET %s
+                """
+                
+                user_params = params + [limit // 2 if source == 'all' else limit, offset if source != 'all' else 0]
+                cur.execute(query, user_params)
+                user_results = cur.fetchall()
+                
+                for row in user_results:
+                    all_recipes.append({
+                        "id": row[0],
+                        "title": row[1],
+                        "recipe_name": row[1],  # For consistency
+                        "source": "Custom Recipe" if row[2] == organization_id else "Public Recipe",
+                        "cuisine": row[3],
+                        "image_url": row[4],
+                        "prep_time": row[5],
+                        "cook_time": row[6],
+                        "total_time": row[7],
+                        "servings": row[8],
+                        "complexity": row[9],
+                        "diet_tags": json.loads(row[10]) if row[10] else [],
+                        "is_verified": row[11],
+                        "recipe_source": row[12],
+                        "recipe_type": "user",
+                        "is_public": row[13]
+                    })
+            
+            # Sort combined results by title
+            all_recipes.sort(key=lambda x: x['title'])
+            
+            return all_recipes[:limit]  # Ensure we don't exceed the limit
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting all available recipes: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get available recipes"
+        )
+    finally:
+        conn.close()

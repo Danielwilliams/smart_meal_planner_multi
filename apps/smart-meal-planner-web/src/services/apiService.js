@@ -3573,6 +3573,70 @@ const apiService = {
     }
   },
 
+  // Get all available recipes (scraped + user) for organization to add
+  async getAllAvailableRecipes(organizationId, params = {}) {
+    try {
+      const response = await axiosInstance.get(`/api/organization-recipes/${organizationId}/all-available-recipes`, { params });
+      return response.data;
+    } catch (error) {
+      console.error('Get all available recipes error:', error);
+      throw error;
+    }
+  },
+
+  // User Recipe Management Methods
+  async getUserRecipes(params = {}) {
+    try {
+      const response = await axiosInstance.get('/api/user-recipes', { params });
+      return response.data;
+    } catch (error) {
+      console.error('Get user recipes error:', error);
+      throw error;
+    }
+  },
+
+  async getUserRecipe(recipeId) {
+    try {
+      const response = await axiosInstance.get(`/api/user-recipes/${recipeId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Get user recipe error:', error);
+      throw error;
+    }
+  },
+
+  async createUserRecipe(recipeData, forOrganization = false) {
+    try {
+      const response = await axiosInstance.post('/api/user-recipes', recipeData, {
+        params: { for_organization: forOrganization }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Create user recipe error:', error);
+      throw error;
+    }
+  },
+
+  async updateUserRecipe(recipeId, recipeData) {
+    try {
+      const response = await axiosInstance.put(`/api/user-recipes/${recipeId}`, recipeData);
+      return response.data;
+    } catch (error) {
+      console.error('Update user recipe error:', error);
+      throw error;
+    }
+  },
+
+  async deleteUserRecipe(recipeId) {
+    try {
+      const response = await axiosInstance.delete(`/api/user-recipes/${recipeId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Delete user recipe error:', error);
+      throw error;
+    }
+  },
+
   // Generic request method for compatibility
   async request(url, options = {}) {
     try {
