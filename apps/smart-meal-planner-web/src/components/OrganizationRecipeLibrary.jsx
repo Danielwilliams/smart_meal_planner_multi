@@ -186,6 +186,11 @@ const OrganizationRecipeLibrary = () => {
 
       const response = await apiService.getOrganizationRecipes(organization.id, params);
       
+      console.log('Organization recipes response:', response);
+      if (response && response.length > 0) {
+        console.log('First recipe sample:', response[0]);
+      }
+      
       setRecipes(response || []);
       return response;
     } catch (err) {
@@ -281,6 +286,10 @@ const OrganizationRecipeLibrary = () => {
     if (!selectedRecipe) return;
 
     try {
+      console.log('handleUpdateRecipe called');
+      console.log('Full recipeForm state:', recipeForm);
+      console.log('recipeForm.tags specifically:', recipeForm.tags);
+      
       const updateData = {
         category_id: recipeForm.category_id,
         tags: recipeForm.tags || [],
@@ -576,7 +585,7 @@ const OrganizationRecipeLibrary = () => {
                 <CardContent sx={{ flexGrow: 1 }}>
                   <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={2}>
                     <Typography variant="h6" component="div">
-                      {recipe.recipe_name || `Recipe #${recipe.recipe_id}`}
+                      {recipe.recipe_name || recipe.title || (recipe.recipe_id ? `Recipe #${recipe.recipe_id}` : 'Unknown Recipe')}
                     </Typography>
                     <Chip
                       label={statusLabels[recipe.approval_status] || recipe.approval_status}
@@ -771,7 +780,7 @@ const OrganizationRecipeLibrary = () => {
             <React.Fragment key={recipe.id}>
               <ListItem>
                 <ListItemText
-                  primary={recipe.recipe_name || `Recipe #${recipe.recipe_id}`}
+                  primary={recipe.recipe_name || recipe.title || `Recipe #${recipe.recipe_id}`}
                   secondary={
                     <Box>
                       <Typography variant="body2" color="text.secondary">
@@ -897,7 +906,7 @@ const OrganizationRecipeLibrary = () => {
                   .map((recipe) => (
                     <ListItem key={recipe.id}>
                       <ListItemText 
-                        primary={recipe.recipe_name || `Recipe #${recipe.recipe_id}`}
+                        primary={recipe.recipe_name || recipe.title || `Recipe #${recipe.recipe_id}`}
                         secondary={`Used ${recipe.usage_count || 0} times`}
                       />
                     </ListItem>
@@ -946,7 +955,7 @@ const OrganizationRecipeLibrary = () => {
       {/* Recipe Detail Dialog */}
       <Dialog open={recipeDetailDialogOpen} onClose={() => setRecipeDetailDialogOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle>
-          Recipe Details: {selectedRecipe?.recipe_name || `Recipe #${selectedRecipe?.recipe_id}`}
+          Recipe Details: {selectedRecipe?.recipe_name || selectedRecipe?.title || `Recipe #${selectedRecipe?.recipe_id}`}
         </DialogTitle>
         <DialogContent>
           {selectedRecipe && (
@@ -1199,8 +1208,9 @@ const OrganizationRecipeLibrary = () => {
       <Dialog open={editRecipeDialogOpen} onClose={() => setEditRecipeDialogOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle>Edit Recipe Settings</DialogTitle>
         <DialogContent>
+          <form onSubmit={(e) => e.preventDefault()}>
           <Typography variant="body1" gutterBottom>
-            Recipe: {selectedRecipe?.recipe_name || `Recipe #${selectedRecipe?.recipe_id}`}
+            Recipe: {selectedRecipe?.recipe_name || selectedRecipe?.title || `Recipe #${selectedRecipe?.recipe_id}`}
           </Typography>
           <FormControl fullWidth margin="dense">
             <InputLabel>Category</InputLabel>
@@ -1307,6 +1317,7 @@ const OrganizationRecipeLibrary = () => {
             onChange={(e) => setRecipeForm(prev => ({...prev, client_notes: e.target.value}))}
             helperText="Notes visible to clients"
           />
+          </form>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setEditRecipeDialogOpen(false)}>Cancel</Button>
@@ -1535,7 +1546,7 @@ const OrganizationRecipeLibrary = () => {
       {/* Approval Dialog */}
       <Dialog open={approvalDialogOpen} onClose={() => setApprovalDialogOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle>
-          Review Recipe: {selectedRecipe?.recipe_name || `Recipe #${selectedRecipe?.recipe_id}`}
+          Review Recipe: {selectedRecipe?.recipe_name || selectedRecipe?.title || `Recipe #${selectedRecipe?.recipe_id}`}
         </DialogTitle>
         <DialogContent>
           <FormControlLabel
