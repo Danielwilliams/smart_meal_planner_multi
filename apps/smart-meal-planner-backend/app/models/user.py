@@ -596,3 +596,123 @@ class RecipeApprovalResponse(BaseModel):
     approved: bool
     approval_notes: Optional[str] = None
     compliance_notes: Optional[str] = None
+
+# User Recipe Models
+
+class UserRecipeIngredient(BaseModel):
+    """Model for recipe ingredients"""
+    id: Optional[int] = None
+    name: str
+    amount: Optional[str] = None
+    unit: Optional[str] = None
+    notes: Optional[str] = None
+    sort_order: int = 0
+    is_optional: bool = False
+
+class UserRecipeStep(BaseModel):
+    """Model for recipe steps"""
+    id: Optional[int] = None
+    step_number: int
+    instruction: str
+    notes: Optional[str] = None
+    estimated_time: Optional[int] = None
+
+class UserRecipeCreate(BaseModel):
+    """Model for creating a new user recipe"""
+    title: str
+    description: Optional[str] = None
+    instructions: Optional[str] = None
+    prep_time: Optional[int] = None
+    cook_time: Optional[int] = None
+    total_time: Optional[int] = None
+    servings: Optional[int] = None
+    cuisine: Optional[str] = None
+    complexity: Optional[str] = None
+    meal_category: Optional[str] = None
+    diet_tags: List[str] = []
+    custom_tags: List[str] = []
+    image_url: Optional[str] = None
+    calories_per_serving: Optional[int] = None
+    protein_grams: Optional[float] = None
+    carbs_grams: Optional[float] = None
+    fat_grams: Optional[float] = None
+    fiber_grams: Optional[float] = None
+    is_public: bool = False
+    ingredients: List[UserRecipeIngredient] = []
+    steps: List[UserRecipeStep] = []
+
+class UserRecipeUpdate(BaseModel):
+    """Model for updating a user recipe"""
+    title: Optional[str] = None
+    description: Optional[str] = None
+    instructions: Optional[str] = None
+    prep_time: Optional[int] = None
+    cook_time: Optional[int] = None
+    total_time: Optional[int] = None
+    servings: Optional[int] = None
+    cuisine: Optional[str] = None
+    complexity: Optional[str] = None
+    meal_category: Optional[str] = None
+    diet_tags: Optional[List[str]] = None
+    custom_tags: Optional[List[str]] = None
+    image_url: Optional[str] = None
+    calories_per_serving: Optional[int] = None
+    protein_grams: Optional[float] = None
+    carbs_grams: Optional[float] = None
+    fat_grams: Optional[float] = None
+    fiber_grams: Optional[float] = None
+    is_public: Optional[bool] = None
+    ingredients: Optional[List[UserRecipeIngredient]] = None
+    steps: Optional[List[UserRecipeStep]] = None
+
+class UserRecipe(BaseModel):
+    """Model for user recipe response"""
+    id: int
+    created_by_user_id: Optional[int] = None
+    created_by_organization_id: Optional[int] = None
+    title: str
+    description: Optional[str] = None
+    instructions: Optional[str] = None
+    prep_time: Optional[int] = None
+    cook_time: Optional[int] = None
+    total_time: Optional[int] = None
+    servings: Optional[int] = None
+    cuisine: Optional[str] = None
+    complexity: Optional[str] = None
+    meal_category: Optional[str] = None
+    diet_tags: List[str] = []
+    custom_tags: List[str] = []
+    image_url: Optional[str] = None
+    calories_per_serving: Optional[int] = None
+    protein_grams: Optional[float] = None
+    carbs_grams: Optional[float] = None
+    fat_grams: Optional[float] = None
+    fiber_grams: Optional[float] = None
+    is_public: bool = False
+    is_verified: bool = False
+    is_active: bool = True
+    created_at: datetime
+    updated_at: datetime
+    ingredients: List[UserRecipeIngredient] = []
+    steps: List[UserRecipeStep] = []
+
+class UserRecipeListItem(BaseModel):
+    """Simplified model for recipe lists"""
+    id: int
+    title: str
+    description: Optional[str] = None
+    prep_time: Optional[int] = None
+    cook_time: Optional[int] = None
+    total_time: Optional[int] = None
+    servings: Optional[int] = None
+    cuisine: Optional[str] = None
+    complexity: Optional[str] = None
+    meal_category: Optional[str] = None
+    diet_tags: List[str] = []
+    custom_tags: List[str] = []
+    image_url: Optional[str] = None
+    calories_per_serving: Optional[int] = None
+    is_public: bool = False
+    created_at: datetime
+    created_by_user_id: Optional[int] = None
+    created_by_organization_id: Optional[int] = None
