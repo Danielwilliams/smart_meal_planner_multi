@@ -115,6 +115,12 @@ const OrganizationRecipeLibrary = () => {
     client_notes: ''
   });
   
+  // Recipe Browser State
+  const [availableRecipes, setAvailableRecipes] = useState([]);
+  const [recipeSearchTerm, setRecipeSearchTerm] = useState('');
+  const [selectedAvailableRecipe, setSelectedAvailableRecipe] = useState(null);
+  const [loadingAvailableRecipes, setLoadingAvailableRecipes] = useState(false);
+  
   // Approval State
   const [approvalForm, setApprovalForm] = useState({
     approved: true,
@@ -191,6 +197,23 @@ const OrganizationRecipeLibrary = () => {
     }
   };
 
+  const loadAvailableRecipes = async () => {
+    try {
+      setLoadingAvailableRecipes(true);
+      const response = await apiService.getAvailableRecipes({
+        limit: 100, // Get first 100 recipes
+        search: recipeSearchTerm
+      });
+      
+      setAvailableRecipes(response || []);
+    } catch (err) {
+      console.error('Error loading available recipes:', err);
+      setError('Failed to load available recipes');
+    } finally {
+      setLoadingAvailableRecipes(false);
+    }
+  };
+
   const handleCreateCategory = async () => {
     try {
       const response = await apiService.createOrganizationRecipeCategory(organization.id, categoryForm);
@@ -205,10 +228,18 @@ const OrganizationRecipeLibrary = () => {
   };
 
   const handleAddRecipe = async () => {
+    if (!selectedAvailableRecipe) {
+      setError('Please select a recipe to add');
+      return;
+    }
+
     try {
       const response = await apiService.addRecipeToOrganization(organization.id, {
-        ...recipeForm,
-        tags: recipeForm.tags || []
+        recipe_id: selectedAvailableRecipe.id,
+        category_id: recipeForm.category_id,
+        tags: recipeForm.tags || [],
+        internal_notes: recipeForm.internal_notes,
+        client_notes: recipeForm.client_notes
       });
 
       setRecipes(prev => [...prev, response]);
@@ -220,10 +251,18 @@ const OrganizationRecipeLibrary = () => {
         internal_notes: '',
         client_notes: ''
       });
+      setSelectedAvailableRecipe(null);
+      setRecipeSearchTerm('');
+      setAvailableRecipes([]);
     } catch (err) {
       setError('Failed to add recipe to library');
       console.error('Error adding recipe:', err);
     }
+  };
+
+  const handleOpenRecipeDialog = () => {
+    setRecipeDialogOpen(true);
+    loadAvailableRecipes();
   };
 
   const handleApprovalSubmit = async () => {
@@ -402,7 +441,7 @@ const OrganizationRecipeLibrary = () => {
                 fullWidth
                 variant="contained"
                 startIcon={<AddIcon />}
-                onClick={() => setRecipeDialogOpen(true)}
+                onClick={handleOpenRecipeDialog}
               >
                 Add Recipe
               </Button>
@@ -569,7 +608,7 @@ const OrganizationRecipeLibrary = () => {
             <Button
               variant="contained"
               startIcon={<AddIcon />}
-              onClick={() => setRecipeDialogOpen(true)}
+              onClick={handleOpenRecipeDialog}
             >
               Add First Recipe
             </Button>
@@ -756,87 +795,198 @@ const OrganizationRecipeLibrary = () => {
         </DialogActions>
       </Dialog>
 
-      {/* Recipe Dialog */}
-      <Dialog open={recipeDialogOpen} onClose={() => setRecipeDialogOpen(false)} maxWidth="md" fullWidth>
+      {/* Recipe Browser Dialog */}
+      <Dialog open={recipeDialogOpen} onClose={() => setRecipeDialogOpen(false)} maxWidth="lg" fullWidth>
         <DialogTitle>Add Recipe to Library</DialogTitle>
         <DialogContent>
-          <TextField
-            margin="dense"
-            label="Recipe ID"
-            fullWidth
-            type="number"
-            value={recipeForm.recipe_id}
-            onChange={(e) => setRecipeForm(prev => ({...prev, recipe_id: e.target.value}))}
-            helperText="Enter the ID of an existing recipe to add to your organization library"
-          />
-          <FormControl fullWidth margin="dense">
-            <InputLabel>Category</InputLabel>
-            <Select
-              value={recipeForm.category_id}
-              onChange={(e) => setRecipeForm(prev => ({...prev, category_id: e.target.value}))}
-              label="Category"
-            >
-              <MenuItem value="">No Category</MenuItem>
-              {categories.map(cat => (
-                <MenuItem key={cat.id} value={cat.id}>
-                  <Box display="flex" alignItems="center">
-                    <Box 
-                      sx={{ 
-                        width: 12, 
-                        height: 12, 
-                        borderRadius: '50%', 
-                        bgcolor: cat.color, 
-                        mr: 1 
-                      }} 
-                    />
-                    {cat.name}
-                  </Box>
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <Autocomplete
-            multiple
-            freeSolo
-            options={[]}
-            value={recipeForm.tags || []}
-            onChange={(event, newValue) => {
-              setRecipeForm(prev => ({...prev, tags: newValue}));
-            }}
-            renderInput={(params) => (
+          <Box sx={{ display: 'flex', gap: 3 }}>
+            {/* Recipe Browser Section */}
+            <Box sx={{ flex: 1 }}>
+              <Typography variant="h6" gutterBottom>Browse Available Recipes</Typography>
+              
               <TextField
-                {...params}
-                margin="dense"
-                label="Tags"
-                placeholder="Add tags..."
-                helperText="Press Enter to add custom tags"
+                fullWidth
+                size="small"
+                placeholder="Search recipes..."
+                value={recipeSearchTerm}
+                onChange={(e) => {
+                  setRecipeSearchTerm(e.target.value);
+                  // Debounce search by reloading after a delay
+                  clearTimeout(window.recipeSearchTimeout);
+                  window.recipeSearchTimeout = setTimeout(() => {
+                    loadAvailableRecipes();
+                  }, 500);
+                }}
+                sx={{ mb: 2 }}
               />
-            )}
-          />
-          <TextField
-            margin="dense"
-            label="Internal Notes"
-            fullWidth
-            multiline
-            rows={3}
-            value={recipeForm.internal_notes}
-            onChange={(e) => setRecipeForm(prev => ({...prev, internal_notes: e.target.value}))}
-            helperText="Private notes for organization staff only"
-          />
-          <TextField
-            margin="dense"
-            label="Client Notes"
-            fullWidth
-            multiline
-            rows={3}
-            value={recipeForm.client_notes}
-            onChange={(e) => setRecipeForm(prev => ({...prev, client_notes: e.target.value}))}
-            helperText="Notes visible to clients"
-          />
+
+              {loadingAvailableRecipes ? (
+                <Box display="flex" justifyContent="center" p={3}>
+                  <CircularProgress />
+                </Box>
+              ) : (
+                <Box sx={{ maxHeight: 400, overflowY: 'auto', border: '1px solid #e0e0e0', borderRadius: 1 }}>
+                  {availableRecipes.length === 0 ? (
+                    <Box p={3} textAlign="center">
+                      <Typography color="text.secondary">
+                        {recipeSearchTerm ? 'No recipes found matching your search' : 'No recipes available'}
+                      </Typography>
+                    </Box>
+                  ) : (
+                    availableRecipes.map((recipe) => (
+                      <Box
+                        key={recipe.id}
+                        onClick={() => setSelectedAvailableRecipe(recipe)}
+                        sx={{
+                          p: 2,
+                          cursor: 'pointer',
+                          backgroundColor: selectedAvailableRecipe?.id === recipe.id ? '#e3f2fd' : 'transparent',
+                          borderBottom: '1px solid #f0f0f0',
+                          '&:hover': { backgroundColor: '#f5f5f5' }
+                        }}
+                      >
+                        <Box display="flex" gap={2}>
+                          {recipe.image_url && (
+                            <Box
+                              component="img"
+                              src={recipe.image_url}
+                              alt={recipe.title}
+                              sx={{ width: 60, height: 60, borderRadius: 1, objectFit: 'cover' }}
+                            />
+                          )}
+                          <Box flex={1}>
+                            <Typography variant="subtitle2" fontWeight="bold">
+                              {recipe.title}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              {recipe.cuisine && `${recipe.cuisine} • `}
+                              {recipe.total_time && `${recipe.total_time} min • `}
+                              {recipe.servings && `${recipe.servings} servings`}
+                            </Typography>
+                            {recipe.diet_tags && recipe.diet_tags.length > 0 && (
+                              <Box mt={1}>
+                                {recipe.diet_tags.slice(0, 3).map((tag, idx) => (
+                                  <Chip key={idx} label={tag} size="small" sx={{ mr: 0.5, fontSize: '0.7rem' }} />
+                                ))}
+                              </Box>
+                            )}
+                          </Box>
+                        </Box>
+                      </Box>
+                    ))
+                  )}
+                </Box>
+              )}
+            </Box>
+
+            {/* Configuration Section */}
+            <Box sx={{ flex: 1 }}>
+              <Typography variant="h6" gutterBottom>Recipe Configuration</Typography>
+              
+              {selectedAvailableRecipe ? (
+                <Box>
+                  <Paper sx={{ p: 2, mb: 2, backgroundColor: '#f8f9fa' }}>
+                    <Typography variant="subtitle1" fontWeight="bold">
+                      Selected: {selectedAvailableRecipe.title}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {selectedAvailableRecipe.cuisine && `${selectedAvailableRecipe.cuisine} • `}
+                      {selectedAvailableRecipe.total_time && `${selectedAvailableRecipe.total_time} min`}
+                    </Typography>
+                  </Paper>
+
+                  <FormControl fullWidth margin="dense">
+                    <InputLabel>Category</InputLabel>
+                    <Select
+                      value={recipeForm.category_id}
+                      onChange={(e) => setRecipeForm(prev => ({...prev, category_id: e.target.value}))}
+                      label="Category"
+                    >
+                      <MenuItem value="">No Category</MenuItem>
+                      {categories.map(cat => (
+                        <MenuItem key={cat.id} value={cat.id}>
+                          <Box display="flex" alignItems="center">
+                            <Box 
+                              sx={{ 
+                                width: 12, 
+                                height: 12, 
+                                borderRadius: '50%', 
+                                bgcolor: cat.color, 
+                                mr: 1 
+                              }} 
+                            />
+                            {cat.name}
+                          </Box>
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  
+                  <Autocomplete
+                    multiple
+                    freeSolo
+                    options={[]}
+                    value={recipeForm.tags || []}
+                    onChange={(event, newValue) => {
+                      setRecipeForm(prev => ({...prev, tags: newValue}));
+                    }}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        margin="dense"
+                        label="Tags"
+                        placeholder="Add tags..."
+                        helperText="Press Enter to add custom tags"
+                      />
+                    )}
+                  />
+                  
+                  <TextField
+                    margin="dense"
+                    label="Internal Notes"
+                    fullWidth
+                    multiline
+                    rows={3}
+                    value={recipeForm.internal_notes}
+                    onChange={(e) => setRecipeForm(prev => ({...prev, internal_notes: e.target.value}))}
+                    helperText="Private notes for organization staff only"
+                  />
+                  
+                  <TextField
+                    margin="dense"
+                    label="Client Notes"
+                    fullWidth
+                    multiline
+                    rows={3}
+                    value={recipeForm.client_notes}
+                    onChange={(e) => setRecipeForm(prev => ({...prev, client_notes: e.target.value}))}
+                    helperText="Notes visible to clients"
+                  />
+                </Box>
+              ) : (
+                <Box textAlign="center" py={4}>
+                  <Typography color="text.secondary">
+                    Select a recipe from the list to configure it for your organization
+                  </Typography>
+                </Box>
+              )}
+            </Box>
+          </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setRecipeDialogOpen(false)}>Cancel</Button>
-          <Button onClick={handleAddRecipe} variant="contained">Add Recipe</Button>
+          <Button onClick={() => {
+            setRecipeDialogOpen(false);
+            setSelectedAvailableRecipe(null);
+            setRecipeSearchTerm('');
+            setAvailableRecipes([]);
+          }}>Cancel</Button>
+          <Button 
+            onClick={handleAddRecipe} 
+            variant="contained"
+            disabled={!selectedAvailableRecipe}
+          >
+            Add Recipe
+          </Button>
         </DialogActions>
       </Dialog>
 

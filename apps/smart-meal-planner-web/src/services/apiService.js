@@ -3562,6 +3562,17 @@ const apiService = {
     }
   },
 
+  // Get available scraped recipes for organization to add
+  async getAvailableRecipes(params = {}) {
+    try {
+      const response = await axiosInstance.get('/api/scraped-recipes', { params });
+      return response.data;
+    } catch (error) {
+      console.error('Get available recipes error:', error);
+      throw error;
+    }
+  },
+
   // Generic request method for compatibility
   async request(url, options = {}) {
     try {
