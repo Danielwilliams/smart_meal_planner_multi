@@ -3565,7 +3565,7 @@ const apiService = {
   // Get available scraped recipes for organization to add
   async getAvailableRecipes(params = {}) {
     try {
-      const response = await axiosInstance.get('/api/scraped-recipes', { params });
+      const response = await axiosInstance.get('/scraped-recipes', { params });
       return response.data;
     } catch (error) {
       console.error('Get available recipes error:', error);
