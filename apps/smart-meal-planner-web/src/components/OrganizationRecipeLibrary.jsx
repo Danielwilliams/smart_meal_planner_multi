@@ -96,6 +96,8 @@ const OrganizationRecipeLibrary = () => {
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
   const [recipeDialogOpen, setRecipeDialogOpen] = useState(false);
   const [approvalDialogOpen, setApprovalDialogOpen] = useState(false);
+  const [recipeDetailDialogOpen, setRecipeDetailDialogOpen] = useState(false);
+  const [editRecipeDialogOpen, setEditRecipeDialogOpen] = useState(false);
   const [selectedRecipe, setSelectedRecipe] = useState(null);
   
   // Category Form State
@@ -263,6 +265,61 @@ const OrganizationRecipeLibrary = () => {
   const handleOpenRecipeDialog = () => {
     setRecipeDialogOpen(true);
     loadAvailableRecipes();
+  };
+
+  const handleUpdateRecipe = async () => {
+    if (!selectedRecipe) return;
+
+    try {
+      const response = await apiService.updateOrganizationRecipe(
+        organization.id, 
+        selectedRecipe.id, 
+        {
+          category_id: recipeForm.category_id,
+          tags: recipeForm.tags || [],
+          internal_notes: recipeForm.internal_notes,
+          client_notes: recipeForm.client_notes
+        }
+      );
+
+      // Update local state
+      setRecipes(prev => prev.map(recipe => 
+        recipe.id === selectedRecipe.id 
+          ? { ...recipe, ...response }
+          : recipe
+      ));
+
+      setEditRecipeDialogOpen(false);
+      setRecipeForm({
+        recipe_id: '',
+        category_id: '',
+        tags: [],
+        internal_notes: '',
+        client_notes: ''
+      });
+    } catch (err) {
+      setError('Failed to update recipe');
+      console.error('Error updating recipe:', err);
+    }
+  };
+
+  const handleSubmitForApproval = async (recipe) => {
+    try {
+      await apiService.updateOrganizationRecipe(organization.id, recipe.id, {
+        approval_status: 'pending',
+        submitted_for_approval_at: new Date().toISOString()
+      });
+
+      // Update local state
+      setRecipes(prev => prev.map(r => 
+        r.id === recipe.id 
+          ? { ...r, approval_status: 'pending', submitted_for_approval_at: new Date().toISOString() }
+          : r
+      ));
+    } catch (err) {
+      setError('Failed to submit recipe for approval');
+      console.error('Error submitting for approval:', err);
+    }
   };
 
   const handleApprovalSubmit = async () => {
@@ -544,8 +601,8 @@ const OrganizationRecipeLibrary = () => {
                         size="small"
                         startIcon={<ViewIcon />}
                         onClick={() => {
-                          // Navigate to recipe detail view
-                          window.open(`/recipe/${recipe.recipe_id}`, '_blank');
+                          setSelectedRecipe(recipe);
+                          setRecipeDetailDialogOpen(true);
                         }}
                       >
                         View
@@ -566,12 +623,24 @@ const OrganizationRecipeLibrary = () => {
                         >
                           Review
                         </Button>
-                      ) : (
+                      ) : recipe.approval_status === 'draft' ? (
+                        <Button
+                          fullWidth
+                          size="small"
+                          variant="outlined"
+                          color="primary"
+                          startIcon={<ApprovalIcon />}
+                          onClick={() => handleSubmitForApproval(recipe)}
+                        >
+                          Submit
+                        </Button>
+                      ) : recipe.approval_status === 'approved' ? (
                         <Button
                           fullWidth
                           size="small"
                           startIcon={<EditIcon />}
                           onClick={() => {
+                            setSelectedRecipe(recipe);
                             setRecipeForm({
                               recipe_id: recipe.recipe_id,
                               category_id: recipe.category_id || '',
@@ -579,7 +648,26 @@ const OrganizationRecipeLibrary = () => {
                               internal_notes: recipe.internal_notes || '',
                               client_notes: recipe.client_notes || ''
                             });
-                            setRecipeDialogOpen(true);
+                            setEditRecipeDialogOpen(true);
+                          }}
+                        >
+                          Edit
+                        </Button>
+                      ) : (
+                        <Button
+                          fullWidth
+                          size="small"
+                          startIcon={<EditIcon />}
+                          onClick={() => {
+                            setSelectedRecipe(recipe);
+                            setRecipeForm({
+                              recipe_id: recipe.recipe_id,
+                              category_id: recipe.category_id || '',
+                              tags: recipe.tags || [],
+                              internal_notes: recipe.internal_notes || '',
+                              client_notes: recipe.client_notes || ''
+                            });
+                            setEditRecipeDialogOpen(true);
                           }}
                         >
                           Edit
@@ -792,6 +880,179 @@ const OrganizationRecipeLibrary = () => {
         <DialogActions>
           <Button onClick={() => setCategoryDialogOpen(false)}>Cancel</Button>
           <Button onClick={handleCreateCategory} variant="contained">Create</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Recipe Detail Dialog */}
+      <Dialog open={recipeDetailDialogOpen} onClose={() => setRecipeDetailDialogOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>
+          Recipe Details: {selectedRecipe?.recipe_name || `Recipe #${selectedRecipe?.recipe_id}`}
+        </DialogTitle>
+        <DialogContent>
+          {selectedRecipe && (
+            <Box>
+              <Grid container spacing={3}>
+                <Grid item xs={12} md={6}>
+                  <Typography variant="h6" gutterBottom>Basic Information</Typography>
+                  <Box mb={2}>
+                    <Typography variant="body2" color="text.secondary">Recipe ID</Typography>
+                    <Typography variant="body1">{selectedRecipe.recipe_id}</Typography>
+                  </Box>
+                  <Box mb={2}>
+                    <Typography variant="body2" color="text.secondary">Status</Typography>
+                    <Chip 
+                      label={statusLabels[selectedRecipe.approval_status] || selectedRecipe.approval_status}
+                      size="small"
+                      sx={{ backgroundColor: statusColors[selectedRecipe.approval_status] || '#9e9e9e', color: 'white' }}
+                    />
+                  </Box>
+                  <Box mb={2}>
+                    <Typography variant="body2" color="text.secondary">Category</Typography>
+                    <Typography variant="body1">
+                      {categories.find(cat => cat.id === selectedRecipe.category_id)?.name || 'No Category'}
+                    </Typography>
+                  </Box>
+                  <Box mb={2}>
+                    <Typography variant="body2" color="text.secondary">Usage Count</Typography>
+                    <Typography variant="body1">{selectedRecipe.usage_count || 0} times</Typography>
+                  </Box>
+                  {selectedRecipe.last_used_at && (
+                    <Box mb={2}>
+                      <Typography variant="body2" color="text.secondary">Last Used</Typography>
+                      <Typography variant="body1">{new Date(selectedRecipe.last_used_at).toLocaleDateString()}</Typography>
+                    </Box>
+                  )}
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <Typography variant="h6" gutterBottom>Organization Settings</Typography>
+                  {selectedRecipe.tags && selectedRecipe.tags.length > 0 && (
+                    <Box mb={2}>
+                      <Typography variant="body2" color="text.secondary">Tags</Typography>
+                      <Box mt={1}>
+                        {selectedRecipe.tags.map((tag, idx) => (
+                          <Chip key={idx} label={tag} size="small" sx={{ mr: 0.5, mb: 0.5 }} />
+                        ))}
+                      </Box>
+                    </Box>
+                  )}
+                  {selectedRecipe.internal_notes && (
+                    <Box mb={2}>
+                      <Typography variant="body2" color="text.secondary">Internal Notes</Typography>
+                      <Paper sx={{ p: 2, backgroundColor: '#f5f5f5' }}>
+                        <Typography variant="body2">{selectedRecipe.internal_notes}</Typography>
+                      </Paper>
+                    </Box>
+                  )}
+                  {selectedRecipe.client_notes && (
+                    <Box mb={2}>
+                      <Typography variant="body2" color="text.secondary">Client Notes</Typography>
+                      <Paper sx={{ p: 2, backgroundColor: '#f0f8ff' }}>
+                        <Typography variant="body2">{selectedRecipe.client_notes}</Typography>
+                      </Paper>
+                    </Box>
+                  )}
+                </Grid>
+              </Grid>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRecipeDetailDialogOpen(false)}>Close</Button>
+          <Button 
+            variant="contained" 
+            startIcon={<EditIcon />}
+            onClick={() => {
+              setRecipeDetailDialogOpen(false);
+              setRecipeForm({
+                recipe_id: selectedRecipe.recipe_id,
+                category_id: selectedRecipe.category_id || '',
+                tags: selectedRecipe.tags || [],
+                internal_notes: selectedRecipe.internal_notes || '',
+                client_notes: selectedRecipe.client_notes || ''
+              });
+              setEditRecipeDialogOpen(true);
+            }}
+          >
+            Edit Recipe
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Edit Recipe Dialog */}
+      <Dialog open={editRecipeDialogOpen} onClose={() => setEditRecipeDialogOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Edit Recipe Settings</DialogTitle>
+        <DialogContent>
+          <Typography variant="body1" gutterBottom>
+            Recipe: {selectedRecipe?.recipe_name || `Recipe #${selectedRecipe?.recipe_id}`}
+          </Typography>
+          <FormControl fullWidth margin="dense">
+            <InputLabel>Category</InputLabel>
+            <Select
+              value={recipeForm.category_id}
+              onChange={(e) => setRecipeForm(prev => ({...prev, category_id: e.target.value}))}
+              label="Category"
+            >
+              <MenuItem value="">No Category</MenuItem>
+              {categories.map(cat => (
+                <MenuItem key={cat.id} value={cat.id}>
+                  <Box display="flex" alignItems="center">
+                    <Box 
+                      sx={{ 
+                        width: 12, 
+                        height: 12, 
+                        borderRadius: '50%', 
+                        bgcolor: cat.color, 
+                        mr: 1 
+                      }} 
+                    />
+                    {cat.name}
+                  </Box>
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <Autocomplete
+            multiple
+            freeSolo
+            options={[]}
+            value={recipeForm.tags || []}
+            onChange={(event, newValue) => {
+              setRecipeForm(prev => ({...prev, tags: newValue}));
+            }}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                margin="dense"
+                label="Tags"
+                placeholder="Add tags..."
+                helperText="Press Enter to add custom tags"
+              />
+            )}
+          />
+          <TextField
+            margin="dense"
+            label="Internal Notes"
+            fullWidth
+            multiline
+            rows={3}
+            value={recipeForm.internal_notes}
+            onChange={(e) => setRecipeForm(prev => ({...prev, internal_notes: e.target.value}))}
+            helperText="Private notes for organization staff only"
+          />
+          <TextField
+            margin="dense"
+            label="Client Notes"
+            fullWidth
+            multiline
+            rows={3}
+            value={recipeForm.client_notes}
+            onChange={(e) => setRecipeForm(prev => ({...prev, client_notes: e.target.value}))}
+            helperText="Notes visible to clients"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditRecipeDialogOpen(false)}>Cancel</Button>
+          <Button onClick={handleUpdateRecipe} variant="contained">Save Changes</Button>
         </DialogActions>
       </Dialog>
 
