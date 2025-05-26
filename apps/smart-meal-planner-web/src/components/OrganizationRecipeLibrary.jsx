@@ -153,6 +153,13 @@ const OrganizationRecipeLibrary = () => {
     }
   }, [organization?.id]);
 
+  // Reload recipes when filters change
+  useEffect(() => {
+    if (organization?.id) {
+      loadRecipes();
+    }
+  }, [organization?.id, selectedCategory, statusFilter, showApprovedOnly]);
+
   const loadData = async () => {
     try {
       setLoading(true);

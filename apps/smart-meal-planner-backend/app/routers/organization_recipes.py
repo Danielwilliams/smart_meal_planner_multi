@@ -181,32 +181,34 @@ async def get_organization_recipes(
     try:
         with conn.cursor() as cur:
             # Build dynamic query with filters
-            where_conditions = ["organization_id = %s"]
+            where_conditions = ["or_r.organization_id = %s"]
             params = [organization_id]
             
             if status_filter:
-                where_conditions.append("approval_status = %s")
+                where_conditions.append("or_r.approval_status = %s")
                 params.append(status_filter)
             
             if category_id:
-                where_conditions.append("category_id = %s")
+                where_conditions.append("or_r.category_id = %s")
                 params.append(category_id)
             
             if approved_only:
-                where_conditions.append("is_approved = TRUE")
+                where_conditions.append("or_r.is_approved = TRUE")
             
             where_clause = " AND ".join(where_conditions)
             
             cur.execute(f"""
                 SELECT 
-                    id, organization_id, recipe_id, category_id, is_approved,
-                    approval_status, tags, internal_notes, client_notes,
-                    meets_standards, compliance_notes, usage_count, last_used_at,
-                    approved_by, approved_at, submitted_for_approval_at,
-                    created_at, updated_at, created_by, updated_by
-                FROM organization_recipes
+                    or_r.id, or_r.organization_id, or_r.recipe_id, or_r.category_id, or_r.is_approved,
+                    or_r.approval_status, or_r.tags, or_r.internal_notes, or_r.client_notes,
+                    or_r.meets_standards, or_r.compliance_notes, or_r.usage_count, or_r.last_used_at,
+                    or_r.approved_by, or_r.approved_at, or_r.submitted_for_approval_at,
+                    or_r.created_at, or_r.updated_at, or_r.created_by, or_r.updated_by,
+                    sr.title as recipe_name, sr.cuisine, sr.total_time, sr.servings, sr.image_url
+                FROM organization_recipes or_r
+                LEFT JOIN scraped_recipes sr ON or_r.recipe_id = sr.id
                 WHERE {where_clause}
-                ORDER BY updated_at DESC
+                ORDER BY or_r.updated_at DESC
             """, params)
             
             recipes = cur.fetchall()
@@ -242,7 +244,12 @@ async def get_organization_recipes(
                         "created_at": recipe[16],
                         "updated_at": recipe[17],
                         "created_by": recipe[18],
-                        "updated_by": recipe[19]
+                        "updated_by": recipe[19],
+                        "recipe_name": recipe[20],
+                        "cuisine": recipe[21],
+                        "total_time": recipe[22],
+                        "servings": recipe[23],
+                        "image_url": recipe[24]
                     })
                 except Exception as recipe_error:
                     logger.warning(f"Error processing recipe {recipe[0]}: {recipe_error}")
