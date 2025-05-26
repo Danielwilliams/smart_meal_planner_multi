@@ -102,10 +102,7 @@ const MenuDefaultsSettings = () => {
   const loadMenuDefaults = async () => {
     try {
       setLoading(true);
-      const response = await apiService.request(
-        `/api/organization-recipes/${organization.id}/menu-defaults`,
-        { method: 'GET' }
-      );
+      const response = await apiService.getOrganizationMenuDefaults(organization.id);
       
       setMenuDefaults(response);
     } catch (err) {
@@ -121,14 +118,7 @@ const MenuDefaultsSettings = () => {
       setSaving(true);
       setError('');
       
-      await apiService.request(
-        `/api/organization-recipes/${organization.id}/menu-defaults`,
-        {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(menuDefaults)
-        }
-      );
+      await apiService.updateOrganizationMenuDefaults(organization.id, menuDefaults);
       
       setSuccess('Menu defaults saved successfully!');
       setTimeout(() => setSuccess(''), 3000);

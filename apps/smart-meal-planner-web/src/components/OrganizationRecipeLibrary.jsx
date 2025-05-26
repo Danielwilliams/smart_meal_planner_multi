@@ -162,15 +162,12 @@ const OrganizationRecipeLibrary = () => {
 
   const loadRecipes = async () => {
     try {
-      const params = new URLSearchParams();
-      if (selectedCategory) params.append('category_id', selectedCategory);
-      if (statusFilter !== 'all') params.append('status_filter', statusFilter);
-      if (showApprovedOnly) params.append('approved_only', 'true');
+      const params = {};
+      if (selectedCategory) params.category_id = selectedCategory;
+      if (statusFilter !== 'all') params.status_filter = statusFilter;
+      if (showApprovedOnly) params.approved_only = 'true';
 
-      const response = await apiService.request(
-        `/api/organization-recipes/${organization.id}/recipes?${params}`,
-        { method: 'GET' }
-      );
+      const response = await apiService.getOrganizationRecipes(organization.id, params);
       
       setRecipes(response || []);
       return response;
@@ -183,10 +180,7 @@ const OrganizationRecipeLibrary = () => {
 
   const loadCategories = async () => {
     try {
-      const response = await apiService.request(
-        `/api/organization-recipes/${organization.id}/categories`,
-        { method: 'GET' }
-      );
+      const response = await apiService.getOrganizationRecipeCategories(organization.id);
       
       setCategories(response || []);
       return response;
@@ -199,14 +193,7 @@ const OrganizationRecipeLibrary = () => {
 
   const handleCreateCategory = async () => {
     try {
-      const response = await apiService.request(
-        `/api/organization-recipes/${organization.id}/categories`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(categoryForm)
-        }
-      );
+      const response = await apiService.createOrganizationRecipeCategory(organization.id, categoryForm);
 
       setCategories(prev => [...prev, response]);
       setCategoryDialogOpen(false);
@@ -219,17 +206,10 @@ const OrganizationRecipeLibrary = () => {
 
   const handleAddRecipe = async () => {
     try {
-      const response = await apiService.request(
-        `/api/organization-recipes/${organization.id}/recipes`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ...recipeForm,
-            tags: recipeForm.tags || []
-          })
-        }
-      );
+      const response = await apiService.addRecipeToOrganization(organization.id, {
+        ...recipeForm,
+        tags: recipeForm.tags || []
+      });
 
       setRecipes(prev => [...prev, response]);
       setRecipeDialogOpen(false);
@@ -248,14 +228,7 @@ const OrganizationRecipeLibrary = () => {
 
   const handleApprovalSubmit = async () => {
     try {
-      await apiService.request(
-        `/api/organization-recipes/${organization.id}/recipes/${selectedRecipe.id}/approve`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(approvalForm)
-        }
-      );
+      await apiService.approveOrganizationRecipe(organization.id, selectedRecipe.id, approvalForm);
 
       // Reload recipes to reflect changes
       await loadRecipes();

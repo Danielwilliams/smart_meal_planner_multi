@@ -3459,6 +3459,124 @@ const apiService = {
       console.error('Get notes overview error:', error);
       throw error;
     }
+  },
+
+  // Organization Recipe Management Methods
+  async getOrganizationRecipes(organizationId, params = {}) {
+    try {
+      const response = await axiosInstance.get(`/api/organization-recipes/${organizationId}/recipes`, { params });
+      return response.data;
+    } catch (error) {
+      console.error('Get organization recipes error:', error);
+      throw error;
+    }
+  },
+
+  async getOrganizationRecipeCategories(organizationId) {
+    try {
+      const response = await axiosInstance.get(`/api/organization-recipes/${organizationId}/categories`);
+      return response.data;
+    } catch (error) {
+      console.error('Get organization recipe categories error:', error);
+      throw error;
+    }
+  },
+
+  async createOrganizationRecipeCategory(organizationId, categoryData) {
+    try {
+      const response = await axiosInstance.post(`/api/organization-recipes/${organizationId}/categories`, categoryData);
+      return response.data;
+    } catch (error) {
+      console.error('Create organization recipe category error:', error);
+      throw error;
+    }
+  },
+
+  async addRecipeToOrganization(organizationId, recipeData) {
+    try {
+      const response = await axiosInstance.post(`/api/organization-recipes/${organizationId}/recipes`, recipeData);
+      return response.data;
+    } catch (error) {
+      console.error('Add recipe to organization error:', error);
+      throw error;
+    }
+  },
+
+  async updateOrganizationRecipe(organizationId, recipeId, updateData) {
+    try {
+      const response = await axiosInstance.put(`/api/organization-recipes/${organizationId}/recipes/${recipeId}`, updateData);
+      return response.data;
+    } catch (error) {
+      console.error('Update organization recipe error:', error);
+      throw error;
+    }
+  },
+
+  async approveOrganizationRecipe(organizationId, recipeId, approvalData) {
+    try {
+      const response = await axiosInstance.post(`/api/organization-recipes/${organizationId}/recipes/${recipeId}/approve`, approvalData);
+      return response.data;
+    } catch (error) {
+      console.error('Approve organization recipe error:', error);
+      throw error;
+    }
+  },
+
+  async getOrganizationMenuDefaults(organizationId) {
+    try {
+      const response = await axiosInstance.get(`/api/organization-recipes/${organizationId}/menu-defaults`);
+      return response.data;
+    } catch (error) {
+      console.error('Get organization menu defaults error:', error);
+      throw error;
+    }
+  },
+
+  async updateOrganizationMenuDefaults(organizationId, defaultsData) {
+    try {
+      const response = await axiosInstance.put(`/api/organization-recipes/${organizationId}/menu-defaults`, defaultsData);
+      return response.data;
+    } catch (error) {
+      console.error('Update organization menu defaults error:', error);
+      throw error;
+    }
+  },
+
+  async getOrganizationNutritionalStandards(organizationId) {
+    try {
+      const response = await axiosInstance.get(`/api/organization-recipes/${organizationId}/nutritional-standards`);
+      return response.data;
+    } catch (error) {
+      console.error('Get organization nutritional standards error:', error);
+      throw error;
+    }
+  },
+
+  async createOrganizationNutritionalStandard(organizationId, standardData) {
+    try {
+      const response = await axiosInstance.post(`/api/organization-recipes/${organizationId}/nutritional-standards`, standardData);
+      return response.data;
+    } catch (error) {
+      console.error('Create organization nutritional standard error:', error);
+      throw error;
+    }
+  },
+
+  // Generic request method for compatibility
+  async request(url, options = {}) {
+    try {
+      const { method = 'GET', body, ...config } = options;
+      const response = await axiosInstance({
+        url,
+        method,
+        data: body,
+        ...config
+      });
+      return response.data;
+    } catch (error) {
+      console.error('API request error:', error);
+      throw error;
+    }
   }
 }; // Close the apiService object here
 
