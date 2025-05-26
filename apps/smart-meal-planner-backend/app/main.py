@@ -38,6 +38,7 @@ from app.routers import saved_recipes
 from app.routers import organizations
 from app.routers import organization_clients
 from app.routers import organization_settings
+from app.routers import organization_recipes
 from app.routers import onboarding_forms, client_notes
 from app.routers import invitations
 from app.routers import recipe_admin  # Add recipe admin router
@@ -134,6 +135,7 @@ def create_app() -> FastAPI:
     app.include_router(organizations.router)
     app.include_router(organization_clients.router)
     app.include_router(organization_settings.router, prefix="/api/organization-settings", tags=["organization-settings"])
+    app.include_router(organization_recipes.router)
     app.include_router(onboarding_forms.router)
     app.include_router(client_notes.router)
     app.include_router(invitations.router)

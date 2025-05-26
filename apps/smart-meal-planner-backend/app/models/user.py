@@ -436,3 +436,163 @@ class ClientNoteTemplate(BaseModel):
     created_at: datetime
     updated_at: datetime
     created_by: int
+
+# Organization Recipe Management Models
+
+class OrganizationRecipeCategoryCreate(BaseModel):
+    """Model for creating a recipe category"""
+    name: str
+    description: Optional[str] = None
+    color: Optional[str] = '#1976d2'
+    sort_order: Optional[int] = 0
+
+class OrganizationRecipeCategoryUpdate(BaseModel):
+    """Model for updating a recipe category"""
+    name: Optional[str] = None
+    description: Optional[str] = None
+    color: Optional[str] = None
+    sort_order: Optional[int] = None
+    is_active: Optional[bool] = None
+
+class OrganizationRecipeCategory(BaseModel):
+    """Complete recipe category model"""
+    id: int
+    organization_id: int
+    name: str
+    description: Optional[str]
+    color: str
+    sort_order: int
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+    created_by: int
+
+class OrganizationRecipeCreate(BaseModel):
+    """Model for adding a recipe to organization library"""
+    recipe_id: int
+    category_id: Optional[int] = None
+    tags: List[str] = []
+    internal_notes: Optional[str] = None
+    client_notes: Optional[str] = None
+
+class OrganizationRecipeUpdate(BaseModel):
+    """Model for updating organization recipe"""
+    category_id: Optional[int] = None
+    approval_status: Optional[str] = None
+    tags: Optional[List[str]] = None
+    internal_notes: Optional[str] = None
+    client_notes: Optional[str] = None
+    meets_standards: Optional[bool] = None
+    compliance_notes: Optional[str] = None
+
+class OrganizationRecipe(BaseModel):
+    """Complete organization recipe model"""
+    id: int
+    organization_id: int
+    recipe_id: int
+    category_id: Optional[int]
+    is_approved: bool
+    approval_status: str
+    tags: List[str]
+    internal_notes: Optional[str]
+    client_notes: Optional[str]
+    meets_standards: Optional[bool]
+    compliance_notes: Optional[str]
+    usage_count: int
+    last_used_at: Optional[datetime]
+    approved_by: Optional[int]
+    approved_at: Optional[datetime]
+    submitted_for_approval_at: Optional[datetime]
+    created_at: datetime
+    updated_at: datetime
+    created_by: int
+    updated_by: int
+
+class OrganizationMenuDefaultsUpdate(BaseModel):
+    """Model for updating organization menu defaults"""
+    default_planning_period: Optional[int] = Field(None, ge=1, le=30)
+    default_meals_per_day: Optional[int] = Field(None, ge=1, le=6)
+    include_snacks: Optional[bool] = None
+    default_snacks_per_day: Optional[int] = Field(None, ge=0, le=5)
+    serving_sizes: Optional[Dict[str, int]] = None
+    nutritional_targets: Optional[Dict[str, Any]] = None
+    dietary_defaults: Optional[Dict[str, Any]] = None
+    client_delivery_settings: Optional[Dict[str, Any]] = None
+
+class OrganizationMenuDefaults(BaseModel):
+    """Complete organization menu defaults model"""
+    id: int
+    organization_id: int
+    default_planning_period: int
+    default_meals_per_day: int
+    include_snacks: bool
+    default_snacks_per_day: int
+    serving_sizes: Dict[str, int]
+    nutritional_targets: Dict[str, Any]
+    dietary_defaults: Dict[str, Any]
+    client_delivery_settings: Dict[str, Any]
+    created_at: datetime
+    updated_at: datetime
+    updated_by: int
+
+class OrganizationNutritionalStandardCreate(BaseModel):
+    """Model for creating nutritional standards"""
+    name: str
+    description: Optional[str] = None
+    is_default: bool = False
+    daily_calorie_target: Optional[Dict[str, int]] = None
+    meal_calorie_distribution: Optional[Dict[str, int]] = None
+    macronutrient_targets: Optional[Dict[str, Any]] = None
+    micronutrient_priorities: List[str] = []
+    allergen_restrictions: List[str] = []
+    dietary_restrictions: List[str] = []
+    quality_preferences: Optional[Dict[str, bool]] = None
+    compliance_rules: Optional[Dict[str, Any]] = None
+
+class OrganizationNutritionalStandardUpdate(BaseModel):
+    """Model for updating nutritional standards"""
+    name: Optional[str] = None
+    description: Optional[str] = None
+    is_default: Optional[bool] = None
+    is_active: Optional[bool] = None
+    daily_calorie_target: Optional[Dict[str, int]] = None
+    meal_calorie_distribution: Optional[Dict[str, int]] = None
+    macronutrient_targets: Optional[Dict[str, Any]] = None
+    micronutrient_priorities: Optional[List[str]] = None
+    allergen_restrictions: Optional[List[str]] = None
+    dietary_restrictions: Optional[List[str]] = None
+    quality_preferences: Optional[Dict[str, bool]] = None
+    compliance_rules: Optional[Dict[str, Any]] = None
+
+class OrganizationNutritionalStandard(BaseModel):
+    """Complete nutritional standard model"""
+    id: int
+    organization_id: int
+    name: str
+    description: Optional[str]
+    is_default: bool
+    is_active: bool
+    daily_calorie_target: Dict[str, int]
+    meal_calorie_distribution: Dict[str, int]
+    macronutrient_targets: Dict[str, Any]
+    micronutrient_priorities: List[str]
+    allergen_restrictions: List[str]
+    dietary_restrictions: List[str]
+    quality_preferences: Dict[str, bool]
+    compliance_rules: Dict[str, Any]
+    created_at: datetime
+    updated_at: datetime
+    created_by: int
+    updated_by: int
+
+class RecipeApprovalRequest(BaseModel):
+    """Model for submitting recipes for approval"""
+    recipe_ids: List[int]
+    approval_notes: Optional[str] = None
+
+class RecipeApprovalResponse(BaseModel):
+    """Model for responding to recipe approval requests"""
+    recipe_id: int
+    approved: bool
+    approval_notes: Optional[str] = None
+    compliance_notes: Optional[str] = None
