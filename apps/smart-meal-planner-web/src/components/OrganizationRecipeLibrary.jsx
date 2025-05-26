@@ -1237,13 +1237,29 @@ const OrganizationRecipeLibrary = () => {
               console.log('Tag autocomplete changed:', newValue);
               setRecipeForm(prev => ({...prev, tags: newValue}));
             }}
+            onInputChange={(event, value, reason) => {
+              console.log('Autocomplete input change:', value, reason);
+            }}
             renderInput={(params) => (
               <TextField
                 {...params}
                 margin="dense"
                 label="Tags"
                 placeholder="Add tags..."
-                helperText="Press Enter to add custom tags"
+                helperText="Type and press Enter to add tags"
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && event.target.value.trim()) {
+                    event.preventDefault();
+                    const newTag = event.target.value.trim();
+                    const currentTags = recipeForm.tags || [];
+                    if (!currentTags.includes(newTag)) {
+                      const updatedTags = [...currentTags, newTag];
+                      console.log('Manually adding tag:', newTag, 'Updated tags:', updatedTags);
+                      setRecipeForm(prev => ({...prev, tags: updatedTags}));
+                      event.target.value = '';
+                    }
+                  }
+                }}
               />
             )}
           />
@@ -1412,6 +1428,7 @@ const OrganizationRecipeLibrary = () => {
                     options={[]}
                     value={recipeForm.tags || []}
                     onChange={(event, newValue) => {
+                      console.log('Recipe dialog tag autocomplete changed:', newValue);
                       setRecipeForm(prev => ({...prev, tags: newValue}));
                     }}
                     renderInput={(params) => (
@@ -1420,7 +1437,20 @@ const OrganizationRecipeLibrary = () => {
                         margin="dense"
                         label="Tags"
                         placeholder="Add tags..."
-                        helperText="Press Enter to add custom tags"
+                        helperText="Type and press Enter to add tags"
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' && event.target.value.trim()) {
+                            event.preventDefault();
+                            const newTag = event.target.value.trim();
+                            const currentTags = recipeForm.tags || [];
+                            if (!currentTags.includes(newTag)) {
+                              const updatedTags = [...currentTags, newTag];
+                              console.log('Manually adding tag in recipe dialog:', newTag, 'Updated tags:', updatedTags);
+                              setRecipeForm(prev => ({...prev, tags: updatedTags}));
+                              event.target.value = '';
+                            }
+                          }
+                        }}
                       />
                     )}
                   />

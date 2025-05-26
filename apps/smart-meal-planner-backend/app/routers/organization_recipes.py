@@ -431,8 +431,10 @@ async def update_organization_recipe(
                 params.append(recipe_data.category_id)
                 
             if recipe_data.tags is not None:
+                # Ensure tags is a list and properly serialize
+                tags_list = recipe_data.tags if isinstance(recipe_data.tags, list) else []
                 update_fields.append("tags = %s")
-                params.append(json.dumps(recipe_data.tags))
+                params.append(json.dumps(tags_list))
                 
             if recipe_data.internal_notes is not None:
                 update_fields.append("internal_notes = %s")
