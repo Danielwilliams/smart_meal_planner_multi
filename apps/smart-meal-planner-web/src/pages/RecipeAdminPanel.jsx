@@ -840,9 +840,15 @@ const RecipeAdminPanel = () => {
         });
         
         console.log('Preference tagging response:', response.data);
-        
+
         if (response.data.success) {
-          showAlert(`Tagged ${response.data.tagged_count} recipes with preferences: ${tagsDescription}`, 'success');
+          const count = response.data.tagged_count || 0;
+          if (count > 0) {
+            showAlert(`Tagged ${count} recipes with preferences: ${tagsDescription}`, 'success');
+          } else {
+            showAlert(`No recipes were tagged. Check the server logs for details.`, 'warning');
+            console.warn('Tagged count was 0. Full response:', response.data);
+          }
         } else {
           showAlert(`Tagging failed. Server message: ${response.data.message || 'Unknown error'}`, 'error');
         }

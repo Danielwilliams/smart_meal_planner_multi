@@ -832,6 +832,8 @@ async def tag_recipes_with_preferences(
                     """, (recipe_id, tag))
 
                 logger.info(f"Inserted {len(tags_to_insert)} tags for recipe {recipe_id}: {tags_to_insert}")
+
+                # Increment tagged count for successful processing
                 tagged_count += 1
 
                 results.append({
