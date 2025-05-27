@@ -271,8 +271,18 @@ This document provides a comprehensive overview of all files in the Smart Meal P
 - **Access**: Client accounts only
 
 **`OrganizationDashboard.jsx`** (`/organization/dashboard`)
-- **Purpose**: Main dashboard for nutrition coaches/organizations
-- **Features**: Client management overview, invitation system, analytics
+- **Purpose**: Comprehensive dashboard for nutrition coaches/organizations with 8-tab interface
+- **Features**: 
+  - **Getting Started Tab**: Interactive onboarding guide with quick start checklist
+  - **Clients Tab**: Client management overview, status tracking, quick actions
+  - **Invitations Tab**: Client invitation system with email workflow
+  - **Shared Menus Tab**: Menu sharing management and analytics  
+  - **Client Recipes Tab**: Client recipe preference monitoring
+  - **Onboarding Forms Tab**: Custom form builder with 8 field types, response management
+  - **Client Notes Tab**: Private client documentation system with templates
+  - **Recipe Library Tab**: Organization recipe library with approval workflow
+  - **Custom Recipes Tab**: Organization-specific recipe creation and management
+  - **Settings Tab**: Organization profile and configuration management
 - **Access**: Organization accounts only
 
 ### Client Management Pages
@@ -291,6 +301,18 @@ This document provides a comprehensive overview of all files in the Smart Meal P
 - **Purpose**: Authenticated client invitation connection process
 - **Features**: Post-authentication invitation acceptance, organization connection
 - **URL Parameters**: `?token=...&org=...`
+
+### Organization Settings & Management Pages
+
+**`OrganizationSettingsPage.jsx`** (`/organization/settings`)
+- **Purpose**: Organization profile and configuration management
+- **Features**: Organization details, branding, default preferences, team management
+- **Access**: Organization accounts only
+
+**`OrganizationSetup.jsx`** (`/organization/setup`)
+- **Purpose**: Initial organization account setup and configuration wizard
+- **Features**: Step-by-step organization onboarding, profile setup, initial configuration
+- **Access**: New organization accounts
 
 ### Menu & Recipe Management Pages
 
@@ -442,6 +464,74 @@ This document provides a comprehensive overview of all files in the Smart Meal P
 - **Purpose**: Client-specific saved recipe management
 - **Features**: Organization client recipe access
 
+### Organization Recipe Management Components
+**`OrganizationRecipeLibrary.jsx`** *(Organization Recipe Library)*
+- **Purpose**: Comprehensive organization recipe library management interface
+- **Features**: 
+  - 4-tab interface: Recipe Library, Approval Queue, Categories, Analytics
+  - Recipe browsing and search with filters (category, status, approval)
+  - Recipe approval workflow with status tracking (draft, pending, approved, needs_revision)
+  - Recipe categorization with color-coded categories
+  - Recipe details view with full nutritional and instruction information
+  - Recipe editing with tags, internal notes, and client notes
+  - Usage analytics and most-used recipe tracking
+  - Integration with scraped recipe catalog for adding new recipes
+
+**`OrganizationCustomRecipes.jsx`** *(Custom Recipe Creation)*
+- **Purpose**: Organization-specific custom recipe creation and management
+- **Features**:
+  - Custom recipe creation from scratch
+  - Recipe editing and management interface
+  - Diet tag management and categorization
+  - Image upload and recipe presentation
+  - Recipe sharing within organization
+  - Integration with CustomRecipeCreationDialog for detailed recipe input
+
+**`CustomRecipeCreationDialog.jsx`** *(Recipe Creation Dialog)*
+- **Purpose**: Comprehensive recipe creation and editing dialog
+- **Features**:
+  - Multi-step recipe creation wizard
+  - Ingredient management with quantities and units
+  - Step-by-step instruction creation
+  - Nutritional information input
+  - Diet tag assignment
+  - Image upload and management
+  - Recipe validation and error handling
+  - Support for both user and organization recipe creation modes
+
+### Organization Management Components  
+**`OrganizationGettingStarted.jsx`** *(Organization Onboarding)*
+- **Purpose**: Comprehensive getting started guide for new organizations
+- **Features**:
+  - 4-tab interface: Quick Start, All Features, Workflow Guide, Tips & Best Practices
+  - Interactive quick start checklist with progress tracking
+  - Detailed feature explanations with benefits and how-to guides
+  - Workflow guidance for organization setup and client management
+  - Best practice tips for successful nutrition coaching
+  - Integration with organization dashboard navigation
+
+**`ClientNotesManager.jsx`** *(Client Notes System)*
+- **Purpose**: Private client notes and documentation management
+- **Features**:
+  - Note creation with categories, priorities, and types
+  - Note templates for common scenarios
+  - Search and filtering capabilities
+  - Client-specific note organization
+  - Professional documentation tools
+
+**`OnboardingFormBuilder.jsx`** *(Form Creation)*
+- **Purpose**: Custom client onboarding form creation interface
+- **Features**:
+  - 8 different field types (text, select, radio, checkbox, etc.)
+  - Drag-and-drop form building
+  - Form preview and testing
+  - Template system for common forms
+  - Response collection and management
+
+**`OrganizationSetupCheck.jsx`** *(Setup Validation)*
+- **Purpose**: Organization setup progress validation
+- **Features**: Setup progress checking, requirement validation, onboarding completion tracking
+
 ### Store Integration Components
 **`StoreSelector.jsx`**
 - **Purpose**: Store selection interface for shopping
@@ -564,7 +654,20 @@ This document provides a comprehensive overview of all files in the Smart Meal P
 
 ## Recent Enhancements
 
-### Shopping List by Meal (Latest Feature)
+### Organization Recipe Management System (Latest Major Feature)
+- **Backend**: New `organization_recipes.py` router for comprehensive recipe library management
+- **Frontend**: `OrganizationRecipeLibrary.jsx` with 4-tab interface (Library, Approval Queue, Categories, Analytics)
+- **Features**: Recipe approval workflow, categorization, tagging, usage analytics, integration with catalog
+- **Custom Recipes**: `OrganizationCustomRecipes.jsx` and `CustomRecipeCreationDialog.jsx` for organization-specific recipe creation
+- **Getting Started**: Enhanced `OrganizationGettingStarted.jsx` with recipe library guidance and workflow integration
+
+### Comprehensive Organization Dashboard Enhancement
+- **Multi-Tab Interface**: 8-tab organization dashboard covering all aspects of nutrition coaching
+- **Client Management**: Enhanced client onboarding, notes system, and preference management
+- **Onboarding Forms**: Custom form builder with 8 field types and response management
+- **Client Notes**: Private documentation system with templates and categorization
+
+### Shopping List by Meal (Previous Feature)
 - **Backend**: New `meal_shopping_lists.py` router for meal-organized shopping lists
 - **Frontend**: Enhanced `MealShoppingList.jsx` with cart integration
 - **Features**: Individual meal ingredient display, cart buttons for Kroger/Instacart

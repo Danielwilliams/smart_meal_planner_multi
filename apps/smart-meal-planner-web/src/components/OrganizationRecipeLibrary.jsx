@@ -585,7 +585,7 @@ const OrganizationRecipeLibrary = () => {
                 <CardContent sx={{ flexGrow: 1 }}>
                   <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={2}>
                     <Typography variant="h6" component="div">
-                      {recipe.recipe_name || recipe.title || (recipe.recipe_id ? `Recipe #${recipe.recipe_id}` : 'Unknown Recipe')}
+                      {recipe.recipe_name || recipe.title || 'Unknown Recipe'}
                     </Typography>
                     <Chip
                       label={statusLabels[recipe.approval_status] || recipe.approval_status}
@@ -780,7 +780,7 @@ const OrganizationRecipeLibrary = () => {
             <React.Fragment key={recipe.id}>
               <ListItem>
                 <ListItemText
-                  primary={recipe.recipe_name || recipe.title || `Recipe #${recipe.recipe_id}`}
+                  primary={recipe.recipe_name || recipe.title || 'Unknown Recipe'}
                   secondary={
                     <Box>
                       <Typography variant="body2" color="text.secondary">
@@ -906,7 +906,7 @@ const OrganizationRecipeLibrary = () => {
                   .map((recipe) => (
                     <ListItem key={recipe.id}>
                       <ListItemText 
-                        primary={recipe.recipe_name || recipe.title || `Recipe #${recipe.recipe_id}`}
+                        primary={recipe.recipe_name || recipe.title || 'Unknown Recipe'}
                         secondary={`Used ${recipe.usage_count || 0} times`}
                       />
                     </ListItem>
@@ -955,7 +955,7 @@ const OrganizationRecipeLibrary = () => {
       {/* Recipe Detail Dialog */}
       <Dialog open={recipeDetailDialogOpen} onClose={() => setRecipeDetailDialogOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle>
-          Recipe Details: {selectedRecipe?.recipe_name || selectedRecipe?.title || `Recipe #${selectedRecipe?.recipe_id}`}
+          Recipe Details: {selectedRecipe?.recipe_name || selectedRecipe?.title || 'Unknown Recipe'}
         </DialogTitle>
         <DialogContent>
           {selectedRecipe && (
@@ -1210,7 +1210,7 @@ const OrganizationRecipeLibrary = () => {
         <DialogContent>
           <form onSubmit={(e) => e.preventDefault()}>
           <Typography variant="body1" gutterBottom>
-            Recipe: {selectedRecipe?.recipe_name || selectedRecipe?.title || `Recipe #${selectedRecipe?.recipe_id}`}
+            Recipe: {selectedRecipe?.recipe_name || selectedRecipe?.title || 'Unknown Recipe'}
           </Typography>
           <FormControl fullWidth margin="dense">
             <InputLabel>Category</InputLabel>
@@ -1546,7 +1546,7 @@ const OrganizationRecipeLibrary = () => {
       {/* Approval Dialog */}
       <Dialog open={approvalDialogOpen} onClose={() => setApprovalDialogOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle>
-          Review Recipe: {selectedRecipe?.recipe_name || selectedRecipe?.title || `Recipe #${selectedRecipe?.recipe_id}`}
+          Review Recipe: {selectedRecipe?.recipe_name || selectedRecipe?.title || 'Unknown Recipe'}
         </DialogTitle>
         <DialogContent>
           <FormControlLabel
