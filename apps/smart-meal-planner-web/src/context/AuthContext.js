@@ -80,8 +80,20 @@ export const AuthProvider = ({ children }) => {
   const logout = () => {
     setUser(null);
     setIsAuthenticated(false);
+    setAccountType(null);
+    
+    // Clear all localStorage items that might contain organization data
     localStorage.removeItem('user');
     localStorage.removeItem('access_token');
+    localStorage.removeItem('organization');
+    localStorage.removeItem('organizationData');
+    localStorage.removeItem('branding');
+    localStorage.removeItem('theme');
+    
+    // Clear any sessionStorage as well
+    sessionStorage.clear();
+    
+    console.log('AuthContext: Logout completed, all storage cleared');
   };
 
   const updateUserProgress = (progressData) => {
