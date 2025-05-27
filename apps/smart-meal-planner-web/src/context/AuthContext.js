@@ -71,10 +71,19 @@ export const AuthProvider = ({ children }) => {
       };
 
       // For client accounts, include organization information
-      if (response.account_type === 'client' && response.organization) {
-        userData.organization_id = response.organization.id;
-        userData.organization = response.organization;
-        console.log('AuthContext: Client login - stored organization data:', response.organization);
+      if (response.account_type === 'client') {
+        console.log('AuthContext: Processing client login response:', response);
+        
+        // The organization data might be directly in the response
+        if (response.organization) {
+          userData.organization_id = response.organization.id;
+          userData.organization = response.organization;
+          console.log('AuthContext: Client login - stored organization data from response.organization:', response.organization);
+        } else {
+          // Look for organization data in other possible locations
+          console.log('AuthContext: No organization found in response.organization, checking other locations');
+          console.log('Full response keys:', Object.keys(response));
+        }
       }
 
       setUser(userData);
