@@ -672,15 +672,19 @@ const OrganizationGettingStarted = ({ onNavigateToTab, onComplete, organizationN
                 color="primary"
                 component="a"
                 href="mailto:support@smartmealplannerio.com?subject=Organization Setup Help"
+                onClick={() => console.log('Contact Support button clicked')}
               >
                 Contact Support
               </Button>
               <Button
                 variant="outlined"
                 color="primary"
-                onClick={() => {
+                onClick={(e) => {
+                  e.preventDefault();
+                  console.log('View Documentation button clicked');
                   // Open documentation in a new window
-                  const newWindow = window.open('', '_blank');
+                  try {
+                    const newWindow = window.open('', '_blank');
                   const docHTML = `
                     <html>
                       <head>
@@ -729,8 +733,18 @@ const OrganizationGettingStarted = ({ onNavigateToTab, onComplete, organizationN
                       </body>
                     </html>
                   `;
-                  newWindow.document.write(docHTML);
-                  newWindow.document.close();
+                  if (newWindow) {
+                    newWindow.document.write(docHTML);
+                    newWindow.document.close();
+                    console.log('Documentation window opened successfully');
+                  } else {
+                    console.error('Failed to open new window - popup blocked?');
+                    alert('Documentation popup was blocked. Please allow popups for this site and try again.');
+                  }
+                  } catch (error) {
+                    console.error('Error opening documentation:', error);
+                    alert('Error opening documentation. Please try again.');
+                  }
                 }}
               >
                 View Documentation
@@ -739,7 +753,7 @@ const OrganizationGettingStarted = ({ onNavigateToTab, onComplete, organizationN
                 variant="outlined"
                 color="primary"
                 component="a"
-                href="mailto:support@smartmealplannerio.com?subject=Training Call Request&body=I would like to schedule a training call for my organization. Please let me know your availability."
+                href="mailto:daniel@smartmealplannerio.com?subject=Training Call Request&body=I would like to schedule a training call for my organization. Please let me know your availability."
               >
                 Schedule Training Call
               </Button>
