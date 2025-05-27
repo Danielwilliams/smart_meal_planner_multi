@@ -78,20 +78,25 @@ export const BrandingProvider = ({ children }) => {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    loadBranding();
+    // Always reset to default theme first, then load branding if applicable
+    setBranding(null);
+    setTheme(createDefaultTheme());
+    
+    // Only load branding after a short delay to ensure theme reset is applied
+    const timeoutId = setTimeout(() => {
+      loadBranding();
+    }, 50);
+
+    return () => clearTimeout(timeoutId);
   }, [user, organization]);
 
   const loadBranding = async () => {
     try {
       setLoading(true);
-      let brandingData = null;
-      
-      // IMPORTANT: Always reset to default first
-      setBranding(null);
-      setTheme(createDefaultTheme());
       
       // If no user or user is individual, stay with default theme
       if (!user || user?.account_type === 'individual') {
+        console.log('BrandingContext: No user or individual user, using default theme');
         return;
       }
       
@@ -99,21 +104,27 @@ export const BrandingProvider = ({ children }) => {
       const organizationId = user?.organization_id || organization?.id;
       
       if (organizationId && (user?.account_type === 'organization' || user?.account_type === 'client')) {
+        console.log('BrandingContext: Loading branding for org:', organizationId, 'user type:', user?.account_type);
         // Try to load organization branding
         try {
           const response = await apiService.get(`/api/organization-branding/${organizationId}/branding/public`);
-          brandingData = response;
+          const brandingData = response;
           
           // Only apply branding if we successfully loaded it
           if (brandingData) {
+            console.log('BrandingContext: Successfully loaded branding data');
             const customTheme = createBrandedTheme(brandingData);
             setBranding(brandingData);
             setTheme(customTheme);
+          } else {
+            console.log('BrandingContext: No branding data received');
           }
         } catch (error) {
           console.warn('Could not load organization branding, using defaults:', error);
           // Keep default theme for any errors
         }
+      } else {
+        console.log('BrandingContext: No organization context, staying with default theme');
       }
       
     } catch (error) {
