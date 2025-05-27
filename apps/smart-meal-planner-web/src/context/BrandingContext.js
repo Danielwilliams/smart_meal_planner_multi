@@ -102,9 +102,9 @@ export const BrandingProvider = ({ children }) => {
         organizationData: organization
       });
       
-      // If no user or user is individual, stay with default theme
-      if (!user || user?.account_type === 'individual') {
-        console.log('BrandingContext: No user or individual user, using default theme');
+      // If no user or user is not organization/client, stay with default theme
+      if (!user || (user?.account_type !== 'organization' && user?.account_type !== 'client')) {
+        console.log('BrandingContext: No user or non-organization/client user, using default theme. Account type:', user?.account_type);
         return;
       }
       
@@ -155,8 +155,8 @@ export const BrandingProvider = ({ children }) => {
     // Always start with default theme
     const defaultTheme = createDefaultTheme();
     
-    // If no branding data or individual user, return default theme
-    if (!brandingData || user?.account_type === 'individual') {
+    // If no branding data or non-organization/client user, return default theme
+    if (!brandingData || (user?.account_type !== 'organization' && user?.account_type !== 'client')) {
       return defaultTheme;
     }
 
@@ -261,8 +261,8 @@ export const withBrandingGuard = (WrappedComponent) => {
   return (props) => {
     const { user } = useAuth();
     
-    // Individual users get default theme only
-    if (user?.account_type === 'individual') {
+    // Non-organization users get default theme only
+    if (user?.account_type !== 'organization' && user?.account_type !== 'client') {
       return (
         <ThemeProvider theme={createDefaultTheme()}>
           <WrappedComponent {...props} />

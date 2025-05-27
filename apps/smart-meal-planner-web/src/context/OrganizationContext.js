@@ -19,12 +19,18 @@ export const OrganizationProvider = ({ children }) => {
       const fetchOrganizationData = async () => {
         // Exit early if user isn't authenticated or isn't an organization account
         if (!isAuthenticated || !user) {
-          console.log('Not authenticated or no user data, skipping org data fetch');
+          console.log('Not authenticated or no user data, clearing org data');
+          setOrganization(null);
+          setClients([]);
+          setIsOwner(false);
           return;
         }
         
         if (user.account_type !== 'organization') {
-          console.log('User is not an organization account, skipping org data fetch');
+          console.log('User is not an organization account, clearing org data. Account type:', user.account_type);
+          setOrganization(null);
+          setClients([]);
+          setIsOwner(false);
           return;
         }
 
@@ -42,23 +48,6 @@ export const OrganizationProvider = ({ children }) => {
             // Handle case when API returns null or undefined
             if (!orgResponse) {
               console.warn('Received null/undefined organization response');
-              // Try hardcoded org ID 7 as a fallback for organization data
-              try {
-                console.log('Trying to fetch organization details for hardcoded ID 7');
-                const hardcodedOrgResponse = await apiService.getOrganizationDetails(7);
-                if (hardcodedOrgResponse && !hardcodedOrgResponse.error) {
-                  console.log('Successfully fetched organization with ID 7:', hardcodedOrgResponse);
-                  setOrganization(hardcodedOrgResponse);
-                  setIsOwner(true); // Assume ownership for hardcoded case
-                  
-                  // Fetch clients for hardcoded org ID
-                  fetchOrganizationClients(7);
-                  return;
-                }
-              } catch (hardcodedErr) {
-                console.error('Failed to fetch hardcoded organization:', hardcodedErr);
-              }
-              
               setOrganization(null);
               setClients([]);
               return;
@@ -82,9 +71,8 @@ export const OrganizationProvider = ({ children }) => {
               if (orgId) {
                 fetchOrganizationClients(orgId);
               } else {
-                // Try hardcoded org ID 7 as fallback
-                console.log('No organization ID found in response, trying hardcoded ID 7');
-                fetchOrganizationClients(7);
+                console.warn('No organization ID found in response');
+                setClients([]);
               }
             } else if (!Array.isArray(orgResponse) && orgResponse.id) {
               // Handle case when API returns a single organization object
