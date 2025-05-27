@@ -787,7 +787,7 @@ async def tag_recipes_with_preferences(
                     update_fields.append("meal_part = %s")
                     update_values.append(preferences['meal_prep_type'])
 
-                # Update diet_tags array
+                # Update diet_tags array (PostgreSQL TEXT[] format)
                 diet_tags = []
                 if preferences.get('diet_type'):
                     diet_tags.append(preferences['diet_type'])
@@ -796,6 +796,7 @@ async def tag_recipes_with_preferences(
 
                 if diet_tags:
                     update_fields.append("diet_tags = %s")
+                    # Convert to PostgreSQL array format
                     update_values.append(diet_tags)
 
                 # Update flavor_profile JSONB
@@ -820,8 +821,16 @@ async def tag_recipes_with_preferences(
                         SET {", ".join(update_fields)}
                         WHERE id = %s
                     """
-                    logger.info(f"Updating recipe table: {recipe_update_sql} with values: {update_values}")
-                    cursor.execute(recipe_update_sql, update_values)
+                    logger.info(f"Updating recipe table: {recipe_update_sql}")
+                    logger.info(f"Update values: {update_values}")
+                    logger.info(f"Update values types: {[type(v) for v in update_values]}")
+
+                    try:
+                        cursor.execute(recipe_update_sql, update_values)
+                        logger.info("Recipe table update successful")
+                    except Exception as recipe_update_error:
+                        logger.error(f"Error updating recipe table: {str(recipe_update_error)}")
+                        raise recipe_update_error
 
                 # Update recipe_tags table
                 # First, clear existing tags for this recipe (we'll replace them)
