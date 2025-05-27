@@ -42,7 +42,7 @@ function LandingPage() {
           </Typography>
           <Typography variant="h6" sx={{ mb: 4 }}>
             Unique, nutritious, and flavorful meal plans <br />
-            with one-click shopping at your nearest Walmart or Kroger store
+            with seamless shopping integration via Instacart and Kroger
           </Typography>
           <Button
             variant="contained"
@@ -104,13 +104,13 @@ function LandingPage() {
           </Grid>
           <Grid item xs={12} md={6} order={{ xs: 1, md: 2 }}>
             <Typography variant="h4" sx={{ fontWeight: 'bold', mb: 2 }}>
-              Automated Grocery Cart
+              Smart Shopping Integration
             </Typography>
             <Typography variant="body1" sx={{ mb: 2, lineHeight: 1.7 }}>
               Our app doesn’t just suggest recipes—it also builds your entire
               grocery cart. With a single click, you can send all required
-              ingredients to your shopping list at your nearest Walmart or
-              Kroger brand store.
+              ingredients to your cart via Instacart delivery or
+              Kroger pickup.
             </Typography>
             <Typography variant="body1" sx={{ mb: 2, lineHeight: 1.7 }}>
               Save time, reduce wasted produce, and pick up exactly what you
@@ -118,6 +118,42 @@ function LandingPage() {
               for a big family, the entire process is streamlined from the
               ingredient list right down to your checkout lane.
             </Typography>
+          </Grid>
+        </Grid>
+
+        {/* Professional/Trainer Features Section */}
+        <Grid container spacing={4} sx={{ my: 4 }}>
+          <Grid item xs={12} md={6}>
+            <Box
+              component="img"
+              src="https://images.unsplash.com/photo-1559757148-5c350d0d3c56?q=80&w=2071&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D"
+              alt="Nutrition coaching session"
+              sx={{ width: '100%', borderRadius: 2 }}
+            />
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <Typography variant="h4" sx={{ fontWeight: 'bold', mb: 2 }}>
+              Built for Nutrition Professionals
+            </Typography>
+            <Typography variant="body1" sx={{ mb: 2, lineHeight: 1.7 }}>
+              Nutrition coaches, trainers, and wellness professionals can manage
+              multiple clients with our comprehensive organization dashboard.
+              Create custom onboarding forms, track client progress, and generate
+              personalized meal plans at scale.
+            </Typography>
+            <Typography variant="body1" sx={{ mb: 2, lineHeight: 1.7 }}>
+              White-label branding, recipe approval workflows, client notes system,
+              and detailed analytics help you deliver professional nutrition
+              coaching services that scale with your practice.
+            </Typography>
+            <Button
+              variant="outlined"
+              component={Link}
+              to="/signup"
+              sx={{ mt: 2 }}
+            >
+              Start Your Organization
+            </Button>
           </Grid>
         </Grid>
       </Box>
@@ -128,7 +164,7 @@ function LandingPage() {
           Why Choose Smart Meal Planner?
         </Typography>
         <Grid container spacing={2} sx={{ maxWidth: '1200px', margin: 'auto', px: 2 }}>
-          <Grid item xs={12} md={4}>
+          <Grid item xs={12} md={6} lg={3}>
             <Card sx={{ textAlign: 'center' }}>
               <CardMedia
                 component="img"
@@ -145,7 +181,7 @@ function LandingPage() {
               </CardContent>
             </Card>
           </Grid>
-          <Grid item xs={12} md={4}>
+          <Grid item xs={12} md={6} lg={3}>
             <Card sx={{ textAlign: 'center' }}>
               <CardMedia
                 component="img"
@@ -162,7 +198,7 @@ function LandingPage() {
               </CardContent>
             </Card>
           </Grid>
-          <Grid item xs={12} md={4}>
+          <Grid item xs={12} md={6} lg={3}>
             <Card sx={{ textAlign: 'center' }}>
               <CardMedia
                 component="img"
@@ -173,8 +209,25 @@ function LandingPage() {
               <CardContent>
                 <Typography variant="h6">One-Click Shopping</Typography>
                 <Typography variant="body2">
-                  Generate a complete grocery list for Walmart or Kroger near you.
+                  Generate a complete grocery list for Instacart delivery or Kroger pickup.
                   Get your ingredients quickly, hassle-free.
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} md={6} lg={3}>
+            <Card sx={{ textAlign: 'center' }}>
+              <CardMedia
+                component="img"
+                height="200"
+                image="https://images.unsplash.com/photo-1600880292203-757bb62b4baf?q=80&w=2070&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D"
+                alt="Professional nutrition coaching"
+              />
+              <CardContent>
+                <Typography variant="h6">Professional Tools</Typography>
+                <Typography variant="body2">
+                  Nutrition coaches can manage multiple clients with custom branding,
+                  onboarding forms, and detailed progress tracking.
                 </Typography>
               </CardContent>
             </Card>
@@ -190,7 +243,7 @@ function LandingPage() {
         <Typography variant="body1" sx={{ mb: 3, mx: 'auto', maxWidth: 700, lineHeight: 1.7 }}>
           Sign up now and explore a world of unique, tasty meals designed
           around your lifestyle. From swift grocery ordering at your
-          local Walmart or Kroger to step-by-step cooking instructions—
+          Instacart delivery or Kroger pickup to step-by-step cooking instructions—
           your new culinary journey starts here.
         </Typography>
         <Button variant="contained" size="large" component={Link} to="/signup">
