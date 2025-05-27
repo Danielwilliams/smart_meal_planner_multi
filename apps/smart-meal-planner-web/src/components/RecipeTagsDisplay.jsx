@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Box, Chip, Typography, CircularProgress } from '@mui/material';
 import axios from 'axios';
 
-const RecipeTagsDisplay = ({ recipe, showTitle = true, size = "small" }) => {
+const RecipeTagsDisplay = ({ recipe, showTitle = true, size = "small", hideBasicTags = false }) => {
   const [recipeTags, setRecipeTags] = useState([]);
   const [recipePreferences, setRecipePreferences] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -60,7 +60,7 @@ const RecipeTagsDisplay = ({ recipe, showTitle = true, size = "small" }) => {
     const chips = [];
 
     // From recipe database columns (filled variant for DB data)
-    if (recipe.cuisine) {
+    if (recipe.cuisine && !hideBasicTags) {
       chips.push(
         <Chip
           key={`db-cuisine`}

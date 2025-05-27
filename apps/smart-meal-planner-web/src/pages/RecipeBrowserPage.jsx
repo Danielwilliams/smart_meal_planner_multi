@@ -449,13 +449,19 @@ const RecipeBrowserPage = () => {
                       <Typography variant="h6" component="div" gutterBottom noWrap>
                         {recipe.title}
                       </Typography>
-                      {/* Complexity and source chips */}
                       <Box sx={{ mb: 1, display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
                         <Chip
                           size="small"
                           label={recipe.complexity || 'Unknown'}
                           color={renderComplexityColor(recipe.complexity)}
                         />
+                        {recipe.cuisine && (
+                          <Chip
+                            size="small"
+                            label={recipe.cuisine}
+                            variant="outlined"
+                          />
+                        )}
                         <Chip
                           size="small"
                           label={recipe.source}
@@ -463,9 +469,9 @@ const RecipeBrowserPage = () => {
                         />
                       </Box>
 
-                      {/* Enhanced Tags Display */}
+                      {/* Enhanced Tags Display (additional tags) */}
                       <Box sx={{ mb: 1 }}>
-                        <RecipeTagsDisplay recipe={recipe} showTitle={false} size="small" />
+                        <RecipeTagsDisplay recipe={recipe} showTitle={false} size="small" hideBasicTags={true} />
                       </Box>
                       <Typography variant="body2" color="text.secondary">
                         {recipe.prep_time && `Prep: ${recipe.prep_time} mins`}
