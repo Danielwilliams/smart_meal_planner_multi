@@ -31,6 +31,13 @@ export const AuthProvider = ({ children }) => {
             }
           };
 
+          // Include organization data for client accounts if available
+          if (parsedUser.account_type === 'client' && (parsedUser.organization_id || parsedUser.organization)) {
+            normalizedUser.organization_id = parsedUser.organization_id;
+            normalizedUser.organization = parsedUser.organization;
+            console.log('AuthContext: Restored client organization data from localStorage');
+          }
+
           setUser(normalizedUser);
           setAccountType(parsedUser.account_type);
           setIsAuthenticated(true);
@@ -62,6 +69,13 @@ export const AuthProvider = ({ children }) => {
           has_shopping_list: response.progress.has_shopping_list || false
         }
       };
+
+      // For client accounts, include organization information
+      if (response.account_type === 'client' && response.organization) {
+        userData.organization_id = response.organization.id;
+        userData.organization = response.organization;
+        console.log('AuthContext: Client login - stored organization data:', response.organization);
+      }
 
       setUser(userData);
       setAccountType(response.account_type);

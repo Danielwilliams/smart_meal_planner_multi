@@ -36,20 +36,23 @@ export const OrganizationProvider = ({ children }) => {
 
         // Handle client accounts - they need their organization's data too
         if (user.account_type === 'client') {
-          console.log('CLIENT ACCOUNT - fetching organization data for client:', user);
-          try {
-            // For clients, we need to get their organization info
-            // This might require a different endpoint or approach
-            setLoading(true);
-            setError(null);
-            
-            // Try to get client's organization info
-            // We'll need to check what the user object contains for clients
-            const clientOrgId = user.organization_id || user.client_organization_id;
-            
-            if (clientOrgId) {
-              console.log('Client has organization ID:', clientOrgId);
-              const orgResponse = await apiService.getOrganizationDetails(clientOrgId);
+          console.log('CLIENT ACCOUNT - setting up organization data for client:', user);
+          
+          // For clients, the organization data should be in the user object from login
+          if (user.organization && user.organization.id) {
+            console.log('Client has organization data in user object:', user.organization);
+            setOrganization(user.organization);
+            setIsOwner(false); // Clients are not owners
+            setClients([]); // Clients don't see other clients
+            setLoading(false);
+            return;
+          } else if (user.organization_id) {
+            console.log('Client has organization ID, fetching details:', user.organization_id);
+            try {
+              setLoading(true);
+              setError(null);
+              
+              const orgResponse = await apiService.getOrganizationDetails(user.organization_id);
               if (orgResponse && !orgResponse.error) {
                 console.log('Successfully fetched organization for client:', orgResponse);
                 setOrganization(orgResponse);
@@ -57,18 +60,14 @@ export const OrganizationProvider = ({ children }) => {
                 setClients([]); // Clients don't see other clients
                 return;
               }
-            } else {
-              console.log('Client has no organization_id, trying to find their organization');
-              // If no direct org ID, we might need to call a different endpoint
-              // that finds the organization based on the client's user ID
+            } catch (error) {
+              console.error('Error fetching organization for client:', error);
+            } finally {
+              setLoading(false);
             }
-          } catch (error) {
-            console.error('Error fetching organization for client:', error);
-          } finally {
-            setLoading(false);
           }
           
-          // If we can't find the organization, continue to clear the org data
+          console.log('Client has no organization data, clearing org context');
           setOrganization(null);
           setClients([]);
           setIsOwner(false);
