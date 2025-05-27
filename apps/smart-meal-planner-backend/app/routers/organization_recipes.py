@@ -197,26 +197,25 @@ async def get_organization_recipes(
             
             where_clause = " AND ".join(where_conditions)
             
-            # Simpler approach - get organization recipes first, then add recipe details
-            org_recipes_query = f"""
+            # Use JOIN approach with proper SQL
+            cur.execute(f"""
                 SELECT 
-                    id, organization_id, recipe_id, category_id, is_approved,
-                    approval_status, tags, internal_notes, client_notes,
-                    meets_standards, compliance_notes, usage_count, last_used_at,
-                    approved_by, approved_at, submitted_for_approval_at,
-                    created_at, updated_at, created_by, updated_by
-                FROM organization_recipes 
-                WHERE {where_clause}
-                ORDER BY updated_at DESC
-            """
-            logger.info(f"Executing org recipes query: {org_recipes_query}")
-            cur.execute(org_recipes_query, params)
+                    or_r.id, or_r.organization_id, or_r.recipe_id, or_r.category_id, or_r.is_approved,
+                    or_r.approval_status, or_r.tags, or_r.internal_notes, or_r.client_notes,
+                    or_r.meets_standards, or_r.compliance_notes, or_r.usage_count, or_r.last_used_at,
+                    or_r.approved_by, or_r.approved_at, or_r.submitted_for_approval_at,
+                    or_r.created_at, or_r.updated_at, or_r.created_by, or_r.updated_by,
+                    COALESCE(sr.title, 'Recipe ' || CAST(or_r.recipe_id AS TEXT)) as recipe_name,
+                    sr.cuisine, sr.total_time, sr.servings, sr.image_url
+                FROM organization_recipes or_r
+                LEFT JOIN scraped_recipes sr ON or_r.recipe_id = sr.id
+                WHERE {where_clause.replace('organization_id', 'or_r.organization_id').replace('approval_status', 'or_r.approval_status').replace('category_id', 'or_r.category_id').replace('is_approved', 'or_r.is_approved')}
+                ORDER BY or_r.updated_at DESC
+            """, params)
             
             recipes = cur.fetchall()
-            logger.info(f"Organization recipes with JOIN: {len(recipes)} recipes found")
-            logger.info(f"Sample recipe from JOIN: {recipes[0] if recipes else 'No recipes'}")
+            logger.info(f"JOIN query returned {len(recipes)} recipes")
             
-            # Now get recipe details for each one
             result = []
             for recipe in recipes:
                 try:
@@ -227,28 +226,6 @@ async def get_organization_recipes(
                             tags = json.loads(recipe[6])
                         elif isinstance(recipe[6], list):
                             tags = recipe[6]
-                    
-                    # Get recipe details from scraped_recipes
-                    recipe_name = None
-                    cuisine = None
-                    total_time = None
-                    servings = None
-                    image_url = None
-                    
-                    recipe_id = recipe[2]
-                    if recipe_id:
-                        cur.execute("SELECT title, cuisine, total_time, servings, image_url FROM scraped_recipes WHERE id = %s", (recipe_id,))
-                        scraped_recipe = cur.fetchone()
-                        if scraped_recipe:
-                            recipe_name = scraped_recipe[0]
-                            cuisine = scraped_recipe[1]
-                            total_time = scraped_recipe[2]
-                            servings = scraped_recipe[3]
-                            image_url = scraped_recipe[4]
-                            logger.info(f"Added recipe details for ID {recipe_id}: {recipe_name}")
-                        else:
-                            recipe_name = f"Recipe {recipe_id}"
-                            logger.warning(f"No scraped recipe found for ID {recipe_id}")
                     
                     recipe_dict = {
                         "id": recipe[0],
@@ -271,12 +248,13 @@ async def get_organization_recipes(
                         "updated_at": recipe[17],
                         "created_by": recipe[18],
                         "updated_by": recipe[19],
-                        "recipe_name": recipe_name,
-                        "cuisine": cuisine,
-                        "total_time": total_time,
-                        "servings": servings,
-                        "image_url": image_url
+                        "recipe_name": recipe[20],  # From JOIN with COALESCE
+                        "cuisine": recipe[21],
+                        "total_time": recipe[22],
+                        "servings": recipe[23],
+                        "image_url": recipe[24]
                     }
+                    logger.info(f"Recipe {recipe[0]} has recipe_name: '{recipe[20]}'")
                     result.append(recipe_dict)
                 except Exception as recipe_error:
                     logger.warning(f"Error processing recipe {recipe[0]}: {recipe_error}")
