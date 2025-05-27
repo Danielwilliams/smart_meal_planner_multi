@@ -86,10 +86,10 @@ export const BrandingProvider = ({ children }) => {
       setLoading(true);
       let brandingData = null;
       
-      // Determine branding context - CRITICAL: Only for organization-linked users
+      // Determine branding context - Apply branding for organization-linked users (owners and clients)
       const organizationId = user?.organization_id || organization?.id;
       
-      if (organizationId && user?.account_type !== 'individual') {
+      if (organizationId && (user?.account_type === 'organization' || user?.account_type === 'client')) {
         // Try to load organization branding
         try {
           const response = await apiService.get(`/api/organization-branding/${organizationId}/branding/public`);
@@ -190,7 +190,7 @@ export const BrandingProvider = ({ children }) => {
   // Function to check if user should see organization branding
   const shouldShowOrganizationBranding = () => {
     return (
-      user?.account_type !== 'individual' && 
+      (user?.account_type === 'organization' || user?.account_type === 'client') && 
       (user?.organization_id || organization?.id) && 
       branding
     );
