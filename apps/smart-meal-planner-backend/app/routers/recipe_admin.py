@@ -805,19 +805,20 @@ async def tag_recipes_with_preferences(
                     update_fields.append("complexity = %s")
                     update_values.append(str(preferences['prep_complexity']))
 
-                # Update flavor_profile JSONB
-                flavor_profile = {}
+                # Update flavor_profile TEXT[] (not JSONB, it's an array!)
+                flavor_profile_array = []
                 if preferences.get('flavor_tags'):
                     for flavor in preferences['flavor_tags']:
-                        flavor_profile[flavor] = True
+                        flavor_profile_array.append(f"flavor_{flavor}")
                 if preferences.get('spice_level'):
-                    flavor_profile['spice_level'] = preferences['spice_level']
+                    flavor_profile_array.append(f"spice_{preferences['spice_level']}")
                 if preferences.get('prep_complexity'):
-                    flavor_profile['prep_complexity'] = preferences['prep_complexity']
+                    flavor_profile_array.append(f"complexity_{preferences['prep_complexity']}")
 
-                if flavor_profile:
-                    update_fields.append("flavor_profile = %s")
-                    update_values.append(json.dumps(flavor_profile))
+                if flavor_profile_array:
+                    update_fields.append("flavor_profile = %s::text[]")
+                    update_values.append(flavor_profile_array)
+                    logger.info(f"Flavor profile array to insert: {flavor_profile_array}")
 
                 # Execute recipe table update if we have fields to update
                 if update_fields:
