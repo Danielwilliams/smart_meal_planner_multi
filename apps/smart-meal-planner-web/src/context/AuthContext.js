@@ -72,18 +72,30 @@ export const AuthProvider = ({ children }) => {
 
       // For client accounts, include organization information
       if (response.account_type === 'client') {
-        console.log('AuthContext: Processing client login response:', response);
+        console.log('🔍 AuthContext: Processing client login response:');
+        console.log('Full response object:', JSON.stringify(response, null, 2));
+        console.log('Response keys:', Object.keys(response));
+        console.log('Organization in response?', !!response.organization);
+        console.log('Organization data:', response.organization);
         
         // The organization data might be directly in the response
         if (response.organization) {
           userData.organization_id = response.organization.id;
           userData.organization = response.organization;
-          console.log('AuthContext: Client login - stored organization data from response.organization:', response.organization);
+          console.log('✅ AuthContext: Client login - stored organization data from response.organization:', response.organization);
         } else {
           // Look for organization data in other possible locations
-          console.log('AuthContext: No organization found in response.organization, checking other locations');
-          console.log('Full response keys:', Object.keys(response));
+          console.log('❌ AuthContext: No organization found in response.organization');
+          
+          // Check if organization data is elsewhere in the response
+          for (const [key, value] of Object.entries(response)) {
+            if (value && typeof value === 'object' && value.id && value.name) {
+              console.log(`Found potential organization data in response.${key}:`, value);
+            }
+          }
         }
+        
+        console.log('Final userData for client:', userData);
       }
 
       setUser(userData);
