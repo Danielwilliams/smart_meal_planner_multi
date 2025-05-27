@@ -507,6 +507,14 @@ class OrganizationRecipe(BaseModel):
     updated_at: datetime
     created_by: int
     updated_by: int
+    
+    # Fields from scraped_recipes table
+    recipe_name: Optional[str] = None
+    title: Optional[str] = None
+    cuisine: Optional[str] = None
+    total_time: Optional[int] = None
+    servings: Optional[int] = None
+    image_url: Optional[str] = None
 
 class OrganizationMenuDefaultsUpdate(BaseModel):
     """Model for updating organization menu defaults"""

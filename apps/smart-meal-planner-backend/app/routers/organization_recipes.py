@@ -197,28 +197,31 @@ async def get_organization_recipes(
             
             where_clause = " AND ".join(where_conditions)
             
-            # TEMPORARY: Simple test to force recipe names
-            logger.error("=== DEBUGGING: Starting get_organization_recipes ===")
-            
-            # First get basic organization recipes
-            basic_query = f"""
+            # Get organization recipes with recipe details from scraped_recipes and user_recipes
+            query = f"""
                 SELECT 
-                    id, organization_id, recipe_id, category_id, is_approved,
-                    approval_status, tags, internal_notes, client_notes,
-                    meets_standards, compliance_notes, usage_count, last_used_at,
-                    approved_by, approved_at, submitted_for_approval_at,
-                    created_at, updated_at, created_by, updated_by
-                FROM organization_recipes 
+                    or_rec.id, or_rec.organization_id, or_rec.recipe_id, or_rec.category_id, 
+                    or_rec.is_approved, or_rec.approval_status, or_rec.tags, or_rec.internal_notes, 
+                    or_rec.client_notes, or_rec.meets_standards, or_rec.compliance_notes, 
+                    or_rec.usage_count, or_rec.last_used_at, or_rec.approved_by, or_rec.approved_at, 
+                    or_rec.submitted_for_approval_at, or_rec.created_at, or_rec.updated_at, 
+                    or_rec.created_by, or_rec.updated_by,
+                    COALESCE(sr.title, ur.title) as recipe_name,
+                    COALESCE(sr.title, ur.title) as title,
+                    COALESCE(sr.cuisine, ur.cuisine) as cuisine,
+                    COALESCE(sr.total_time, ur.total_time) as total_time,
+                    COALESCE(sr.servings, ur.servings) as servings,
+                    COALESCE(sr.image_url, ur.image_url) as image_url
+                FROM organization_recipes or_rec
+                LEFT JOIN scraped_recipes sr ON or_rec.recipe_id = sr.id
+                LEFT JOIN user_recipes ur ON or_rec.user_recipe_id = ur.id
                 WHERE {where_clause}
-                ORDER BY updated_at DESC
+                ORDER BY or_rec.updated_at DESC
             """
-            logger.error(f"Executing basic query: {basic_query}")
-            cur.execute(basic_query, params)
             
+            cur.execute(query, params)
             recipes = cur.fetchall()
-            logger.error(f"Got {len(recipes)} basic recipes: {recipes}")
             
-            # Force add recipe names for testing
             result = []
             for recipe in recipes:
                 try:
@@ -230,14 +233,6 @@ async def get_organization_recipes(
                         elif isinstance(recipe[6], list):
                             tags = recipe[6]
                     
-                    # Force recipe names for testing
-                    recipe_name = "HARDCODED TITLE TEST"
-                    if recipe[2] == 1086:
-                        recipe_name = "2-Ingredient Banana Pancakes"
-                    elif recipe[2] == 971:
-                        recipe_name = "15-Minute High-Protein Vegan Cauliflower Tikka Masala"
-                    
-                    # Convert datetime objects to strings to avoid serialization issues
                     recipe_dict = {
                         "id": recipe[0],
                         "organization_id": recipe[1],
@@ -251,46 +246,27 @@ async def get_organization_recipes(
                         "meets_standards": recipe[9],
                         "compliance_notes": recipe[10],
                         "usage_count": recipe[11],
-                        "last_used_at": recipe[12].isoformat() if recipe[12] else None,
+                        "last_used_at": recipe[12],
                         "approved_by": recipe[13],
-                        "approved_at": recipe[14].isoformat() if recipe[14] else None,
-                        "submitted_for_approval_at": recipe[15].isoformat() if recipe[15] else None,
-                        "created_at": recipe[16].isoformat() if recipe[16] else None,
-                        "updated_at": recipe[17].isoformat() if recipe[17] else None,
+                        "approved_at": recipe[14],
+                        "submitted_for_approval_at": recipe[15],
+                        "created_at": recipe[16],
+                        "updated_at": recipe[17],
                         "created_by": recipe[18],
                         "updated_by": recipe[19],
-                        "recipe_name": recipe_name,  # HARDCODED FOR TESTING
-                        "title": recipe_name,  # Add this as backup field
-                        "cuisine": "Test Cuisine",
-                        "total_time": 30,
-                        "servings": 4,
-                        "image_url": "https://example.com/test.jpg"
+                        "recipe_name": recipe[20],
+                        "title": recipe[21],
+                        "cuisine": recipe[22],
+                        "total_time": recipe[23],
+                        "servings": recipe[24],
+                        "image_url": recipe[25]
                     }
-                    logger.error(f"Created recipe dict with recipe_name: '{recipe_name}'")
                     result.append(recipe_dict)
                 except Exception as recipe_error:
                     logger.warning(f"Error processing recipe {recipe[0]}: {recipe_error}")
                     continue
             
-            logger.error(f"About to return result with {len(result)} recipes")
-            for i, recipe in enumerate(result):
-                logger.error(f"Recipe {i}: recipe_name = '{recipe.get('recipe_name')}', keys = {list(recipe.keys())}")
-            
-            # Test: Return a super simple response to see if it works
-            simple_result = [
-                {
-                    "id": 999,
-                    "recipe_name": "TEST RECIPE 1",
-                    "title": "TEST RECIPE 1"
-                },
-                {
-                    "id": 998,
-                    "recipe_name": "TEST RECIPE 2", 
-                    "title": "TEST RECIPE 2"
-                }
-            ]
-            logger.error(f"Returning simple test result: {simple_result}")
-            return simple_result
+            return result
             
     except HTTPException:
         raise
