@@ -197,44 +197,20 @@ async def get_organization_recipes(
             
             where_clause = " AND ".join(where_conditions)
             
-            # Try the new query with user_recipes support first, fallback to old query if column doesn't exist
-            try:
-                cur.execute(f"""
-                    SELECT 
-                        or_r.id, or_r.organization_id, or_r.recipe_id, or_r.category_id, or_r.is_approved,
-                        or_r.approval_status, or_r.tags, or_r.internal_notes, or_r.client_notes,
-                        or_r.meets_standards, or_r.compliance_notes, or_r.usage_count, or_r.last_used_at,
-                        or_r.approved_by, or_r.approved_at, or_r.submitted_for_approval_at,
-                        or_r.created_at, or_r.updated_at, or_r.created_by, or_r.updated_by,
-                        COALESCE(sr.title, ur.title, 'Unknown Recipe') as recipe_name, 
-                        COALESCE(sr.cuisine, ur.cuisine) as cuisine, 
-                        COALESCE(sr.total_time, ur.total_time) as total_time, 
-                        COALESCE(sr.servings, ur.servings) as servings, 
-                        COALESCE(sr.image_url, ur.image_url) as image_url,
-                        or_r.user_recipe_id
-                    FROM organization_recipes or_r
-                    LEFT JOIN scraped_recipes sr ON or_r.recipe_id = sr.id
-                    LEFT JOIN user_recipes ur ON or_r.user_recipe_id = ur.id
-                    WHERE {where_clause}
-                    ORDER BY or_r.updated_at DESC
-                """, params)
-            except Exception as migration_error:
-                logger.warning(f"New query failed (likely migration 008 not run): {migration_error}")
-                # Fallback to old query without user_recipe_id
-                cur.execute(f"""
-                    SELECT 
-                        or_r.id, or_r.organization_id, or_r.recipe_id, or_r.category_id, or_r.is_approved,
-                        or_r.approval_status, or_r.tags, or_r.internal_notes, or_r.client_notes,
-                        or_r.meets_standards, or_r.compliance_notes, or_r.usage_count, or_r.last_used_at,
-                        or_r.approved_by, or_r.approved_at, or_r.submitted_for_approval_at,
-                        or_r.created_at, or_r.updated_at, or_r.created_by, or_r.updated_by,
-                        sr.title as recipe_name, sr.cuisine, sr.total_time, sr.servings, sr.image_url,
-                        NULL as user_recipe_id
-                    FROM organization_recipes or_r
-                    LEFT JOIN scraped_recipes sr ON or_r.recipe_id = sr.id
-                    WHERE {where_clause}
-                    ORDER BY or_r.updated_at DESC
-                """, params)
+            # Use simplified query that definitely works
+            cur.execute(f"""
+                SELECT 
+                    or_r.id, or_r.organization_id, or_r.recipe_id, or_r.category_id, or_r.is_approved,
+                    or_r.approval_status, or_r.tags, or_r.internal_notes, or_r.client_notes,
+                    or_r.meets_standards, or_r.compliance_notes, or_r.usage_count, or_r.last_used_at,
+                    or_r.approved_by, or_r.approved_at, or_r.submitted_for_approval_at,
+                    or_r.created_at, or_r.updated_at, or_r.created_by, or_r.updated_by,
+                    sr.title as recipe_name, sr.cuisine, sr.total_time, sr.servings, sr.image_url
+                FROM organization_recipes or_r
+                LEFT JOIN scraped_recipes sr ON or_r.recipe_id = sr.id
+                WHERE {where_clause}
+                ORDER BY or_r.updated_at DESC
+            """, params)
             
             recipes = cur.fetchall()
             
@@ -274,8 +250,7 @@ async def get_organization_recipes(
                         "cuisine": recipe[21],
                         "total_time": recipe[22],
                         "servings": recipe[23],
-                        "image_url": recipe[24],
-                        "user_recipe_id": recipe[25]
+                        "image_url": recipe[24]
                     })
                 except Exception as recipe_error:
                     logger.warning(f"Error processing recipe {recipe[0]}: {recipe_error}")
