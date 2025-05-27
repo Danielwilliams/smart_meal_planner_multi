@@ -1,0 +1,255 @@
+import React, { useState, useEffect } from 'react';
+import { Box, Chip, Typography, CircularProgress } from '@mui/material';
+import axios from 'axios';
+
+const RecipeTagsDisplay = ({ recipe, showTitle = true, size = "small" }) => {
+  const [recipeTags, setRecipeTags] = useState([]);
+  const [recipePreferences, setRecipePreferences] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://smartmealplannermulti-production.up.railway.app';
+
+  useEffect(() => {
+    if (recipe && recipe.id) {
+      fetchRecipeTagsAndPreferences();
+    }
+  }, [recipe]);
+
+  const fetchRecipeTagsAndPreferences = async () => {
+    if (!recipe || !recipe.id) return;
+    
+    setLoading(true);
+    try {
+      const [tagsResponse, preferencesResponse] = await Promise.all([
+        axios.get(`${API_BASE_URL}/recipe-admin/tags/${recipe.id}`, {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+            'Content-Type': 'application/json'
+          }
+        }).catch(error => {
+          console.log(`No tags found for recipe ${recipe.id}:`, error.message);
+          return { data: { success: false, tags: [] } };
+        }),
+        
+        axios.get(`${API_BASE_URL}/recipe-admin/preferences/${recipe.id}`, {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+            'Content-Type': 'application/json'
+          }
+        }).catch(error => {
+          console.log(`No preferences found for recipe ${recipe.id}:`, error.message);
+          return { data: { success: false, preferences: null } };
+        })
+      ]);
+
+      if (tagsResponse.data.success) {
+        setRecipeTags(tagsResponse.data.tags || []);
+      }
+      
+      if (preferencesResponse.data.success && preferencesResponse.data.preferences) {
+        setRecipePreferences(preferencesResponse.data.preferences);
+      }
+    } catch (error) {
+      console.error('Error fetching recipe tags and preferences:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const renderAllTags = () => {
+    const chips = [];
+
+    // From recipe database columns (filled variant for DB data)
+    if (recipe.cuisine) {
+      chips.push(
+        <Chip
+          key={`db-cuisine`}
+          label={recipe.cuisine}
+          size={size}
+          color="info"
+          variant="filled"
+        />
+      );
+    }
+
+    if (recipe.cooking_method) {
+      chips.push(
+        <Chip
+          key={`db-cooking`}
+          label={recipe.cooking_method}
+          size={size}
+          color="success"
+          variant="filled"
+        />
+      );
+    }
+
+    if (recipe.meal_part) {
+      chips.push(
+        <Chip
+          key={`db-meal`}
+          label={recipe.meal_part}
+          size={size}
+          color="warning"
+          variant="filled"
+        />
+      );
+    }
+
+    if (recipe.component_type) {
+      chips.push(
+        <Chip
+          key={`db-component`}
+          label={recipe.component_type}
+          size={size}
+          color="primary"
+          variant="filled"
+        />
+      );
+    }
+
+    // From diet_tags array
+    if (recipe.diet_tags && Array.isArray(recipe.diet_tags)) {
+      recipe.diet_tags.forEach((dietTag, index) => {
+        chips.push(
+          <Chip
+            key={`db-diet-${index}`}
+            label={dietTag}
+            size={size}
+            color="secondary"
+            variant="filled"
+          />
+        );
+      });
+    }
+
+    // From flavor_profile array
+    if (recipe.flavor_profile && Array.isArray(recipe.flavor_profile)) {
+      recipe.flavor_profile.forEach((flavor, index) => {
+        chips.push(
+          <Chip
+            key={`db-flavor-${index}`}
+            label={flavor}
+            size={size}
+            color="primary"
+            variant="filled"
+          />
+        );
+      });
+    }
+
+    // From recipe_tags table (outlined variant for tag table data)
+    if (recipeTags && recipeTags.length > 0) {
+      recipeTags.forEach((tag, index) => {
+        chips.push(
+          <Chip
+            key={`tag-${index}`}
+            label={tag}
+            size={size}
+            color="default"
+            variant="outlined"
+          />
+        );
+      });
+    }
+
+    // From preferences (dashed border style)
+    if (recipePreferences && recipePreferences.preferences) {
+      const prefs = recipePreferences.preferences;
+
+      if (prefs.diet_type) {
+        chips.push(
+          <Chip
+            key={`pref-diet`}
+            label={`${prefs.diet_type}`}
+            size={size}
+            color="secondary"
+            variant="outlined"
+            sx={{ border: '2px dashed' }}
+          />
+        );
+      }
+
+      if (prefs.spice_level) {
+        chips.push(
+          <Chip
+            key={`pref-spice`}
+            label={`Spice: ${prefs.spice_level}`}
+            size={size}
+            color="error"
+            variant="outlined"
+            sx={{ border: '2px dashed' }}
+          />
+        );
+      }
+
+      if (prefs.flavor_tags && Array.isArray(prefs.flavor_tags)) {
+        prefs.flavor_tags.forEach((flavor, index) => {
+          chips.push(
+            <Chip
+              key={`pref-flavor-${index}`}
+              label={flavor}
+              size={size}
+              color="primary"
+              variant="outlined"
+              sx={{ border: '2px dashed' }}
+            />
+          );
+        });
+      }
+    }
+
+    // Legacy tags from recipe.tags
+    if (recipe.tags && Array.isArray(recipe.tags)) {
+      recipe.tags.forEach((tag, index) => {
+        chips.push(
+          <Chip
+            key={`legacy-${index}`}
+            label={tag}
+            size={size}
+            color="default"
+            variant="outlined"
+            sx={{ opacity: 0.7 }}
+          />
+        );
+      });
+    }
+
+    return chips;
+  };
+
+  const allChips = renderAllTags();
+
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <CircularProgress size={16} />
+        <Typography variant="body2">Loading tags...</Typography>
+      </Box>
+    );
+  }
+
+  if (allChips.length === 0) {
+    return null;
+  }
+
+  return (
+    <Box sx={{ mb: showTitle ? 3 : 0 }}>
+      {showTitle && (
+        <Typography variant="subtitle1" gutterBottom>
+          Tags & Preferences:
+        </Typography>
+      )}
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+        {allChips}
+      </Box>
+      {showTitle && (
+        <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+          Filled: Database • Outlined: Tags • Dashed: Preferences • Faded: Legacy
+        </Typography>
+      )}
+    </Box>
+  );
+};
+
+export default RecipeTagsDisplay;

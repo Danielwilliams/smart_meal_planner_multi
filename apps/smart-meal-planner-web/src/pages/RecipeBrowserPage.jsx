@@ -12,6 +12,7 @@ import apiService from '../services/apiService';
 import { useAuth } from '../context/AuthContext';
 import Snackbar from '@mui/material/Snackbar';
 import Alert from '@mui/material/Alert';
+import RecipeTagsDisplay from '../components/RecipeTagsDisplay';
 
 const RecipeBrowserPage = () => {
   const [recipes, setRecipes] = useState([]);
@@ -448,24 +449,23 @@ const RecipeBrowserPage = () => {
                       <Typography variant="h6" component="div" gutterBottom noWrap>
                         {recipe.title}
                       </Typography>
+                      {/* Complexity and source chips */}
                       <Box sx={{ mb: 1, display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                        <Chip 
-                          size="small" 
-                          label={recipe.complexity || 'Unknown'} 
+                        <Chip
+                          size="small"
+                          label={recipe.complexity || 'Unknown'}
                           color={renderComplexityColor(recipe.complexity)}
                         />
-                        {recipe.cuisine && (
-                          <Chip 
-                            size="small" 
-                            label={recipe.cuisine} 
-                            variant="outlined"
-                          />
-                        )}
-                        <Chip 
-                          size="small" 
-                          label={recipe.source} 
+                        <Chip
+                          size="small"
+                          label={recipe.source}
                           variant="outlined"
                         />
+                      </Box>
+
+                      {/* Enhanced Tags Display */}
+                      <Box sx={{ mb: 1 }}>
+                        <RecipeTagsDisplay recipe={recipe} showTitle={false} size="small" />
                       </Box>
                       <Typography variant="body2" color="text.secondary">
                         {recipe.prep_time && `Prep: ${recipe.prep_time} mins`}

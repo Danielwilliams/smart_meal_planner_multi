@@ -10,8 +10,9 @@ import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import RestaurantIcon from '@mui/icons-material/Restaurant';
 import apiService from '../services/apiService';
 import { useAuth } from '../context/AuthContext';
-import MacroDisplay from '../components/MacroDisplay';  
+import MacroDisplay from '../components/MacroDisplay';
 import RecipeSaveButton from '../components/RecipeSaveButton';
+import RecipeTagsDisplay from '../components/RecipeTagsDisplay';
 
 const RecipeDetailPage = () => {
   const [recipe, setRecipe] = useState(null);
@@ -241,24 +242,8 @@ const RecipeDetailPage = () => {
               )}
             </Box>
             
-            {recipe.tags && recipe.tags.length > 0 && (
-              <Box sx={{ mb: 3 }}>
-                <Typography variant="subtitle1" gutterBottom>
-                  Tags:
-                </Typography>
-                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                  {recipe.tags.map((tag, index) => (
-                    <Chip 
-                      key={index} 
-                      label={tag} 
-                      size="small" 
-                      variant="outlined"
-                      sx={{ mr: 0.5, mb: 0.5 }}
-                    />
-                  ))}
-                </Box>
-              </Box>
-            )}
+            {/* Enhanced Tags Display */}
+            <RecipeTagsDisplay recipe={recipe} />
 
             {/* Display nutrition summary if available */}
             {nutritionData && (
