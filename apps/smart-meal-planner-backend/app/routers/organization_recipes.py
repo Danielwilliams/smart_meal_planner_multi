@@ -237,6 +237,7 @@ async def get_organization_recipes(
                     elif recipe[2] == 971:
                         recipe_name = "15-Minute High-Protein Vegan Cauliflower Tikka Masala"
                     
+                    # Convert datetime objects to strings to avoid serialization issues
                     recipe_dict = {
                         "id": recipe[0],
                         "organization_id": recipe[1],
@@ -250,12 +251,12 @@ async def get_organization_recipes(
                         "meets_standards": recipe[9],
                         "compliance_notes": recipe[10],
                         "usage_count": recipe[11],
-                        "last_used_at": recipe[12],
+                        "last_used_at": recipe[12].isoformat() if recipe[12] else None,
                         "approved_by": recipe[13],
-                        "approved_at": recipe[14],
-                        "submitted_for_approval_at": recipe[15],
-                        "created_at": recipe[16],
-                        "updated_at": recipe[17],
+                        "approved_at": recipe[14].isoformat() if recipe[14] else None,
+                        "submitted_for_approval_at": recipe[15].isoformat() if recipe[15] else None,
+                        "created_at": recipe[16].isoformat() if recipe[16] else None,
+                        "updated_at": recipe[17].isoformat() if recipe[17] else None,
                         "created_by": recipe[18],
                         "updated_by": recipe[19],
                         "recipe_name": recipe_name,  # HARDCODED FOR TESTING
