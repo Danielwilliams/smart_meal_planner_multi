@@ -99,7 +99,8 @@ export const BrandingProvider = ({ children }) => {
         userAccountType: user?.account_type,
         userOrgId: user?.organization_id,
         organizationId: organization?.id,
-        organizationData: organization
+        organizationData: organization,
+        fullOrganizationObject: JSON.stringify(organization)
       });
       
       // If no user or user is not organization/client, stay with default theme
@@ -108,8 +109,20 @@ export const BrandingProvider = ({ children }) => {
         return;
       }
       
+      // CRITICAL: Only proceed if user is explicitly organization or client type
+      if (user?.account_type !== 'organization' && user?.account_type !== 'client') {
+        console.log('BrandingContext: User account type is not organization or client, forcing default theme:', user?.account_type);
+        return;
+      }
+      
       // Determine branding context - Apply branding for organization-linked users (owners and clients)
       const organizationId = user?.organization_id || organization?.id;
+      
+      // Additional safety check - don't load branding if no organization context
+      if (!organizationId) {
+        console.log('BrandingContext: No organization ID available, staying with default theme');
+        return;
+      }
       
       console.log('BrandingContext: Organization check:', {
         organizationId,
