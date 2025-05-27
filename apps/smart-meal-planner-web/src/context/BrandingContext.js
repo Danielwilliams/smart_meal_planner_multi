@@ -103,10 +103,26 @@ export const BrandingProvider = ({ children }) => {
         fullOrganizationObject: JSON.stringify(organization)
       });
       
-      // If no user or user is not organization/client, stay with default theme
-      if (!user || (user?.account_type !== 'organization' && user?.account_type !== 'client')) {
-        console.log('BrandingContext: No user or non-organization/client user, using default theme. Account type:', user?.account_type);
+      // If no user, stay with default theme
+      if (!user) {
+        console.log('BrandingContext: No user, using default theme');
         return;
+      }
+
+      // If user is not organization/client, stay with default theme
+      if (user?.account_type !== 'organization' && user?.account_type !== 'client') {
+        console.log('BrandingContext: Non-organization/client user, using default theme. Account type:', user?.account_type);
+        return;
+      }
+
+      // Special logging for client accounts
+      if (user?.account_type === 'client') {
+        console.log('BrandingContext: CLIENT ACCOUNT DETECTED - checking organization link:', {
+          clientUserId: user?.userId || user?.id,
+          clientOrgId: user?.organization_id,
+          organizationContextId: organization?.id,
+          organizationContext: organization
+        });
       }
       
       // CRITICAL: Only proceed if user is explicitly organization or client type
