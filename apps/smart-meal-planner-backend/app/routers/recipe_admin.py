@@ -597,6 +597,225 @@ async def check_env_vars(user = Depends(get_user_from_token)):
             "error": str(e)
         }
 
+@router.post("/tag-preferences")
+async def tag_recipes_with_preferences(
+    tag_data: Dict[str, Any],
+    user = Depends(admin_required)
+):
+    """
+    Tag multiple recipes with preference data
+    """
+    conn = None
+    try:
+        # Log the raw input data for debugging
+        logger.info(f"Raw preference tag_data received: {tag_data}")
+
+        # Extract data
+        recipe_ids = tag_data.get('recipe_ids', [])
+        preferences = tag_data.get('preferences', {})
+
+        # More detailed logging of extracted data
+        logger.info(f"Extracted recipe_ids: {recipe_ids} (type: {type(recipe_ids)})")
+        logger.info(f"Extracted preferences: {preferences} (type: {type(preferences)})")
+
+        if not recipe_ids or not preferences:
+            logger.error(f"Missing required data. recipe_ids: {recipe_ids}, preferences: {preferences}")
+            raise HTTPException(
+                status_code=400,
+                detail="Both recipe_ids and preferences are required"
+            )
+
+        logger.info(f"Tagging {len(recipe_ids)} recipes with preferences: {preferences}")
+
+        # Verify DB connection is working
+        conn = get_db_connection()
+        logger.info("Database connection established successfully")
+
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        # First, verify that recipe_preferences table exists
+        cursor.execute("""
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables
+                WHERE table_schema = 'public'
+                AND table_name = 'recipe_preferences'
+            )
+        """)
+        table_exists = cursor.fetchone()
+        logger.info(f"recipe_preferences table exists: {table_exists}")
+
+        if not table_exists or not table_exists.get('exists', False):
+            # Table doesn't exist, create it
+            logger.warning("recipe_preferences table doesn't exist! Creating it now...")
+            cursor.execute("""
+                CREATE TABLE recipe_preferences (
+                    id SERIAL PRIMARY KEY,
+                    recipe_id INTEGER REFERENCES scraped_recipes(id),
+                    preferences JSONB NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            conn.commit()
+            logger.info("Created recipe_preferences table!")
+
+        # Check table structure
+        cursor.execute("""
+            SELECT column_name, data_type, is_nullable
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+            AND table_name = 'recipe_preferences'
+        """)
+        columns = cursor.fetchall()
+        logger.info(f"recipe_preferences table structure: {columns}")
+
+        # Process each recipe
+        results = []
+        tagged_count = 0
+
+        for recipe_id in recipe_ids:
+            try:
+                logger.info(f"Processing recipe_id: {recipe_id}")
+
+                # Check if recipe exists
+                cursor.execute("""
+                    SELECT id, title FROM scraped_recipes
+                    WHERE id = %s
+                """, (recipe_id,))
+
+                recipe = cursor.fetchone()
+                if not recipe:
+                    logger.warning(f"Recipe {recipe_id} not found in database!")
+                    results.append({
+                        "recipe_id": recipe_id,
+                        "success": False,
+                        "message": "Recipe not found"
+                    })
+                    continue
+
+                logger.info(f"Recipe found: {recipe}")
+
+                # Check if preferences already exist
+                cursor.execute("""
+                    SELECT * FROM recipe_preferences
+                    WHERE recipe_id = %s
+                """, (recipe_id,))
+
+                existing = cursor.fetchone()
+                logger.info(f"Existing preferences record: {existing}")
+
+                # Convert preferences to JSON string
+                preferences_json = json.dumps(preferences)
+
+                if existing:
+                    # Update existing preferences
+                    update_sql = """
+                        UPDATE recipe_preferences
+                        SET preferences = %s, updated_at = CURRENT_TIMESTAMP
+                        WHERE recipe_id = %s
+                        RETURNING *
+                    """
+                    logger.info(f"Executing update SQL: {update_sql} with params: [{preferences_json}, {recipe_id}]")
+
+                    cursor.execute(update_sql, (preferences_json, recipe_id))
+                    updated = cursor.fetchone()
+
+                    if updated:
+                        logger.info(f"Update successful, returned: {updated}")
+                        tagged_count += 1
+                    else:
+                        logger.error("Update query didn't return any data!")
+
+                    results.append({
+                        "recipe_id": recipe_id,
+                        "success": True,
+                        "message": "Updated preferences",
+                        "data": updated
+                    })
+                else:
+                    # Insert new preferences
+                    insert_sql = """
+                        INSERT INTO recipe_preferences (recipe_id, preferences)
+                        VALUES (%s, %s)
+                        RETURNING *
+                    """
+                    logger.info(f"Executing insert SQL: {insert_sql} with params: [{recipe_id}, {preferences_json}]")
+
+                    cursor.execute(insert_sql, (recipe_id, preferences_json))
+                    created = cursor.fetchone()
+
+                    if created:
+                        logger.info(f"Insert successful, returned: {created}")
+                        tagged_count += 1
+                    else:
+                        logger.error("Insert query didn't return any data!")
+
+                    results.append({
+                        "recipe_id": recipe_id,
+                        "success": True,
+                        "message": "Added preferences",
+                        "data": created
+                    })
+
+                # Verify the change by doing a direct select
+                cursor.execute("SELECT * FROM recipe_preferences WHERE recipe_id = %s", (recipe_id,))
+                verification = cursor.fetchone()
+                logger.info(f"Verification SELECT result: {verification}")
+
+                # Force a commit after each recipe to ensure changes are saved even if later ones fail
+                conn.commit()
+                logger.info(f"Changes committed for recipe {recipe_id}")
+
+            except Exception as e:
+                logger.error(f"Error processing recipe {recipe_id}: {str(e)}", exc_info=True)
+                results.append({
+                    "recipe_id": recipe_id,
+                    "success": False,
+                    "message": f"Error: {str(e)}"
+                })
+                # Continue processing other recipes
+
+        # Final commit of all changes
+        conn.commit()
+        logger.info("All changes committed to database")
+
+        # Count successes and failures
+        successes = sum(1 for r in results if r['success'])
+        failures = len(results) - successes
+
+        # Check again after all operations to verify status
+        logger.info("Verifying final state of preference records...")
+        for recipe_id in recipe_ids:
+            cursor.execute("SELECT * FROM recipe_preferences WHERE recipe_id = %s", (recipe_id,))
+            final_state = cursor.fetchone()
+            logger.info(f"Final state for recipe {recipe_id}: {final_state}")
+
+        return {
+            "success": True,
+            "message": f"Processed {len(results)} recipes: {successes} successful, {failures} failed",
+            "tagged_count": tagged_count,
+            "results": results
+        }
+    except Exception as e:
+        logger.error(f"Error tagging recipes with preferences: {str(e)}", exc_info=True)
+        if conn:
+            conn.rollback()
+            logger.info("Transaction rolled back due to error")
+        raise HTTPException(status_code=500, detail=f"Error tagging recipes with preferences: {str(e)}")
+    finally:
+        if conn:
+            # Final verification query to check database state
+            try:
+                with conn.cursor(cursor_factory=RealDictCursor) as final_cursor:
+                    final_cursor.execute("SELECT COUNT(*) FROM recipe_preferences")
+                    count = final_cursor.fetchone()
+                    logger.info(f"Total recipe_preferences records in database: {count}")
+            except Exception as e:
+                logger.error(f"Error in final verification: {str(e)}")
+
+            conn.close()
+            logger.info("Database connection closed")
+
 @router.get("/component-types")
 async def get_component_types(user = Depends(get_user_from_token)):
     """
@@ -606,16 +825,16 @@ async def get_component_types(user = Depends(get_user_from_token)):
     try:
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
-        
+
         cursor.execute("""
-            SELECT 
-                component_type, 
+            SELECT
+                component_type,
                 COUNT(*) as count
             FROM recipe_components
             GROUP BY component_type
             ORDER BY count DESC
         """)
-        
+
         component_types = cursor.fetchall()
         return component_types
     except Exception as e:
