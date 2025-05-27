@@ -816,6 +816,93 @@ async def tag_recipes_with_preferences(
             conn.close()
             logger.info("Database connection closed")
 
+@router.get("/preferences/{recipe_id}")
+async def get_recipe_preferences(
+    recipe_id: int,
+    user = Depends(get_user_from_token)
+):
+    """
+    Get preferences/tags for a specific recipe
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        cursor.execute("""
+            SELECT * FROM recipe_preferences
+            WHERE recipe_id = %s
+        """, (recipe_id,))
+
+        preferences = cursor.fetchone()
+
+        if preferences:
+            # Parse the preferences JSON
+            if isinstance(preferences['preferences'], str):
+                try:
+                    preferences['preferences'] = json.loads(preferences['preferences'])
+                except json.JSONDecodeError:
+                    preferences['preferences'] = {}
+
+            return {
+                "success": True,
+                "preferences": preferences
+            }
+        else:
+            return {
+                "success": True,
+                "preferences": None
+            }
+    except Exception as e:
+        logger.error(f"Error fetching recipe preferences: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error fetching recipe preferences: {str(e)}")
+    finally:
+        if conn:
+            conn.close()
+
+@router.get("/preferences")
+async def get_all_recipe_preferences(
+    user = Depends(get_user_from_token)
+):
+    """
+    Get all recipe preferences with recipe information
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        cursor.execute("""
+            SELECT
+                rp.*,
+                sr.title,
+                sr.image_url
+            FROM recipe_preferences rp
+            JOIN scraped_recipes sr ON rp.recipe_id = sr.id
+            ORDER BY rp.updated_at DESC
+        """)
+
+        preferences = cursor.fetchall()
+
+        # Parse the preferences JSON for each recipe
+        for pref in preferences:
+            if isinstance(pref['preferences'], str):
+                try:
+                    pref['preferences'] = json.loads(pref['preferences'])
+                except json.JSONDecodeError:
+                    pref['preferences'] = {}
+
+        return {
+            "success": True,
+            "preferences": preferences
+        }
+    except Exception as e:
+        logger.error(f"Error fetching all recipe preferences: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error fetching all recipe preferences: {str(e)}")
+    finally:
+        if conn:
+            conn.close()
+
 @router.get("/component-types")
 async def get_component_types(user = Depends(get_user_from_token)):
     """

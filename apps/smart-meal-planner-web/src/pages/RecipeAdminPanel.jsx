@@ -86,6 +86,7 @@ const RecipeAdminPanel = () => {
   const [total, setTotal] = useState(0);
   const [addRecipeDialogOpen, setAddRecipeDialogOpen] = useState(false);
   const [isAdminUser, setIsAdminUser] = useState(false);
+  const [recipePreferences, setRecipePreferences] = useState({});
 
   // Tag dialog state
   const [tagDialogOpen, setTagDialogOpen] = useState(false);
@@ -199,6 +200,140 @@ const RecipeAdminPanel = () => {
       setAlertOpen(false);
       setAlertMessage(null);
     }, 5000);
+  };
+
+  // Function to render preference chips
+  const renderPreferenceChips = (recipeId) => {
+    const preferences = recipePreferences[recipeId];
+
+    if (!preferences || !preferences.preferences) {
+      return (
+        <Typography variant="body2" color="text.secondary">
+          No preferences
+        </Typography>
+      );
+    }
+
+    const prefs = preferences.preferences;
+    const chips = [];
+
+    // Diet type
+    if (prefs.diet_type) {
+      chips.push(
+        <Chip
+          key="diet"
+          label={prefs.diet_type}
+          size="small"
+          color="secondary"
+          variant="outlined"
+        />
+      );
+    }
+
+    // Cuisine
+    if (prefs.cuisine) {
+      chips.push(
+        <Chip
+          key="cuisine"
+          label={prefs.cuisine}
+          size="small"
+          color="info"
+          variant="outlined"
+        />
+      );
+    }
+
+    // Spice level
+    if (prefs.spice_level) {
+      chips.push(
+        <Chip
+          key="spice"
+          label={`Spice: ${prefs.spice_level}`}
+          size="small"
+          color="error"
+          variant="outlined"
+        />
+      );
+    }
+
+    // Recipe format
+    if (prefs.recipe_format) {
+      chips.push(
+        <Chip
+          key="format"
+          label={prefs.recipe_format}
+          size="small"
+          color="success"
+          variant="outlined"
+        />
+      );
+    }
+
+    // Meal prep type
+    if (prefs.meal_prep_type) {
+      chips.push(
+        <Chip
+          key="prep"
+          label={prefs.meal_prep_type}
+          size="small"
+          color="warning"
+          variant="outlined"
+        />
+      );
+    }
+
+    // Flavor tags
+    if (prefs.flavor_tags && Array.isArray(prefs.flavor_tags)) {
+      prefs.flavor_tags.forEach(flavor => {
+        chips.push(
+          <Chip
+            key={`flavor-${flavor}`}
+            label={flavor}
+            size="small"
+            color="primary"
+            variant="outlined"
+          />
+        );
+      });
+    }
+
+    // Appliances
+    if (prefs.appliances && Array.isArray(prefs.appliances)) {
+      prefs.appliances.forEach(appliance => {
+        chips.push(
+          <Chip
+            key={`appliance-${appliance}`}
+            label={appliance}
+            size="small"
+            color="default"
+            variant="outlined"
+          />
+        );
+      });
+    }
+
+    // Prep complexity
+    if (prefs.prep_complexity !== undefined && prefs.prep_complexity !== null) {
+      chips.push(
+        <Chip
+          key="complexity"
+          label={`${prefs.prep_complexity}% complexity`}
+          size="small"
+          color="default"
+          variant="outlined"
+        />
+      );
+    }
+
+    return (
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+        {chips.length > 0 ? chips : (
+          <Typography variant="body2" color="text.secondary">
+            No preferences
+          </Typography>
+        )}
+      </Box>
+    );
   };
 
   // Handle check component
@@ -384,19 +519,44 @@ const RecipeAdminPanel = () => {
     try {
       setLoading(true);
       const offset = (page - 1) * recipesPerPage;
-      
+
       console.log(`Fetching page ${page} of recipes (offset=${offset}, limit=${recipesPerPage})`);
-      
+
       const response = await apiService.getScrapedRecipes({
         ...filters,
         limit: recipesPerPage,
         offset: offset
       });
-      
+
       console.log(`Received ${response.recipes?.length} recipes`);
       setRecipes(response.recipes || []);
       setTotal(response.total || 0);
       setTotalRecipes(response.total || 0);
+
+      // Fetch preferences for each recipe
+      if (response.recipes && response.recipes.length > 0) {
+        const preferencesMap = {};
+
+        await Promise.all(response.recipes.map(async (recipe) => {
+          try {
+            const prefResponse = await axios.get(`${API_BASE_URL}/recipe-admin/preferences/${recipe.id}`, {
+              headers: {
+                'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+                'Content-Type': 'application/json'
+              }
+            });
+
+            if (prefResponse.data.success && prefResponse.data.preferences) {
+              preferencesMap[recipe.id] = prefResponse.data.preferences;
+            }
+          } catch (error) {
+            console.log(`No preferences found for recipe ${recipe.id}:`, error.message);
+          }
+        }));
+
+        setRecipePreferences(preferencesMap);
+        console.log('Fetched preferences for recipes:', preferencesMap);
+      }
     } catch (err) {
       console.error('Error fetching recipes:', err);
       setError('Failed to load recipes. Please try again later.');
@@ -983,29 +1143,7 @@ const RecipeAdminPanel = () => {
                             )}
                           </TableCell>
                           <TableCell>
-                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                              {recipe.diet_type && (
-                                <Chip label={recipe.diet_type} size="small" color="secondary" variant="outlined" />
-                              )}
-                              {recipe.cuisine && (!recipe.diet_type || recipe.cuisine !== recipe.diet_type) && (
-                                <Chip label={recipe.cuisine} size="small" color="info" variant="outlined" />
-                              )}
-                              {recipe.spice_level && (
-                                <Chip label={`Spice: ${recipe.spice_level}`} size="small" color="error" variant="outlined" />
-                              )}
-                              {recipe.recipe_format && (
-                                <Chip label={recipe.recipe_format} size="small" color="success" variant="outlined" />
-                              )}
-                              {recipe.meal_prep_type && (
-                                <Chip label={recipe.meal_prep_type} size="small" color="warning" variant="outlined" />
-                              )}
-                              {!recipe.diet_type && !recipe.cuisine && !recipe.spice_level && 
-                               !recipe.recipe_format && !recipe.meal_prep_type && (
-                                <Typography variant="body2" color="text.secondary">
-                                  None
-                                </Typography>
-                              )}
-                            </Box>
+                            {renderPreferenceChips(recipe.id)}
                           </TableCell>
                           <TableCell>
                             <Box sx={{ display: 'flex', gap: 1 }}>
