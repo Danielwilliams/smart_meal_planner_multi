@@ -795,9 +795,15 @@ async def tag_recipes_with_preferences(
                     diet_tags.append(f"spice_{preferences['spice_level']}")
 
                 if diet_tags:
-                    update_fields.append("diet_tags = %s")
-                    # Convert to PostgreSQL array format
+                    update_fields.append("diet_tags = %s::text[]")
+                    # Explicitly format as PostgreSQL text array
                     update_values.append(diet_tags)
+                    logger.info(f"Diet tags to insert: {diet_tags}")
+
+                # Update complexity if provided
+                if preferences.get('prep_complexity'):
+                    update_fields.append("complexity = %s")
+                    update_values.append(str(preferences['prep_complexity']))
 
                 # Update flavor_profile JSONB
                 flavor_profile = {}
