@@ -92,6 +92,13 @@ const OrganizationGettingStarted = ({ onNavigateToTab, onComplete, organizationN
       action: () => onNavigateToTab(5), // Client Notes tab
       icon: <NotesIcon color="info" />,
       estimatedTime: '5 minutes'
+    },
+    {
+      label: 'Build Your Recipe Library',
+      description: 'Add approved recipes and create categories for better organization',
+      action: () => window.open('/organization/dashboard', '_blank'), // Organization Dashboard with Recipe Library
+      icon: <RecipesIcon color="secondary" />,
+      estimatedTime: '10 minutes'
     }
   ];
 
@@ -181,6 +188,41 @@ const OrganizationGettingStarted = ({ onNavigateToTab, onComplete, organizationN
       ]
     },
     {
+      title: 'Recipe Library Management',
+      icon: <RecipesIcon color="secondary" />,
+      description: 'Build and manage your organization\'s recipe collection',
+      features: [
+        {
+          name: 'Organization Recipe Library',
+          description: 'Curate a library of approved recipes from the catalog for your organization',
+          benefits: ['Quality control', 'Consistent recommendations', 'Organized recipe collection', 'Approval workflow'],
+          howTo: 'Organization Dashboard → Recipe Library tab → Add recipes from catalog → Set categories and approval status',
+          tab: null
+        },
+        {
+          name: 'Custom Recipe Creation',
+          description: 'Create your own custom recipes specific to your organization',
+          benefits: ['Personalized recipes', 'Proprietary meal plans', 'Brand consistency', 'Unique offerings'],
+          howTo: 'Organization Dashboard → Custom Recipes tab → Create Recipe → Add ingredients and instructions',
+          tab: null
+        },
+        {
+          name: 'Recipe Approval Workflow',
+          description: 'Manage recipe approval process with categories, tags, and compliance notes',
+          benefits: ['Quality assurance', 'Nutritional compliance', 'Professional standards', 'Team collaboration'],
+          howTo: 'Recipe Library → Review pending recipes → Approve or reject with notes',
+          tab: null
+        },
+        {
+          name: 'Recipe Organization',
+          description: 'Organize recipes with categories, tags, and client/internal notes',
+          benefits: ['Easy search and filtering', 'Professional organization', 'Client-facing descriptions', 'Internal documentation'],
+          howTo: 'Recipe Library → Edit recipe → Set category, add tags, write notes for clients and staff',
+          tab: null
+        }
+      ]
+    },
+    {
       title: 'Organization Settings',
       icon: <SettingsIcon color="error" />,
       description: 'Configure your organization profile and preferences',
@@ -247,6 +289,9 @@ const OrganizationGettingStarted = ({ onNavigateToTab, onComplete, organizationN
         'Set default client preferences',
         'Create your first onboarding form',
         'Set up note templates for common scenarios',
+        'Build your recipe library by adding approved recipes from the catalog',
+        'Create recipe categories to organize your collection',
+        'Add your first custom recipe if you have proprietary recipes',
         'Test the client signup process'
       ]
     },
@@ -265,10 +310,13 @@ const OrganizationGettingStarted = ({ onNavigateToTab, onComplete, organizationN
       title: 'Service Delivery',
       description: 'Provide ongoing nutrition services',
       tasks: [
-        'Create personalized meal plans',
+        'Create personalized meal plans using your curated recipe library',
         'Share menus with clients',
         'Document consultation sessions in client notes',
         'Monitor client recipe preferences',
+        'Add new recipes to your library based on client feedback',
+        'Update recipe categories and organization as needed',
+        'Use both catalog and custom recipes for varied meal planning',
         'Update plans based on client feedback',
         'Track client progress and goals in notes'
       ]
@@ -281,6 +329,9 @@ const OrganizationGettingStarted = ({ onNavigateToTab, onComplete, organizationN
         'Review client onboarding responses regularly',
         'Update onboarding forms as needed',
         'Analyze shared menu performance',
+        'Review and approve pending recipes in your library',
+        'Update recipe categories and organization as your library grows',
+        'Add new custom recipes based on client needs and feedback',
         'Archive old notes and maintain client records',
         'Invite additional clients'
       ]
@@ -315,6 +366,14 @@ const OrganizationGettingStarted = ({ onNavigateToTab, onComplete, organizationN
     {
       title: 'Use Note Priorities',
       content: 'Mark urgent or high-priority notes for clients who need immediate follow-up or have important health considerations.'
+    },
+    {
+      title: 'Curate Your Recipe Library',
+      content: 'Start with 20-30 versatile recipes across different categories. Focus on recipes that align with your nutrition philosophy and can work for multiple client types.'
+    },
+    {
+      title: 'Use Recipe Categories Strategically',
+      content: 'Create categories that match your meal planning workflow (e.g., "Quick Breakfasts", "Anti-Inflammatory", "Heart-Healthy"). This makes menu creation much faster.'
     }
   ];
 
