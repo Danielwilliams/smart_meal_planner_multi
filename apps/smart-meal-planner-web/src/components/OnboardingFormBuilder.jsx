@@ -62,7 +62,7 @@ const FIELD_TYPES = [
   { value: 'checkbox', label: 'Checkboxes', icon: <CheckboxIcon /> }
 ];
 
-const OnboardingFormBuilder = ({ organizationId, onSave, onCancel, editingForm = null, onFormCreated }) => {
+const OnboardingFormBuilder = ({ organizationId, onSave, onCancel, editingForm = null, onFormCreated, selectedTemplate, onTemplateUsed }) => {
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -99,6 +99,37 @@ const OnboardingFormBuilder = ({ organizationId, onSave, onCancel, editingForm =
       });
     }
   }, [editingForm]);
+
+  // Load template data when a template is selected
+  useEffect(() => {
+    if (selectedTemplate && !editingForm) {
+      // Convert template fields to form field format
+      const formFields = selectedTemplate.fields.map((templateField, index) => ({
+        id: generateFieldId(),
+        type: templateField.type || 'text',
+        label: templateField.label,
+        placeholder: templateField.placeholder || '',
+        required: templateField.required || false,
+        options: templateField.options || [],
+        validation: templateField.validation || {},
+        help_text: templateField.help_text || ''
+      }));
+
+      setFormData({
+        name: selectedTemplate.title,
+        description: selectedTemplate.description,
+        is_active: true,
+        is_required: false,
+        form_fields: formFields,
+        settings: {}
+      });
+
+      // Notify parent that template has been applied
+      if (onTemplateUsed) {
+        onTemplateUsed();
+      }
+    }
+  }, [selectedTemplate, editingForm, onTemplateUsed]);
 
   const generateFieldId = () => {
     return `field_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;

@@ -66,6 +66,7 @@ function OrganizationDashboard() {
   const [onboardingTab, setOnboardingTab] = useState(0);
   const [showGettingStarted, setShowGettingStarted] = useState(false);
   const [hasOnboardingForms, setHasOnboardingForms] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [showComprehensiveGuide, setShowComprehensiveGuide] = useState(false);
   const [selectedClientForNotes, setSelectedClientForNotes] = useState(null);
 
@@ -811,9 +812,9 @@ function OrganizationDashboard() {
                     setOnboardingTab(0);
                   }}
                   onUseTemplate={(template) => {
+                    setSelectedTemplate(template);
                     setShowGettingStarted(false);
                     setOnboardingTab(0);
-                    // Could pass template data to form builder here
                   }}
                 />
               ) : (
@@ -832,9 +833,11 @@ function OrganizationDashboard() {
                   </Paper>
                   
                   {onboardingTab === 0 && (
-                    <OnboardingFormBuilder 
+                    <OnboardingFormBuilder
                       organizationId={organization.id}
                       onFormCreated={() => setHasOnboardingForms(true)}
+                      selectedTemplate={selectedTemplate}
+                      onTemplateUsed={() => setSelectedTemplate(null)}
                     />
                   )}
                   

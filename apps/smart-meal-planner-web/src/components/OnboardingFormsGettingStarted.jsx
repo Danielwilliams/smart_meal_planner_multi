@@ -101,19 +101,39 @@ const OnboardingFormsGettingStarted = ({ onGetStarted, onUseTemplate }) => {
     {
       title: 'Basic Health Intake',
       description: 'Essential health and dietary information',
-      fields: ['Current health conditions', 'Medications', 'Dietary restrictions', 'Health goals'],
+      fields: [
+        { label: 'Current Health Conditions', type: 'textarea', placeholder: 'Please list any current health conditions, chronic illnesses, or medical concerns...', required: false, help_text: 'This helps us create meal plans that support your health needs' },
+        { label: 'Current Medications', type: 'textarea', placeholder: 'List any medications, supplements, or vitamins you take...', required: false, help_text: 'Some foods may interact with medications' },
+        { label: 'Food Allergies', type: 'textarea', placeholder: 'List any food allergies or severe intolerances...', required: true, help_text: 'Critical for meal planning safety' },
+        { label: 'Dietary Restrictions', type: 'select', options: ['None', 'Vegetarian', 'Vegan', 'Gluten-Free', 'Dairy-Free', 'Keto', 'Paleo', 'Low-Carb', 'Other'], required: false, help_text: 'Select your primary dietary approach' },
+        { label: 'Primary Health Goals', type: 'checkbox', options: ['Weight Loss', 'Weight Gain', 'Muscle Building', 'Heart Health', 'Diabetes Management', 'Energy Improvement', 'Digestive Health', 'General Wellness'], required: false, help_text: 'Select all that apply' }
+      ],
       icon: <FormIcon color="primary" />
     },
     {
       title: 'Lifestyle Assessment',
       description: 'Daily habits and lifestyle preferences',
-      fields: ['Activity level', 'Cooking experience', 'Time availability', 'Food preferences'],
+      fields: [
+        { label: 'Activity Level', type: 'radio', options: ['Sedentary (little to no exercise)', 'Lightly Active (light exercise 1-3 days/week)', 'Moderately Active (moderate exercise 3-5 days/week)', 'Very Active (hard exercise 6-7 days/week)', 'Extremely Active (very hard exercise, physical job)'], required: true, help_text: 'This helps determine your caloric needs' },
+        { label: 'Cooking Experience', type: 'select', options: ['Beginner', 'Intermediate', 'Advanced', 'Professional'], required: false, help_text: 'Helps us suggest appropriate recipes' },
+        { label: 'Available Cooking Time', type: 'radio', options: ['15 minutes or less', '15-30 minutes', '30-60 minutes', '60+ minutes', 'Varies by day'], required: false, help_text: 'How much time do you typically have for meal preparation?' },
+        { label: 'Kitchen Equipment', type: 'checkbox', options: ['Basic stovetop/oven', 'Slow cooker', 'Instant Pot/pressure cooker', 'Air fryer', 'Food processor', 'Blender', 'Grill', 'Limited equipment'], required: false, help_text: 'Select all equipment you have access to' },
+        { label: 'Meal Planning Preferences', type: 'checkbox', options: ['Batch cooking/meal prep', 'Fresh daily cooking', 'Simple ingredients', 'Complex flavors', 'Family-friendly meals', 'Quick breakfasts', 'Portable lunches'], required: false, help_text: 'Select all that apply to your lifestyle' }
+      ],
       icon: <ClientsIcon color="secondary" />
     },
     {
       title: 'Nutrition Goals',
       description: 'Specific nutrition and wellness objectives',
-      fields: ['Weight goals', 'Energy levels', 'Specific concerns', 'Previous experience'],
+      fields: [
+        { label: 'Current Weight', type: 'number', placeholder: 'lbs', required: false, help_text: 'Optional - helps with portion recommendations' },
+        { label: 'Goal Weight', type: 'number', placeholder: 'lbs', required: false, help_text: 'Optional - if you have a specific weight goal' },
+        { label: 'Timeline for Goals', type: 'select', options: ['1-3 months', '3-6 months', '6-12 months', '1+ years', 'Maintenance/Lifestyle change'], required: false, help_text: 'What timeframe are you working with?' },
+        { label: 'Energy Levels', type: 'radio', options: ['Very Low', 'Low', 'Moderate', 'High', 'Very High'], required: false, help_text: 'How would you rate your current energy levels?' },
+        { label: 'Specific Concerns', type: 'checkbox', options: ['Blood sugar control', 'High cholesterol', 'High blood pressure', 'Digestive issues', 'Food cravings', 'Emotional eating', 'Irregular eating schedule', 'Poor sleep'], required: false, help_text: 'Select any concerns you\'d like to address' },
+        { label: 'Previous Diet Experience', type: 'textarea', placeholder: 'Tell us about previous diets or nutrition programs you\'ve tried...', required: false, help_text: 'What worked well? What didn\'t work?' },
+        { label: 'Success Measures', type: 'checkbox', options: ['Weight changes', 'Energy improvements', 'Better sleep', 'Improved lab values', 'Clothing fit', 'Mood improvements', 'Athletic performance', 'Overall wellness'], required: false, help_text: 'How would you like to measure success?' }
+      ],
       icon: <ResponsesIcon color="success" />
     }
   ];
@@ -235,9 +255,9 @@ const OnboardingFormsGettingStarted = ({ onGetStarted, onUseTemplate }) => {
                   </Typography>
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                     {template.fields.map((field, fieldIndex) => (
-                      <Chip 
+                      <Chip
                         key={fieldIndex}
-                        label={field}
+                        label={field.label}
                         size="small"
                         variant="outlined"
                       />
