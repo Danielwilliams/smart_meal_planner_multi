@@ -28,7 +28,7 @@ import { useAuth } from '../context/AuthContext';
 const ClientDashboard = () => {
   const navigate = useNavigate();
   const { organization } = useContext(OrganizationContext);
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
   const [sharedMenus, setSharedMenus] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -43,9 +43,22 @@ const ClientDashboard = () => {
         // Use the new client dashboard endpoint which will fetch everything at once
         const dashboardResponse = await apiService.getClientDashboard();
         
+        console.log('🏠 ClientDashboard: Received dashboard response:', dashboardResponse);
+        
         if (dashboardResponse) {
           setSharedMenus(dashboardResponse.shared_menus || []);
           setSavedRecipes(dashboardResponse.shared_recipes || []);
+          
+          // Check if the dashboard response includes organization data
+          if (dashboardResponse.organization && user?.account_type === 'client') {
+            console.log('🏠 ClientDashboard: Found organization data, updating user context:', dashboardResponse.organization);
+            
+            // Update the user context with organization information
+            updateUser({
+              organization_id: dashboardResponse.organization.id,
+              organization: dashboardResponse.organization
+            });
+          }
         }
       } catch (err) {
         console.error('Error fetching client data:', err);

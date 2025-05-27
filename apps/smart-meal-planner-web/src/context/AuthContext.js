@@ -58,6 +58,9 @@ export const AuthProvider = ({ children }) => {
     try {
       const response = await apiService.login(credentials);
       
+      console.log('🚀 AuthContext: Login function called with response:', response);
+      console.log('🚀 AuthContext: Response account_type:', response.account_type);
+      
       const userData = {
         userId: response.user.id,
         email: response.user.email,
