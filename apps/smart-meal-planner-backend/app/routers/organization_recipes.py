@@ -272,8 +272,25 @@ async def get_organization_recipes(
                     logger.warning(f"Error processing recipe {recipe[0]}: {recipe_error}")
                     continue
             
-            logger.info(f"Final result being returned: {result}")
-            return result
+            logger.error(f"About to return result with {len(result)} recipes")
+            for i, recipe in enumerate(result):
+                logger.error(f"Recipe {i}: recipe_name = '{recipe.get('recipe_name')}', keys = {list(recipe.keys())}")
+            
+            # Test: Return a super simple response to see if it works
+            simple_result = [
+                {
+                    "id": 999,
+                    "recipe_name": "TEST RECIPE 1",
+                    "title": "TEST RECIPE 1"
+                },
+                {
+                    "id": 998,
+                    "recipe_name": "TEST RECIPE 2", 
+                    "title": "TEST RECIPE 2"
+                }
+            ]
+            logger.error(f"Returning simple test result: {simple_result}")
+            return simple_result
             
     except HTTPException:
         raise
