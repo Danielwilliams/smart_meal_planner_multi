@@ -24,6 +24,7 @@ import { useOrganization } from '../context/OrganizationContext';
 import apiService from '../services/apiService';
 import PreferencesForm from '../components/PreferencesForm';
 import MenuDefaultsSettings from '../components/MenuDefaultsSettings';
+import OrganizationBrandingManager from '../components/OrganizationBrandingManager';
 
 function TabPanel({ children, value, index, ...other }) {
   return (
@@ -306,6 +307,7 @@ export default function OrganizationSettingsPage() {
             <Tab label="Organization Info" />
             <Tab label="Client Management" />
             <Tab label="Menu Defaults" />
+            <Tab label="Branding" />
           </Tabs>
         </Box>
 
@@ -473,6 +475,16 @@ export default function OrganizationSettingsPage() {
               {saving ? <CircularProgress size={20} /> : 'Save Client Management Settings'}
             </Button>
           </Box>
+        </TabPanel>
+
+        {/* Menu Defaults Tab */}
+        <TabPanel value={tabValue} index={3}>
+          <MenuDefaultsSettings organizationId={organization?.id} />
+        </TabPanel>
+
+        {/* Branding Tab */}
+        <TabPanel value={tabValue} index={4}>
+          <OrganizationBrandingManager />
         </TabPanel>
       </Paper>
     </Container>

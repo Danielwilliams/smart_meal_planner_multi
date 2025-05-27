@@ -4,8 +4,9 @@ import { AuthProvider } from './context/AuthContext';
 import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { GoogleReCaptchaProvider } from 'react-google-recaptcha-v3';
-// Import theme
+// Import theme and branding
 import theme from './theme';
+import { BrandingProvider, withBrandingGuard } from './context/BrandingContext';
 // Import components
 import NavBar from './components/NavBar';
 import LoginPage from './pages/LoginPage';
@@ -59,7 +60,7 @@ function App() {
     >
       <AuthProvider>
        <OrganizationProvider>
-        <ThemeProvider theme={theme}>
+        <BrandingProvider>
           <CssBaseline />
           <Router>
             <NavBar />
@@ -264,7 +265,7 @@ function App() {
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Router>
-        </ThemeProvider>
+        </BrandingProvider>
        </OrganizationProvider>
       </AuthProvider>
     </GoogleReCaptchaProvider>
