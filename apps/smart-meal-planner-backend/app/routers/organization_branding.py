@@ -147,6 +147,32 @@ async def update_organization_branding(
     try:
         with conn.cursor() as cur:
             # Get current branding settings
+            logger.error(f"Attempting to get branding for organization {organization_id}")
+            
+            # First check if the column exists
+            cur.execute("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'organization_settings' 
+                AND column_name = 'branding_settings'
+            """)
+            column_exists = cur.fetchone()
+            logger.error(f"Branding settings column exists: {column_exists is not None}")
+            
+            if not column_exists:
+                # Column doesn't exist - run migration
+                logger.error("Branding settings column missing - attempting to add it")
+                try:
+                    cur.execute("ALTER TABLE organization_settings ADD COLUMN IF NOT EXISTS branding_settings JSONB DEFAULT '{}'")
+                    conn.commit()
+                    logger.error("Added branding_settings column")
+                except Exception as add_column_error:
+                    logger.error(f"Failed to add branding_settings column: {add_column_error}")
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail=f"Database schema issue: {str(add_column_error)}"
+                    )
+            
             cur.execute("""
                 SELECT branding_settings
                 FROM organization_settings
@@ -161,9 +187,12 @@ async def update_organization_branding(
                 )
             
             current_branding = result[0] or {}
+            logger.error(f"Current branding settings: {current_branding}")
+            logger.error(f"Incoming branding data: {branding_data}")
             
             # Update only provided sections
             if branding_data.visual:
+                logger.error("Updating visual settings")
                 current_branding['visual'] = {
                     **current_branding.get('visual', {}),
                     **branding_data.visual.dict(exclude_unset=True)
@@ -188,12 +217,21 @@ async def update_organization_branding(
                 }
             
             # Update the database
-            cur.execute("""
-                UPDATE organization_settings 
-                SET branding_settings = %s
-                WHERE organization_id = %s
-                RETURNING branding_settings, updated_at
-            """, (json.dumps(current_branding), organization_id))
+            logger.error(f"Final branding settings to save: {current_branding}")
+            try:
+                cur.execute("""
+                    UPDATE organization_settings 
+                    SET branding_settings = %s
+                    WHERE organization_id = %s
+                    RETURNING branding_settings, updated_at
+                """, (json.dumps(current_branding), organization_id))
+                logger.error("Database update executed successfully")
+            except Exception as db_error:
+                logger.error(f"Database update failed: {db_error}")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Database update failed: {str(db_error)}"
+                )
             
             result = cur.fetchone()
             conn.commit()
