@@ -680,31 +680,8 @@ const OrganizationGettingStarted = ({ onNavigateToTab, onComplete, organizationN
                 color="primary"
                 onClick={() => {
                   // Open documentation in a new window
-                  const docContent = `
-# Smart Meal Planner Documentation
-
-## Quick Start Guide
-1. **Organization Setup**: Complete your profile in the Settings tab
-2. **Client Invitations**: Use the Invitations tab to bring clients onboard
-3. **Menu Creation**: Create meal plans using our AI-powered menu generator
-4. **Recipe Library**: Build and manage your approved recipe collection
-5. **Client Management**: Track client progress and preferences
-
-## Key Features
-- **AI Menu Generation**: Automatically create personalized meal plans
-- **Recipe Management**: Organize and approve recipes for clients
-- **Client Onboarding**: Custom forms to understand client needs
-- **Shopping Integration**: Kroger and Instacart cart functionality
-- **Progress Tracking**: Monitor client engagement and success
-
-## Support
-For additional help, contact us at support@smartmealplannerio.com
-
-## Training Resources
-Schedule a personalized training session by emailing support@smartmealplannerio.com
-                  `;
                   const newWindow = window.open('', '_blank');
-                  newWindow.document.write(\`
+                  const docHTML = `
                     <html>
                       <head>
                         <title>Smart Meal Planner Documentation</title>
@@ -724,17 +701,36 @@ Schedule a personalized training session by emailing support@smartmealplannerio.
                         </style>
                       </head>
                       <body>
-                        <div>\${docContent.split('\\n').map(line => {
-                          if (line.startsWith('# ')) return \`<h1>\${line.slice(2)}</h1>\`;
-                          if (line.startsWith('## ')) return \`<h2>\${line.slice(3)}</h2>\`;
-                          if (line.match(/^\\d+\\./)) return \`<li>\${line.replace(/^\\d+\\.\\s*/, '')}</li>\`;
-                          if (line.startsWith('- ')) return \`<li>\${line.slice(2)}</li>\`;
-                          if (line.trim() === '') return '<br>';
-                          return \`<p>\${line}</p>\`;
-                        }).join('')}</div>
+                        <h1>Smart Meal Planner Documentation</h1>
+
+                        <h2>Quick Start Guide</h2>
+                        <ol>
+                          <li><strong>Organization Setup</strong>: Complete your profile in the Settings tab</li>
+                          <li><strong>Client Invitations</strong>: Use the Invitations tab to bring clients onboard</li>
+                          <li><strong>Menu Creation</strong>: Create meal plans using our AI-powered menu generator</li>
+                          <li><strong>Recipe Library</strong>: Build and manage your approved recipe collection</li>
+                          <li><strong>Client Management</strong>: Track client progress and preferences</li>
+                        </ol>
+
+                        <h2>Key Features</h2>
+                        <ul>
+                          <li><strong>AI Menu Generation</strong>: Automatically create personalized meal plans</li>
+                          <li><strong>Recipe Management</strong>: Organize and approve recipes for clients</li>
+                          <li><strong>Client Onboarding</strong>: Custom forms to understand client needs</li>
+                          <li><strong>Shopping Integration</strong>: Kroger and Instacart cart functionality</li>
+                          <li><strong>Progress Tracking</strong>: Monitor client engagement and success</li>
+                        </ul>
+
+                        <h2>Support</h2>
+                        <p>For additional help, contact us at <a href="mailto:support@smartmealplannerio.com">support@smartmealplannerio.com</a></p>
+
+                        <h2>Training Resources</h2>
+                        <p>Schedule a personalized training session by emailing <a href="mailto:support@smartmealplannerio.com">support@smartmealplannerio.com</a></p>
                       </body>
                     </html>
-                  \`);
+                  `;
+                  newWindow.document.write(docHTML);
+                  newWindow.document.close();
                 }}
               >
                 View Documentation
