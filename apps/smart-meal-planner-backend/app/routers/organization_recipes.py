@@ -181,19 +181,19 @@ async def get_organization_recipes(
     try:
         with conn.cursor() as cur:
             # Build dynamic query with filters
-            where_conditions = ["or_r.organization_id = %s"]
+            where_conditions = ["organization_id = %s"]
             params = [organization_id]
             
             if status_filter:
-                where_conditions.append("or_r.approval_status = %s")
+                where_conditions.append("approval_status = %s")
                 params.append(status_filter)
             
             if category_id:
-                where_conditions.append("or_r.category_id = %s")
+                where_conditions.append("category_id = %s")
                 params.append(category_id)
             
             if approved_only:
-                where_conditions.append("or_r.is_approved = TRUE")
+                where_conditions.append("is_approved = TRUE")
             
             where_clause = " AND ".join(where_conditions)
             
