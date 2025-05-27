@@ -259,6 +259,7 @@ async def get_organization_recipes(
                         "created_by": recipe[18],
                         "updated_by": recipe[19],
                         "recipe_name": recipe_name,  # HARDCODED FOR TESTING
+                        "title": recipe_name,  # Add this as backup field
                         "cuisine": "Test Cuisine",
                         "total_time": 30,
                         "servings": 4,
