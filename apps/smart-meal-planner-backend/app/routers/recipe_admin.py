@@ -863,13 +863,17 @@ async def tag_recipes_with_preferences(
                     for appliance in preferences['appliances']:
                         tags_to_insert.add(f"appliance_{appliance}")
 
-                # Insert all tags
+                # Insert all tags (without ON CONFLICT since no unique constraint exists)
                 for tag in tags_to_insert:
-                    cursor.execute("""
-                        INSERT INTO recipe_tags (recipe_id, tag)
-                        VALUES (%s, %s)
-                        ON CONFLICT (recipe_id, tag) DO NOTHING
-                    """, (recipe_id, tag))
+                    try:
+                        cursor.execute("""
+                            INSERT INTO recipe_tags (recipe_id, tag)
+                            VALUES (%s, %s)
+                        """, (recipe_id, tag))
+                    except Exception as tag_error:
+                        # Log but don't fail if tag already exists
+                        logger.warning(f"Could not insert tag {tag} for recipe {recipe_id}: {str(tag_error)}")
+                        continue
 
                 logger.info(f"Inserted {len(tags_to_insert)} tags for recipe {recipe_id}: {tags_to_insert}")
 
