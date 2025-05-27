@@ -94,6 +94,14 @@ export const BrandingProvider = ({ children }) => {
     try {
       setLoading(true);
       
+      console.log('BrandingContext: Loading branding for user:', {
+        user: user,
+        userAccountType: user?.account_type,
+        userOrgId: user?.organization_id,
+        organizationId: organization?.id,
+        organizationData: organization
+      });
+      
       // If no user or user is individual, stay with default theme
       if (!user || user?.account_type === 'individual') {
         console.log('BrandingContext: No user or individual user, using default theme');
@@ -102,6 +110,12 @@ export const BrandingProvider = ({ children }) => {
       
       // Determine branding context - Apply branding for organization-linked users (owners and clients)
       const organizationId = user?.organization_id || organization?.id;
+      
+      console.log('BrandingContext: Organization check:', {
+        organizationId,
+        userAccountType: user?.account_type,
+        shouldLoadBranding: organizationId && (user?.account_type === 'organization' || user?.account_type === 'client')
+      });
       
       if (organizationId && (user?.account_type === 'organization' || user?.account_type === 'client')) {
         console.log('BrandingContext: Loading branding for org:', organizationId, 'user type:', user?.account_type);
