@@ -213,6 +213,19 @@ async def get_organization_recipes(
             recipes = cur.fetchall()
             logger.info(f"Organization recipes from database: {recipes}")
             
+            # Test: Check if scraped_recipes table has any data
+            cur.execute("SELECT COUNT(*) FROM scraped_recipes")
+            scraped_count = cur.fetchone()[0]
+            logger.info(f"Total scraped recipes in database: {scraped_count}")
+            
+            # Test: Check specific recipe IDs
+            if recipes:
+                recipe_ids = [r[2] for r in recipes if r[2]]
+                if recipe_ids:
+                    cur.execute("SELECT id, title FROM scraped_recipes WHERE id = ANY(%s)", (recipe_ids,))
+                    found_recipes = cur.fetchall()
+                    logger.info(f"Found scraped recipes for IDs {recipe_ids}: {found_recipes}")
+            
             result = []
             for recipe in recipes:
                 try:
@@ -232,21 +245,25 @@ async def get_organization_recipes(
                     image_url = None
                     
                     if recipe[2]:  # recipe_id exists
+                        logger.info(f"Looking up recipe details for recipe_id: {recipe[2]}")
                         cur.execute("""
                             SELECT title, cuisine, total_time, servings, image_url
                             FROM scraped_recipes 
                             WHERE id = %s
                         """, (recipe[2],))
                         recipe_details = cur.fetchone()
+                        logger.info(f"Recipe details query result: {recipe_details}")
                         if recipe_details:
                             recipe_name = recipe_details[0]
                             cuisine = recipe_details[1] 
                             total_time = recipe_details[2]
                             servings = recipe_details[3]
                             image_url = recipe_details[4]
-                            logger.info(f"Found recipe details for ID {recipe[2]}: {recipe_details}")
+                            logger.info(f"Found recipe details for ID {recipe[2]}: title='{recipe_name}', cuisine='{cuisine}'")
                         else:
                             logger.warning(f"No scraped recipe found for ID {recipe[2]}")
+                    else:
+                        logger.info(f"No recipe_id found for organization recipe {recipe[0]}")
                     
                     recipe_dict = {
                         "id": recipe[0],
@@ -275,12 +292,13 @@ async def get_organization_recipes(
                         "servings": servings,
                         "image_url": image_url
                     }
-                    logger.info(f"Processed recipe dict: {recipe_dict}")
+                    logger.info(f"Final recipe dict for recipe {recipe[0]}: recipe_name='{recipe_dict.get('recipe_name')}', cuisine='{recipe_dict.get('cuisine')}'")
                     result.append(recipe_dict)
                 except Exception as recipe_error:
                     logger.warning(f"Error processing recipe {recipe[0]}: {recipe_error}")
                     continue
             
+            logger.info(f"Final result being returned: {result}")
             return result
             
     except HTTPException:
