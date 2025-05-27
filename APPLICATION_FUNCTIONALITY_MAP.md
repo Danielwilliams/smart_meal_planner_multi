@@ -81,6 +81,36 @@ This document provides a comprehensive overview of all files in the Smart Meal P
 - **Purpose**: Recipe data scraping and import functionality
 - **Key Endpoints**: Recipe scraping, data import from external sources
 
+**`organization_recipes.py`** *(Organization Recipe Management)*
+- **Purpose**: Organization-specific recipe library management and approval workflow
+- **Key Endpoints**: 
+  - Recipe library CRUD (`/api/organization-recipes/{org_id}/recipes`)
+  - Recipe categories management (`/api/organization-recipes/{org_id}/categories`)
+  - Available recipes for adding (`/api/organization-recipes/{org_id}/available-recipes`)
+  - Recipe approval workflow (`/api/organization-recipes/{org_id}/recipes/{recipe_id}/approve`)
+  - Menu defaults and nutritional standards
+- **Features**: Recipe approval workflow, categorization, tagging, compliance tracking, usage analytics
+
+**`user_recipes.py`** *(Custom Recipe Creation)*
+- **Purpose**: User and organization custom recipe creation and management
+- **Key Endpoints**: Custom recipe CRUD, organization recipe sharing, recipe validation
+- **Features**: Custom recipe builder, ingredient management, instruction steps, dietary tags
+
+**`organization_settings.py`**
+- **Purpose**: Organization configuration and settings management
+- **Key Endpoints**: Organization profile, default preferences, team management
+- **Features**: Branding, default settings, compliance configuration
+
+**`onboarding_forms.py`**
+- **Purpose**: Custom client onboarding form creation and management
+- **Key Endpoints**: Form builder, form responses, template management
+- **Features**: Dynamic form creation, 8 field types, response collection and analysis
+
+**`client_notes.py`**
+- **Purpose**: Private client notes and documentation system
+- **Key Endpoints**: Note CRUD, templates, search and filtering
+- **Features**: Note categories, priorities, templates, client progress tracking
+
 #### Shopping & Commerce Integration
 **`cart.py`**
 - **Purpose**: Shopping cart management and store integration
