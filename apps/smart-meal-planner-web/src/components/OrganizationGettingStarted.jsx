@@ -26,6 +26,7 @@ import {
   AccordionDetails,
   LinearProgress
 } from '@mui/material';
+import ComprehensiveDocumentation from './ComprehensiveDocumentation';
 import {
   Business as OrgIcon,
   People as ClientsIcon,
@@ -676,6 +677,7 @@ const OrganizationGettingStarted = ({ onNavigateToTab, onComplete, organizationN
               >
                 Contact Support
               </Button>
+              <ComprehensiveDocumentation />
               <Button
                 variant="outlined"
                 color="primary"
