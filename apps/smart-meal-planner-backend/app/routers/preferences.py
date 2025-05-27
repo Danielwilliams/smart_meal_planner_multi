@@ -235,6 +235,9 @@ async def update_preferences(id: int, preferences: PreferencesUpdate):
         logger.debug(f"Has spice_level attr: {hasattr(preferences, 'spice_level')}")
         if hasattr(preferences, 'spice_level'):
             logger.debug(f"Spice level value: {preferences.spice_level}")
+        logger.debug(f"Has spiceLevel attr: {hasattr(preferences, 'spiceLevel')}")
+        if hasattr(preferences, 'spiceLevel'):
+            logger.debug(f"SpiceLevel value: {preferences.spiceLevel}")
 
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)

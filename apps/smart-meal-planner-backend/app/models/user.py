@@ -96,6 +96,7 @@ class PreferencesUpdate(BaseModel):
     servings_per_meal: Optional[int] = None  # Alias for servingsPerMeal
     snacks_per_day: Optional[int] = None  # Alias for snacksPerDay
     flavor_preferences: Optional[Dict[str, bool]] = None  # Alias for flavorPreferences
+    spice_level: Optional[str] = None  # Alias for spiceLevel
     recipe_type_preferences: Optional[Dict[str, bool]] = None  # Alias for recipeTypePreferences
     meal_time_preferences: Optional[Dict[str, bool]] = None  # Alias for mealTimePreferences
     time_constraints: Optional[Dict[str, int]] = None  # Alias for timeConstraints
