@@ -86,6 +86,15 @@ export const BrandingProvider = ({ children }) => {
       setLoading(true);
       let brandingData = null;
       
+      // IMPORTANT: Always reset to default first
+      setBranding(null);
+      setTheme(createDefaultTheme());
+      
+      // If no user or user is individual, stay with default theme
+      if (!user || user?.account_type === 'individual') {
+        return;
+      }
+      
       // Determine branding context - Apply branding for organization-linked users (owners and clients)
       const organizationId = user?.organization_id || organization?.id;
       
@@ -94,17 +103,18 @@ export const BrandingProvider = ({ children }) => {
         try {
           const response = await apiService.get(`/api/organization-branding/${organizationId}/branding/public`);
           brandingData = response;
+          
+          // Only apply branding if we successfully loaded it
+          if (brandingData) {
+            const customTheme = createBrandedTheme(brandingData);
+            setBranding(brandingData);
+            setTheme(customTheme);
+          }
         } catch (error) {
           console.warn('Could not load organization branding, using defaults:', error);
-          // Fallback to default theme for any errors
-          brandingData = null;
+          // Keep default theme for any errors
         }
       }
-      
-      // Create theme based on branding context
-      const customTheme = createBrandedTheme(brandingData);
-      setBranding(brandingData);
-      setTheme(customTheme);
       
     } catch (error) {
       console.error('Error loading branding:', error);

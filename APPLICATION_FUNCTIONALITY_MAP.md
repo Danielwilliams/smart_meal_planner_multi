@@ -99,7 +99,15 @@ This document provides a comprehensive overview of all files in the Smart Meal P
 **`organization_settings.py`**
 - **Purpose**: Organization configuration and settings management
 - **Key Endpoints**: Organization profile, default preferences, team management
-- **Features**: Branding, default settings, compliance configuration
+- **Features**: Default settings, compliance configuration
+
+**`organization_branding.py`** *(White-Label Branding System)*
+- **Purpose**: Organization branding and white-label customization management
+- **Key Endpoints**: 
+  - Branding CRUD (`/api/organization-branding/{org_id}`)
+  - Public branding access (`/api/organization-branding/public/{org_id}`)
+  - Branding validation and defaults
+- **Features**: Custom colors, logos, messaging, feature toggles, client-facing branding, theme generation
 
 **`onboarding_forms.py`**
 - **Purpose**: Custom client onboarding form creation and management
@@ -191,6 +199,15 @@ This document provides a comprehensive overview of all files in the Smart Meal P
 **`apps/smart-meal-planner-web/src/context/OrganizationContext.js`**
 - **Purpose**: Organization context for nutrition coaching features
 - **Features**: Organization data management, client context switching
+
+**`apps/smart-meal-planner-web/src/context/BrandingContext.js`** *(White-Label Branding)*
+- **Purpose**: Dynamic theme and branding context for organizations and clients
+- **Features**: 
+  - Organization branding application to clients
+  - Dynamic theme generation from branding settings
+  - User context detection (organization vs client vs individual)
+  - Safety guards for individual user experience
+  - Material-UI theme integration
 
 ### API Services (`apps/smart-meal-planner-web/src/services/`)
 
@@ -306,7 +323,7 @@ This document provides a comprehensive overview of all files in the Smart Meal P
 
 **`OrganizationSettingsPage.jsx`** (`/organization/settings`)
 - **Purpose**: Organization profile and configuration management
-- **Features**: Organization details, branding, default preferences, team management
+- **Features**: Organization details, default preferences, team management, branding management interface
 - **Access**: Organization accounts only
 
 **`OrganizationSetup.jsx`** (`/organization/setup`)
@@ -575,6 +592,19 @@ This document provides a comprehensive overview of all files in the Smart Meal P
 - **Purpose**: Organization setup validation
 - **Features**: Setup progress checking, requirement validation
 
+### Organization Branding Components
+**`OrganizationBrandingManager.jsx`** *(White-Label Branding Management)*
+- **Purpose**: Comprehensive organization branding management interface
+- **Features**:
+  - 4-tab interface: Visual Design, Layout, Messaging, Features
+  - Primary/secondary color customization with color picker
+  - Logo upload and management (main logo, favicon, header logo)
+  - Custom messaging (welcome messages, taglines, descriptions)
+  - Feature toggles (enable/disable specific application features)
+  - Real-time preview of branding changes
+  - Branding reset to defaults functionality
+  - Integration with Material-UI theme system
+
 ---
 
 ## Utilities & Data Files
@@ -629,6 +659,7 @@ This document provides a comprehensive overview of all files in the Smart Meal P
 ### Multi-Tenant Design
 - **Client vs. Organization Context**: Separate dashboards, features, and access levels
 - **Account Types**: Individual, client, organization, admin with role-based access
+- **White-Label Branding**: Organization-specific theming and branding for client interfaces
 
 ### Integration Architecture
 - **Third-Party APIs**: Comprehensive Kroger and Instacart integration
@@ -641,9 +672,10 @@ This document provides a comprehensive overview of all files in the Smart Meal P
 - **Cart Integration**: Multi-store cart management with internal state
 
 ### State Management
-- **Context Providers**: Authentication and organization context throughout app
+- **Context Providers**: Authentication, organization, and branding context throughout app
 - **Local State**: Component-level state for UI interactions
 - **API State**: Server state management through custom hooks and services
+- **Dynamic Theming**: Real-time theme updates based on organization branding settings
 
 ### Testing & Development
 - **Multiple Environments**: Development, staging, production configurations
@@ -654,12 +686,20 @@ This document provides a comprehensive overview of all files in the Smart Meal P
 
 ## Recent Enhancements
 
-### Organization Recipe Management System (Latest Major Feature)
+### Organization Branding System (Phase 4A - Latest Feature)
+- **Backend**: New `organization_branding.py` router and branding models for white-label customization
+- **Frontend**: `OrganizationBrandingManager.jsx` with 4-tab interface (Visual Design, Layout, Messaging, Features)
+- **Features**: Custom colors, logos, messaging, feature toggles, client-facing branding application
+- **Context**: `BrandingContext.js` for dynamic theme application to organization clients
+- **Database**: JSONB branding_settings column in organization_settings table with migration
+- **Models**: Comprehensive Pydantic models for branding validation (`branding.py`)
+
+### Organization Recipe Management System (Previous Major Feature)
 - **Backend**: New `organization_recipes.py` router for comprehensive recipe library management
 - **Frontend**: `OrganizationRecipeLibrary.jsx` with 4-tab interface (Library, Approval Queue, Categories, Analytics)
 - **Features**: Recipe approval workflow, categorization, tagging, usage analytics, integration with catalog
 - **Custom Recipes**: `OrganizationCustomRecipes.jsx` and `CustomRecipeCreationDialog.jsx` for organization-specific recipe creation
-- **Getting Started**: Enhanced `OrganizationGettingStarted.jsx` with recipe library guidance and workflow integration
+- **Getting Started**: Enhanced `OrganizationGettingStarted.jsx` with recipe library and branding guidance
 
 ### Comprehensive Organization Dashboard Enhancement
 - **Multi-Tab Interface**: 8-tab organization dashboard covering all aspects of nutrition coaching

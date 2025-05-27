@@ -43,7 +43,8 @@ import {
   Favorite as RecipesIcon,
   ShoppingCart as ShoppingIcon,
   School as LearnIcon,
-  Notes as NotesIcon
+  Notes as NotesIcon,
+  Palette as BrandingIcon
 } from '@mui/icons-material';
 
 const OrganizationGettingStarted = ({ onNavigateToTab, onComplete, organizationName }) => {
@@ -99,6 +100,13 @@ const OrganizationGettingStarted = ({ onNavigateToTab, onComplete, organizationN
       action: () => window.open('/organization/dashboard', '_blank'), // Organization Dashboard with Recipe Library
       icon: <RecipesIcon color="secondary" />,
       estimatedTime: '10 minutes'
+    },
+    {
+      label: 'Customize Your Organization Branding',
+      description: 'Set up custom colors, logos, and messaging for your white-label experience',
+      action: () => onNavigateToTab(6), // Settings tab with branding
+      icon: <BrandingIcon color="primary" />,
+      estimatedTime: '8 minutes'
     }
   ];
 
@@ -223,23 +231,30 @@ const OrganizationGettingStarted = ({ onNavigateToTab, onComplete, organizationN
       ]
     },
     {
-      title: 'Organization Settings',
+      title: 'Organization Settings & Branding',
       icon: <SettingsIcon color="error" />,
-      description: 'Configure your organization profile and preferences',
+      description: 'Configure your organization profile, preferences, and custom branding',
       features: [
         {
           name: 'Organization Profile',
           description: 'Set up your business information, contact details, and branding',
           benefits: ['Professional appearance', 'Client trust', 'Brand consistency'],
           howTo: 'Settings tab → Organization Settings → Update profile information',
-          tab: 5
+          tab: 6
+        },
+        {
+          name: 'White-Label Branding',
+          description: 'Customize colors, logos, messaging, and features for your organization brand',
+          benefits: ['Brand consistency', 'Professional client experience', 'Custom messaging', 'Feature control'],
+          howTo: 'Settings tab → Branding Management → Configure visual design, layout, messaging, and features',
+          tab: 6
         },
         {
           name: 'Default Preferences',
           description: 'Set default dietary preferences for new clients',
           benefits: ['Consistent starting point', 'Faster client setup', 'Reduced manual work'],
           howTo: 'Settings tab → Configure default client preferences',
-          tab: 5
+          tab: 6
         },
         {
           name: 'Access Management',
@@ -286,13 +301,14 @@ const OrganizationGettingStarted = ({ onNavigateToTab, onComplete, organizationN
       description: 'Get your organization ready for clients',
       tasks: [
         'Complete organization profile in Settings',
+        'Configure custom branding (colors, logos, messaging) for white-label experience',
         'Set default client preferences',
         'Create your first onboarding form',
         'Set up note templates for common scenarios',
         'Build your recipe library by adding approved recipes from the catalog',
         'Create recipe categories to organize your collection',
         'Add your first custom recipe if you have proprietary recipes',
-        'Test the client signup process'
+        'Test the client signup process with your custom branding'
       ]
     },
     {
@@ -374,6 +390,14 @@ const OrganizationGettingStarted = ({ onNavigateToTab, onComplete, organizationN
     {
       title: 'Use Recipe Categories Strategically',
       content: 'Create categories that match your meal planning workflow (e.g., "Quick Breakfasts", "Anti-Inflammatory", "Heart-Healthy"). This makes menu creation much faster.'
+    },
+    {
+      title: 'Brand Consistency Matters',
+      content: 'Set up your organization branding early to ensure a consistent, professional experience for all clients. Use colors and messaging that align with your nutrition philosophy and business brand.'
+    },
+    {
+      title: 'Test Your Client Experience',
+      content: 'After setting up branding, create a test client account to see how your organization appears from the client perspective. This helps ensure your branding is effective and professional.'
     }
   ];
 
