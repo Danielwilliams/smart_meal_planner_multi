@@ -6,9 +6,9 @@ from datetime import datetime
 
 class OrganizationBrandingVisual(BaseModel):
     """Visual branding settings for organization"""
-    primaryColor: Optional[str] = Field(default="#4caf50", regex=r"^#[0-9A-Fa-f]{6}$")
-    secondaryColor: Optional[str] = Field(default="#ff9800", regex=r"^#[0-9A-Fa-f]{6}$")
-    accentColor: Optional[str] = Field(default="#2196f3", regex=r"^#[0-9A-Fa-f]{6}$")
+    primaryColor: Optional[str] = Field(default="#4caf50", pattern=r"^#[0-9A-Fa-f]{6}$")
+    secondaryColor: Optional[str] = Field(default="#ff9800", pattern=r"^#[0-9A-Fa-f]{6}$")
+    accentColor: Optional[str] = Field(default="#2196f3", pattern=r"^#[0-9A-Fa-f]{6}$")
     logoUrl: Optional[str] = None
     faviconUrl: Optional[str] = None
     backgroundImageUrl: Optional[str] = None
@@ -35,10 +35,10 @@ class OrganizationBrandingVisual(BaseModel):
 
 class OrganizationBrandingLayout(BaseModel):
     """Layout and styling preferences"""
-    headerStyle: Optional[str] = Field(default="standard", regex=r"^(standard|minimal|centered)$")
-    sidebarStyle: Optional[str] = Field(default="full", regex=r"^(full|collapsed|hidden)$")
-    cardStyle: Optional[str] = Field(default="rounded", regex=r"^(rounded|square|elevated)$")
-    buttonStyle: Optional[str] = Field(default="filled", regex=r"^(filled|outlined|text)$")
+    headerStyle: Optional[str] = Field(default="standard", pattern=r"^(standard|minimal|centered)$")
+    sidebarStyle: Optional[str] = Field(default="full", pattern=r"^(full|collapsed|hidden)$")
+    cardStyle: Optional[str] = Field(default="rounded", pattern=r"^(rounded|square|elevated)$")
+    buttonStyle: Optional[str] = Field(default="filled", pattern=r"^(filled|outlined|text)$")
 
 class OrganizationBrandingMessaging(BaseModel):
     """Text and messaging customization"""
@@ -117,7 +117,7 @@ class EmailTemplateVariables(BaseModel):
 
 class EmailTemplateCreate(BaseModel):
     """Model for creating email templates"""
-    template_type: str = Field(..., regex=r"^(welcome|menu_delivery|reminder|notification)$")
+    template_type: str = Field(..., pattern=r"^(welcome|menu_delivery|reminder|notification)$")
     name: str = Field(..., max_length=255)
     subject_template: str = Field(..., max_length=500)
     html_template: str
@@ -151,7 +151,7 @@ class EmailTemplate(BaseModel):
 
 class EmailTemplateTestRequest(BaseModel):
     """Model for testing email templates"""
-    test_email: str = Field(..., regex=r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+    test_email: str = Field(..., pattern=r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
     template_data: Dict[str, Any] = {}
     variables: Dict[str, Any] = {}
 
@@ -160,7 +160,7 @@ class EmailTemplateTestRequest(BaseModel):
 class BrandingPreviewRequest(BaseModel):
     """Model for previewing branding changes"""
     branding_data: OrganizationBranding
-    preview_type: str = Field(default="dashboard", regex=r"^(dashboard|email|menu)$")
+    preview_type: str = Field(default="dashboard", pattern=r"^(dashboard|email|menu)$")
 
 class BrandingPreviewResponse(BaseModel):
     """Response for branding preview"""
