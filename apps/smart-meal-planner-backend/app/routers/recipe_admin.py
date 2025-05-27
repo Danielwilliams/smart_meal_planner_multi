@@ -658,6 +658,30 @@ async def tag_recipes_with_preferences(
             """)
             conn.commit()
             logger.info("Created recipe_preferences table!")
+        else:
+            # Table exists, check if it has the preferences column
+            cursor.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                    AND table_name = 'recipe_preferences'
+                    AND column_name = 'preferences'
+                )
+            """)
+            preferences_column_exists = cursor.fetchone()
+            logger.info(f"preferences column exists: {preferences_column_exists}")
+
+            if not preferences_column_exists or not preferences_column_exists.get('exists', False):
+                # Add the preferences column
+                logger.warning("Adding preferences column to existing recipe_preferences table...")
+                cursor.execute("""
+                    ALTER TABLE recipe_preferences
+                    ADD COLUMN preferences JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                """)
+                conn.commit()
+                logger.info("Added preferences column to recipe_preferences table!")
 
         # Check table structure
         cursor.execute("""
