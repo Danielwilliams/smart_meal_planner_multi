@@ -87,6 +87,7 @@ const RecipeAdminPanel = () => {
   const [addRecipeDialogOpen, setAddRecipeDialogOpen] = useState(false);
   const [isAdminUser, setIsAdminUser] = useState(false);
   const [recipePreferences, setRecipePreferences] = useState({});
+  const [recipeTags, setRecipeTags] = useState({});
 
   // Tag dialog state
   const [tagDialogOpen, setTagDialogOpen] = useState(false);
@@ -202,93 +203,72 @@ const RecipeAdminPanel = () => {
     }, 5000);
   };
 
-  // Function to render preference chips
-  const renderPreferenceChips = (recipeId) => {
+  // Function to render preference chips and recipe tags
+  const renderPreferenceChips = (recipe) => {
+    const recipeId = recipe.id;
     const preferences = recipePreferences[recipeId];
-
-    if (!preferences || !preferences.preferences) {
-      return (
-        <Typography variant="body2" color="text.secondary">
-          No preferences
-        </Typography>
-      );
-    }
-
-    const prefs = preferences.preferences;
+    const tags = recipeTags[recipeId] || [];
     const chips = [];
 
-    // Diet type
-    if (prefs.diet_type) {
+    // From recipe database columns (filled variant for DB data)
+    if (recipe.cuisine) {
       chips.push(
         <Chip
-          key="diet"
-          label={prefs.diet_type}
-          size="small"
-          color="secondary"
-          variant="outlined"
-        />
-      );
-    }
-
-    // Cuisine
-    if (prefs.cuisine) {
-      chips.push(
-        <Chip
-          key="cuisine"
-          label={prefs.cuisine}
+          key={`db-cuisine`}
+          label={recipe.cuisine}
           size="small"
           color="info"
-          variant="outlined"
+          variant="filled"
         />
       );
     }
 
-    // Spice level
-    if (prefs.spice_level) {
+    if (recipe.cooking_method) {
       chips.push(
         <Chip
-          key="spice"
-          label={`Spice: ${prefs.spice_level}`}
-          size="small"
-          color="error"
-          variant="outlined"
-        />
-      );
-    }
-
-    // Recipe format
-    if (prefs.recipe_format) {
-      chips.push(
-        <Chip
-          key="format"
-          label={prefs.recipe_format}
+          key={`db-cooking`}
+          label={recipe.cooking_method}
           size="small"
           color="success"
-          variant="outlined"
+          variant="filled"
         />
       );
     }
 
-    // Meal prep type
-    if (prefs.meal_prep_type) {
+    if (recipe.meal_part) {
       chips.push(
         <Chip
-          key="prep"
-          label={prefs.meal_prep_type}
+          key={`db-meal`}
+          label={recipe.meal_part}
           size="small"
           color="warning"
-          variant="outlined"
+          variant="filled"
         />
       );
     }
 
-    // Flavor tags
-    if (prefs.flavor_tags && Array.isArray(prefs.flavor_tags)) {
-      prefs.flavor_tags.forEach(flavor => {
+    // From diet_tags array
+    if (recipe.diet_tags && Array.isArray(recipe.diet_tags)) {
+      recipe.diet_tags.forEach((dietTag, index) => {
         chips.push(
           <Chip
-            key={`flavor-${flavor}`}
-            label={flavor}
+            key={`db-diet-${index}`}
+            label={dietTag}
+            size="small"
+            color="secondary"
+            variant="filled"
+          />
+        );
+      });
+    }
+
+    // From recipe_tags table (outlined variant for tag table data)
+    if (tags && tags.length > 0) {
+      tags.forEach((tag, index) => {
+        chips.push(
+          <Chip
+            key={`tag-${index}`}
+            label={tag}
             size="small"
             color="primary"
             variant="outlined"
@@ -297,39 +277,57 @@ const RecipeAdminPanel = () => {
       });
     }
 
-    // Appliances
-    if (prefs.appliances && Array.isArray(prefs.appliances)) {
-      prefs.appliances.forEach(appliance => {
+    // From preferences (different style to distinguish)
+    if (preferences && preferences.preferences) {
+      const prefs = preferences.preferences;
+
+      if (prefs.diet_type) {
         chips.push(
           <Chip
-            key={`appliance-${appliance}`}
-            label={appliance}
+            key={`pref-diet`}
+            label={`${prefs.diet_type}`}
             size="small"
-            color="default"
+            color="secondary"
             variant="outlined"
+            sx={{ border: '2px dashed' }}
           />
         );
-      });
-    }
+      }
 
-    // Prep complexity
-    if (prefs.prep_complexity !== undefined && prefs.prep_complexity !== null) {
-      chips.push(
-        <Chip
-          key="complexity"
-          label={`${prefs.prep_complexity}% complexity`}
-          size="small"
-          color="default"
-          variant="outlined"
-        />
-      );
+      if (prefs.spice_level) {
+        chips.push(
+          <Chip
+            key={`pref-spice`}
+            label={`Spice: ${prefs.spice_level}`}
+            size="small"
+            color="error"
+            variant="outlined"
+            sx={{ border: '2px dashed' }}
+          />
+        );
+      }
+
+      if (prefs.flavor_tags && Array.isArray(prefs.flavor_tags)) {
+        prefs.flavor_tags.forEach((flavor, index) => {
+          chips.push(
+            <Chip
+              key={`pref-flavor-${index}`}
+              label={flavor}
+              size="small"
+              color="primary"
+              variant="outlined"
+              sx={{ border: '2px dashed' }}
+            />
+          );
+        });
+      }
     }
 
     return (
-      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, maxWidth: 300 }}>
         {chips.length > 0 ? chips : (
           <Typography variant="body2" color="text.secondary">
-            No preferences
+            No tags
           </Typography>
         )}
       </Box>
@@ -533,11 +531,13 @@ const RecipeAdminPanel = () => {
       setTotal(response.total || 0);
       setTotalRecipes(response.total || 0);
 
-      // Fetch preferences for each recipe
+      // Fetch preferences and tags for each recipe
       if (response.recipes && response.recipes.length > 0) {
         const preferencesMap = {};
+        const tagsMap = {};
 
         await Promise.all(response.recipes.map(async (recipe) => {
+          // Fetch preferences
           try {
             const prefResponse = await axios.get(`${API_BASE_URL}/recipe-admin/preferences/${recipe.id}`, {
               headers: {
@@ -552,10 +552,28 @@ const RecipeAdminPanel = () => {
           } catch (error) {
             console.log(`No preferences found for recipe ${recipe.id}:`, error.message);
           }
+
+          // Fetch tags
+          try {
+            const tagsResponse = await axios.get(`${API_BASE_URL}/recipe-admin/tags/${recipe.id}`, {
+              headers: {
+                'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+                'Content-Type': 'application/json'
+              }
+            });
+
+            if (tagsResponse.data.success && tagsResponse.data.tags) {
+              tagsMap[recipe.id] = tagsResponse.data.tags;
+            }
+          } catch (error) {
+            console.log(`No tags found for recipe ${recipe.id}:`, error.message);
+          }
         }));
 
         setRecipePreferences(preferencesMap);
+        setRecipeTags(tagsMap);
         console.log('Fetched preferences for recipes:', preferencesMap);
+        console.log('Fetched tags for recipes:', tagsMap);
       }
     } catch (err) {
       console.error('Error fetching recipes:', err);
@@ -1143,7 +1161,7 @@ const RecipeAdminPanel = () => {
                             )}
                           </TableCell>
                           <TableCell>
-                            {renderPreferenceChips(recipe.id)}
+                            {renderPreferenceChips(recipe)}
                           </TableCell>
                           <TableCell>
                             <Box sx={{ display: 'flex', gap: 1 }}>

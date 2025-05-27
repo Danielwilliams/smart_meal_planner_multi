@@ -704,9 +704,10 @@ async def tag_recipes_with_preferences(
                 existing = cursor.fetchone()
                 logger.info(f"Existing preferences record: {existing}")
 
-                # Convert preferences to JSON string
+                # Convert preferences to JSON string for recipe_preferences table
                 preferences_json = json.dumps(preferences)
 
+                # Update recipe_preferences table
                 if existing:
                     # Update existing preferences
                     update_sql = """
@@ -722,16 +723,8 @@ async def tag_recipes_with_preferences(
 
                     if updated:
                         logger.info(f"Update successful, returned: {updated}")
-                        tagged_count += 1
                     else:
                         logger.error("Update query didn't return any data!")
-
-                    results.append({
-                        "recipe_id": recipe_id,
-                        "success": True,
-                        "message": "Updated preferences",
-                        "data": updated
-                    })
                 else:
                     # Insert new preferences
                     insert_sql = """
@@ -746,16 +739,108 @@ async def tag_recipes_with_preferences(
 
                     if created:
                         logger.info(f"Insert successful, returned: {created}")
-                        tagged_count += 1
                     else:
                         logger.error("Insert query didn't return any data!")
 
-                    results.append({
-                        "recipe_id": recipe_id,
-                        "success": True,
-                        "message": "Added preferences",
-                        "data": created
-                    })
+                # Now update the scraped_recipes table columns
+                recipe_updates = {}
+                update_fields = []
+                update_values = []
+
+                # Map preferences to recipe columns
+                if preferences.get('cuisine'):
+                    recipe_updates['cuisine'] = preferences['cuisine']
+                    update_fields.append("cuisine = %s")
+                    update_values.append(preferences['cuisine'])
+
+                if preferences.get('recipe_format'):
+                    recipe_updates['cooking_method'] = preferences['recipe_format']
+                    update_fields.append("cooking_method = %s")
+                    update_values.append(preferences['recipe_format'])
+
+                if preferences.get('meal_prep_type'):
+                    recipe_updates['meal_part'] = preferences['meal_prep_type']
+                    update_fields.append("meal_part = %s")
+                    update_values.append(preferences['meal_prep_type'])
+
+                # Update diet_tags array
+                diet_tags = []
+                if preferences.get('diet_type'):
+                    diet_tags.append(preferences['diet_type'])
+                if preferences.get('spice_level'):
+                    diet_tags.append(f"spice_{preferences['spice_level']}")
+
+                if diet_tags:
+                    update_fields.append("diet_tags = %s")
+                    update_values.append(diet_tags)
+
+                # Update flavor_profile JSONB
+                flavor_profile = {}
+                if preferences.get('flavor_tags'):
+                    for flavor in preferences['flavor_tags']:
+                        flavor_profile[flavor] = True
+                if preferences.get('spice_level'):
+                    flavor_profile['spice_level'] = preferences['spice_level']
+                if preferences.get('prep_complexity'):
+                    flavor_profile['prep_complexity'] = preferences['prep_complexity']
+
+                if flavor_profile:
+                    update_fields.append("flavor_profile = %s")
+                    update_values.append(json.dumps(flavor_profile))
+
+                # Execute recipe table update if we have fields to update
+                if update_fields:
+                    update_values.append(recipe_id)
+                    recipe_update_sql = f"""
+                        UPDATE scraped_recipes
+                        SET {", ".join(update_fields)}
+                        WHERE id = %s
+                    """
+                    logger.info(f"Updating recipe table: {recipe_update_sql} with values: {update_values}")
+                    cursor.execute(recipe_update_sql, update_values)
+
+                # Update recipe_tags table
+                # First, clear existing tags for this recipe (we'll replace them)
+                cursor.execute("DELETE FROM recipe_tags WHERE recipe_id = %s", (recipe_id,))
+
+                # Insert new tags
+                tags_to_insert = set()
+
+                if preferences.get('diet_type'):
+                    tags_to_insert.add(preferences['diet_type'])
+                if preferences.get('cuisine'):
+                    tags_to_insert.add(preferences['cuisine'])
+                if preferences.get('spice_level'):
+                    tags_to_insert.add(f"spice_{preferences['spice_level']}")
+                if preferences.get('recipe_format'):
+                    tags_to_insert.add(preferences['recipe_format'])
+                if preferences.get('meal_prep_type'):
+                    tags_to_insert.add(preferences['meal_prep_type'])
+                if preferences.get('flavor_tags'):
+                    for flavor in preferences['flavor_tags']:
+                        tags_to_insert.add(f"flavor_{flavor}")
+                if preferences.get('appliances'):
+                    for appliance in preferences['appliances']:
+                        tags_to_insert.add(f"appliance_{appliance}")
+
+                # Insert all tags
+                for tag in tags_to_insert:
+                    cursor.execute("""
+                        INSERT INTO recipe_tags (recipe_id, tag)
+                        VALUES (%s, %s)
+                        ON CONFLICT (recipe_id, tag) DO NOTHING
+                    """, (recipe_id, tag))
+
+                logger.info(f"Inserted {len(tags_to_insert)} tags for recipe {recipe_id}: {tags_to_insert}")
+                tagged_count += 1
+
+                results.append({
+                    "recipe_id": recipe_id,
+                    "success": True,
+                    "message": f"Updated preferences, recipe columns, and {len(tags_to_insert)} tags",
+                    "recipe_updates": recipe_updates,
+                    "tags_added": list(tags_to_insert)
+                })
 
                 # Verify the change by doing a direct select
                 cursor.execute("SELECT * FROM recipe_preferences WHERE recipe_id = %s", (recipe_id,))
@@ -899,6 +984,76 @@ async def get_all_recipe_preferences(
     except Exception as e:
         logger.error(f"Error fetching all recipe preferences: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error fetching all recipe preferences: {str(e)}")
+    finally:
+        if conn:
+            conn.close()
+
+@router.get("/tags/{recipe_id}")
+async def get_recipe_tags(
+    recipe_id: int,
+    user = Depends(get_user_from_token)
+):
+    """
+    Get all tags for a specific recipe from recipe_tags table
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        cursor.execute("""
+            SELECT tag FROM recipe_tags
+            WHERE recipe_id = %s
+            ORDER BY tag
+        """, (recipe_id,))
+
+        tags = cursor.fetchall()
+        tag_list = [tag['tag'] for tag in tags]
+
+        return {
+            "success": True,
+            "recipe_id": recipe_id,
+            "tags": tag_list
+        }
+    except Exception as e:
+        logger.error(f"Error fetching recipe tags: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error fetching recipe tags: {str(e)}")
+    finally:
+        if conn:
+            conn.close()
+
+@router.get("/tags")
+async def get_all_recipe_tags(
+    user = Depends(get_user_from_token)
+):
+    """
+    Get all recipe tags with recipe information
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        cursor.execute("""
+            SELECT
+                rt.recipe_id,
+                rt.tag,
+                sr.title,
+                sr.image_url
+            FROM recipe_tags rt
+            JOIN scraped_recipes sr ON rt.recipe_id = sr.id
+            ORDER BY rt.recipe_id, rt.tag
+        """)
+
+        tags = cursor.fetchall()
+
+        return {
+            "success": True,
+            "tags": tags
+        }
+    except Exception as e:
+        logger.error(f"Error fetching all recipe tags: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error fetching all recipe tags: {str(e)}")
     finally:
         if conn:
             conn.close()
