@@ -3662,6 +3662,57 @@ const apiService = {
       console.error('API request error:', error);
       throw error;
     }
+  },
+
+  // Standard HTTP methods for compatibility
+  async get(url, config = {}) {
+    try {
+      const response = await axiosInstance.get(url, config);
+      return response.data;
+    } catch (error) {
+      console.error('GET request error:', error);
+      throw error;
+    }
+  },
+
+  async post(url, data = {}, config = {}) {
+    try {
+      const response = await axiosInstance.post(url, data, config);
+      return response.data;
+    } catch (error) {
+      console.error('POST request error:', error);
+      throw error;
+    }
+  },
+
+  async put(url, data = {}, config = {}) {
+    try {
+      const response = await axiosInstance.put(url, data, config);
+      return response.data;
+    } catch (error) {
+      console.error('PUT request error:', error);
+      throw error;
+    }
+  },
+
+  async delete(url, config = {}) {
+    try {
+      const response = await axiosInstance.delete(url, config);
+      return response.data;
+    } catch (error) {
+      console.error('DELETE request error:', error);
+      throw error;
+    }
+  },
+
+  async patch(url, data = {}, config = {}) {
+    try {
+      const response = await axiosInstance.patch(url, data, config);
+      return response.data;
+    } catch (error) {
+      console.error('PATCH request error:', error);
+      throw error;
+    }
   }
 }; // Close the apiService object here
 
