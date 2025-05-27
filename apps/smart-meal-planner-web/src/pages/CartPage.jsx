@@ -1351,7 +1351,7 @@ function CartPage() {
 
       // Add specific advice for common error patterns
       if (userMessage.includes('API key')) {
-        userMessage = 'Instacart API configuration error. Please contact support.';
+        userMessage = 'Instacart API configuration error. Please contact support at support@smartmealplannerio.com.';
       } else if (userMessage.includes('timeout') || userMessage.includes('network')) {
         userMessage = 'Network timeout while connecting to Instacart. Please try again.';
       } else if (userMessage.includes('retailer')) {

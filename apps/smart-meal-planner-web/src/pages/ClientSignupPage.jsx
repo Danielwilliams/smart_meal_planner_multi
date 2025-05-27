@@ -256,7 +256,7 @@ const ClientSignupPage = () => {
       } else if (err.response?.data?.detail) {
         setError(`Error: ${err.response.data.detail}`);
       } else {
-        setError('Failed to connect to organization. Please try again or contact support.');
+        setError('Failed to connect to organization. Please try again or contact support at support@smartmealplannerio.com.');
       }
     } finally {
       setLoading(false);

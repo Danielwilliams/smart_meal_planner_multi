@@ -667,13 +667,84 @@ const OrganizationGettingStarted = ({ onNavigateToTab, onComplete, organizationN
               Our support team is here to help you succeed. Don't hesitate to reach out if you have questions or need guidance with any feature.
             </Typography>
             <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-              <Button variant="contained" color="primary">
+              <Button
+                variant="contained"
+                color="primary"
+                component="a"
+                href="mailto:support@smartmealplannerio.com?subject=Organization Setup Help"
+              >
                 Contact Support
               </Button>
-              <Button variant="outlined" color="primary">
+              <Button
+                variant="outlined"
+                color="primary"
+                onClick={() => {
+                  // Open documentation in a new window
+                  const docContent = `
+# Smart Meal Planner Documentation
+
+## Quick Start Guide
+1. **Organization Setup**: Complete your profile in the Settings tab
+2. **Client Invitations**: Use the Invitations tab to bring clients onboard
+3. **Menu Creation**: Create meal plans using our AI-powered menu generator
+4. **Recipe Library**: Build and manage your approved recipe collection
+5. **Client Management**: Track client progress and preferences
+
+## Key Features
+- **AI Menu Generation**: Automatically create personalized meal plans
+- **Recipe Management**: Organize and approve recipes for clients
+- **Client Onboarding**: Custom forms to understand client needs
+- **Shopping Integration**: Kroger and Instacart cart functionality
+- **Progress Tracking**: Monitor client engagement and success
+
+## Support
+For additional help, contact us at support@smartmealplannerio.com
+
+## Training Resources
+Schedule a personalized training session by emailing support@smartmealplannerio.com
+                  `;
+                  const newWindow = window.open('', '_blank');
+                  newWindow.document.write(\`
+                    <html>
+                      <head>
+                        <title>Smart Meal Planner Documentation</title>
+                        <style>
+                          body {
+                            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+                            margin: 40px;
+                            line-height: 1.6;
+                            color: #333;
+                            max-width: 800px;
+                          }
+                          h1 { color: #1976d2; border-bottom: 2px solid #1976d2; padding-bottom: 10px; }
+                          h2 { color: #333; border-bottom: 1px solid #eee; padding-bottom: 10px; margin-top: 30px; }
+                          ul { margin-left: 20px; }
+                          li { margin-bottom: 8px; }
+                          strong { color: #1976d2; }
+                        </style>
+                      </head>
+                      <body>
+                        <div>\${docContent.split('\\n').map(line => {
+                          if (line.startsWith('# ')) return \`<h1>\${line.slice(2)}</h1>\`;
+                          if (line.startsWith('## ')) return \`<h2>\${line.slice(3)}</h2>\`;
+                          if (line.match(/^\\d+\\./)) return \`<li>\${line.replace(/^\\d+\\.\\s*/, '')}</li>\`;
+                          if (line.startsWith('- ')) return \`<li>\${line.slice(2)}</li>\`;
+                          if (line.trim() === '') return '<br>';
+                          return \`<p>\${line}</p>\`;
+                        }).join('')}</div>
+                      </body>
+                    </html>
+                  \`);
+                }}
+              >
                 View Documentation
               </Button>
-              <Button variant="outlined" color="primary">
+              <Button
+                variant="outlined"
+                color="primary"
+                component="a"
+                href="mailto:support@smartmealplannerio.com?subject=Training Call Request&body=I would like to schedule a training call for my organization. Please let me know your availability."
+              >
                 Schedule Training Call
               </Button>
             </Box>

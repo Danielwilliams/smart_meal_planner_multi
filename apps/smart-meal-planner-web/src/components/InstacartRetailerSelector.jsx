@@ -255,7 +255,7 @@ const InstacartRetailerSelector = ({
                   </Typography>
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
                     {error && error.includes('API key') ?
-                      "This is likely a configuration issue with the API key. Try clearing your browser cache or contact support." :
+                      "This is likely a configuration issue with the API key. Try clearing your browser cache or contact support at support@smartmealplannerio.com." :
                       error && error.includes('CORS') ?
                         "This is a server configuration issue. The development environment may need to be updated." :
                         error ?
