@@ -50,9 +50,10 @@ function KrogerAuthCallback() {
         try {
           // Store auth code for diagnostics
           sessionStorage.setItem('kroger_auth_code', code);
-          // Make sure this exactly matches what's in the Kroger Developer Portal
-          sessionStorage.setItem('kroger_auth_redirect_uri', 'https://smartmealplannerio.com/kroger/callback');
-          localStorage.setItem('kroger_redirect_uri', 'https://smartmealplannerio.com/kroger/callback');
+          // Use environment variable if available, or fallback to default
+          const redirectUri = process.env.REACT_APP_KROGER_REDIRECT_URI || 'https://smartmealplannerio.com/kroger/callback';
+          sessionStorage.setItem('kroger_auth_redirect_uri', redirectUri);
+          localStorage.setItem('kroger_redirect_uri', redirectUri);
           sessionStorage.setItem('kroger_auth_timestamp', Date.now().toString());
           
           if (stateParam) {
@@ -68,10 +69,13 @@ function KrogerAuthCallback() {
           
           // Try to process the auth code with the backend
           try {
-            // Use a consistent redirect URI that matches the Kroger Developer Portal
+            // Use the same redirect URI we stored earlier
+            const redirectUri = localStorage.getItem('kroger_redirect_uri') ||
+                             process.env.REACT_APP_KROGER_REDIRECT_URI ||
+                             'https://smartmealplannerio.com/kroger/callback';
             const processingResult = await krogerAuthService.processAuthCode(
               code,
-              'https://smartmealplannerio.com/kroger/callback'
+              redirectUri
             );
             
             console.log('Auth code processing result:', processingResult);

@@ -18,8 +18,8 @@ logger = logging.getLogger(__name__)
 KROGER_BASE_URL = os.getenv("KROGER_BASE_URL", "https://api-ce.kroger.com/v1")
 KROGER_CLIENT_ID = os.getenv("KROGER_CLIENT_ID")
 KROGER_CLIENT_SECRET = os.getenv("KROGER_CLIENT_SECRET")
-# Make sure this exactly matches what's registered in the Kroger Developer Portal
-KROGER_REDIRECT_URI = "https://smartmealplannerio.com/kroger/callback"
+# Use environment variable with a default value
+KROGER_REDIRECT_URI = os.getenv("KROGER_REDIRECT_URI", "https://smartmealplannerio.com/kroger/callback")
 DEFAULT_KROGER_LOCATION_ID = os.getenv("DEFAULT_KROGER_LOCATION_ID")
 
 def debug_environment():
