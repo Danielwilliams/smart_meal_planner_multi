@@ -21,7 +21,7 @@ def get_user_preferences(id: int):
         cursor = conn.cursor(cursor_factory=RealDictCursor)
 
         cursor.execute("""
-            SELECT 
+            SELECT
                 diet_type,
                 dietary_restrictions,
                 disliked_ingredients,
@@ -31,7 +31,6 @@ def get_user_preferences(id: int):
                 macro_fat,
                 calorie_goal,
                 meal_times,
-                kroger_username,
                 appliances,
                 prep_complexity,
                 servings_per_meal,
@@ -71,7 +70,6 @@ def get_user_preferences(id: int):
                 },
                 "prep_complexity": 50,
                 "servings_per_meal": 1,
-                "kroger_username": "",
                 "snacks_per_day": 0,
                 "flavor_preferences": {
                     "creamy": False,
