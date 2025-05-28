@@ -139,8 +139,8 @@ const RecipeTagsDisplay = ({ recipe, showTitle = true, size = "small", hideBasic
       );
     }
 
-    // Complexity
-    if (recipe.complexity) {
+    // Complexity (only show if not hideBasicTags - recipe cards show this separately)
+    if (recipe.complexity && !hideBasicTags) {
       chips.push(
         <Chip
           key={`db-complexity`}
