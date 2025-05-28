@@ -1038,16 +1038,15 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
                     "menu_id": menu_id,
                     "meal_plan": final_plan
                 }
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"Error in generate_meal_plan_variety: {str(e)}", exc_info=True)
+                raise HTTPException(status_code=500, detail=str(e))
             finally:
                 cursor.close()
                 conn.close()
                 logger.info("Database connection closed after saving menu")
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error in generate_meal_plan_variety: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
 
 # Background Job Endpoints
 @router.post("/generate-async")
