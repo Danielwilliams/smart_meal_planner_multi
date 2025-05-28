@@ -60,6 +60,21 @@ const RecipeTagsDisplay = ({ recipe, showTitle = true, size = "small", hideBasic
     const chips = [];
 
     // From recipe database columns (filled variant for DB data)
+
+    // Component Type (Recipe Classification)
+    if (recipe.component_type) {
+      chips.push(
+        <Chip
+          key={`db-component`}
+          label={recipe.component_type.replace('_', ' ')}
+          size={size}
+          color="primary"
+          variant="filled"
+        />
+      );
+    }
+
+    // Cuisine
     if (recipe.cuisine && !hideBasicTags) {
       chips.push(
         <Chip
@@ -72,6 +87,20 @@ const RecipeTagsDisplay = ({ recipe, showTitle = true, size = "small", hideBasic
       );
     }
 
+    // Diet Type
+    if (recipe.diet_type) {
+      chips.push(
+        <Chip
+          key={`db-diet-type`}
+          label={recipe.diet_type}
+          size={size}
+          color="secondary"
+          variant="filled"
+        />
+      );
+    }
+
+    // Recipe Format (cooking method)
     if (recipe.cooking_method) {
       chips.push(
         <Chip
@@ -84,11 +113,12 @@ const RecipeTagsDisplay = ({ recipe, showTitle = true, size = "small", hideBasic
       );
     }
 
-    if (recipe.meal_part) {
+    // Meal Prep Type
+    if (recipe.meal_prep_type) {
       chips.push(
         <Chip
-          key={`db-meal`}
-          label={recipe.meal_part}
+          key={`db-meal-prep`}
+          label={recipe.meal_prep_type}
           size={size}
           color="warning"
           variant="filled"
@@ -96,16 +126,45 @@ const RecipeTagsDisplay = ({ recipe, showTitle = true, size = "small", hideBasic
       );
     }
 
-    if (recipe.component_type) {
+    // Spice Level
+    if (recipe.spice_level) {
       chips.push(
         <Chip
-          key={`db-component`}
-          label={recipe.component_type}
+          key={`db-spice`}
+          label={`Spice: ${recipe.spice_level}`}
           size={size}
-          color="primary"
+          color="error"
           variant="filled"
         />
       );
+    }
+
+    // Complexity
+    if (recipe.complexity) {
+      chips.push(
+        <Chip
+          key={`db-complexity`}
+          label={`${recipe.complexity}`}
+          size={size}
+          color="default"
+          variant="filled"
+        />
+      );
+    }
+
+    // Appliances
+    if (recipe.appliances && Array.isArray(recipe.appliances) && recipe.appliances.length > 0) {
+      recipe.appliances.forEach((appliance, index) => {
+        chips.push(
+          <Chip
+            key={`db-appliance-${index}`}
+            label={appliance}
+            size={size}
+            color="primary"
+            variant="outlined"
+          />
+        );
+      });
     }
 
     // From diet_tags array
@@ -245,7 +304,7 @@ const RecipeTagsDisplay = ({ recipe, showTitle = true, size = "small", hideBasic
       </Box>
       {showTitle && (
         <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-          Filled: Database • Outlined: Tags • Dashed: Preferences • Faded: Legacy
+          Filled: Recipe Properties • Outlined: Custom Tags • Dashed: Legacy Preferences
         </Typography>
       )}
     </Box>
