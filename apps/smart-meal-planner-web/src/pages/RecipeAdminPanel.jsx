@@ -131,6 +131,7 @@ const RecipeAdminPanel = () => {
     instantPot: false,
     crockPot: false
   });
+  const [recipeNotes, setRecipeNotes] = useState('');
 
   // Static arrays for option lists
   const dietTypes = [
@@ -674,6 +675,11 @@ const RecipeAdminPanel = () => {
           setSelectedAppliances(newAppliances);
         }
 
+        // Load notes
+        if (prefs.notes) {
+          setRecipeNotes(prefs.notes);
+        }
+
         console.log('Single recipe preferences loaded successfully');
       }
     } catch (error) {
@@ -949,14 +955,15 @@ const RecipeAdminPanel = () => {
         setLoading(true);
         setTagDialogOpen(false);
         
-        const anyPreferenceSelected = 
-          dietType || 
-          recipeType || 
+        const anyPreferenceSelected =
+          dietType ||
+          recipeType ||
           Object.values(flavorTags).some(value => value) ||
           spiceLevel ||
           recipeFormat ||
           mealPrepType ||
-          Object.values(selectedAppliances).some(value => value);
+          Object.values(selectedAppliances).some(value => value) ||
+          recipeNotes.trim();
         
         if (!anyPreferenceSelected) {
           showAlert('Please select at least one preference', 'warning');
@@ -989,6 +996,10 @@ const RecipeAdminPanel = () => {
         
         if (activeAppliances.length > 0) {
           selectedPreferences.appliances = activeAppliances;
+        }
+
+        if (recipeNotes.trim()) {
+          selectedPreferences.notes = recipeNotes.trim();
         }
         
         const tagDescriptions = [];
@@ -1041,6 +1052,39 @@ const RecipeAdminPanel = () => {
         setLoading(false);
       }
     }
+  };
+
+  // Reset tagging form
+  const resetTaggingForm = () => {
+    setDietType('');
+    setRecipeType('');
+    setFlavorTags({
+      herbs: false,
+      smoky: false,
+      spicy: false,
+      sweet: false,
+      tangy: false,
+      umami: false,
+      cheesy: false,
+      creamy: false,
+      hearty: false,
+      spiced: false,
+      peppery: false,
+      garlicky: false
+    });
+    setSpiceLevel('medium');
+    setRecipeFormat('');
+    setMealPrepType('');
+    setPrepComplexity(50);
+    setSelectedAppliances({
+      airFryer: false,
+      instantPot: false,
+      crockPot: false
+    });
+    setRecipeNotes('');
+    setSelectedTag('');
+    setNewTagName('');
+    setCustomTagMode(false);
   };
 
   const handleCalculateCompatibility = async () => {
@@ -1898,13 +1942,29 @@ const RecipeAdminPanel = () => {
                     />
                   </FormGroup>
                 </Grid>
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    label="Recipe Notes"
+                    multiline
+                    rows={4}
+                    value={recipeNotes}
+                    onChange={(e) => setRecipeNotes(e.target.value)}
+                    placeholder="Add any notes about this recipe (preparation tips, variations, etc.)"
+                    variant="outlined"
+                    sx={{ mt: 1 }}
+                  />
+                </Grid>
               </Grid>
             </Box>
           )}
         </DialogContent>
         
         <DialogActions>
-          <Button onClick={() => setTagDialogOpen(false)}>Cancel</Button>
+          <Button onClick={() => {
+            setTagDialogOpen(false);
+            resetTaggingForm();
+          }}>Cancel</Button>
           <Button 
             onClick={handleTagConfirm} 
             variant="contained"

@@ -650,6 +650,11 @@ async def tag_recipes_with_preferences(
                     update_fields.append("appliances = %s::jsonb")
                     update_values.append(json.dumps(preferences['appliances']))
 
+                if preferences.get('notes'):
+                    recipe_updates['notes'] = preferences['notes']
+                    update_fields.append("notes = %s")
+                    update_values.append(preferences['notes'])
+
                 # Update diet_tags array (PostgreSQL JSONB format)
                 diet_tags = []
                 if preferences.get('diet_type'):
@@ -866,7 +871,7 @@ async def get_recipe_preferences(
             SELECT
                 id, title, cuisine, cooking_method, complexity,
                 spice_level, diet_type, meal_prep_type, appliances,
-                meal_part, component_type
+                meal_part, component_type, notes
             FROM scraped_recipes
             WHERE id = %s
         """, (recipe_id,))
@@ -885,7 +890,8 @@ async def get_recipe_preferences(
             'diet_type': recipe.get('diet_type'),
             'meal_prep_type': recipe.get('meal_prep_type') or recipe.get('meal_part'),  # Fallback to meal_part
             'appliances': recipe.get('appliances', []),
-            'component_type': recipe.get('component_type')
+            'component_type': recipe.get('component_type'),
+            'notes': recipe.get('notes')
         }
 
         # Remove None values
@@ -936,12 +942,14 @@ async def get_all_recipe_preferences(
                 sr.diet_type,
                 sr.meal_prep_type,
                 sr.complexity,
-                sr.appliances
+                sr.appliances,
+                sr.notes
             FROM scraped_recipes sr
             WHERE sr.spice_level IS NOT NULL
                OR sr.diet_type IS NOT NULL
                OR sr.meal_prep_type IS NOT NULL
                OR sr.appliances IS NOT NULL
+               OR sr.notes IS NOT NULL
             ORDER BY sr.id DESC
         """)
 
@@ -956,7 +964,8 @@ async def get_all_recipe_preferences(
                 'diet_type': pref.get('diet_type'),
                 'meal_prep_type': pref.get('meal_prep_type'),
                 'complexity': pref.get('complexity'),
-                'appliances': pref.get('appliances', [])
+                'appliances': pref.get('appliances', []),
+                'notes': pref.get('notes')
             }
             # Remove None values
             pref['preferences'] = {k: v for k, v in pref['preferences'].items() if v is not None}
@@ -1108,7 +1117,7 @@ async def check_recipe_component(
         
         # Get preferences from scraped_recipes columns
         cursor.execute("""
-            SELECT cuisine, cooking_method, spice_level, diet_type, meal_prep_type, complexity, appliances
+            SELECT cuisine, cooking_method, spice_level, diet_type, meal_prep_type, complexity, appliances, notes
             FROM scraped_recipes
             WHERE id = %s
         """, (recipe_id,))
@@ -1125,7 +1134,8 @@ async def check_recipe_component(
                 'diet_type': recipe_prefs.get('diet_type'),
                 'meal_prep_type': recipe_prefs.get('meal_prep_type'),
                 'complexity': recipe_prefs.get('complexity'),
-                'appliances': recipe_prefs.get('appliances', [])
+                'appliances': recipe_prefs.get('appliances', []),
+                'notes': recipe_prefs.get('notes')
             }
             # Remove None values
             pref_data = {k: v for k, v in pref_data.items() if v is not None}
