@@ -624,12 +624,13 @@ const RecipeAdminPanel = () => {
     }
   };
 
-  const handleTagRecipesClick = () => {
+  const handleTagRecipesClick = async () => {
     if (selectedRecipes.length === 0) {
       showAlert('Please select at least one recipe to tag', 'warning');
       return;
     }
-    
+
+    // Reset form to defaults
     setSelectedTag('');
     setNewTagName('');
     setCustomTagMode(false);
@@ -659,7 +660,58 @@ const RecipeAdminPanel = () => {
       instantPot: false,
       crockPot: false
     });
-    
+
+    // If only one recipe is selected, load its existing preferences
+    if (selectedRecipes.length === 1) {
+      try {
+        const recipeId = selectedRecipes[0];
+        const response = await axios.get(`${API_BASE_URL}/recipe-admin/preferences/${recipeId}`, {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (response.data.success && response.data.preferences) {
+          const prefs = response.data.preferences.preferences;
+
+          // Load existing preferences into form
+          if (prefs.diet_type) setDietType(prefs.diet_type);
+          if (prefs.cuisine) setRecipeType(prefs.cuisine);
+          if (prefs.recipe_format) setRecipeFormat(prefs.recipe_format);
+          if (prefs.meal_prep_type) setMealPrepType(prefs.meal_prep_type);
+          if (prefs.spice_level) setSpiceLevel(prefs.spice_level);
+          if (prefs.prep_complexity) setPrepComplexity(prefs.prep_complexity);
+
+          // Load flavor tags
+          if (prefs.flavor_tags && Array.isArray(prefs.flavor_tags)) {
+            const newFlavorTags = { ...flavorTags };
+            prefs.flavor_tags.forEach(flavor => {
+              if (newFlavorTags.hasOwnProperty(flavor)) {
+                newFlavorTags[flavor] = true;
+              }
+            });
+            setFlavorTags(newFlavorTags);
+          }
+
+          // Load appliances
+          if (prefs.appliances && Array.isArray(prefs.appliances)) {
+            const newAppliances = { ...selectedAppliances };
+            prefs.appliances.forEach(appliance => {
+              if (appliance === 'Air Fryer') newAppliances.airFryer = true;
+              if (appliance === 'Instant Pot') newAppliances.instantPot = true;
+              if (appliance === 'Crock Pot') newAppliances.crockPot = true;
+            });
+            setSelectedAppliances(newAppliances);
+          }
+
+          console.log('Loaded existing preferences:', prefs);
+        }
+      } catch (error) {
+        console.log('No existing preferences found for recipe, using defaults');
+      }
+    }
+
     setTagDialogOpen(true);
   };
 

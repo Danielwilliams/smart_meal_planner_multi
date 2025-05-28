@@ -167,112 +167,28 @@ const RecipeTagsDisplay = ({ recipe, showTitle = true, size = "small", hideBasic
       });
     }
 
-    // From diet_tags array
-    if (recipe.diet_tags && Array.isArray(recipe.diet_tags)) {
-      recipe.diet_tags.forEach((dietTag, index) => {
-        chips.push(
-          <Chip
-            key={`db-diet-${index}`}
-            label={dietTag}
-            size={size}
-            color="secondary"
-            variant="filled"
-          />
-        );
-      });
-    }
+    // Note: diet_tags and flavor_profile arrays are deprecated
+    // All data is now in dedicated columns above
 
-    // From flavor_profile array
-    if (recipe.flavor_profile && Array.isArray(recipe.flavor_profile)) {
-      recipe.flavor_profile.forEach((flavor, index) => {
-        chips.push(
-          <Chip
-            key={`db-flavor-${index}`}
-            label={flavor}
-            size={size}
-            color="primary"
-            variant="filled"
-          />
-        );
-      });
-    }
-
-    // From recipe_tags table (outlined variant for tag table data)
+    // From recipe_tags table - only show flavor tags (outlined variant)
     if (recipeTags && recipeTags.length > 0) {
-      recipeTags.forEach((tag, index) => {
-        chips.push(
-          <Chip
-            key={`tag-${index}`}
-            label={tag}
-            size={size}
-            color="default"
-            variant="outlined"
-          />
-        );
-      });
-    }
-
-    // From preferences (dashed border style)
-    if (recipePreferences && recipePreferences.preferences) {
-      const prefs = recipePreferences.preferences;
-
-      if (prefs.diet_type) {
-        chips.push(
-          <Chip
-            key={`pref-diet`}
-            label={`${prefs.diet_type}`}
-            size={size}
-            color="secondary"
-            variant="outlined"
-            sx={{ border: '2px dashed' }}
-          />
-        );
-      }
-
-      if (prefs.spice_level) {
-        chips.push(
-          <Chip
-            key={`pref-spice`}
-            label={`Spice: ${prefs.spice_level}`}
-            size={size}
-            color="error"
-            variant="outlined"
-            sx={{ border: '2px dashed' }}
-          />
-        );
-      }
-
-      if (prefs.flavor_tags && Array.isArray(prefs.flavor_tags)) {
-        prefs.flavor_tags.forEach((flavor, index) => {
+      recipeTags
+        .filter(tag => tag.startsWith('flavor_'))
+        .forEach((tag, index) => {
           chips.push(
             <Chip
-              key={`pref-flavor-${index}`}
-              label={flavor}
+              key={`tag-${index}`}
+              label={tag.replace('flavor_', '')}
               size={size}
               color="primary"
               variant="outlined"
-              sx={{ border: '2px dashed' }}
             />
           );
         });
-      }
     }
 
-    // Legacy tags from recipe.tags
-    if (recipe.tags && Array.isArray(recipe.tags)) {
-      recipe.tags.forEach((tag, index) => {
-        chips.push(
-          <Chip
-            key={`legacy-${index}`}
-            label={tag}
-            size={size}
-            color="default"
-            variant="outlined"
-            sx={{ opacity: 0.7 }}
-          />
-        );
-      });
-    }
+    // Note: Legacy preferences and recipe.tags are deprecated
+    // All preference data is now in dedicated columns above
 
     return chips;
   };
@@ -304,7 +220,7 @@ const RecipeTagsDisplay = ({ recipe, showTitle = true, size = "small", hideBasic
       </Box>
       {showTitle && (
         <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-          Filled: Recipe Properties • Outlined: Custom Tags • Dashed: Legacy Preferences
+          Filled: Recipe Properties • Outlined: Custom Flavor Tags
         </Typography>
       )}
     </Box>
