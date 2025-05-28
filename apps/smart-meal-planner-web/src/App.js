@@ -45,6 +45,7 @@ import InstacartTestPage from './pages/InstacartTestPage';
 import DebugSharedMenus from './pages/DebugSharedMenus';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
+import Support from './pages/Support';
 
 
 function App() {
@@ -261,6 +262,9 @@ function App() {
                 } 
               />
               
+              {/* Support Route */}
+              <Route path="/support" element={<PrivateRoute><Support /></PrivateRoute>} />
+
               {/* Fallback route */}
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
