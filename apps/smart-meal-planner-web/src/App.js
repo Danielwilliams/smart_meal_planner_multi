@@ -46,6 +46,7 @@ import DebugSharedMenus from './pages/DebugSharedMenus';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import Support from './pages/Support';
+import KrogerAuth from './pages/KrogerAuth';
 
 
 function App() {
@@ -89,6 +90,7 @@ function App() {
               <Route path="/kroger/callback" element={<KrogerAuthCallback />} />
               <Route path="/kroger-callback" element={<KrogerAuthCallback />} />
               <Route path="/kroger-auth-callback" element={<KrogerAuthCallback />} />
+              <Route path="/kroger-auth" element={<KrogerAuth />} />
               {/* These routes are to catch potential redirects from registered URIs */}
               <Route path="/callback" element={<KrogerAuthCallback />} />
               
