@@ -114,9 +114,7 @@ export default function OrganizationSettingsPage() {
       carbs: '',
       fat: '',
       calories: ''
-    },
-    krogerUsername: '',
-    krogerPassword: ''
+    }
   });
 
   // Enhanced preferences states

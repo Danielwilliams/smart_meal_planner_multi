@@ -98,9 +98,7 @@ function ClientPreferencesPage() {
       carbs: '',
       fat: '',
       calories: ''
-    },
-    krogerUsername: '',
-    krogerPassword: ''
+    }
   });
   
   // New preference states
@@ -231,9 +229,7 @@ function ClientPreferencesPage() {
               carbs: clientPrefs.macro_carbs || '',
               fat: clientPrefs.macro_fat || '',
               calories: clientPrefs.calorie_goal || ''
-            },
-            krogerUsername: clientPrefs.krogerUsername || clientPrefs.kroger_username || '',
-            krogerPassword: clientPrefs.krogerPassword || clientPrefs.kroger_password || ''
+            }
           };
           
           setPreferences(updatedPrefs);
@@ -322,9 +318,7 @@ function ClientPreferencesPage() {
                   prepComplexity: orgDefaults.prepComplexity || prev.prepComplexity,
                   snacksPerDay: orgDefaults.snacksPerDay || prev.snacksPerDay,
                   dietaryRestrictions: orgDefaults.dietaryRestrictions || '',
-                  dislikedIngredients: orgDefaults.dislikedIngredients || '',
-                  krogerUsername: orgDefaults.krogerUsername || '',
-                  krogerPassword: orgDefaults.krogerPassword || ''
+                  dislikedIngredients: orgDefaults.dislikedIngredients || ''
                 }));
                 
                 // Apply advanced preferences
@@ -492,8 +486,6 @@ function ClientPreferencesPage() {
         mealTimes: preferences.mealTimes,
         snacksPerDay: selectedSnackTimes > 0 ? preferences.snacksPerDay : 0,
         macroGoals: preferences.macroGoals,
-        krogerUsername: preferences.krogerUsername,
-        krogerPassword: preferences.krogerPassword,
         flavorPreferences: flavorPreferences,
         spiceLevel: spiceLevel,
         recipeTypePreferences: recipeTypePreferences,

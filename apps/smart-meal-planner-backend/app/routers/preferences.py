@@ -267,23 +267,7 @@ async def update_preferences(id: int, preferences: PreferencesUpdate):
             update_fields.append("meal_times = %s::jsonb")
             params.append(json.dumps(meal_times_data))
         
-        if preferences.kroger_username is not None:
-            update_fields.append("kroger_username = %s")
-            params.append(preferences.kroger_username)
-        
-        if preferences.kroger_password is not None:
-            # Hash the Kroger password before storing
-            from app.utils.password_utils import hash_kroger_password
-            hashed_password, salt = hash_kroger_password(preferences.kroger_password)
-
-            update_fields.append("kroger_password_hash = %s")
-            params.append(hashed_password)
-            update_fields.append("kroger_password_salt = %s")
-            params.append(salt)
-
-            # Also clear the old plain text password field for security
-            update_fields.append("kroger_password = %s")
-            params.append(None)
+        # Kroger credential fields have been removed from the database
         
         if preferences.macro_protein is not None:
             update_fields.append("macro_protein = %s")

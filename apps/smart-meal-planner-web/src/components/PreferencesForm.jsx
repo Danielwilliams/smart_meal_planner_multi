@@ -530,45 +530,15 @@ const PreferencesForm = ({
 
       <Divider sx={{ my: 3 }} />
 
-      {/* Kroger Integration */}
+      {/* Kroger Integration Note */}
       <Box sx={{ mt: 3, mb: 2 }}>
         <Typography variant="subtitle1" gutterBottom>
-          Kroger Integration (Optional)
+          Kroger Integration
         </Typography>
-        <Grid container spacing={2}>
-          <Grid item xs={12} sm={6}>
-            <TextField
-              fullWidth
-              label="Kroger Username"
-              value={preferences.krogerUsername}
-              onChange={(e) => {
-                setPreferences(prev => ({
-                  ...prev,
-                  krogerUsername: e.target.value
-                }));
-              }}
-              placeholder="Your Kroger account username"
-            />
-          </Grid>
-          <Grid item xs={12} sm={6}>
-            <TextField
-              fullWidth
-              type="password"
-              label="Kroger Password"
-              value={preferences.krogerPassword}
-              onChange={(e) => {
-                setPreferences(prev => ({
-                  ...prev,
-                  krogerPassword: e.target.value
-                }));
-              }}
-              placeholder="Your Kroger account password"
-            />
-          </Grid>
-        </Grid>
-        <FormHelperText>
-          Optional: Connect your Kroger account for seamless grocery shopping
-        </FormHelperText>
+        <Typography variant="body2" color="text.secondary">
+          Kroger integration is now handled through the official Kroger OAuth flow.
+          You'll be prompted to log in to your Kroger account when adding items to your cart.
+        </Typography>
       </Box>
 
       {/* Submit Button */}
