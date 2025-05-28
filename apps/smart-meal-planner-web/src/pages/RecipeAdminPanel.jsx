@@ -1467,48 +1467,72 @@ const RecipeAdminPanel = () => {
                                       )}
                                       
                                       <Typography variant="subtitle2" color="primary" sx={{ mt: 2 }}>Dietary</Typography>
-                                      {recipe.diet_type ? (
-                                        <Chip 
-                                          label={recipe.diet_type} 
-                                          size="small" 
-                                          color="secondary" 
-                                          variant="outlined"
-                                          sx={{ mt: 0.5 }}
-                                        />
-                                      ) : (
-                                        <Typography variant="body2" color="text.secondary">None specified</Typography>
-                                      )}
+                                      {(() => {
+                                        const prefs = recipePreferences[recipe.id]?.preferences || {};
+                                        const dietType = prefs.diet_type || recipe.diet_type;
+
+                                        return dietType ? (
+                                          <Chip
+                                            label={dietType}
+                                            size="small"
+                                            color="secondary"
+                                            variant="outlined"
+                                            sx={{ mt: 0.5 }}
+                                          />
+                                        ) : (
+                                          <Typography variant="body2" color="text.secondary">None specified</Typography>
+                                        );
+                                      })()}
                                       
                                       <Typography variant="subtitle2" color="primary" sx={{ mt: 2 }}>Cuisine</Typography>
-                                      {recipe.cuisine ? (
-                                        <Chip 
-                                          label={recipe.cuisine} 
-                                          size="small" 
-                                          color="info" 
-                                          variant="outlined"
-                                          sx={{ mt: 0.5 }}
-                                        />
-                                      ) : (
-                                        <Typography variant="body2" color="text.secondary">None specified</Typography>
-                                      )}
+                                      {(() => {
+                                        const prefs = recipePreferences[recipe.id]?.preferences || {};
+                                        const cuisine = prefs.cuisine || recipe.cuisine;
+
+                                        return cuisine ? (
+                                          <Chip
+                                            label={cuisine}
+                                            size="small"
+                                            color="info"
+                                            variant="outlined"
+                                            sx={{ mt: 0.5 }}
+                                          />
+                                        ) : (
+                                          <Typography variant="body2" color="text.secondary">None specified</Typography>
+                                        );
+                                      })()}
                                       
                                       <Typography variant="subtitle2" color="primary" sx={{ mt: 2 }}>Format & Prep</Typography>
                                       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
-                                        {recipe.recipe_format && (
-                                          <Chip label={recipe.recipe_format} size="small" color="success" variant="outlined" />
-                                        )}
-                                        {recipe.meal_prep_type && (
-                                          <Chip label={recipe.meal_prep_type} size="small" color="warning" variant="outlined" />
-                                        )}
-                                        {recipe.spice_level && (
-                                          <Chip label={`Spice: ${recipe.spice_level}`} size="small" color="error" variant="outlined" />
-                                        )}
-                                        {recipe.prep_complexity && (
-                                          <Chip label={`Complexity: ${recipe.prep_complexity}%`} size="small" color="default" variant="outlined" />
-                                        )}
-                                        {!recipe.recipe_format && !recipe.meal_prep_type && !recipe.spice_level && !recipe.prep_complexity && (
-                                          <Typography variant="body2" color="text.secondary">None specified</Typography>
-                                        )}
+                                        {(() => {
+                                          const prefs = recipePreferences[recipe.id]?.preferences || {};
+                                          const recipeFormat = prefs.recipe_format || recipe.cooking_method;
+                                          const mealPrepType = prefs.meal_prep_type || recipe.meal_part;
+                                          const spiceLevel = prefs.spice_level || recipe.spice_level;
+                                          const prepComplexity = prefs.prep_complexity || recipe.complexity;
+
+                                          const hasAnyPrefs = recipeFormat || mealPrepType || spiceLevel || prepComplexity;
+
+                                          return (
+                                            <>
+                                              {recipeFormat && (
+                                                <Chip label={recipeFormat} size="small" color="success" variant="outlined" />
+                                              )}
+                                              {mealPrepType && (
+                                                <Chip label={mealPrepType} size="small" color="warning" variant="outlined" />
+                                              )}
+                                              {spiceLevel && (
+                                                <Chip label={`Spice: ${spiceLevel}`} size="small" color="error" variant="outlined" />
+                                              )}
+                                              {prepComplexity && (
+                                                <Chip label={`Complexity: ${prepComplexity}${typeof prepComplexity === 'number' ? '%' : ''}`} size="small" color="default" variant="outlined" />
+                                              )}
+                                              {!hasAnyPrefs && (
+                                                <Typography variant="body2" color="text.secondary">None specified</Typography>
+                                              )}
+                                            </>
+                                          );
+                                        })()}
                                       </Box>
                                     </Box>
                                     
