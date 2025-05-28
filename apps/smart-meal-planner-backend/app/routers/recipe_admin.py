@@ -172,41 +172,9 @@ async def tag_recipes(
         
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         
-        # First, verify that recipe_components table exists
-        cursor.execute("""
-            SELECT EXISTS (
-                SELECT FROM information_schema.tables 
-                WHERE table_schema = 'public' 
-                AND table_name = 'recipe_components'
-            )
-        """)
-        table_exists = cursor.fetchone()
-        logger.info(f"recipe_components table exists: {table_exists}")
-        
-        if not table_exists or not table_exists.get('exists', False):
-            # Table doesn't exist, create it
-            logger.warning("recipe_components table doesn't exist! Creating it now...")
-            cursor.execute("""
-                CREATE TABLE recipe_components (
-                    id SERIAL PRIMARY KEY,
-                    recipe_id INTEGER REFERENCES scraped_recipes(id),
-                    component_type VARCHAR(100) NOT NULL,
-                    name VARCHAR(255),
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            conn.commit()
-            logger.info("Created recipe_components table!")
-        
-        # Check table structure
-        cursor.execute("""
-            SELECT column_name, data_type, is_nullable 
-            FROM information_schema.columns 
-            WHERE table_schema = 'public' 
-            AND table_name = 'recipe_components'
-        """)
-        columns = cursor.fetchall()
-        logger.info(f"recipe_components table structure: {columns}")
+        # Note: recipe_components table has been eliminated in migration 010
+        # We now store component_type directly in scraped_recipes table
+        logger.info("Using scraped_recipes.component_type directly (recipe_components table eliminated)")
         
         # Process each recipe
         results = []
@@ -231,67 +199,44 @@ async def tag_recipes(
                     continue
                 
                 logger.info(f"Recipe found: {recipe}")
-                recipe_title = recipe.get('title', f"Recipe {recipe_id}")
-                
-                # Check if component already exists
-                cursor.execute("""
-                    SELECT * FROM recipe_components
-                    WHERE recipe_id = %s
-                """, (recipe_id,))
-                
-                existing = cursor.fetchone()
-                logger.info(f"Existing component record: {existing}")
-                
-                if existing:
-                    # Update existing component
-                    update_sql = """
-                        UPDATE recipe_components
-                        SET component_type = %s
-                        WHERE recipe_id = %s
-                        RETURNING *
-                    """
-                    logger.info(f"Executing update SQL: {update_sql} with params: [{component_type}, {recipe_id}]")
-                    
-                    cursor.execute(update_sql, (component_type, recipe_id))
-                    updated = cursor.fetchone()
-                    
-                    if updated:
-                        logger.info(f"Update successful, returned: {updated}")
+                current_component_type = recipe.get('component_type')
+
+                # Update component_type directly in scraped_recipes table
+                update_sql = """
+                    UPDATE scraped_recipes
+                    SET component_type = %s
+                    WHERE id = %s
+                    RETURNING id, title, component_type
+                """
+                logger.info(f"Executing update SQL: {update_sql} with params: [{component_type}, {recipe_id}]")
+
+                cursor.execute(update_sql, (component_type, recipe_id))
+                updated = cursor.fetchone()
+
+                if updated:
+                    logger.info(f"Update successful, returned: {updated}")
+
+                    if current_component_type and current_component_type != component_type:
+                        message = f"Updated component type from '{current_component_type}' to '{component_type}'"
                     else:
-                        logger.error("Update query didn't return any data!")
-                    
+                        message = f"Set component type to '{component_type}'"
+
                     results.append({
                         "recipe_id": recipe_id,
                         "success": True,
-                        "message": f"Updated component type from '{existing.get('component_type', 'unknown')}' to '{component_type}'",
+                        "message": message,
                         "data": updated
                     })
                 else:
-                    # Insert new component
-                    insert_sql = """
-                        INSERT INTO recipe_components (recipe_id, component_type, name)
-                        VALUES (%s, %s, %s)
-                        RETURNING *
-                    """
-                    logger.info(f"Executing insert SQL: {insert_sql} with params: [{recipe_id}, {component_type}, {recipe_title}]")
-                    
-                    cursor.execute(insert_sql, (recipe_id, component_type, recipe_title))
-                    created = cursor.fetchone()
-                    
-                    if created:
-                        logger.info(f"Insert successful, returned: {created}")
-                    else:
-                        logger.error("Insert query didn't return any data!")
-                    
+                    logger.error("Update query didn't return any data!")
                     results.append({
                         "recipe_id": recipe_id,
-                        "success": True,
-                        "message": f"Added component type '{component_type}'",
-                        "data": created
+                        "success": False,
+                        "message": "Failed to update component type"
                     })
-                
+
                 # Verify the change by doing a direct select
-                cursor.execute("SELECT * FROM recipe_components WHERE recipe_id = %s", (recipe_id,))
+                cursor.execute("SELECT id, title, component_type FROM scraped_recipes WHERE id = %s", (recipe_id,))
                 verification = cursor.fetchone()
                 logger.info(f"Verification SELECT result: {verification}")
                 
@@ -317,9 +262,9 @@ async def tag_recipes(
         failures = len(results) - successes
         
         # Check again after all operations to verify status
-        logger.info("Verifying final state of component records...")
+        logger.info("Verifying final state of component types...")
         for recipe_id in recipe_ids:
-            cursor.execute("SELECT * FROM recipe_components WHERE recipe_id = %s", (recipe_id,))
+            cursor.execute("SELECT id, title, component_type FROM scraped_recipes WHERE id = %s", (recipe_id,))
             final_state = cursor.fetchone()
             logger.info(f"Final state for recipe {recipe_id}: {final_state}")
         
@@ -339,9 +284,9 @@ async def tag_recipes(
             # Final verification query to check database state
             try:
                 with conn.cursor(cursor_factory=RealDictCursor) as final_cursor:
-                    final_cursor.execute("SELECT COUNT(*) FROM recipe_components")
+                    final_cursor.execute("SELECT COUNT(*) FROM scraped_recipes WHERE component_type IS NOT NULL")
                     count = final_cursor.fetchone()
-                    logger.info(f"Total recipe_components records in database: {count}")
+                    logger.info(f"Total recipes with component_type in database: {count}")
             except Exception as e:
                 logger.error(f"Error in final verification: {str(e)}")
                 
@@ -1107,7 +1052,7 @@ async def get_all_recipe_tags(
 @router.get("/component-types")
 async def get_component_types(user = Depends(get_user_from_token)):
     """
-    Get all component types and their counts
+    Get all component types and their counts from scraped_recipes
     """
     conn = None
     try:
@@ -1118,7 +1063,8 @@ async def get_component_types(user = Depends(get_user_from_token)):
             SELECT
                 component_type,
                 COUNT(*) as count
-            FROM recipe_components
+            FROM scraped_recipes
+            WHERE component_type IS NOT NULL AND component_type != ''
             GROUP BY component_type
             ORDER BY count DESC
         """)
@@ -1156,13 +1102,15 @@ async def check_recipe_component(
         if not recipe:
             raise HTTPException(status_code=404, detail="Recipe not found")
             
-        # Get component type if any
-        cursor.execute("""
-            SELECT * FROM recipe_components
-            WHERE recipe_id = %s
-        """, (recipe_id,))
-        
-        component = cursor.fetchone()
+        # Component type is now stored directly in scraped_recipes
+        # Extract component info from the recipe data we already have
+        component = {
+            'recipe_id': recipe['id'],
+            'component_type': recipe.get('component_type'),
+            'name': recipe.get('title'),
+            'created_at': recipe.get('date_scraped')
+        } if recipe.get('component_type') else None
+
         logger.info(f"Component data for recipe {recipe_id}: {component}")
         
         # Get preferences if any
@@ -1177,52 +1125,32 @@ async def check_recipe_component(
         debug_info = None
         if debug:
             logger.info(f"Running debug check for recipe {recipe_id}")
-            
-            # Check if recipe_components table exists
+
+            # Check component_type column in scraped_recipes
             cursor.execute("""
-                SELECT EXISTS (
-                    SELECT FROM information_schema.tables 
-                    WHERE table_schema = 'public' 
-                    AND table_name = 'recipe_components'
-                )
-            """)
-            table_exists = cursor.fetchone()
-            
-            # Direct SQL checks
-            cursor.execute("SELECT COUNT(*) FROM recipe_components")
-            total_components = cursor.fetchone()
-            
-            # Check component_type column
-            cursor.execute("""
-                SELECT column_name, data_type, is_nullable 
-                FROM information_schema.columns 
-                WHERE table_schema = 'public' 
-                AND table_name = 'recipe_components'
+                SELECT column_name, data_type, is_nullable
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                AND table_name = 'scraped_recipes'
                 AND column_name = 'component_type'
             """)
             component_type_info = cursor.fetchone()
-            
-            # Check if this specific recipe has a component
-            cursor.execute("""
-                SELECT COUNT(*) FROM recipe_components
-                WHERE recipe_id = %s
-            """, (recipe_id,))
-            has_component = cursor.fetchone()
-            
-            # Get the actual component data without any processing
-            cursor.execute("""
-                SELECT * FROM recipe_components
-                WHERE recipe_id = %s
-            """, (recipe_id,))
-            raw_component = cursor.fetchone()
-            
+
+            # Count total recipes with component types
+            cursor.execute("SELECT COUNT(*) FROM scraped_recipes WHERE component_type IS NOT NULL AND component_type != ''")
+            total_components = cursor.fetchone()
+
+            # Check if this specific recipe has a component type
+            has_component_type = recipe.get('component_type') is not None and recipe.get('component_type') != ''
+
             debug_info = {
-                "table_exists": table_exists,
-                "total_components": total_components,
+                "recipe_components_table_eliminated": True,
+                "using_scraped_recipes_component_type": True,
+                "total_recipes_with_component_type": total_components,
                 "component_type_column": component_type_info,
-                "has_component_count": has_component,
-                "raw_component_data": raw_component,
-                "component_type": raw_component.get('component_type') if raw_component else None
+                "recipe_has_component_type": has_component_type,
+                "component_type_value": recipe.get('component_type'),
+                "migration_010_applied": True
             }
         
         result = {

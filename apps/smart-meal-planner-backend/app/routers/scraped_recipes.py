@@ -30,14 +30,13 @@ async def get_scraped_recipes(
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         
-        # Base query - don't use DISTINCT as it can limit results
+        # Base query - component_type is now directly in scraped_recipes
         query = """
-            SELECT 
+            SELECT
                 r.id, r.title, r.complexity, r.source, r.cuisine,
-                r.prep_time, r.cook_time, r.total_time, r.image_url, 
-                r.is_verified, r.date_scraped, rc.component_type
+                r.prep_time, r.cook_time, r.total_time, r.image_url,
+                r.is_verified, r.date_scraped, r.component_type
             FROM scraped_recipes r
-            LEFT JOIN recipe_components rc ON r.id = rc.recipe_id
         """
         
         where_clauses = []
@@ -167,15 +166,10 @@ async def get_scraped_recipe_by_id(
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         
-        # Get the recipe details with comprehensive component type information
+        # Get the recipe details - component_type is now directly in scraped_recipes
         cursor.execute("""
-            SELECT 
-                r.*, 
-                rc.component_type,
-                rc.id as component_id,
-                rc.name as component_name
+            SELECT r.*
             FROM scraped_recipes r
-            LEFT JOIN recipe_components rc ON r.id = rc.recipe_id
             WHERE r.id = %s
         """, (recipe_id,))
         
