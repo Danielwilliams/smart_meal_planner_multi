@@ -624,6 +624,174 @@ const RecipeAdminPanel = () => {
     }
   };
 
+  // Helper function to load preferences for a single recipe
+  const loadSingleRecipePreferences = async (recipeId) => {
+    try {
+      console.log(`Loading preferences for single recipe: ${recipeId}`);
+      const response = await axios.get(`${API_BASE_URL}/recipe-admin/preferences/${recipeId}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.data.success && response.data.preferences) {
+        const prefs = response.data.preferences.preferences;
+        console.log('Loading single recipe preferences:', prefs);
+
+        // Load existing preferences into form
+        if (prefs.diet_type) setDietType(prefs.diet_type);
+        if (prefs.cuisine) setRecipeType(prefs.cuisine);
+        if (prefs.recipe_format) setRecipeFormat(prefs.recipe_format);
+        if (prefs.meal_prep_type) setMealPrepType(prefs.meal_prep_type);
+        if (prefs.spice_level) setSpiceLevel(prefs.spice_level);
+        if (prefs.prep_complexity !== undefined) setPrepComplexity(prefs.prep_complexity);
+
+        // Load flavor tags
+        if (prefs.flavor_tags && Array.isArray(prefs.flavor_tags)) {
+          const newFlavorTags = { ...flavorTags };
+          prefs.flavor_tags.forEach(flavor => {
+            if (newFlavorTags.hasOwnProperty(flavor)) {
+              newFlavorTags[flavor] = true;
+            }
+          });
+          setFlavorTags(newFlavorTags);
+        }
+
+        // Load appliances
+        if (prefs.appliances && Array.isArray(prefs.appliances)) {
+          const newAppliances = { ...selectedAppliances };
+          prefs.appliances.forEach(appliance => {
+            const applianceLower = appliance.toLowerCase();
+            if (applianceLower.includes('air') && applianceLower.includes('fryer')) {
+              newAppliances.airFryer = true;
+            } else if (applianceLower.includes('instant') && applianceLower.includes('pot')) {
+              newAppliances.instantPot = true;
+            } else if (applianceLower.includes('crock') || applianceLower.includes('slow')) {
+              newAppliances.crockPot = true;
+            }
+          });
+          setSelectedAppliances(newAppliances);
+        }
+
+        console.log('Single recipe preferences loaded successfully');
+      }
+    } catch (error) {
+      console.log('Error loading single recipe preferences:', error);
+    }
+  };
+
+  // Helper function to load common preferences across multiple recipes
+  const loadCommonPreferences = async (recipeIds) => {
+    try {
+      console.log(`Loading common preferences for ${recipeIds.length} recipes:`, recipeIds);
+
+      // Fetch preferences for all selected recipes
+      const responses = await Promise.all(
+        recipeIds.map(recipeId =>
+          axios.get(`${API_BASE_URL}/recipe-admin/preferences/${recipeId}`, {
+            headers: {
+              'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+              'Content-Type': 'application/json'
+            }
+          }).catch(error => {
+            console.log(`Failed to load preferences for recipe ${recipeId}:`, error.message);
+            return null;
+          })
+        )
+      );
+
+      // Extract preferences from successful responses
+      const allPrefs = responses
+        .filter(response => response && response.data.success && response.data.preferences)
+        .map(response => response.data.preferences.preferences);
+
+      if (allPrefs.length === 0) {
+        console.log('No preferences found for any selected recipes');
+        return;
+      }
+
+      console.log('All preferences:', allPrefs);
+
+      // Find common values across all recipes
+      const findCommonValue = (field) => {
+        const values = allPrefs.map(prefs => prefs[field]).filter(val => val != null);
+        if (values.length === 0) return null;
+
+        const firstValue = values[0];
+        return values.every(val => val === firstValue) ? firstValue : null;
+      };
+
+      // Set common values in form
+      const commonDietType = findCommonValue('diet_type');
+      const commonCuisine = findCommonValue('cuisine');
+      const commonRecipeFormat = findCommonValue('recipe_format');
+      const commonMealPrepType = findCommonValue('meal_prep_type');
+      const commonSpiceLevel = findCommonValue('spice_level');
+      const commonPrepComplexity = findCommonValue('prep_complexity');
+
+      if (commonDietType) setDietType(commonDietType);
+      if (commonCuisine) setRecipeType(commonCuisine);
+      if (commonRecipeFormat) setRecipeFormat(commonRecipeFormat);
+      if (commonMealPrepType) setMealPrepType(commonMealPrepType);
+      if (commonSpiceLevel) setSpiceLevel(commonSpiceLevel);
+      if (commonPrepComplexity !== undefined) setPrepComplexity(commonPrepComplexity);
+
+      // Handle common flavor tags (only show if ALL recipes have them)
+      const allFlavorTags = allPrefs.map(prefs => prefs.flavor_tags || []);
+      if (allFlavorTags.length > 0) {
+        const commonFlavorTags = allFlavorTags[0].filter(tag =>
+          allFlavorTags.every(recipeTags => recipeTags.includes(tag))
+        );
+
+        if (commonFlavorTags.length > 0) {
+          const newFlavorTags = { ...flavorTags };
+          commonFlavorTags.forEach(flavor => {
+            if (newFlavorTags.hasOwnProperty(flavor)) {
+              newFlavorTags[flavor] = true;
+            }
+          });
+          setFlavorTags(newFlavorTags);
+        }
+      }
+
+      // Handle common appliances (only show if ALL recipes have them)
+      const allAppliances = allPrefs.map(prefs => prefs.appliances || []);
+      if (allAppliances.length > 0) {
+        const commonAppliances = allAppliances[0].filter(appliance =>
+          allAppliances.every(recipeAppliances => recipeAppliances.includes(appliance))
+        );
+
+        if (commonAppliances.length > 0) {
+          const newAppliances = { ...selectedAppliances };
+          commonAppliances.forEach(appliance => {
+            const applianceLower = appliance.toLowerCase();
+            if (applianceLower.includes('air') && applianceLower.includes('fryer')) {
+              newAppliances.airFryer = true;
+            } else if (applianceLower.includes('instant') && applianceLower.includes('pot')) {
+              newAppliances.instantPot = true;
+            } else if (applianceLower.includes('crock') || applianceLower.includes('slow')) {
+              newAppliances.crockPot = true;
+            }
+          });
+          setSelectedAppliances(newAppliances);
+        }
+      }
+
+      console.log('Common preferences loaded:', {
+        dietType: commonDietType,
+        cuisine: commonCuisine,
+        recipeFormat: commonRecipeFormat,
+        mealPrepType: commonMealPrepType,
+        spiceLevel: commonSpiceLevel,
+        prepComplexity: commonPrepComplexity
+      });
+
+    } catch (error) {
+      console.log('Error loading common preferences:', error);
+    }
+  };
+
   const handleTagRecipesClick = async () => {
     if (selectedRecipes.length === 0) {
       showAlert('Please select at least one recipe to tag', 'warning');
@@ -661,107 +829,15 @@ const RecipeAdminPanel = () => {
       crockPot: false
     });
 
-    // If only one recipe is selected, load its existing preferences
+    // Load existing preferences based on selection
     if (selectedRecipes.length === 1) {
-      try {
-        const recipeId = selectedRecipes[0];
-        const response = await axios.get(`${API_BASE_URL}/recipe-admin/preferences/${recipeId}`, {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
-            'Content-Type': 'application/json'
-          }
-        });
-
-        console.log('Full API response:', response);
-        console.log('Response data:', response.data);
-        console.log('Response data success:', response.data.success);
-        console.log('Response data preferences:', response.data.preferences);
-
-        if (response.data.success && response.data.preferences) {
-          const prefs = response.data.preferences.preferences;
-
-          console.log('Raw API response:', response.data);
-          console.log('Extracted prefs object:', prefs);
-          console.log('Type of prefs:', typeof prefs);
-
-          // Load existing preferences into form
-          if (prefs.diet_type) {
-            console.log('Setting diet_type:', prefs.diet_type);
-            setDietType(prefs.diet_type);
-          }
-
-          if (prefs.cuisine) {
-            console.log('Setting cuisine as recipeType:', prefs.cuisine);
-            setRecipeType(prefs.cuisine);
-          }
-
-          if (prefs.recipe_format) {
-            console.log('Setting recipe_format:', prefs.recipe_format);
-            setRecipeFormat(prefs.recipe_format);
-          }
-
-          if (prefs.meal_prep_type) {
-            console.log('Setting meal_prep_type:', prefs.meal_prep_type);
-            setMealPrepType(prefs.meal_prep_type);
-          }
-
-          if (prefs.spice_level) {
-            console.log('Setting spice_level:', prefs.spice_level);
-            setSpiceLevel(prefs.spice_level);
-          }
-
-          if (prefs.prep_complexity !== undefined) {
-            console.log('Setting prep_complexity:', prefs.prep_complexity);
-            setPrepComplexity(prefs.prep_complexity);
-          }
-
-          // Load flavor tags
-          if (prefs.flavor_tags && Array.isArray(prefs.flavor_tags)) {
-            console.log('Setting flavor_tags:', prefs.flavor_tags);
-            const newFlavorTags = { ...flavorTags };
-            prefs.flavor_tags.forEach(flavor => {
-              if (newFlavorTags.hasOwnProperty(flavor)) {
-                newFlavorTags[flavor] = true;
-              }
-            });
-            setFlavorTags(newFlavorTags);
-          }
-
-          // Load appliances - map from display names to form field names
-          if (prefs.appliances && Array.isArray(prefs.appliances)) {
-            console.log('Setting appliances:', prefs.appliances);
-            const newAppliances = { ...selectedAppliances };
-            prefs.appliances.forEach(appliance => {
-              // Map display names to form field names
-              const applianceLower = appliance.toLowerCase();
-              if (applianceLower.includes('air') && applianceLower.includes('fryer')) {
-                newAppliances.airFryer = true;
-              } else if (applianceLower.includes('instant') && applianceLower.includes('pot')) {
-                newAppliances.instantPot = true;
-              } else if (applianceLower.includes('crock') || applianceLower.includes('slow')) {
-                newAppliances.crockPot = true;
-              }
-            });
-            setSelectedAppliances(newAppliances);
-          }
-
-          console.log('Successfully loaded preferences. Current form state should be:', {
-            dietType: prefs.diet_type,
-            recipeType: prefs.cuisine,
-            recipeFormat: prefs.recipe_format,
-            mealPrepType: prefs.meal_prep_type,
-            spiceLevel: prefs.spice_level,
-            prepComplexity: prefs.prep_complexity,
-            flavorTags: prefs.flavor_tags,
-            appliances: prefs.appliances
-          });
-        }
-      } catch (error) {
-        console.log('Error loading existing preferences:', error);
-        console.log('Error response:', error.response?.data);
-        console.log('Using default form values instead');
-      }
+      // Single recipe: load its preferences
+      await loadSingleRecipePreferences(selectedRecipes[0]);
+    } else if (selectedRecipes.length > 1) {
+      // Multiple recipes: load common preferences
+      await loadCommonPreferences(selectedRecipes);
     }
+    // If no recipes selected, use defaults (already set above)
 
     setTagDialogOpen(true);
   };
