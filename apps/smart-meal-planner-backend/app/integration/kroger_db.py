@@ -111,15 +111,11 @@ def get_user_kroger_credentials(id: int) -> Dict[str, Any]:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             # Don't try to get client_id and client_secret from database - they should come from env vars
             query = """
-            SELECT 
-                kroger_access_token, 
-                kroger_refresh_token, 
+            SELECT
+                kroger_access_token,
+                kroger_refresh_token,
                 kroger_store_location_id,
-                kroger_connected_at,
-                kroger_username,
-                kroger_password,
-                kroger_password_hash,
-                kroger_password_salt
+                kroger_connected_at
             FROM user_profiles
             WHERE id = %s
             """
@@ -134,10 +130,7 @@ def get_user_kroger_credentials(id: int) -> Dict[str, Any]:
             log_details = {
                 "access_token_present": bool(result.get('kroger_access_token')),
                 "refresh_token_present": bool(result.get('kroger_refresh_token')),
-                "store_location_present": bool(result.get('kroger_store_location_id')),
-                "username_present": bool(result.get('kroger_username')),
-                "password_present": bool(result.get('kroger_password')),
-                "password_hash_present": bool(result.get('kroger_password_hash'))
+                "store_location_present": bool(result.get('kroger_store_location_id'))
             }
             logger.info(f"Kroger credentials check for user {id}: {log_details}")
 
@@ -147,10 +140,12 @@ def get_user_kroger_credentials(id: int) -> Dict[str, Any]:
                 "refresh_token": result.get('kroger_refresh_token'),
                 "store_location_id": result.get('kroger_store_location_id'),
                 "connected_at": result.get('kroger_connected_at'),
-                "username": result.get('kroger_username'),
-                "password": result.get('kroger_password'),  # For backward compatibility during migration
-                "password_hash": result.get('kroger_password_hash'),
-                "password_salt": result.get('kroger_password_salt')
+                # The following fields are removed from the database but returned as None
+                # for backward compatibility with any code that might still expect them
+                "username": None,
+                "password": None,
+                "password_hash": None,
+                "password_salt": None
             }
     except Exception as e:
         logger.error(f"Error retrieving Kroger credentials for user {id}: {e}")
@@ -220,46 +215,19 @@ def update_kroger_store_location(id: int, store_location_id: str) -> bool:
 
 def get_kroger_password_for_auth(user_id: int, provided_password: str) -> Optional[str]:
     """
-    Get the Kroger password for authentication purposes.
-    This function verifies the provided password against the stored hash
-    and returns the plain text password if verification succeeds.
-    
+    This function is maintained for backward compatibility but always returns None
+    since Kroger password columns have been removed from the database.
+    The application should use OAuth authentication instead.
+
     Args:
         user_id: The user's ID
         provided_password: The password provided by the user for verification
-        
+
     Returns:
-        str: The plain text password if verification succeeds, None otherwise
+        None: Always returns None as password-based authentication is no longer supported
     """
-    from ..utils.password_utils import verify_kroger_password
-    
-    credentials = get_user_kroger_credentials(user_id)
-    if not credentials:
-        logger.warning(f"No credentials found for user {user_id}")
-        return None
-    
-    # If we have a hashed password, verify against it
-    if credentials.get('password_hash') and credentials.get('password_salt'):
-        is_valid = verify_kroger_password(
-            provided_password,
-            credentials['password_hash'],
-            credentials['password_salt']
-        )
-        if is_valid:
-            return provided_password
-        else:
-            logger.warning(f"Password verification failed for user {user_id}")
-            return None
-    
-    # Fallback to plain text comparison during migration period
-    elif credentials.get('password'):
-        if provided_password == credentials['password']:
-            return provided_password
-        else:
-            logger.warning(f"Plain text password comparison failed for user {user_id}")
-            return None
-    
-    logger.warning(f"No password (hashed or plain) found for user {user_id}")
+    logger.warning(f"Password-based Kroger authentication is no longer supported for user {user_id}")
+    logger.info("The application should use OAuth authentication instead")
     return None
         
 def update_kroger_tokens(user_id: int, access_token: str, refresh_token: Optional[str] = None) -> bool:
