@@ -512,42 +512,49 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
         if req.duration_days < 1 or req.duration_days > 7:
             raise HTTPException(400, "duration_days must be between 1 and 7")
 
+        # Fetch user preferences first, then release connection
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
 
+        # Determine which user's preferences to use
+        preference_user_id = req.for_client_id if req.for_client_id else req.user_id
+
+        # Fetch user preferences (use client's preferences if for_client_id is provided)
+        cursor.execute("""
+            SELECT
+                recipe_type,
+                macro_protein,
+                macro_carbs,
+                macro_fat,
+                calorie_goal,
+                appliances,
+                prep_complexity,
+                servings_per_meal,
+                meal_times,
+                diet_type,
+                dietary_restrictions,
+                disliked_ingredients,
+                snacks_per_day,
+                flavor_preferences,
+                spice_level,
+                recipe_type_preferences,
+                meal_time_preferences,
+                time_constraints,
+                prep_preferences
+            FROM user_profiles
+            WHERE id = %s
+            LIMIT 1
+        """, (preference_user_id,))
+
+        user_row = cursor.fetchone()
+        logger.debug(f"Fetched user preferences: {user_row}")
+
+        # Close connection after getting preferences - we'll reopen it later for saving
+        cursor.close()
+        conn.close()
+        logger.info("Database connection closed after fetching preferences")
+
         try:
-            # Determine which user's preferences to use
-            preference_user_id = req.for_client_id if req.for_client_id else req.user_id
-            
-            # Fetch user preferences (use client's preferences if for_client_id is provided)
-            cursor.execute("""
-                SELECT 
-                    recipe_type,
-                    macro_protein,
-                    macro_carbs,
-                    macro_fat,
-                    calorie_goal,
-                    appliances,
-                    prep_complexity,
-                    servings_per_meal,
-                    meal_times,
-                    diet_type,
-                    dietary_restrictions,
-                    disliked_ingredients,
-                    snacks_per_day,
-                    flavor_preferences,
-                    spice_level,
-                    recipe_type_preferences,
-                    meal_time_preferences,
-                    time_constraints,
-                    prep_preferences
-                FROM user_profiles
-                WHERE id = %s
-                LIMIT 1
-            """, (preference_user_id,))
-            
-            user_row = cursor.fetchone()
-            logger.debug(f"Fetched user preferences: {user_row}")
 
             # Process preferences
             servings_per_meal = merge_preference(
@@ -1003,32 +1010,38 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
                 # Add the day's ingredients to the tracking list
                 used_primary_ingredients.append((day_number, day_ingredients))
 
-            # Save to database
-            cursor.execute("""
-                INSERT INTO menus (user_id, meal_plan_json, duration_days, meal_times, snacks_per_day, for_client_id, ai_model_used)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-                RETURNING id;
-            """, (
-                req.user_id,
-                json.dumps(final_plan),
-                req.duration_days,
-                json.dumps(selected_meal_times),
-                req.snacks_per_day,
-                req.for_client_id,
-                req.ai_model
-            ))
-            
-            menu_id = cursor.fetchone()["id"]
-            conn.commit()
+            # Reopen database connection for saving menu
+            logger.info("Reopening database connection to save generated menu")
+            conn = get_db_connection()
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
 
-            return {
-                "menu_id": menu_id,
-                "meal_plan": final_plan
-            }
+            try:
+                # Save to database
+                cursor.execute("""
+                    INSERT INTO menus (user_id, meal_plan_json, duration_days, meal_times, snacks_per_day, for_client_id, ai_model_used)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id;
+                """, (
+                    req.user_id,
+                    json.dumps(final_plan),
+                    req.duration_days,
+                    json.dumps(selected_meal_times),
+                    req.snacks_per_day,
+                    req.for_client_id,
+                    req.ai_model
+                ))
 
-        finally:
-            cursor.close()
-            conn.close()
+                menu_id = cursor.fetchone()["id"]
+                conn.commit()
+
+                return {
+                    "menu_id": menu_id,
+                    "meal_plan": final_plan
+                }
+            finally:
+                cursor.close()
+                conn.close()
+                logger.info("Database connection closed after saving menu")
 
     except HTTPException:
         raise
