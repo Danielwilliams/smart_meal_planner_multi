@@ -578,65 +578,8 @@ async def tag_recipes_with_preferences(
 
         cursor = conn.cursor(cursor_factory=RealDictCursor)
 
-        # First, verify that recipe_preferences table exists
-        cursor.execute("""
-            SELECT EXISTS (
-                SELECT FROM information_schema.tables
-                WHERE table_schema = 'public'
-                AND table_name = 'recipe_preferences'
-            )
-        """)
-        table_exists = cursor.fetchone()
-        logger.info(f"recipe_preferences table exists: {table_exists}")
-
-        if not table_exists or not table_exists.get('exists', False):
-            # Table doesn't exist, create it
-            logger.warning("recipe_preferences table doesn't exist! Creating it now...")
-            cursor.execute("""
-                CREATE TABLE recipe_preferences (
-                    id SERIAL PRIMARY KEY,
-                    recipe_id INTEGER REFERENCES scraped_recipes(id),
-                    preferences JSONB NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            conn.commit()
-            logger.info("Created recipe_preferences table!")
-        else:
-            # Table exists, check if it has the preferences column
-            cursor.execute("""
-                SELECT EXISTS (
-                    SELECT FROM information_schema.columns
-                    WHERE table_schema = 'public'
-                    AND table_name = 'recipe_preferences'
-                    AND column_name = 'preferences'
-                )
-            """)
-            preferences_column_exists = cursor.fetchone()
-            logger.info(f"preferences column exists: {preferences_column_exists}")
-
-            if not preferences_column_exists or not preferences_column_exists.get('exists', False):
-                # Add the preferences column
-                logger.warning("Adding preferences column to existing recipe_preferences table...")
-                cursor.execute("""
-                    ALTER TABLE recipe_preferences
-                    ADD COLUMN preferences JSONB NOT NULL DEFAULT '{}'::jsonb,
-                    ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                """)
-                conn.commit()
-                logger.info("Added preferences column to recipe_preferences table!")
-
-        # Check table structure
-        cursor.execute("""
-            SELECT column_name, data_type, is_nullable
-            FROM information_schema.columns
-            WHERE table_schema = 'public'
-            AND table_name = 'recipe_preferences'
-        """)
-        columns = cursor.fetchall()
-        logger.info(f"recipe_preferences table structure: {columns}")
+        # No longer need recipe_preferences table - preferences are now stored directly in scraped_recipes
+        logger.info("Using scraped_recipes table directly for preferences (recipe_preferences table eliminated)")
 
         # Process each recipe
         results = []
@@ -664,52 +607,8 @@ async def tag_recipes_with_preferences(
 
                 logger.info(f"Recipe found: {recipe}")
 
-                # Check if preferences already exist
-                cursor.execute("""
-                    SELECT * FROM recipe_preferences
-                    WHERE recipe_id = %s
-                """, (recipe_id,))
-
-                existing = cursor.fetchone()
-                logger.info(f"Existing preferences record: {existing}")
-
-                # Convert preferences to JSON string for recipe_preferences table
-                preferences_json = json.dumps(preferences)
-
-                # Update recipe_preferences table
-                if existing:
-                    # Update existing preferences
-                    update_sql = """
-                        UPDATE recipe_preferences
-                        SET preferences = %s, updated_at = CURRENT_TIMESTAMP
-                        WHERE recipe_id = %s
-                        RETURNING *
-                    """
-                    logger.info(f"Executing update SQL: {update_sql} with params: [{preferences_json}, {recipe_id}]")
-
-                    cursor.execute(update_sql, (preferences_json, recipe_id))
-                    updated = cursor.fetchone()
-
-                    if updated:
-                        logger.info(f"Update successful, returned: {updated}")
-                    else:
-                        logger.error("Update query didn't return any data!")
-                else:
-                    # Insert new preferences
-                    insert_sql = """
-                        INSERT INTO recipe_preferences (recipe_id, preferences)
-                        VALUES (%s, %s)
-                        RETURNING *
-                    """
-                    logger.info(f"Executing insert SQL: {insert_sql} with params: [{recipe_id}, {preferences_json}]")
-
-                    cursor.execute(insert_sql, (recipe_id, preferences_json))
-                    created = cursor.fetchone()
-
-                    if created:
-                        logger.info(f"Insert successful, returned: {created}")
-                    else:
-                        logger.error("Insert query didn't return any data!")
+                # No longer using recipe_preferences table - all preference data stored in scraped_recipes columns
+                logger.info(f"Updating preferences directly in scraped_recipes for recipe {recipe_id}")
 
                 # Now update the scraped_recipes table columns
                 recipe_updates = {}
@@ -731,6 +630,25 @@ async def tag_recipes_with_preferences(
                     recipe_updates['meal_part'] = preferences['meal_prep_type']
                     update_fields.append("meal_part = %s")
                     update_values.append(preferences['meal_prep_type'])
+                    # Also update the new meal_prep_type column
+                    update_fields.append("meal_prep_type = %s")
+                    update_values.append(preferences['meal_prep_type'])
+
+                # Update new preference columns directly
+                if preferences.get('diet_type'):
+                    recipe_updates['diet_type'] = preferences['diet_type']
+                    update_fields.append("diet_type = %s")
+                    update_values.append(preferences['diet_type'])
+
+                if preferences.get('spice_level'):
+                    recipe_updates['spice_level'] = preferences['spice_level']
+                    update_fields.append("spice_level = %s")
+                    update_values.append(preferences['spice_level'])
+
+                if preferences.get('appliances'):
+                    recipe_updates['appliances'] = preferences['appliances']
+                    update_fields.append("appliances = %s::jsonb")
+                    update_values.append(json.dumps(preferences['appliances']))
 
                 # Update diet_tags array (PostgreSQL JSONB format)
                 diet_tags = []
@@ -871,10 +789,10 @@ async def tag_recipes_with_preferences(
                     "tags_added": list(tags_to_insert)
                 })
 
-                # Verify the change by doing a direct select
-                cursor.execute("SELECT * FROM recipe_preferences WHERE recipe_id = %s", (recipe_id,))
+                # Verify the change in scraped_recipes table
+                cursor.execute("SELECT cuisine, cooking_method, spice_level, diet_type FROM scraped_recipes WHERE id = %s", (recipe_id,))
                 verification = cursor.fetchone()
-                logger.info(f"Verification SELECT result: {verification}")
+                logger.info(f"Verification of scraped_recipes update: {verification}")
 
                 # Force a commit after each recipe to ensure changes are saved even if later ones fail
                 conn.commit()
@@ -897,10 +815,10 @@ async def tag_recipes_with_preferences(
         successes = sum(1 for r in results if r['success'])
         failures = len(results) - successes
 
-        # Check again after all operations to verify status
-        logger.info("Verifying final state of preference records...")
+        # Check final state of scraped_recipes updates
+        logger.info("Verifying final state of scraped_recipes updates...")
         for recipe_id in recipe_ids:
-            cursor.execute("SELECT * FROM recipe_preferences WHERE recipe_id = %s", (recipe_id,))
+            cursor.execute("SELECT cuisine, cooking_method, spice_level, diet_type FROM scraped_recipes WHERE id = %s", (recipe_id,))
             final_state = cursor.fetchone()
             logger.info(f"Final state for recipe {recipe_id}: {final_state}")
 
@@ -921,9 +839,9 @@ async def tag_recipes_with_preferences(
             # Final verification query to check database state
             try:
                 with conn.cursor(cursor_factory=RealDictCursor) as final_cursor:
-                    final_cursor.execute("SELECT COUNT(*) FROM recipe_preferences")
+                    final_cursor.execute("SELECT COUNT(*) FROM scraped_recipes WHERE spice_level IS NOT NULL OR diet_type IS NOT NULL")
                     count = final_cursor.fetchone()
-                    logger.info(f"Total recipe_preferences records in database: {count}")
+                    logger.info(f"Total recipes with preference data in scraped_recipes: {count}")
             except Exception as e:
                 logger.error(f"Error in final verification: {str(e)}")
 
@@ -943,9 +861,12 @@ async def get_recipe_preferences(
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
 
-        # Simple query first - just get basic recipe data
+        # Get all preference data directly from scraped_recipes
         cursor.execute("""
-            SELECT id, title, cuisine, cooking_method, complexity
+            SELECT
+                id, title, cuisine, cooking_method, complexity,
+                spice_level, diet_type, meal_prep_type, appliances,
+                meal_part, component_type
             FROM scraped_recipes
             WHERE id = %s
         """, (recipe_id,))
@@ -955,71 +876,33 @@ async def get_recipe_preferences(
         if not recipe:
             raise HTTPException(status_code=404, detail="Recipe not found")
 
-        # Try to get additional columns if they exist, but don't fail if they don't
-        additional_data = {}
-
-        # Check for diet_type
-        try:
-            cursor.execute("SELECT diet_type FROM scraped_recipes WHERE id = %s", (recipe_id,))
-            result = cursor.fetchone()
-            if result and result.get('diet_type'):
-                additional_data['diet_type'] = result['diet_type']
-        except Exception:
-            pass
-
-        # Check for meal_prep_type
-        try:
-            cursor.execute("SELECT meal_prep_type FROM scraped_recipes WHERE id = %s", (recipe_id,))
-            result = cursor.fetchone()
-            if result and result.get('meal_prep_type'):
-                additional_data['meal_prep_type'] = result['meal_prep_type']
-        except Exception:
-            pass
-
-        # Check for spice_level
-        try:
-            cursor.execute("SELECT spice_level FROM scraped_recipes WHERE id = %s", (recipe_id,))
-            result = cursor.fetchone()
-            if result and result.get('spice_level'):
-                additional_data['spice_level'] = result['spice_level']
-        except Exception:
-            pass
-
-        # Check for appliances
-        try:
-            cursor.execute("SELECT appliances FROM scraped_recipes WHERE id = %s", (recipe_id,))
-            result = cursor.fetchone()
-            if result and result.get('appliances'):
-                additional_data['appliances'] = result['appliances']
-        except Exception:
-            pass
-
-        # Convert complexity text back to numeric for the slider
-        prep_complexity = 50  # default
-        if recipe.get('complexity'):
-            complexity_map = {'easy': 25, 'medium': 50, 'complex': 75}
-            prep_complexity = complexity_map.get(recipe['complexity'], 50)
-
-        # Build preferences object in the format expected by the frontend
-        preferences_data = {
-            "cuisine": recipe.get('cuisine'),
-            "recipe_format": recipe.get('cooking_method'),
-            "prep_complexity": prep_complexity,
-            "flavor_tags": [],  # No flavor tags for now
+        # Build preferences object from recipe columns
+        preferences = {
+            'cuisine': recipe.get('cuisine'),
+            'recipe_format': recipe.get('cooking_method'),  # Maps to cooking_method
+            'complexity': recipe.get('complexity'),
+            'spice_level': recipe.get('spice_level'),
+            'diet_type': recipe.get('diet_type'),
+            'meal_prep_type': recipe.get('meal_prep_type') or recipe.get('meal_part'),  # Fallback to meal_part
+            'appliances': recipe.get('appliances', []),
+            'component_type': recipe.get('component_type')
         }
 
-        # Add additional data if it exists
-        preferences_data.update(additional_data)
-
         # Remove None values
-        preferences_data = {k: v for k, v in preferences_data.items() if v is not None}
+        preferences = {k: v for k, v in preferences.items() if v is not None}
+
+        # Convert complexity text back to numeric for the slider if needed
+        if 'complexity' in preferences and isinstance(preferences['complexity'], str):
+            complexity_map = {'easy': 25, 'medium': 50, 'complex': 75}
+            prep_complexity = complexity_map.get(preferences['complexity'].lower(), 50)
+            preferences['prep_complexity'] = prep_complexity
 
         return {
             "success": True,
             "preferences": {
                 "recipe_id": recipe_id,
-                "preferences": preferences_data
-            } if preferences_data else None
+                "preferences": preferences
+            } if preferences else None
         }
     except HTTPException:
         raise
@@ -1044,23 +927,39 @@ async def get_all_recipe_preferences(
 
         cursor.execute("""
             SELECT
-                rp.*,
+                sr.id as recipe_id,
                 sr.title,
-                sr.image_url
-            FROM recipe_preferences rp
-            JOIN scraped_recipes sr ON rp.recipe_id = sr.id
-            ORDER BY rp.updated_at DESC
+                sr.image_url,
+                sr.cuisine,
+                sr.cooking_method,
+                sr.spice_level,
+                sr.diet_type,
+                sr.meal_prep_type,
+                sr.complexity,
+                sr.appliances
+            FROM scraped_recipes sr
+            WHERE sr.spice_level IS NOT NULL
+               OR sr.diet_type IS NOT NULL
+               OR sr.meal_prep_type IS NOT NULL
+               OR sr.appliances IS NOT NULL
+            ORDER BY sr.id DESC
         """)
 
         preferences = cursor.fetchall()
 
-        # Parse the preferences JSON for each recipe
+        # Build preferences object for each recipe from individual columns
         for pref in preferences:
-            if isinstance(pref['preferences'], str):
-                try:
-                    pref['preferences'] = json.loads(pref['preferences'])
-                except json.JSONDecodeError:
-                    pref['preferences'] = {}
+            pref['preferences'] = {
+                'cuisine': pref.get('cuisine'),
+                'recipe_format': pref.get('cooking_method'),
+                'spice_level': pref.get('spice_level'),
+                'diet_type': pref.get('diet_type'),
+                'meal_prep_type': pref.get('meal_prep_type'),
+                'complexity': pref.get('complexity'),
+                'appliances': pref.get('appliances', [])
+            }
+            # Remove None values
+            pref['preferences'] = {k: v for k, v in pref['preferences'].items() if v is not None}
 
         return {
             "success": True,
@@ -1207,13 +1106,31 @@ async def check_recipe_component(
 
         logger.info(f"Component data for recipe {recipe_id}: {component}")
         
-        # Get preferences if any
+        # Get preferences from scraped_recipes columns
         cursor.execute("""
-            SELECT * FROM recipe_preferences
-            WHERE recipe_id = %s
+            SELECT cuisine, cooking_method, spice_level, diet_type, meal_prep_type, complexity, appliances
+            FROM scraped_recipes
+            WHERE id = %s
         """, (recipe_id,))
-        
-        preferences = cursor.fetchone()
+
+        recipe_prefs = cursor.fetchone()
+
+        # Build preferences object
+        preferences = None
+        if recipe_prefs:
+            pref_data = {
+                'cuisine': recipe_prefs.get('cuisine'),
+                'recipe_format': recipe_prefs.get('cooking_method'),
+                'spice_level': recipe_prefs.get('spice_level'),
+                'diet_type': recipe_prefs.get('diet_type'),
+                'meal_prep_type': recipe_prefs.get('meal_prep_type'),
+                'complexity': recipe_prefs.get('complexity'),
+                'appliances': recipe_prefs.get('appliances', [])
+            }
+            # Remove None values
+            pref_data = {k: v for k, v in pref_data.items() if v is not None}
+            if pref_data:
+                preferences = {'recipe_id': recipe_id, 'preferences': pref_data}
         
         # If debug mode is enabled, include extra information
         debug_info = None
