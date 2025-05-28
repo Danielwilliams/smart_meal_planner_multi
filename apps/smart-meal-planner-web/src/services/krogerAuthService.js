@@ -13,7 +13,7 @@ const DIRECT_KROGER_TOKEN_URL = 'https://api.kroger.com/v1/connect/oauth2/token'
 // Important: These are environment variables, not from the database
 // The database schema has kroger_username and kroger_password columns, not client_id and client_secret
 const KROGER_CLIENT_ID = process.env.KROGER_CLIENT_ID || 'smartmealplannerio-243261243034247652497361364a447078555731455949714a464f61656e5a676b444e552e42796961517a4f4576367156464b3564774c3039777a614700745159802496692';
-const KROGER_REDIRECT_URI = process.env.KROGER_REDIRECT_URI || 'https://smart-meal-planner-multi.vercel.app/kroger/callback';
+const KROGER_REDIRECT_URI = process.env.KROGER_REDIRECT_URI || 'https://smartmealplannerio.com/kroger/callback';
 // These scopes are for product search (client_credentials) vs cart operations (authorization_code)
 const KROGER_SEARCH_SCOPE = 'product.compact'; // For client_credentials flow (product search only)
 const KROGER_CART_SCOPE = 'product.compact cart.basic:write profile.compact'; // For authorization_code flow (cart operations)
@@ -145,7 +145,7 @@ const refreshKrogerTokenInternal = async () => {
           console.log('Fixing redirect URI in login URL during refresh');
           loginUrl = loginUrl.replace(
             'http://127.0.0.1:8000/callback',
-            'https://smart-meal-planner-multi.vercel.app/kroger/callback'
+            'https://smartmealplannerio.com/kroger/callback'
           );
         }
         
@@ -765,7 +765,14 @@ const checkKrogerStatus = async () => {
  * Process an authorization code
  * This function tries multiple approaches to process the auth code.
  */
-const processAuthCode = async (code, redirectUri) => {
+/**
+ * Process an authorization code
+ * This function tries multiple approaches to process the auth code.
+ * @param {string} code - The authorization code from Kroger
+ * @param {string} redirectUri - The redirect URI to use (defaults to smartmealplannerio.com)
+ * @returns {Promise<object>} The result of processing the code
+ */
+const processAuthCode = async (code, redirectUri = 'https://smartmealplannerio.com/kroger/callback') => {
   try {
     console.log('================================================');
     console.log(`🔄 PROCESSING KROGER AUTH CODE: ${code.substring(0, 10)}...`);

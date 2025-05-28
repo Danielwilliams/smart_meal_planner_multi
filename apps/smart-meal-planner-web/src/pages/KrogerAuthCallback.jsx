@@ -50,7 +50,8 @@ function KrogerAuthCallback() {
         try {
           // Store auth code for diagnostics
           sessionStorage.setItem('kroger_auth_code', code);
-          sessionStorage.setItem('kroger_auth_redirect_uri', process.env.KROGER_REDIRECT_URI || 'https://smart-meal-planner-multi.vercel.app/kroger/callback');
+          sessionStorage.setItem('kroger_auth_redirect_uri', process.env.KROGER_REDIRECT_URI || 'https://smartmealplannerio.com/kroger/callback');
+          localStorage.setItem('kroger_redirect_uri', process.env.KROGER_REDIRECT_URI || 'https://smartmealplannerio.com/kroger/callback');
           sessionStorage.setItem('kroger_auth_timestamp', Date.now().toString());
           
           if (stateParam) {
@@ -68,7 +69,7 @@ function KrogerAuthCallback() {
           try {
             const processingResult = await krogerAuthService.processAuthCode(
               code, 
-              process.env.KROGER_REDIRECT_URI || 'https://smart-meal-planner-multi.vercel.app/kroger/callback'
+              process.env.KROGER_REDIRECT_URI || 'https://smartmealplannerio.com/kroger/callback'
             );
             
             console.log('Auth code processing result:', processingResult);
@@ -129,7 +130,8 @@ function KrogerAuthCallback() {
           
           // Redirect to cart page after a short delay
           setTimeout(() => {
-            navigate('/cart');
+            // Navigate back to the app domain
+            window.location.href = 'https://smartmealplannerio.com/cart?kroger_connected=true';
           }, 1500);
         } catch (err) {
           console.error('Error in code exchange process:', err);
@@ -143,7 +145,7 @@ function KrogerAuthCallback() {
           setMessage('Encountered an issue but will proceed to cart anyway...');
           
           setTimeout(() => {
-            navigate('/cart');
+            window.location.href = 'https://smartmealplannerio.com/cart?kroger_connected=true';
           }, 2000);
         }
       };
@@ -162,7 +164,7 @@ function KrogerAuthCallback() {
       
       // After 3 seconds, redirect back to cart anyway
       setTimeout(() => {
-        navigate('/cart');
+        window.location.href = 'https://smartmealplannerio.com/cart?kroger_error=true';
       }, 3000);
     } else {
       // Neither code nor error was received
@@ -177,7 +179,7 @@ function KrogerAuthCallback() {
       
       // After 3 seconds, redirect back to cart anyway
       setTimeout(() => {
-        navigate('/cart');
+        window.location.href = 'https://smartmealplannerio.com/cart?kroger_error=true';
       }, 3000);
     }
   }, [searchParams, location, navigate]);
@@ -223,7 +225,9 @@ function KrogerAuthCallback() {
           <Box display="flex" justifyContent="center" mt={3}>
             <Button 
               variant="contained"
-              onClick={() => navigate('/cart')}
+              onClick={() => {
+                window.location.href = 'https://smartmealplannerio.com/cart';
+              }}
             >
               {status === 'success' ? 'Continue to Cart' : 'Back to Cart'}
             </Button>
