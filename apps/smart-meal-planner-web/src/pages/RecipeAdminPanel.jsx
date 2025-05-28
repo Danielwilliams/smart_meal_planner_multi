@@ -672,19 +672,52 @@ const RecipeAdminPanel = () => {
           }
         });
 
+        console.log('Full API response:', response);
+        console.log('Response data:', response.data);
+        console.log('Response data success:', response.data.success);
+        console.log('Response data preferences:', response.data.preferences);
+
         if (response.data.success && response.data.preferences) {
           const prefs = response.data.preferences.preferences;
 
+          console.log('Raw API response:', response.data);
+          console.log('Extracted prefs object:', prefs);
+          console.log('Type of prefs:', typeof prefs);
+
           // Load existing preferences into form
-          if (prefs.diet_type) setDietType(prefs.diet_type);
-          if (prefs.cuisine) setRecipeType(prefs.cuisine);
-          if (prefs.recipe_format) setRecipeFormat(prefs.recipe_format);
-          if (prefs.meal_prep_type) setMealPrepType(prefs.meal_prep_type);
-          if (prefs.spice_level) setSpiceLevel(prefs.spice_level);
-          if (prefs.prep_complexity) setPrepComplexity(prefs.prep_complexity);
+          if (prefs.diet_type) {
+            console.log('Setting diet_type:', prefs.diet_type);
+            setDietType(prefs.diet_type);
+          }
+
+          if (prefs.cuisine) {
+            console.log('Setting cuisine as recipeType:', prefs.cuisine);
+            setRecipeType(prefs.cuisine);
+          }
+
+          if (prefs.recipe_format) {
+            console.log('Setting recipe_format:', prefs.recipe_format);
+            setRecipeFormat(prefs.recipe_format);
+          }
+
+          if (prefs.meal_prep_type) {
+            console.log('Setting meal_prep_type:', prefs.meal_prep_type);
+            setMealPrepType(prefs.meal_prep_type);
+          }
+
+          if (prefs.spice_level) {
+            console.log('Setting spice_level:', prefs.spice_level);
+            setSpiceLevel(prefs.spice_level);
+          }
+
+          if (prefs.prep_complexity !== undefined) {
+            console.log('Setting prep_complexity:', prefs.prep_complexity);
+            setPrepComplexity(prefs.prep_complexity);
+          }
 
           // Load flavor tags
           if (prefs.flavor_tags && Array.isArray(prefs.flavor_tags)) {
+            console.log('Setting flavor_tags:', prefs.flavor_tags);
             const newFlavorTags = { ...flavorTags };
             prefs.flavor_tags.forEach(flavor => {
               if (newFlavorTags.hasOwnProperty(flavor)) {
@@ -694,21 +727,39 @@ const RecipeAdminPanel = () => {
             setFlavorTags(newFlavorTags);
           }
 
-          // Load appliances
+          // Load appliances - map from display names to form field names
           if (prefs.appliances && Array.isArray(prefs.appliances)) {
+            console.log('Setting appliances:', prefs.appliances);
             const newAppliances = { ...selectedAppliances };
             prefs.appliances.forEach(appliance => {
-              if (appliance === 'Air Fryer') newAppliances.airFryer = true;
-              if (appliance === 'Instant Pot') newAppliances.instantPot = true;
-              if (appliance === 'Crock Pot') newAppliances.crockPot = true;
+              // Map display names to form field names
+              const applianceLower = appliance.toLowerCase();
+              if (applianceLower.includes('air') && applianceLower.includes('fryer')) {
+                newAppliances.airFryer = true;
+              } else if (applianceLower.includes('instant') && applianceLower.includes('pot')) {
+                newAppliances.instantPot = true;
+              } else if (applianceLower.includes('crock') || applianceLower.includes('slow')) {
+                newAppliances.crockPot = true;
+              }
             });
             setSelectedAppliances(newAppliances);
           }
 
-          console.log('Loaded existing preferences:', prefs);
+          console.log('Successfully loaded preferences. Current form state should be:', {
+            dietType: prefs.diet_type,
+            recipeType: prefs.cuisine,
+            recipeFormat: prefs.recipe_format,
+            mealPrepType: prefs.meal_prep_type,
+            spiceLevel: prefs.spice_level,
+            prepComplexity: prefs.prep_complexity,
+            flavorTags: prefs.flavor_tags,
+            appliances: prefs.appliances
+          });
         }
       } catch (error) {
-        console.log('No existing preferences found for recipe, using defaults');
+        console.log('Error loading existing preferences:', error);
+        console.log('Error response:', error.response?.data);
+        console.log('Using default form values instead');
       }
     }
 
