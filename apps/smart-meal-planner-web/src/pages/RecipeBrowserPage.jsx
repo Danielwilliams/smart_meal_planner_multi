@@ -452,7 +452,7 @@ const RecipeBrowserPage = () => {
                       <Box sx={{ mb: 1, display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
                         <Chip
                           size="small"
-                          label={recipe.complexity || 'Unknown'}
+                          label={`Complexity: ${recipe.complexity || 'Unknown'}`}
                           color={renderComplexityColor(recipe.complexity)}
                         />
                         {recipe.cuisine && (

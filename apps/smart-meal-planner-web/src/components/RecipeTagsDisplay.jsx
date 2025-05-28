@@ -144,7 +144,7 @@ const RecipeTagsDisplay = ({ recipe, showTitle = true, size = "small", hideBasic
       chips.push(
         <Chip
           key={`db-complexity`}
-          label={`${recipe.complexity}`}
+          label={`Complexity: ${recipe.complexity}`}
           size={size}
           color="default"
           variant="filled"

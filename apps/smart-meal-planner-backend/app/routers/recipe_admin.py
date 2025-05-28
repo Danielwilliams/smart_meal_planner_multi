@@ -943,18 +943,23 @@ async def get_recipe_preferences(
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
 
-        # Get all preference data from scraped_recipes
+        # Get all preference data from scraped_recipes (check which columns exist first)
         cursor.execute("""
-            SELECT
-                id,
-                title,
-                diet_type,
-                cuisine,
-                cooking_method,
-                meal_prep_type,
-                spice_level,
-                complexity,
-                appliances
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = 'scraped_recipes'
+            AND column_name IN ('diet_type', 'meal_prep_type', 'spice_level', 'appliances')
+        """)
+        existing_columns = [row['column_name'] for row in cursor.fetchall()]
+
+        # Build dynamic query based on existing columns
+        base_columns = ['id', 'title', 'cuisine', 'cooking_method', 'complexity']
+        all_columns = base_columns + existing_columns
+
+        columns_str = ', '.join(all_columns)
+
+        cursor.execute(f"""
+            SELECT {columns_str}
             FROM scraped_recipes
             WHERE id = %s
         """, (recipe_id,))
@@ -981,15 +986,21 @@ async def get_recipe_preferences(
 
         # Build preferences object in the format expected by the frontend
         preferences_data = {
-            "diet_type": recipe.get('diet_type'),
             "cuisine": recipe.get('cuisine'),
             "recipe_format": recipe.get('cooking_method'),
-            "meal_prep_type": recipe.get('meal_prep_type'),
-            "spice_level": recipe.get('spice_level'),
             "prep_complexity": prep_complexity,
             "flavor_tags": flavor_list,
-            "appliances": recipe.get('appliances', []) if recipe.get('appliances') else []
         }
+
+        # Add optional columns only if they exist
+        if 'diet_type' in existing_columns:
+            preferences_data["diet_type"] = recipe.get('diet_type')
+        if 'meal_prep_type' in existing_columns:
+            preferences_data["meal_prep_type"] = recipe.get('meal_prep_type')
+        if 'spice_level' in existing_columns:
+            preferences_data["spice_level"] = recipe.get('spice_level')
+        if 'appliances' in existing_columns:
+            preferences_data["appliances"] = recipe.get('appliances', []) if recipe.get('appliances') else []
 
         # Remove None values
         preferences_data = {k: v for k, v in preferences_data.items() if v is not None}
