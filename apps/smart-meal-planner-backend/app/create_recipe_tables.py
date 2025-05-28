@@ -55,7 +55,7 @@ def create_tables():
                 date_scraped TIMESTAMP,
                 date_processed TIMESTAMP,
                 component_type VARCHAR(100),
-                diet_tags TEXT[],
+                diet_tags JSONB DEFAULT '[]',
                 categories JSONB DEFAULT '{}',
                 metadata JSONB DEFAULT '{}',
                 flavor_profile JSONB DEFAULT '{}',

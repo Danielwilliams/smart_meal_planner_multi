@@ -732,7 +732,7 @@ async def tag_recipes_with_preferences(
                     update_fields.append("meal_part = %s")
                     update_values.append(preferences['meal_prep_type'])
 
-                # Update diet_tags array (PostgreSQL TEXT[] format)
+                # Update diet_tags array (PostgreSQL JSONB format)
                 diet_tags = []
                 if preferences.get('diet_type'):
                     diet_tags.append(preferences['diet_type'])
@@ -740,9 +740,9 @@ async def tag_recipes_with_preferences(
                     diet_tags.append(f"spice_{preferences['spice_level']}")
 
                 if diet_tags:
-                    update_fields.append("diet_tags = %s::text[]")
-                    # Explicitly format as PostgreSQL text array
-                    update_values.append(diet_tags)
+                    update_fields.append("diet_tags = %s::jsonb")
+                    # Convert to JSON array for JSONB storage
+                    update_values.append(json.dumps(diet_tags))
                     logger.info(f"Diet tags to insert: {diet_tags}")
 
                 # Update complexity if provided
@@ -761,8 +761,8 @@ async def tag_recipes_with_preferences(
                     flavor_profile_array.append(f"complexity_{preferences['prep_complexity']}")
 
                 if flavor_profile_array:
-                    update_fields.append("flavor_profile = %s::text[]")
-                    update_values.append(flavor_profile_array)
+                    update_fields.append("flavor_profile = %s::jsonb")
+                    update_values.append(json.dumps(flavor_profile_array))
                     logger.info(f"Flavor profile array to insert: {flavor_profile_array}")
 
                 # Execute recipe table update if we have fields to update
