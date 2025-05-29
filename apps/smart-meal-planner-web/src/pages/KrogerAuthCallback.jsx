@@ -50,7 +50,7 @@ function KrogerAuthCallback() {
         try {
           // Store auth code for diagnostics
           sessionStorage.setItem('kroger_auth_code', code);
-          sessionStorage.setItem('kroger_auth_redirect_uri', process.env.KROGER_REDIRECT_URI || 'https://smart-meal-planner-multi.vercel.app/kroger/callback');
+          sessionStorage.setItem('kroger_auth_redirect_uri', process.env.KROGER_REDIRECT_URI || 'https://smartmealplannerio.com/kroger/callback');
           sessionStorage.setItem('kroger_auth_timestamp', Date.now().toString());
           
           if (stateParam) {
@@ -68,7 +68,7 @@ function KrogerAuthCallback() {
           try {
             const processingResult = await krogerAuthService.processAuthCode(
               code, 
-              process.env.KROGER_REDIRECT_URI || 'https://smart-meal-planner-multi.vercel.app/kroger/callback'
+              process.env.KROGER_REDIRECT_URI || 'https://smartmealplannerio.com/kroger/callback'
             );
             
             console.log('Auth code processing result:', processingResult);

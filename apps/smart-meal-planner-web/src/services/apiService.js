@@ -2057,7 +2057,7 @@ const apiService = {
         // Use URLSearchParams for proper OAuth 2.0 format
         const params = new URLSearchParams();
         params.append('code', code);
-        params.append('redirect_uri', 'https://smart-meal-planner-multi.vercel.app/kroger/callback');
+        params.append('redirect_uri', 'https://smartmealplannerio.com/kroger/callback');
         params.append('grant_type', 'authorization_code');
         params.append('state', 'from-frontend');
         
@@ -2104,7 +2104,7 @@ const apiService = {
           
           const resp = await axiosInstance.post('/kroger/process-code', {
             code,
-            redirect_uri: 'https://smart-meal-planner-multi.vercel.app/kroger/callback',
+            redirect_uri: 'https://smartmealplannerio.com/kroger/callback',
             grant_type: 'authorization_code'
           });
           
@@ -2137,7 +2137,7 @@ const apiService = {
             const resp = await axiosInstance.get('/kroger/auth-callback', {
               params: { 
                 code,
-                redirect_uri: 'https://smart-meal-planner-multi.vercel.app/kroger/callback',
+                redirect_uri: 'https://smartmealplannerio.com/kroger/callback',
                 grant_type: 'authorization_code',
                 state: 'from-frontend' 
               },
@@ -2254,7 +2254,7 @@ const apiService = {
       try {
         const response = await axiosInstance.post('/kroger/process-code', {
           code,
-          redirect_uri: redirectUri || 'https://smart-meal-planner-multi.vercel.app/kroger/callback'
+          redirect_uri: redirectUri || 'https://smartmealplannerio.com/kroger/callback'
         });
         
         console.log("Code processing response:", response.data);
@@ -2270,7 +2270,7 @@ const apiService = {
           const formData = new FormData();
           formData.append('grant_type', 'authorization_code');
           formData.append('code', code);
-          formData.append('redirect_uri', redirectUri || 'https://smart-meal-planner-multi.vercel.app/kroger/callback');
+          formData.append('redirect_uri', redirectUri || 'https://smartmealplannerio.com/kroger/callback');
           formData.append('client_id', 'smartmealplannerio-243261243034247652497361364a447078555731455949714a464f61656e5a676b444e552e42796961517a4f4576367156464b3564774c3039777a614700745159802496692');
           
           // Make the direct request to Kroger OAuth token endpoint
@@ -2291,7 +2291,7 @@ const apiService = {
             
             const params = new URLSearchParams();
             params.append('code', code);
-            params.append('redirect_uri', redirectUri || 'https://smart-meal-planner-multi.vercel.app/kroger/callback');
+            params.append('redirect_uri', redirectUri || 'https://smartmealplannerio.com/kroger/callback');
             params.append('state', 'from-frontend');
             
             const authResponse = await axiosInstance.post('/kroger/process-auth', params, {

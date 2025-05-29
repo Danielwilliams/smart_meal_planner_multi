@@ -780,7 +780,7 @@ function CartPage() {
 
         // Use hardcoded client ID for consistency (same as in krogerAuthService)
         const clientId = 'smartmealplannerio-243261243034247652497361364a447078555731455949714a464f61656e5a676b444e552e42796961517a4f4576367156464b3564774c3039777a614700745159802496692';
-        const redirectUri = 'https://smart-meal-planner-multi.vercel.app/kroger/callback';
+        const redirectUri = 'https://smartmealplannerio.com/kroger/callback';
         // These scopes are for authorization_code flow which is used in user OAuth process
         // Make sure to include cart.basic:write scope for cart operations
         const scope = 'product.compact cart.basic:write profile.compact';
@@ -1595,7 +1595,7 @@ function CartPage() {
             // Process the auth code
             const result = await krogerAuthService.processAuthCode(
               krogerAuthCode,
-              krogerAuthRedirectUri || 'https://smart-meal-planner-multi.vercel.app/kroger/callback'
+              krogerAuthRedirectUri || 'https://smartmealplannerio.com/kroger/callback'
             );
 
             console.log("Auth code processing result:", result);

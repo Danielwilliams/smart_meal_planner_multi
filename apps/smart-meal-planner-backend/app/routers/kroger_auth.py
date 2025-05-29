@@ -484,7 +484,7 @@ async def kroger_callback(
     except Exception as e:
         logger.error(f"Kroger callback error: {str(e)}")
         # Add a fallback URL if FRONTEND_URL is somehow still undefined
-        fallback_url = "https://smart-meal-planner-multi.vercel.app//kroger-auth-callback"
+        fallback_url = "https://smartmealplannerio.com/kroger-auth-callback"
         redirect_url = f"{FRONTEND_URL}/kroger-auth-callback?error={str(e)}" if 'FRONTEND_URL' in globals() else f"{fallback_url}?error={str(e)}"
         return RedirectResponse(url=redirect_url)
 
