@@ -448,11 +448,22 @@ const addToKrogerCart = async (items) => {
       }
     }
 
+    // Get the store location ID from localStorage
+    const storeLocationId = localStorage.getItem('kroger_store_location') ||
+                           localStorage.getItem('kroger_store_location_id');
+
+    if (!storeLocationId) {
+      console.warn("No store location ID found in localStorage - cart operations may fail");
+    } else {
+      console.log(`Using store location ID for cart: ${storeLocationId}`);
+    }
+
     // First try the backend API
     console.log('Trying to add items through backend API with user-authorized token');
     try {
       const response = await authAxios.post('/kroger/cart/add', {
-        items: krogerItems
+        items: krogerItems,
+        location_id: storeLocationId // Include the location ID in the request
       }, {
         timeout: 60000 // 60 second timeout
       });
@@ -514,7 +525,8 @@ const addToKrogerCart = async (items) => {
     try {
       const directResponse = await authAxios.post('/kroger/direct-cart-add', {
         items: krogerItems,
-        locationId: storeLocation
+        locationId: storeLocation,
+        location_id: storeLocation  // Include both formats to ensure compatibility
       });
       
       console.log('Direct cart add response:', directResponse.data);
