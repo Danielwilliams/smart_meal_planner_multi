@@ -24,7 +24,8 @@ from app.routers import (
     store,
     grocery_list,
     meal_grocery_list,
-    meal_shopping_lists
+    meal_shopping_lists,
+    subscriptions
 )
 
 # Import store-specific routers directly
@@ -155,6 +156,7 @@ def create_app() -> FastAPI:
     app.include_router(ai_status.router)
     app.include_router(custom_menu.router)
     app.include_router(organization_branding.router)  # Add branding endpoints
+    app.include_router(subscriptions.router)  # Add subscription endpoints
 
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request, exc):

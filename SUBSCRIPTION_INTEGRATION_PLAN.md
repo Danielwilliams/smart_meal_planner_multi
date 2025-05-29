@@ -801,3 +801,136 @@ REACT_APP_API_BASE_URL=http://localhost:8000/api
 - **International payment methods**
 
 This comprehensive plan provides a roadmap for implementing a robust subscription system that supports both individual users and organizations while maintaining security, scalability, and user experience standards.
+
+## Implementation Todo List
+
+### Database Setup (Completed)
+- [x] Create subscriptions table
+- [x] Create payment_methods table
+- [x] Create subscription_events table
+- [x] Create invoices table
+- [x] Create indexes for performance
+- [x] Add subscription reference to user_profiles
+
+### Backend Model Implementation (Completed)
+- [x] Create subscription.py model with database functions
+- [x] Add free tier support for beta testers
+- [x] Implement subscription status checking
+- [x] Add migration functions for existing users
+- [x] Create subscriptions router with basic endpoints
+
+### Environment Variables Setup
+- [ ] Set up environment variables in Railway
+  - [ ] Add core application variables (FRONTEND_URL, BACKEND_URL)
+  - [ ] Add JWT variables (JWT_SECRET, JWT_ALGORITHM, JWT_EXPIRATION)
+  - [ ] Add feature flag variables (ENABLE_SUBSCRIPTION_FEATURES)
+
+### Stripe Integration
+- [ ] Create Stripe account or use existing account
+- [ ] Configure Stripe API keys in Railway
+  - [ ] Add STRIPE_SECRET_KEY
+  - [ ] Add STRIPE_PUBLISHABLE_KEY
+  - [ ] Add STRIPE_WEBHOOK_SECRET
+- [ ] Create products and prices in Stripe Dashboard
+  - [ ] Individual Plan ($7.99/month)
+  - [ ] Organization Plan ($49.99/month)
+- [ ] Add Stripe price IDs to environment variables
+  - [ ] Add STRIPE_INDIVIDUAL_PRICE_ID
+  - [ ] Add STRIPE_ORGANIZATION_PRICE_ID
+- [ ] Set up Stripe webhook endpoint
+  - [ ] Configure webhook URL in Stripe Dashboard
+  - [ ] Subscribe to relevant events (checkout.session.completed, invoice.paid, etc.)
+  - [ ] Test webhook delivery
+
+### PayPal Integration
+- [ ] Create PayPal Developer account or use existing account
+- [ ] Configure PayPal API credentials in Railway
+  - [ ] Add PAYPAL_CLIENT_ID
+  - [ ] Add PAYPAL_CLIENT_SECRET
+  - [ ] Add PAYPAL_MODE (sandbox for testing)
+- [ ] Create subscription plans via PayPal API
+  - [ ] Individual Plan ($7.99/month)
+  - [ ] Organization Plan ($49.99/month)
+- [ ] Add PayPal plan IDs to environment variables
+  - [ ] Add PAYPAL_INDIVIDUAL_PLAN_ID
+  - [ ] Add PAYPAL_ORGANIZATION_PLAN_ID
+- [ ] Set up PayPal webhook
+  - [ ] Configure webhook URL in PayPal Developer Dashboard
+  - [ ] Subscribe to relevant events
+  - [ ] Add PAYPAL_WEBHOOK_ID to environment variables
+  - [ ] Test webhook delivery
+
+### Backend Implementation
+- [ ] Create subscription models
+  - [ ] Implement Subscription model with ORM
+  - [ ] Implement PaymentMethod model with ORM
+  - [ ] Implement SubscriptionEvent model with ORM
+  - [ ] Implement Invoice model with ORM
+- [ ] Create subscription router
+  - [ ] Implement create-stripe-checkout endpoint
+  - [ ] Implement create-paypal-subscription endpoint
+  - [ ] Implement get-subscription-status endpoint
+  - [ ] Implement cancel-subscription endpoint
+  - [ ] Implement update-payment-method endpoint
+- [ ] Create webhook handlers
+  - [ ] Implement Stripe webhook handler
+  - [ ] Implement PayPal webhook handler
+- [ ] Create subscription middleware
+  - [ ] Implement feature checking based on subscription status
+  - [ ] Make middleware non-blocking during testing
+- [ ] Add error handling and logging
+  - [ ] Create detailed logging for subscription events
+  - [ ] Implement graceful error handling for payment failures
+
+### Frontend Implementation
+- [ ] Install required dependencies
+  - [ ] @stripe/stripe-js and @stripe/react-stripe-js
+  - [ ] @paypal/react-paypal-js
+- [ ] Create subscription components
+  - [ ] Implement SubscriptionPlan component
+  - [ ] Implement PaymentMethodForm component
+- [ ] Create subscription pages
+  - [ ] Implement SubscriptionPage
+  - [ ] Implement SubscriptionSuccessPage
+  - [ ] Implement SubscriptionCancelPage
+  - [ ] Implement BillingManagementPage
+- [ ] Update environment variables
+  - [ ] Add frontend environment variables (REACT_APP_*)
+- [ ] Integrate with backend API
+  - [ ] Implement apiService methods for subscriptions
+  - [ ] Add subscription status checks to relevant components
+
+### Testing
+- [ ] Create test Stripe accounts
+- [ ] Create test PayPal accounts
+- [ ] Test subscription creation flows
+  - [ ] Test individual subscription with Stripe
+  - [ ] Test organization subscription with Stripe
+  - [ ] Test individual subscription with PayPal
+  - [ ] Test organization subscription with PayPal
+- [ ] Test webhook processing
+  - [ ] Test Stripe webhooks with test events
+  - [ ] Test PayPal webhooks with test events
+- [ ] Test subscription cancellation
+- [ ] Test subscription updates
+- [ ] Test payment method updates
+
+### Production Preparation
+- [ ] Switch from test/sandbox to live environment
+  - [ ] Update Stripe keys to production
+  - [ ] Update PayPal mode to live
+  - [ ] Update webhook URLs to production endpoints
+- [ ] Final security review
+  - [ ] Check for any exposed secrets
+  - [ ] Verify proper authorization checks
+  - [ ] Ensure proper error handling
+- [ ] Documentation
+  - [ ] Create user documentation for subscription management
+  - [ ] Create internal documentation for subscription system
+
+### Launch
+- [ ] Create migration strategy for existing users
+- [ ] Plan grace period for free users
+- [ ] Prepare announcement for subscription launch
+- [ ] Schedule phased rollout
+- [ ] Create monitoring dashboard for subscription metrics
