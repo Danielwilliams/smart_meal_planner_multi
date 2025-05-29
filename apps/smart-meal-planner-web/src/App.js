@@ -47,6 +47,9 @@ import DebugSharedMenus from './pages/DebugSharedMenus';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import SupportPage from './pages/SupportPage';
+import SubscriptionPage from './pages/SubscriptionPage';
+import SubscriptionSuccessPage from './pages/SubscriptionSuccessPage';
+import SubscriptionCancelPage from './pages/SubscriptionCancelPage';
 
 
 function App() {
@@ -263,15 +266,41 @@ function App() {
                   </PrivateRoute>
                 } 
               />
-              <Route 
-                path="/support" 
+              <Route
+                path="/support"
                 element={
                   <PrivateRoute>
                     <SupportPage />
                   </PrivateRoute>
-                } 
+                }
               />
-              
+
+              {/* Subscription Routes */}
+              <Route
+                path="/subscription"
+                element={
+                  <PrivateRoute>
+                    <SubscriptionPage />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/subscription/success"
+                element={
+                  <PrivateRoute>
+                    <SubscriptionSuccessPage />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/subscription/cancel"
+                element={
+                  <PrivateRoute>
+                    <SubscriptionCancelPage />
+                  </PrivateRoute>
+                }
+              />
+
               {/* Fallback route */}
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

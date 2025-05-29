@@ -21,7 +21,7 @@ import {
   useMediaQuery,
   useTheme
 } from '@mui/material';
-import { 
+import {
   AccountCircle as AccountIcon,
   Menu as MenuIcon,
   Dashboard as DashboardIcon,
@@ -36,7 +36,8 @@ import {
   Settings as SettingsIcon,
   AdminPanelSettings as AdminIcon,
   Build as CustomizeIcon,
-  Support as SupportIcon
+  Support as SupportIcon,
+  Payment as PaymentIcon
 } from '@mui/icons-material';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -120,6 +121,7 @@ function NavBar() {
   const moreItems = [
     { text: 'Custom Menu', icon: <CustomizeIcon />, path: '/custom-menu-builder' },
     { text: 'Preferences', icon: <SettingsIcon />, path: '/preferences-page' },
+    { text: 'Subscription', icon: <PaymentIcon />, path: '/subscription' },
     { text: 'Support', icon: <SupportIcon />, path: '/support' }
   ];
 
