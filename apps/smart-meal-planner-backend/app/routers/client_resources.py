@@ -842,7 +842,6 @@ async def org_get_client_preferences(
                 macro_fat,
                 calorie_goal,
                 meal_times,
-                kroger_username,
                 appliances,
                 prep_complexity,
                 servings_per_meal,

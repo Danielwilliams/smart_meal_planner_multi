@@ -68,9 +68,6 @@ class PreferencesUpdate(BaseModel):
     # Macro goals (nested object)
     macroGoals: Optional[Dict[str, Union[int, str]]] = None
     
-    # Kroger credentials
-    krogerUsername: Optional[str] = None
-    krogerPassword: Optional[str] = None
     
     # Advanced preferences (matching individual user model)
     flavorPreferences: Optional[Dict[str, bool]] = None
@@ -90,8 +87,6 @@ class PreferencesUpdate(BaseModel):
     macro_carbs: Optional[int] = None  # Will be extracted from macroGoals
     macro_fat: Optional[int] = None  # Will be extracted from macroGoals
     calorie_goal: Optional[int] = None  # Will be extracted from macroGoals
-    kroger_username: Optional[str] = None  # Alias for krogerUsername
-    kroger_password: Optional[str] = None  # Alias for krogerPassword
     prep_complexity: Optional[int] = None  # Alias for prepComplexity
     servings_per_meal: Optional[int] = None  # Alias for servingsPerMeal
     snacks_per_day: Optional[int] = None  # Alias for snacksPerDay
