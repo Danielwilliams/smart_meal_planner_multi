@@ -201,6 +201,26 @@ const addToKrogerCart = async (items) => {
       };
     }
 
+    // If backend reports a store location, always update localStorage
+    // This ensures we're using the database value (persistent across devices)
+    if (connectionStatus.store_location) {
+      console.log("Using store location from backend:", connectionStatus.store_location);
+      localStorage.setItem('kroger_store_location', connectionStatus.store_location);
+      localStorage.setItem('kroger_store_location_id', connectionStatus.store_location);
+      localStorage.setItem('kroger_store_selected', 'true');
+      localStorage.setItem('kroger_store_configured', 'true');
+      localStorage.setItem('kroger_store_selection_done', 'true');
+      sessionStorage.setItem('kroger_store_selection_complete', 'true');
+      sessionStorage.removeItem('kroger_needs_store_selection');
+    } else if (connectionStatus.is_connected && !connectionStatus.store_location) {
+      console.log("Connected but no store location in backend - will need store selection");
+      return {
+        success: false,
+        needs_setup: true,
+        message: 'Please select a Kroger store first.'
+      };
+    }
+
     // If connected but token doesn't have cart scopes, request reconnect
     if (localStorage.getItem('kroger_has_cart_scope') !== 'true') {
       console.log("Connection missing cart scopes, requesting reconnect");
@@ -678,27 +698,32 @@ const reconnectKroger = async () => {
 const checkKrogerStatus = async () => {
   try {
     console.log('Checking Kroger connection status...');
-    
+
     // First try the backend API to check connection status
     try {
       console.log('Trying backend connection status check...');
       const response = await authAxios.get('/kroger/connection-status');
-      
+
       if (response.data && response.data.is_connected) {
         console.log('✅ Backend reports valid Kroger connection:', response.data);
-        
+
         // Make sure local storage is in sync with backend
         localStorage.setItem('kroger_connected', 'true');
         localStorage.setItem('kroger_connected_at', new Date().toISOString());
-        
+
         // Check if store is selected in backend
         if (response.data.store_location) {
+          // IMPORTANT: Always use the database value (overrides local storage)
+          // This ensures cross-device persistence via the database
+          console.log('Using store location from backend database:', response.data.store_location);
           localStorage.setItem('kroger_store_location', response.data.store_location);
           localStorage.setItem('kroger_store_location_id', response.data.store_location);
           localStorage.setItem('kroger_store_selected', 'true');
           localStorage.setItem('kroger_store_configured', 'true');
+          localStorage.setItem('kroger_store_selection_done', 'true');
+          sessionStorage.setItem('kroger_store_selection_complete', 'true');
           sessionStorage.removeItem('kroger_needs_store_selection');
-          
+
           return {
             is_connected: true,
             store_location: response.data.store_location,

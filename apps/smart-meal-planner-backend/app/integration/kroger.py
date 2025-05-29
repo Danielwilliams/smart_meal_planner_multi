@@ -178,11 +178,12 @@ def kroger_search_item(query: str, location_id: Optional[str] = None) -> Dict[st
                 "results": []
             }
         
-        # Prepare params WITH location ID
+        # Prepare params WITH location ID and fulfillment filter for availability
         params = {
             'filter.term': cleaned_query,
             'filter.limit': '50',
-            'filter.locationId': effective_location_id  # ALWAYS include location ID
+            'filter.locationId': effective_location_id,  # ALWAYS include location ID
+            'filter.fulfillment': 'ais'  # Filter for items available in store
         }
         
         logger.debug(f"Making search request to: {search_url}")
