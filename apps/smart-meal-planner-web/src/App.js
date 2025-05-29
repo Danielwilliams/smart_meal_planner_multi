@@ -45,6 +45,7 @@ import InstacartTestPage from './pages/InstacartTestPage';
 import DebugSharedMenus from './pages/DebugSharedMenus';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
+import SupportPage from './pages/SupportPage';
 
 
 function App() {
@@ -257,6 +258,14 @@ function App() {
                 element={
                   <PrivateRoute>
                     <CustomMenuBuilderPage />
+                  </PrivateRoute>
+                } 
+              />
+              <Route 
+                path="/support" 
+                element={
+                  <PrivateRoute>
+                    <SupportPage />
                   </PrivateRoute>
                 } 
               />

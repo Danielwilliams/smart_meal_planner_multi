@@ -35,7 +35,8 @@ import {
   Search as SearchIcon,
   Settings as SettingsIcon,
   AdminPanelSettings as AdminIcon,
-  Build as CustomizeIcon
+  Build as CustomizeIcon,
+  Support as SupportIcon
 } from '@mui/icons-material';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -118,7 +119,8 @@ function NavBar() {
   // Define menu items for the "More" dropdown
   const moreItems = [
     { text: 'Custom Menu', icon: <CustomizeIcon />, path: '/custom-menu-builder' },
-    { text: 'Preferences', icon: <SettingsIcon />, path: '/preferences-page' }
+    { text: 'Preferences', icon: <SettingsIcon />, path: '/preferences-page' },
+    { text: 'Support', icon: <SupportIcon />, path: '/support' }
   ];
 
   // Navigation items based on user type
