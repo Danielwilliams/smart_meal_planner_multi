@@ -46,7 +46,12 @@ const makeApiRequest = async (endpoint, options = {}) => {
     throw new Error('No suitable API method available');
   }
 
-  const url = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  // Ensure the endpoint starts with /api/
+  let url = endpoint;
+  if (!url.startsWith('/api/')) {
+    url = url.startsWith('/') ? `/api${url}` : `/api/${url}`;
+  }
+  console.log(`Making API request to: ${url}`);
 
   try {
     if (apiMethod === 'direct') {
@@ -97,7 +102,7 @@ const subscriptionService = {
    */
   async getSubscriptionStatus() {
     try {
-      const response = await makeApiRequest('/subscriptions/status');
+      const response = await makeApiRequest('/api/subscriptions/status');
       return response;
     } catch (error) {
       console.error('Error fetching subscription status:', error);
@@ -124,7 +129,7 @@ const subscriptionService = {
 
       console.log('Creating checkout session with payload:', payload);
 
-      const response = await makeApiRequest('/subscriptions/create-checkout', {
+      const response = await makeApiRequest('/api/subscriptions/create-checkout', {
         method: 'POST',
         body: JSON.stringify(payload)
       });
@@ -144,7 +149,7 @@ const subscriptionService = {
    */
   async cancelSubscription(cancelAtPeriodEnd = true) {
     try {
-      const response = await makeApiRequest('/subscriptions/cancel', {
+      const response = await makeApiRequest('/api/subscriptions/cancel', {
         method: 'POST',
         body: JSON.stringify({
           cancel_at_period_end: cancelAtPeriodEnd
@@ -163,7 +168,7 @@ const subscriptionService = {
    */
   async getInvoices() {
     try {
-      const response = await makeApiRequest('/subscriptions/invoices');
+      const response = await makeApiRequest('/api/subscriptions/invoices');
       return response;
     } catch (error) {
       console.error('Error fetching invoices:', error);
@@ -178,7 +183,7 @@ const subscriptionService = {
    */
   async updatePaymentMethod(paymentMethodId) {
     try {
-      const response = await makeApiRequest('/subscriptions/update-payment-method', {
+      const response = await makeApiRequest('/api/subscriptions/update-payment-method', {
         method: 'POST',
         body: JSON.stringify({
           payment_method_id: paymentMethodId
@@ -197,7 +202,7 @@ const subscriptionService = {
    */
   async getSubscriptionPlans() {
     try {
-      const response = await makeApiRequest('/subscriptions/plans');
+      const response = await makeApiRequest('/api/subscriptions/plans');
       return response;
     } catch (error) {
       console.error('Error fetching subscription plans:', error);
