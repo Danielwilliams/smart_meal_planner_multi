@@ -176,7 +176,7 @@ const refreshKrogerTokenInternal = async () => {
  */
 const addToKrogerCart = async (items) => {
   console.log('Adding items to Kroger cart:', items);
-  
+
   // Validate input
   if (!items || !Array.isArray(items) || items.length === 0) {
     return {
@@ -184,14 +184,44 @@ const addToKrogerCart = async (items) => {
       message: 'No valid items provided'
     };
   }
-  
+
+  // First check connection status with backend before attempting cart operations
+  try {
+    console.log("Verifying Kroger connection status before cart operation");
+    const connectionStatus = await checkKrogerStatus();
+    console.log("Kroger connection status:", connectionStatus);
+
+    // If not connected according to backend, request reconnect
+    if (!connectionStatus.is_connected) {
+      console.log("Backend reports not connected, requesting reconnect");
+      return {
+        success: false,
+        needs_reconnect: true,
+        message: 'Your Kroger connection has expired. Please reconnect your account.'
+      };
+    }
+
+    // If connected but token doesn't have cart scopes, request reconnect
+    if (localStorage.getItem('kroger_has_cart_scope') !== 'true') {
+      console.log("Connection missing cart scopes, requesting reconnect");
+      return {
+        success: false,
+        needs_reconnect: true,
+        message: 'Your Kroger connection needs cart permissions. Please reconnect your account.'
+      };
+    }
+  } catch (statusError) {
+    console.warn("Error checking connection status:", statusError);
+    // Fall back to client-side checks if backend check fails
+  }
+
   // ENHANCEMENT: Check and consolidate store selection flags before proceeding
   // This helps prevent repeated store selection prompts
-  const locationValue = localStorage.getItem('kroger_store_location') || 
+  const locationValue = localStorage.getItem('kroger_store_location') ||
                         localStorage.getItem('kroger_store_location_id');
-  const selectionFlagSet = localStorage.getItem('kroger_store_selected') === 'true' || 
+  const selectionFlagSet = localStorage.getItem('kroger_store_selected') === 'true' ||
                            localStorage.getItem('kroger_store_configured') === 'true';
-  
+
   // If we have a store location but selection flags aren't set properly, fix them
   if (locationValue && !selectionFlagSet) {
     console.log('Found store location but selection flags not set, fixing flags');
@@ -201,16 +231,16 @@ const addToKrogerCart = async (items) => {
     sessionStorage.setItem('kroger_store_selection_complete', 'true');
     sessionStorage.removeItem('kroger_needs_store_selection');
   }
-  
+
   // Check client-side connection state and ensure we have proper scopes for cart operations
   const isConnected = localStorage.getItem('kroger_connected') === 'true';
   const hasCartScope = localStorage.getItem('kroger_has_cart_scope') === 'true';
-  
+
   console.log('Kroger cart auth check:', {
     isConnected,
     hasCartScope
   });
-  
+
   if (!isConnected || !hasCartScope) {
     return {
       success: false,
