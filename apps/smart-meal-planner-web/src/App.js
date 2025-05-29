@@ -39,6 +39,7 @@ import ClientDashboard from './pages/ClientDashboard';
 import ClientSignupPage from './pages/ClientSignupPage';
 import ClientInvitationConnect from './pages/ClientInvitationConnect';
 import KrogerAuthCallback from './pages/KrogerAuthCallback';
+import KrogerAuth from './pages/KrogerAuth';
 import TestInvitation from './TestInvitation';
 import ApiTestPage from './pages/ApiTestPage';
 import InstacartTestPage from './pages/InstacartTestPage';
@@ -89,6 +90,7 @@ function App() {
               <Route path="/kroger/callback" element={<KrogerAuthCallback />} />
               <Route path="/kroger-callback" element={<KrogerAuthCallback />} />
               <Route path="/kroger-auth-callback" element={<KrogerAuthCallback />} />
+              <Route path="/kroger-auth" element={<KrogerAuth />} />
               {/* These routes are to catch potential redirects from registered URIs */}
               <Route path="/callback" element={<KrogerAuthCallback />} />
               

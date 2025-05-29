@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
+import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import {
   Box, 
   Typography, 
@@ -91,9 +92,7 @@ function PreferencesPage() {
       carbs: '',
       fat: '',
       calories: ''
-    },
-    krogerUsername: '',
-    krogerPassword: ''
+    }
   });
   
   // New preference states
@@ -245,11 +244,7 @@ function PreferencesPage() {
           carbs: existingPreferences.macro_carbs?.toString() || '',
           fat: existingPreferences.macro_fat?.toString() || '',
           calories: existingPreferences.calorie_goal?.toString() || ''
-        },
-
-        // Kroger Settings
-        krogerUsername: existingPreferences.kroger_username || '',
-        krogerPassword: existingPreferences.kroger_password || ''
+        }
       }));
 
       // Load new preference types if they exist in the database
@@ -440,9 +435,7 @@ useEffect(() => {
         calorie_goal: preferences.macroGoals.calories ? parseInt(preferences.macroGoals.calories) : null,
         appliances: preferences.appliances,
         prep_complexity: preferences.prepComplexity,
-        kroger_username: preferences.krogerUsername,
         servings_per_meal: preferences.servingsPerMeal,
-        kroger_password: preferences.krogerPassword,
         // Enhanced preference fields (these take precedence in the menu generation process)
         flavor_preferences: flavorPreferences,
         spice_level: spiceLevel,
@@ -996,31 +989,25 @@ useEffect(() => {
 
         {/* Meal Schedule section has been moved above Servings per Meal */}
         
-        {/* Kroger Account Settings */}
+        {/* Kroger Integration Note */}
         <Box sx={{ mb: 3 }}>
           <Typography variant="subtitle1" gutterBottom>
-            Kroger Account Settings
+            Kroger Integration
           </Typography>
-          <TextField
-            name="krogerUsername"
-            label="Kroger Username"
-            fullWidth
-            margin="normal"
-            value={preferences.krogerUsername}
-            onChange={handleChange}
-            helperText="Enter your Kroger website username"
-          />
-
-          <TextField
-            name="krogerPassword"
-            label="Kroger Password"
-            type="password"
-            fullWidth
-            margin="normal"
-            value={preferences.krogerPassword}
-            onChange={handleChange}
-            helperText="Enter your Kroger website password"
-          />
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Kroger integration is now handled through the official Kroger OAuth flow.
+            When you add items to your Kroger cart, you'll be redirected to log in with your Kroger account.
+          </Typography>
+          <Button
+            variant="outlined"
+            color="primary"
+            component={Link}
+            to="/kroger-auth"
+            startIcon={<ShoppingCartIcon />}
+            sx={{ mt: 1 }}
+          >
+            Connect Kroger Account
+          </Button>
         </Box>
 
         {/* Save Button and Messages */}
