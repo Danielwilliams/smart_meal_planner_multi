@@ -1,6 +1,95 @@
 // src/services/subscriptionService.js
 import apiService from './apiService';
 
+// Check which methods are available in apiService
+const availableMethods = Object.keys(apiService);
+console.log('Available methods in apiService:', availableMethods);
+
+// Helper function to determine the best API method to use
+const getApiMethod = () => {
+  // List of possible method names in order of preference
+  const possibleMethods = [
+    'fetchWithAuth',
+    'post',
+    'get',
+    'put',
+    'patch',
+    'delete',
+    'request',
+    'makeAuthenticatedRequest',
+    'makeRequest'
+  ];
+
+  for (const method of possibleMethods) {
+    if (typeof apiService[method] === 'function') {
+      console.log(`Using apiService.${method} for subscription requests`);
+      return method;
+    }
+  }
+
+  // Fallback to checking if apiService itself is a function
+  if (typeof apiService === 'function') {
+    console.log('Using apiService directly as a function');
+    return 'direct';
+  }
+
+  console.error('No suitable API method found in apiService');
+  return null;
+}
+
+// Determine the best API method once
+const apiMethod = getApiMethod();
+
+// Function to make API requests based on available methods
+const makeApiRequest = async (endpoint, options = {}) => {
+  if (!apiMethod) {
+    throw new Error('No suitable API method available');
+  }
+
+  const url = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+
+  try {
+    if (apiMethod === 'direct') {
+      // If apiService is a function itself
+      return await apiService(url, options);
+    }
+    else if (apiMethod === 'fetchWithAuth') {
+      return await apiService.fetchWithAuth(url, options);
+    }
+    else if (apiMethod === 'request') {
+      return await apiService.request(url, options);
+    }
+    else if (apiMethod === 'makeAuthenticatedRequest') {
+      return await apiService.makeAuthenticatedRequest(url, options);
+    }
+    else if (apiMethod === 'makeRequest') {
+      return await apiService.makeRequest(url, options);
+    }
+    else if (apiMethod === 'post' && options.method === 'POST') {
+      return await apiService.post(url, options.body ? JSON.parse(options.body) : {});
+    }
+    else if (apiMethod === 'get' && (!options.method || options.method === 'GET')) {
+      return await apiService.get(url);
+    }
+    else if (apiMethod === 'put' && options.method === 'PUT') {
+      return await apiService.put(url, options.body ? JSON.parse(options.body) : {});
+    }
+    else if (apiMethod === 'patch' && options.method === 'PATCH') {
+      return await apiService.patch(url, options.body ? JSON.parse(options.body) : {});
+    }
+    else if (apiMethod === 'delete' && options.method === 'DELETE') {
+      return await apiService.delete(url, options.body ? JSON.parse(options.body) : {});
+    }
+    else {
+      // Fallback to using whatever method we found with GET
+      return await apiService[apiMethod](url, options);
+    }
+  } catch (error) {
+    console.error(`API request failed for ${url}:`, error);
+    throw error;
+  }
+};
+
 const subscriptionService = {
   /**
    * Get the current subscription status for the user
@@ -8,7 +97,7 @@ const subscriptionService = {
    */
   async getSubscriptionStatus() {
     try {
-      const response = await apiService.fetchWithAuth('/subscriptions/status');
+      const response = await makeApiRequest('/subscriptions/status');
       return response;
     } catch (error) {
       console.error('Error fetching subscription status:', error);
@@ -26,15 +115,21 @@ const subscriptionService = {
    */
   async createCheckoutSession(subscriptionType, paymentProvider, successUrl, cancelUrl) {
     try {
-      const response = await apiService.fetchWithAuth('/subscriptions/create-checkout', {
+      const payload = {
+        subscription_type: subscriptionType,
+        payment_provider: paymentProvider,
+        success_url: successUrl,
+        cancel_url: cancelUrl
+      };
+
+      console.log('Creating checkout session with payload:', payload);
+
+      const response = await makeApiRequest('/subscriptions/create-checkout', {
         method: 'POST',
-        body: JSON.stringify({
-          subscription_type: subscriptionType,
-          payment_provider: paymentProvider,
-          success_url: successUrl,
-          cancel_url: cancelUrl
-        })
+        body: JSON.stringify(payload)
       });
+
+      console.log('Checkout session response:', response);
       return response;
     } catch (error) {
       console.error('Error creating checkout session:', error);
@@ -49,7 +144,7 @@ const subscriptionService = {
    */
   async cancelSubscription(cancelAtPeriodEnd = true) {
     try {
-      const response = await apiService.fetchWithAuth('/subscriptions/cancel', {
+      const response = await makeApiRequest('/subscriptions/cancel', {
         method: 'POST',
         body: JSON.stringify({
           cancel_at_period_end: cancelAtPeriodEnd
@@ -68,7 +163,7 @@ const subscriptionService = {
    */
   async getInvoices() {
     try {
-      const response = await apiService.fetchWithAuth('/subscriptions/invoices');
+      const response = await makeApiRequest('/subscriptions/invoices');
       return response;
     } catch (error) {
       console.error('Error fetching invoices:', error);
@@ -83,7 +178,7 @@ const subscriptionService = {
    */
   async updatePaymentMethod(paymentMethodId) {
     try {
-      const response = await apiService.fetchWithAuth('/subscriptions/update-payment-method', {
+      const response = await makeApiRequest('/subscriptions/update-payment-method', {
         method: 'POST',
         body: JSON.stringify({
           payment_method_id: paymentMethodId
@@ -102,7 +197,7 @@ const subscriptionService = {
    */
   async getSubscriptionPlans() {
     try {
-      const response = await apiService.fetchWithAuth('/subscriptions/plans');
+      const response = await makeApiRequest('/subscriptions/plans');
       return response;
     } catch (error) {
       console.error('Error fetching subscription plans:', error);

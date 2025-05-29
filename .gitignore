@@ -60,3 +60,10 @@ build/
 menu examples
 menu examples.txt
 menudata.csv
+venv/
+apps/smart-meal-planner-web/.env.stripe-sample
+apps/smart-meal-planner-backend/.env.stripe-sample
+apps/smart-meal-planner-backend/test_stripe_integration.py
+test-stripe-webhook.sh
+trigger-test-events.sh
+standalone_stripe_test.py
