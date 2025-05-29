@@ -554,497 +554,495 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
         conn.close()
         logger.info("Database connection closed after fetching preferences")
 
-        try:
+        # Process preferences
+        servings_per_meal = merge_preference(
+            user_row.get("servings_per_meal") if user_row else None,
+            req.servings_per_meal,
+            2
+        )
 
-            # Process preferences
-            servings_per_meal = merge_preference(
-                user_row.get("servings_per_meal") if user_row else None,
-                req.servings_per_meal,
-                2
-            )
+        calorie_goal = merge_preference(
+            user_row.get("calorie_goal") if user_row else None,
+            req.calorie_goal,
+            2000
+        )
 
-            calorie_goal = merge_preference(
-                user_row.get("calorie_goal") if user_row else None,
-                req.calorie_goal,
-                2000
-            )
+        # Macronutrients
+        protein_goal = merge_preference(
+            user_row.get("macro_protein") if user_row else None,
+            req.macro_protein,
+            40
+        )
+        carbs_goal = merge_preference(
+            user_row.get("macro_carbs") if user_row else None,
+            req.macro_carbs,
+            30
+        )
+        fat_goal = merge_preference(
+            user_row.get("macro_fat") if user_row else None,
+            req.macro_fat,
+            30
+        )
 
-            # Macronutrients
-            protein_goal = merge_preference(
-                user_row.get("macro_protein") if user_row else None,
-                req.macro_protein,
-                40
-            )
-            carbs_goal = merge_preference(
-                user_row.get("macro_carbs") if user_row else None,
-                req.macro_carbs,
-                30
-            )
-            fat_goal = merge_preference(
-                user_row.get("macro_fat") if user_row else None,
-                req.macro_fat,
-                30
-            )
+        # Meal times and preferences
+        selected_meal_times = extract_meal_times(user_row, req.meal_times)
+        dietary_restrictions = process_dietary_restrictions(user_row, req.dietary_preferences)
+        disliked_ingredients = process_disliked_ingredients(user_row, req.disliked_foods)
+        
+        # Determine snacks per day based on detailed meal time preferences
+        snack_count_from_prefs = 0
+        if user_row and user_row.get("meal_time_preferences"):
+            meal_time_prefs = user_row.get("meal_time_preferences")
+            if meal_time_prefs.get("morning-snack"):
+                snack_count_from_prefs += 1
+            if meal_time_prefs.get("afternoon-snack"):
+                snack_count_from_prefs += 1
+            if meal_time_prefs.get("evening-snack"):
+                snack_count_from_prefs += 1
+        
+        # If request has snacks_per_day, use that, otherwise use the determined count or fall back to the database value
+        if req.snacks_per_day is not None:
+            # Keep existing value from request
+            pass
+        elif snack_count_from_prefs > 0:
+            # Use count based on meal time preferences
+            req.snacks_per_day = snack_count_from_prefs
+        elif user_row and user_row.get("snacks_per_day") is not None:
+            # Fall back to database value
+            req.snacks_per_day = user_row.get("snacks_per_day")
 
-            # Meal times and preferences
-            selected_meal_times = extract_meal_times(user_row, req.meal_times)
-            dietary_restrictions = process_dietary_restrictions(user_row, req.dietary_preferences)
-            disliked_ingredients = process_disliked_ingredients(user_row, req.disliked_foods)
-            
-            # Determine snacks per day based on detailed meal time preferences
-            snack_count_from_prefs = 0
-            if user_row and user_row.get("meal_time_preferences"):
-                meal_time_prefs = user_row.get("meal_time_preferences")
-                if meal_time_prefs.get("morning-snack"):
-                    snack_count_from_prefs += 1
-                if meal_time_prefs.get("afternoon-snack"):
-                    snack_count_from_prefs += 1
-                if meal_time_prefs.get("evening-snack"):
-                    snack_count_from_prefs += 1
-            
-            # If request has snacks_per_day, use that, otherwise use the determined count or fall back to the database value
-            if req.snacks_per_day is not None:
-                # Keep existing value from request
-                pass
-            elif snack_count_from_prefs > 0:
-                # Use count based on meal time preferences
-                req.snacks_per_day = snack_count_from_prefs
-            elif user_row and user_row.get("snacks_per_day") is not None:
-                # Fall back to database value
-                req.snacks_per_day = user_row.get("snacks_per_day")
+        # Appliances and complexity
+        appliances = user_row.get("appliances", {}) if user_row else {}
+        appliances_str = format_appliances_string(appliances)
 
-            # Appliances and complexity
-            appliances = user_row.get("appliances", {}) if user_row else {}
-            appliances_str = format_appliances_string(appliances)
+        prep_complexity = merge_preference(
+            user_row.get("prep_complexity") if user_row else None,
+            req.prep_complexity,
+            0
+        )
+        prep_level = get_prep_complexity_level(prep_complexity)
 
-            prep_complexity = merge_preference(
-                user_row.get("prep_complexity") if user_row else None,
-                req.prep_complexity,
-                0
-            )
-            prep_level = get_prep_complexity_level(prep_complexity)
+        # Diet and recipe types
+        diet_type = merge_preference(
+            user_row.get("diet_type") if user_row else None,
+            req.diet_type,
+            "Mixed"
+        )
+        recipe_type = merge_preference(
+            user_row.get("recipe_type") if user_row else None,
+            "American, Italian, Mexican, Asian, Chinese, Spanish"
+        )
+        
+        # Extract new preference fields
+        flavor_preferences = user_row.get("flavor_preferences", {}) if user_row else {}
+        flavor_prefs_str = ", ".join([flavor for flavor, enabled in flavor_preferences.items() if enabled]) if flavor_preferences else ""
+        
+        spice_level = merge_preference(
+            user_row.get("spice_level") if user_row else None,
+            "medium"
+        )
+        
+        recipe_type_preferences = user_row.get("recipe_type_preferences", {}) if user_row else {}
+        recipe_type_prefs_str = ", ".join([type.replace('-', ' ') for type, enabled in recipe_type_preferences.items() if enabled]) if recipe_type_preferences else ""
+        
+        detailed_meal_times = user_row.get("meal_time_preferences", {}) if user_row else {}
+        detailed_meal_times_str = ", ".join([time.replace('-', ' ') for time, enabled in detailed_meal_times.items() if enabled]) if detailed_meal_times else ""
+        
+        time_constraints = user_row.get("time_constraints", {}) if user_row else {}
+        
+        prep_preferences = user_row.get("prep_preferences", {}) if user_row else {}
+        prep_prefs_str = ", ".join([prep.replace('-', ' ') for prep, enabled in prep_preferences.items() if enabled]) if prep_preferences else ""
 
-            # Diet and recipe types
-            diet_type = merge_preference(
-                user_row.get("diet_type") if user_row else None,
-                req.diet_type,
-                "Mixed"
-            )
-            recipe_type = merge_preference(
-                user_row.get("recipe_type") if user_row else None,
-                "American, Italian, Mexican, Asian, Chinese, Spanish"
-            )
-            
-            # Extract new preference fields
-            flavor_preferences = user_row.get("flavor_preferences", {}) if user_row else {}
-            flavor_prefs_str = ", ".join([flavor for flavor, enabled in flavor_preferences.items() if enabled]) if flavor_preferences else ""
-            
-            spice_level = merge_preference(
-                user_row.get("spice_level") if user_row else None,
-                "medium"
-            )
-            
-            recipe_type_preferences = user_row.get("recipe_type_preferences", {}) if user_row else {}
-            recipe_type_prefs_str = ", ".join([type.replace('-', ' ') for type, enabled in recipe_type_preferences.items() if enabled]) if recipe_type_preferences else ""
-            
-            detailed_meal_times = user_row.get("meal_time_preferences", {}) if user_row else {}
-            detailed_meal_times_str = ", ".join([time.replace('-', ' ') for time, enabled in detailed_meal_times.items() if enabled]) if detailed_meal_times else ""
-            
-            time_constraints = user_row.get("time_constraints", {}) if user_row else {}
-            
-            prep_preferences = user_row.get("prep_preferences", {}) if user_row else {}
-            prep_prefs_str = ", ".join([prep.replace('-', ' ') for prep, enabled in prep_preferences.items() if enabled]) if prep_preferences else ""
-
-            # Generate meal plan
-            final_plan = {"days": []}
-            
-            # Track meal titles by category and primary ingredients for better variety
-            used_meal_titles = set()  # All used titles
-            used_by_meal_time = {meal_time: set() for meal_time in selected_meal_times}
-            used_primary_ingredients = []  # List of (day, ingredients) tuples to track ingredients by day
-            
-            # Define OpenAI function schema for structured meal plan output
-            # Construct a description based on detailed meal times or fall back to basic meal times
-            meal_times_desc = ""
-            if detailed_meal_times and any(enabled for time, enabled in detailed_meal_times.items()):
-                # Use detailed meal times
-                standard_meals = [time.replace('-', ' ').title() for time, enabled in detailed_meal_times.items() if enabled and not 'snack' in time]
-                snack_meals = [time.replace('-', ' ').title() + " Snack" for time, enabled in detailed_meal_times.items() if enabled and 'snack' in time]
-                meal_times_desc = ", ".join(standard_meals)
-                if snack_meals:
-                    meal_times_desc += " plus " + ", ".join(snack_meals)
-            else:
-                # Use basic meal times
-                meal_times_desc = ", ".join(selected_meal_times)
-                if req.snacks_per_day > 0:
-                    meal_times_desc += f" plus {req.snacks_per_day} snack(s)"
-            
-            # Create schema with explicit meal time requirements
-            meal_properties = {}
-
-            # Add required meal times as separate properties
-            for meal_time in selected_meal_times:
-                if meal_time.lower() not in ['snack', 'morning snack', 'afternoon snack', 'evening snack']:
-                    meal_properties[meal_time.lower()] = {
-                        "type": "object",
-                        "description": f"Required {meal_time} meal",
-                        "properties": {
-                            "title": {"type": "string", "description": "Title of the meal"},
-                            "ingredients": {
-                                "type": "array",
-                                "items": {
-                                    "type": "object",
-                                    "properties": {
-                                        "name": {"type": "string"},
-                                        "quantity": {"type": "string"},
-                                        "calories": {"type": "string"},
-                                        "protein": {"type": "string"},
-                                        "carbs": {"type": "string"},
-                                        "fat": {"type": "string"}
-                                    },
-                                    "required": ["name", "quantity"]
-                                }
-                            },
-                            "instructions": {"type": "array", "items": {"type": "string"}},
-                            "servings": {"type": "integer"},
-                            "macros": {
-                                "type": "object",
-                                "properties": {
-                                    "perServing": {
-                                        "type": "object",
-                                        "properties": {
-                                            "calories": {"type": "integer"},
-                                            "protein": {"type": "string"},
-                                            "carbs": {"type": "string"},
-                                            "fat": {"type": "string"}
-                                        }
-                                    },
-                                    "perMeal": {
-                                        "type": "object",
-                                        "properties": {
-                                            "calories": {"type": "integer"},
-                                            "protein": {"type": "string"},
-                                            "carbs": {"type": "string"},
-                                            "fat": {"type": "string"}
-                                        }
-                                    }
-                                }
-                            }
-                        },
-                        "required": ["title", "ingredients", "instructions", "servings", "macros"]
-                    }
-
-            # Add snacks if requested
+        # Generate meal plan
+        final_plan = {"days": []}
+        
+        # Track meal titles by category and primary ingredients for better variety
+        used_meal_titles = set()  # All used titles
+        used_by_meal_time = {meal_time: set() for meal_time in selected_meal_times}
+        used_primary_ingredients = []  # List of (day, ingredients) tuples to track ingredients by day
+        
+        # Define OpenAI function schema for structured meal plan output
+        # Construct a description based on detailed meal times or fall back to basic meal times
+        meal_times_desc = ""
+        if detailed_meal_times and any(enabled for time, enabled in detailed_meal_times.items()):
+            # Use detailed meal times
+            standard_meals = [time.replace('-', ' ').title() for time, enabled in detailed_meal_times.items() if enabled and not 'snack' in time]
+            snack_meals = [time.replace('-', ' ').title() + " Snack" for time, enabled in detailed_meal_times.items() if enabled and 'snack' in time]
+            meal_times_desc = ", ".join(standard_meals)
+            if snack_meals:
+                meal_times_desc += " plus " + ", ".join(snack_meals)
+        else:
+            # Use basic meal times
+            meal_times_desc = ", ".join(selected_meal_times)
             if req.snacks_per_day > 0:
-                meal_properties["snacks"] = {
-                    "type": "array",
-                    "description": f"Required {req.snacks_per_day} snack(s)",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "title": {"type": "string"},
-                            "ingredients": {
-                                "type": "array",
-                                "items": {
-                                    "type": "object",
-                                    "properties": {
-                                        "name": {"type": "string"},
-                                        "quantity": {"type": "string"},
-                                        "calories": {"type": "string"},
-                                        "protein": {"type": "string"},
-                                        "carbs": {"type": "string"},
-                                        "fat": {"type": "string"}
-                                    }
-                                }
-                            },
-                            "servings": {"type": "integer"},
-                            "macros": {
+                meal_times_desc += f" plus {req.snacks_per_day} snack(s)"
+        
+        # Create schema with explicit meal time requirements
+        meal_properties = {}
+
+        # Add required meal times as separate properties
+        for meal_time in selected_meal_times:
+            if meal_time.lower() not in ['snack', 'morning snack', 'afternoon snack', 'evening snack']:
+                meal_properties[meal_time.lower()] = {
+                    "type": "object",
+                    "description": f"Required {meal_time} meal",
+                    "properties": {
+                        "title": {"type": "string", "description": "Title of the meal"},
+                        "ingredients": {
+                            "type": "array",
+                            "items": {
                                 "type": "object",
                                 "properties": {
-                                    "perServing": {
-                                        "type": "object",
-                                        "properties": {
-                                            "calories": {"type": "integer"},
-                                            "protein": {"type": "string"},
-                                            "carbs": {"type": "string"},
-                                            "fat": {"type": "string"}
-                                        }
-                                    },
-                                    "perMeal": {
-                                        "type": "object",
-                                        "properties": {
-                                            "calories": {"type": "integer"},
-                                            "protein": {"type": "string"},
-                                            "carbs": {"type": "string"},
-                                            "fat": {"type": "string"}
-                                        }
-                                    }
-                                }
+                                    "name": {"type": "string"},
+                                    "quantity": {"type": "string"},
+                                    "calories": {"type": "string"},
+                                    "protein": {"type": "string"},
+                                    "carbs": {"type": "string"},
+                                    "fat": {"type": "string"}
+                                },
+                                "required": ["name", "quantity"]
                             }
-                        }
-                    },
-                    "minItems": req.snacks_per_day,
-                    "maxItems": req.snacks_per_day
-                }
-
-            menu_schema = {
-                "name": "generate_daily_meal_plan",
-                "description": f"Generate a daily meal plan with ALL required meal times: {meal_times_desc}. YOU MUST INCLUDE ALL MEAL TIMES.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "dayNumber": {
-                            "type": "integer",
-                            "description": "Day number in the meal plan"
                         },
-                        **meal_properties,
-                        "summary": {
+                        "instructions": {"type": "array", "items": {"type": "string"}},
+                        "servings": {"type": "integer"},
+                        "macros": {
                             "type": "object",
                             "properties": {
-                                "calorie_goal": {"type": "string"},
-                                "protein_goal": {"type": "string"},
-                                "carbs_goal": {"type": "string"},
-                                "fat_goal": {"type": "string"},
-                                "protein_grams": {"type": "string"},
-                                "carbs_grams": {"type": "string"},
-                                "fat_grams": {"type": "string"},
-                                "variance_from_goal": {"type": "string"}
+                                "perServing": {
+                                    "type": "object",
+                                    "properties": {
+                                        "calories": {"type": "integer"},
+                                        "protein": {"type": "string"},
+                                        "carbs": {"type": "string"},
+                                        "fat": {"type": "string"}
+                                    }
+                                },
+                                "perMeal": {
+                                    "type": "object",
+                                    "properties": {
+                                        "calories": {"type": "integer"},
+                                        "protein": {"type": "string"},
+                                        "carbs": {"type": "string"},
+                                        "fat": {"type": "string"}
+                                    }
+                                }
                             }
                         }
                     },
-                    "required": ["dayNumber", "summary"] + [meal_time.lower() for meal_time in selected_meal_times if meal_time.lower() not in ['snack', 'morning snack', 'afternoon snack', 'evening snack']] + (["snacks"] if req.snacks_per_day > 0 else [])
+                    "required": ["title", "ingredients", "instructions", "servings", "macros"]
                 }
+
+        # Add snacks if requested
+        if req.snacks_per_day > 0:
+            meal_properties["snacks"] = {
+                "type": "array",
+                "description": f"Required {req.snacks_per_day} snack(s)",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "title": {"type": "string"},
+                        "ingredients": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {"type": "string"},
+                                    "quantity": {"type": "string"},
+                                    "calories": {"type": "string"},
+                                    "protein": {"type": "string"},
+                                    "carbs": {"type": "string"},
+                                    "fat": {"type": "string"}
+                                }
+                            }
+                        },
+                        "servings": {"type": "integer"},
+                        "macros": {
+                            "type": "object",
+                            "properties": {
+                                "perServing": {
+                                    "type": "object",
+                                    "properties": {
+                                        "calories": {"type": "integer"},
+                                        "protein": {"type": "string"},
+                                        "carbs": {"type": "string"},
+                                        "fat": {"type": "string"}
+                                    }
+                                },
+                                "perMeal": {
+                                    "type": "object",
+                                    "properties": {
+                                        "calories": {"type": "integer"},
+                                        "protein": {"type": "string"},
+                                        "carbs": {"type": "string"},
+                                        "fat": {"type": "string"}
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "minItems": req.snacks_per_day,
+                "maxItems": req.snacks_per_day
             }
 
-            # Generate each day's meal plan
-            for day_number in range(1, req.duration_days + 1):
-                logger.info(f"Generating day {day_number} of {req.duration_days}")
-                
-                # Get used ingredients that are within the last 3 days
-                recent_ingredients = []
-                for past_day, ingredients in used_primary_ingredients:
-                    if day_number - past_day <= 3:  # Only consider ingredients from last 3 days
-                        recent_ingredients.extend(ingredients)
-                
-                recent_ingredients_str = ", ".join(recent_ingredients) if recent_ingredients else "None"
-                
-                # Create a more structured system prompt
-                system_prompt = f"""You are an advanced meal planning assistant that creates detailed, nutritionally balanced meal plans.
-                Your task is to generate meal plans with precise cooking instructions while strictly adhering to user preferences.
-                
-                CRITICAL: You MUST generate meals for ALL meal times specified by the user, including breakfast, lunch, dinner, and snacks if requested.
-                
-                Pay special attention to the following preference areas:
-                1. Flavor preferences - Focus on incorporating preferred flavor profiles
-                2. Spice level - Adjust recipes to match the specified spice level
-                3. Meal formats - Prioritize preferred meal structures like stir-fry, bowls, etc.
-                4. Time constraints - Ensure recipes can be prepared within the time limits
-                5. Meal preparation preferences - Use batch cooking, one-pot meals, etc. when specified
-                
-                Respect both dietary restrictions and detailed preferences to create personalized and practical meal plans."""
-                
-                # Create a more concise and structured user prompt
-                user_prompt = f"""
-                ## Meal Plan Requirements - Day {day_number} of {req.duration_days}
+        menu_schema = {
+            "name": "generate_daily_meal_plan",
+            "description": f"Generate a daily meal plan with ALL required meal times: {meal_times_desc}. YOU MUST INCLUDE ALL MEAL TIMES.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "dayNumber": {
+                        "type": "integer",
+                        "description": "Day number in the meal plan"
+                    },
+                    **meal_properties,
+                    "summary": {
+                        "type": "object",
+                        "properties": {
+                            "calorie_goal": {"type": "string"},
+                            "protein_goal": {"type": "string"},
+                            "carbs_goal": {"type": "string"},
+                            "fat_goal": {"type": "string"},
+                            "protein_grams": {"type": "string"},
+                            "carbs_grams": {"type": "string"},
+                            "fat_grams": {"type": "string"},
+                            "variance_from_goal": {"type": "string"}
+                        }
+                    }
+                },
+                "required": ["dayNumber", "summary"] + [meal_time.lower() for meal_time in selected_meal_times if meal_time.lower() not in ['snack', 'morning snack', 'afternoon snack', 'evening snack']] + (["snacks"] if req.snacks_per_day > 0 else [])
+            }
+        }
 
-                ### User Profile
-                - Servings per meal: {servings_per_meal}
-                - Dietary preferences: {', '.join(dietary_restrictions)}
-                - Disliked foods: {', '.join(disliked_ingredients)}
-                - Preferred cuisines: {recipe_type}
-                - Diet type: {diet_type}
-                - Available appliances: {appliances_str}
-                - Cooking complexity level: {prep_level}
-                
-                ### Additional Preferences
-                - Preferred flavors: {flavor_prefs_str or "No specific flavor preferences"}
-                - Spice level: {spice_level}
-                - Preferred meal formats: {recipe_type_prefs_str or "No specific meal format preferences"}
-                - Preferred meal preparation: {prep_prefs_str or "No specific preparation preferences"}
+        # Generate each day's meal plan
+        for day_number in range(1, req.duration_days + 1):
+            logger.info(f"Generating day {day_number} of {req.duration_days}")
+            
+            # Get used ingredients that are within the last 3 days
+            recent_ingredients = []
+            for past_day, ingredients in used_primary_ingredients:
+                if day_number - past_day <= 3:  # Only consider ingredients from last 3 days
+                    recent_ingredients.extend(ingredients)
+            
+            recent_ingredients_str = ", ".join(recent_ingredients) if recent_ingredients else "None"
+            
+            # Create a more structured system prompt
+            system_prompt = f"""You are an advanced meal planning assistant that creates detailed, nutritionally balanced meal plans.
+            Your task is to generate meal plans with precise cooking instructions while strictly adhering to user preferences.
+            
+            CRITICAL: You MUST generate meals for ALL meal times specified by the user, including breakfast, lunch, dinner, and snacks if requested.
+            
+            Pay special attention to the following preference areas:
+            1. Flavor preferences - Focus on incorporating preferred flavor profiles
+            2. Spice level - Adjust recipes to match the specified spice level
+            3. Meal formats - Prioritize preferred meal structures like stir-fry, bowls, etc.
+            4. Time constraints - Ensure recipes can be prepared within the time limits
+            5. Meal preparation preferences - Use batch cooking, one-pot meals, etc. when specified
+            
+            Respect both dietary restrictions and detailed preferences to create personalized and practical meal plans."""
+            
+            # Create a more concise and structured user prompt
+            user_prompt = f"""
+            ## Meal Plan Requirements - Day {day_number} of {req.duration_days}
 
-                ### Time Constraints
-                {chr(10).join([f"- {constraint.replace('-', ' ').title()}: {minutes} minutes max" for constraint, minutes in time_constraints.items()]) if time_constraints else "- No specific time constraints"}
+            ### User Profile
+            - Servings per meal: {servings_per_meal}
+            - Dietary preferences: {', '.join(dietary_restrictions)}
+            - Disliked foods: {', '.join(disliked_ingredients)}
+            - Preferred cuisines: {recipe_type}
+            - Diet type: {diet_type}
+            - Available appliances: {appliances_str}
+            - Cooking complexity level: {prep_level}
+            
+            ### Additional Preferences
+            - Preferred flavors: {flavor_prefs_str or "No specific flavor preferences"}
+            - Spice level: {spice_level}
+            - Preferred meal formats: {recipe_type_prefs_str or "No specific meal format preferences"}
+            - Preferred meal preparation: {prep_prefs_str or "No specific preparation preferences"}
 
-                ### Nutrition Goals
-                - Daily calories: {calorie_goal} kcal × {servings_per_meal} servings = {calorie_goal * servings_per_meal} total calories
-                - Protein: {protein_goal}% ({round((calorie_goal * protein_goal / 100) / 4)}g)
-                - Carbs: {carbs_goal}% ({round((calorie_goal * carbs_goal / 100) / 4)}g)
-                - Fat: {fat_goal}% ({round((calorie_goal * fat_goal / 100) / 9)}g)
+            ### Time Constraints
+            {chr(10).join([f"- {constraint.replace('-', ' ').title()}: {minutes} minutes max" for constraint, minutes in time_constraints.items()]) if time_constraints else "- No specific time constraints"}
 
-                ### Critical Constraints
-                1. DO NOT use disliked ingredients
-                2. DO NOT repeat meal titles from this list: {', '.join(used_meal_titles) if used_meal_titles else 'None'}
-                3. DO NOT use primary ingredients that appeared in the last 3 days: {recent_ingredients_str}
-                4. DO NOT use the same protein source more than once per day
-                5. Include at least 3 distinct cuisines each day
-                6. Use standardized units (grams, ounces, tablespoons)
+            ### Nutrition Goals
+            - Daily calories: {calorie_goal} kcal × {servings_per_meal} servings = {calorie_goal * servings_per_meal} total calories
+            - Protein: {protein_goal}% ({round((calorie_goal * protein_goal / 100) / 4)}g)
+            - Carbs: {carbs_goal}% ({round((calorie_goal * carbs_goal / 100) / 4)}g)
+            - Fat: {fat_goal}% ({round((calorie_goal * fat_goal / 100) / 9)}g)
 
-                ### Structure Requirements
-                - Scale all recipes to exactly {servings_per_meal} servings
-                - Provide detailed, step-by-step cooking instructions
-                - Include macronutrient breakdowns per serving AND per meal
-                - Show calories, protein, carbs, and fat for each ingredient
-                
-                ### REQUIRED MEAL TIMES (YOU MUST GENERATE ALL OF THESE)
-                - {meal_times_desc.replace(", ", chr(10) + "- ").replace(" plus ", chr(10) + "- ")}
+            ### Critical Constraints
+            1. DO NOT use disliked ingredients
+            2. DO NOT repeat meal titles from this list: {', '.join(used_meal_titles) if used_meal_titles else 'None'}
+            3. DO NOT use primary ingredients that appeared in the last 3 days: {recent_ingredients_str}
+            4. DO NOT use the same protein source more than once per day
+            5. Include at least 3 distinct cuisines each day
+            6. Use standardized units (grams, ounces, tablespoons)
 
-                ### Meal Calorie Distribution
-                - Breakfast: {round(calorie_goal * 0.25)} kcal per serving
-                - Lunch: {round(calorie_goal * 0.35)} kcal per serving
-                - Dinner: {round(calorie_goal * 0.35)} kcal per serving
-                - Snacks (if applicable): {round(calorie_goal * 0.10)} kcal per serving
-                """
+            ### Structure Requirements
+            - Scale all recipes to exactly {servings_per_meal} servings
+            - Provide detailed, step-by-step cooking instructions
+            - Include macronutrient breakdowns per serving AND per meal
+            - Show calories, protein, carbs, and fat for each ingredient
+            
+            ### REQUIRED MEAL TIMES (YOU MUST GENERATE ALL OF THESE)
+            - {meal_times_desc.replace(", ", chr(10) + "- ").replace(" plus ", chr(10) + "- ")}
 
-                # Generate menu using OpenAI with function calling
-                MAX_RETRIES = 3
-                day_json = None
-                
-                # Select model based on request parameter
-                openai_model = determine_model(req.ai_model if req.ai_model else "default")
-                logger.info(f"Using {openai_model} model for meal generation")
-                
-                for attempt in range(MAX_RETRIES):
-                    try:
-                        response = openai.ChatCompletion.create(
-                            model=openai_model,
-                            messages=[
-                                {"role": "system", "content": system_prompt},
-                                {"role": "user", "content": user_prompt}
-                            ],
-                            functions=[menu_schema],
-                            function_call={"name": "generate_daily_meal_plan"},
-                            max_tokens=3000,
-                            temperature=0.2,  # Slight creativity for variety
-                            top_p=1,
-                            request_timeout=600  # 10 minutes timeout
-                        )
-                        
-                        logger.info(f"Received OpenAI response for day {day_number}")
-                        
-                        # Extract function call result
-                        function_call = response.choices[0].message.get("function_call")
-                        if function_call and function_call.get("name") == "generate_daily_meal_plan":
-                            try:
-                                day_json = json.loads(function_call.get("arguments", "{}"))
-                                
-                                # Additional validation
-                                if not isinstance(day_json, dict):
-                                    raise ValueError("Response is not a valid JSON object")
-                                
-                                # Convert new schema format to old format for backward compatibility
-                                day_json = convert_new_schema_to_old(day_json, selected_meal_times, req.snacks_per_day)
+            ### Meal Calorie Distribution
+            - Breakfast: {round(calorie_goal * 0.25)} kcal per serving
+            - Lunch: {round(calorie_goal * 0.35)} kcal per serving
+            - Dinner: {round(calorie_goal * 0.35)} kcal per serving
+            - Snacks (if applicable): {round(calorie_goal * 0.10)} kcal per serving
+            """
 
-                                if 'meals' not in day_json or 'dayNumber' not in day_json:
-                                    raise ValueError("JSON missing required keys")
+            # Generate menu using OpenAI with function calling
+            MAX_RETRIES = 3
+            day_json = None
+            
+            # Select model based on request parameter
+            openai_model = determine_model(req.ai_model if req.ai_model else "default")
+            logger.info(f"Using {openai_model} model for meal generation")
+            
+            for attempt in range(MAX_RETRIES):
+                try:
+                    response = openai.ChatCompletion.create(
+                        model=openai_model,
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_prompt}
+                        ],
+                        functions=[menu_schema],
+                        function_call={"name": "generate_daily_meal_plan"},
+                        max_tokens=3000,
+                        temperature=0.2,  # Slight creativity for variety
+                        top_p=1,
+                        request_timeout=600  # 10 minutes timeout
+                    )
+                    
+                    logger.info(f"Received OpenAI response for day {day_number}")
+                    
+                    # Extract function call result
+                    function_call = response.choices[0].message.get("function_call")
+                    if function_call and function_call.get("name") == "generate_daily_meal_plan":
+                        try:
+                            day_json = json.loads(function_call.get("arguments", "{}"))
+                            
+                            # Additional validation
+                            if not isinstance(day_json, dict):
+                                raise ValueError("Response is not a valid JSON object")
+                            
+                            # Convert new schema format to old format for backward compatibility
+                            day_json = convert_new_schema_to_old(day_json, selected_meal_times, req.snacks_per_day)
 
-                                # Check for issues with the meal plan, including required meal times
-                                issues = validate_meal_plan(
-                                    day_json, 
-                                    dietary_restrictions, 
-                                    disliked_ingredients, 
-                                    used_meal_titles,
-                                    selected_meal_times,
-                                    time_constraints,
-                                    detailed_meal_times,
-                                    spice_level
-                                )
-                                
-                                if issues:
-                                    logger.warning(f"Validation issues in day {day_number}: {issues}")
-                                    if attempt < MAX_RETRIES - 1:
-                                        # Add validation feedback in the next attempt
-                                        user_prompt += f"\n\n### Validation Feedback\nPlease fix these issues in your meal plan:\n" + "\n".join([f"- {issue}" for issue in issues])
-                                        continue
-                                
-                                # Fix common issues in the meal plan
-                                day_json = fix_common_issues(day_json, day_number, servings_per_meal)
-                                break
-                                
-                            except json.JSONDecodeError as json_err:
-                                logger.warning(f"JSON parsing error on attempt {attempt + 1}: {str(json_err)}")
-                                if attempt == MAX_RETRIES - 1:
-                                    raise HTTPException(500, f"Unable to parse JSON for day {day_number}")
-                                time.sleep(1)
-                        else:
-                            logger.warning(f"No function call in response for day {day_number}")
+                            if 'meals' not in day_json or 'dayNumber' not in day_json:
+                                raise ValueError("JSON missing required keys")
+
+                            # Check for issues with the meal plan, including required meal times
+                            issues = validate_meal_plan(
+                                day_json, 
+                                dietary_restrictions, 
+                                disliked_ingredients, 
+                                used_meal_titles,
+                                selected_meal_times,
+                                time_constraints,
+                                detailed_meal_times,
+                                spice_level
+                            )
+                            
+                            if issues:
+                                logger.warning(f"Validation issues in day {day_number}: {issues}")
+                                if attempt < MAX_RETRIES - 1:
+                                    # Add validation feedback in the next attempt
+                                    user_prompt += f"\n\n### Validation Feedback\nPlease fix these issues in your meal plan:\n" + "\n".join([f"- {issue}" for issue in issues])
+                                    continue
+                            
+                            # Fix common issues in the meal plan
+                            day_json = fix_common_issues(day_json, day_number, servings_per_meal)
+                            break
+                            
+                        except json.JSONDecodeError as json_err:
+                            logger.warning(f"JSON parsing error on attempt {attempt + 1}: {str(json_err)}")
                             if attempt == MAX_RETRIES - 1:
-                                raise HTTPException(500, f"No function call in response for day {day_number}")
+                                raise HTTPException(500, f"Unable to parse JSON for day {day_number}")
                             time.sleep(1)
-
-                    except openai.error.AuthenticationError:
-                        logger.error("OpenAI authentication failed")
-                        raise HTTPException(500, "OpenAI API key authentication failed")
-                    except openai.error.APIError as e:
-                        logger.error(f"OpenAI API error: {str(e)}")
+                    else:
+                        logger.warning(f"No function call in response for day {day_number}")
                         if attempt == MAX_RETRIES - 1:
-                            raise HTTPException(500, f"OpenAI API error: {str(e)}")
+                            raise HTTPException(500, f"No function call in response for day {day_number}")
                         time.sleep(1)
 
-                # Ensure day number is set correctly
-                day_json["dayNumber"] = day_number
+                except openai.error.AuthenticationError:
+                    logger.error("OpenAI authentication failed")
+                    raise HTTPException(500, "OpenAI API key authentication failed")
+                except openai.error.APIError as e:
+                    logger.error(f"OpenAI API error: {str(e)}")
+                    if attempt == MAX_RETRIES - 1:
+                        raise HTTPException(500, f"OpenAI API error: {str(e)}")
+                    time.sleep(1)
+
+            # Ensure day number is set correctly
+            day_json["dayNumber"] = day_number
+            
+            # Add the day to the meal plan
+            final_plan["days"].append(day_json)
+
+            # Track used meal titles and primary ingredients for future days
+            day_ingredients = []
+            for meal in day_json.get("meals", []):
+                title = meal.get("title", "").strip()
+                meal_time = meal.get("meal_time", "").lower()
                 
-                # Add the day to the meal plan
-                final_plan["days"].append(day_json)
-
-                # Track used meal titles and primary ingredients for future days
-                day_ingredients = []
-                for meal in day_json.get("meals", []):
-                    title = meal.get("title", "").strip()
-                    meal_time = meal.get("meal_time", "").lower()
-                    
-                    if title:
-                        used_meal_titles.add(title)
-                        if meal_time in used_by_meal_time:
-                            used_by_meal_time[meal_time].add(title)
-                    
-                    # Extract and track primary ingredients
-                    primary_ingredients = extract_primary_ingredients(meal)
-                    day_ingredients.extend(primary_ingredients)
+                if title:
+                    used_meal_titles.add(title)
+                    if meal_time in used_by_meal_time:
+                        used_by_meal_time[meal_time].add(title)
                 
-                # Also track snack titles
-                for snack in day_json.get("snacks", []):
-                    title = snack.get("title", "").strip()
-                    if title:
-                        used_meal_titles.add(title)
-                
-                # Add the day's ingredients to the tracking list
-                used_primary_ingredients.append((day_number, day_ingredients))
+                # Extract and track primary ingredients
+                primary_ingredients = extract_primary_ingredients(meal)
+                day_ingredients.extend(primary_ingredients)
+            
+            # Also track snack titles
+            for snack in day_json.get("snacks", []):
+                title = snack.get("title", "").strip()
+                if title:
+                    used_meal_titles.add(title)
+            
+            # Add the day's ingredients to the tracking list
+            used_primary_ingredients.append((day_number, day_ingredients))
 
-            # Reopen database connection for saving menu
-            logger.info("Reopening database connection to save generated menu")
-            conn = get_db_connection()
-            cursor = conn.cursor(cursor_factory=RealDictCursor)
+        # Reopen database connection for saving menu
+        logger.info("Reopening database connection to save generated menu")
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
 
-            try:
-                # Save to database
-                cursor.execute("""
-                    INSERT INTO menus (user_id, meal_plan_json, duration_days, meal_times, snacks_per_day, for_client_id, ai_model_used)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    RETURNING id;
-                """, (
-                    req.user_id,
-                    json.dumps(final_plan),
-                    req.duration_days,
-                    json.dumps(selected_meal_times),
-                    req.snacks_per_day,
-                    req.for_client_id,
-                    req.ai_model
-                ))
+        try:
+            # Save to database
+            cursor.execute("""
+                INSERT INTO menus (user_id, meal_plan_json, duration_days, meal_times, snacks_per_day, for_client_id, ai_model_used)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                RETURNING id;
+            """, (
+                req.user_id,
+                json.dumps(final_plan),
+                req.duration_days,
+                json.dumps(selected_meal_times),
+                req.snacks_per_day,
+                req.for_client_id,
+                req.ai_model
+            ))
 
-                menu_id = cursor.fetchone()["id"]
-                conn.commit()
+            menu_id = cursor.fetchone()["id"]
+            conn.commit()
 
-                return {
-                    "menu_id": menu_id,
-                    "meal_plan": final_plan
-                }
-            except Exception as db_error:
-                conn.rollback()
-                raise db_error
-            finally:
-                cursor.close()
-                conn.close()
-                logger.info("Database connection closed after saving menu")
+            return {
+                "menu_id": menu_id,
+                "meal_plan": final_plan
+            }
+        except Exception as db_error:
+            conn.rollback()
+            raise db_error
+        finally:
+            cursor.close()
+            conn.close()
+            logger.info("Database connection closed after saving menu")
 
     except HTTPException:
         raise
