@@ -42,33 +42,110 @@ def get_user_preferences(id: int):
                 WHERE id = %s
             """, (id,))
 
-        preferences = cursor.fetchone()
+            preferences = cursor.fetchone()
 
-        if not preferences:
-            return {
-                "diet_type": "",
-                "dietary_restrictions": "",
-                "disliked_ingredients": "",
-                "recipe_type": "",
-                "macro_protein": None,
-                "macro_carbs": None,
-                "macro_fat": None,
-                "calorie_goal": None,
-                "meal_times": {
+            if not preferences:
+                return {
+                    "diet_type": "",
+                    "dietary_restrictions": "",
+                    "disliked_ingredients": "",
+                    "recipe_type": "",
+                    "macro_protein": None,
+                    "macro_carbs": None,
+                    "macro_fat": None,
+                    "calorie_goal": None,
+                    "meal_times": {
+                        "breakfast": False,
+                        "lunch": False,
+                        "dinner": False,
+                        "snacks": False
+                    },
+                    "appliances": {
+                        "airFryer": False,
+                        "instapot": False,
+                        "crockpot": False
+                    },
+                    "prep_complexity": 50,
+                    "servings_per_meal": 1,
+                    "snacks_per_day": 0,
+                    "flavor_preferences": {
+                        "creamy": False,
+                        "cheesy": False,
+                        "herbs": False,
+                        "umami": False,
+                        "sweet": False,
+                        "spiced": False,
+                        "smoky": False,
+                        "garlicky": False,
+                        "tangy": False,
+                        "peppery": False,
+                        "hearty": False,
+                        "spicy": False
+                    },
+                    "spice_level": "medium",
+                    "recipe_type_preferences": {
+                        "stir-fry": False,
+                        "grain-bowl": False,
+                        "salad": False,
+                        "pasta": False,
+                        "main-sides": False,
+                        "pizza": False,
+                        "burger": False,
+                        "sandwich": False,
+                        "tacos": False,
+                        "wrap": False,
+                        "soup-stew": False,
+                        "bake": False,
+                        "family-meals": False
+                    },
+                    "meal_time_preferences": {
+                        "breakfast": False,
+                        "morning-snack": False,
+                        "lunch": False,
+                        "afternoon-snack": False,
+                        "dinner": False,
+                        "evening-snack": False
+                    },
+                    "time_constraints": {
+                        "weekday-breakfast": 10,
+                        "weekday-lunch": 15,
+                        "weekday-dinner": 30,
+                        "weekend-breakfast": 20,
+                        "weekend-lunch": 30,
+                        "weekend-dinner": 45
+                    },
+                    "prep_preferences": {
+                        "batch-cooking": False,
+                        "meal-prep": False,
+                        "quick-assembly": False,
+                        "one-pot": False,
+                        "minimal-dishes": False
+                    }
+                }
+
+            # Handle JSONB fields
+            if preferences['meal_times'] is None:
+                preferences['meal_times'] = {
                     "breakfast": False,
                     "lunch": False,
                     "dinner": False,
                     "snacks": False
-                },
-                "appliances": {
+                }
+
+            if preferences['appliances'] is None:
+                preferences['appliances'] = {
                     "airFryer": False,
                     "instapot": False,
                     "crockpot": False
-                },
-                "prep_complexity": 50,
-                "servings_per_meal": 1,
-                "snacks_per_day": 0,
-                "flavor_preferences": {
+                }
+
+            # Ensure snacks_per_day has a default value if null
+            if preferences['snacks_per_day'] is None:
+                preferences['snacks_per_day'] = 0
+
+            # Handle new JSONB fields
+            if preferences['flavor_preferences'] is None:
+                preferences['flavor_preferences'] = {
                     "creamy": False,
                     "cheesy": False,
                     "herbs": False,
@@ -81,9 +158,13 @@ def get_user_preferences(id: int):
                     "peppery": False,
                     "hearty": False,
                     "spicy": False
-                },
-                "spice_level": "medium",
-                "recipe_type_preferences": {
+                }
+
+            if preferences['spice_level'] is None:
+                preferences['spice_level'] = "medium"
+
+            if preferences['recipe_type_preferences'] is None:
+                preferences['recipe_type_preferences'] = {
                     "stir-fry": False,
                     "grain-bowl": False,
                     "salad": False,
@@ -97,119 +178,38 @@ def get_user_preferences(id: int):
                     "soup-stew": False,
                     "bake": False,
                     "family-meals": False
-                },
-                "meal_time_preferences": {
+                }
+
+            if preferences['meal_time_preferences'] is None:
+                preferences['meal_time_preferences'] = {
                     "breakfast": False,
                     "morning-snack": False,
                     "lunch": False,
                     "afternoon-snack": False,
                     "dinner": False,
                     "evening-snack": False
-                },
-                "time_constraints": {
+                }
+
+            if preferences['time_constraints'] is None:
+                preferences['time_constraints'] = {
                     "weekday-breakfast": 10,
                     "weekday-lunch": 15,
                     "weekday-dinner": 30,
                     "weekend-breakfast": 20,
                     "weekend-lunch": 30,
                     "weekend-dinner": 45
-                },
-                "prep_preferences": {
+                }
+
+            if preferences['prep_preferences'] is None:
+                preferences['prep_preferences'] = {
                     "batch-cooking": False,
                     "meal-prep": False,
                     "quick-assembly": False,
                     "one-pot": False,
                     "minimal-dishes": False
                 }
-            }
 
-        # Handle JSONB fields
-        if preferences['meal_times'] is None:
-            preferences['meal_times'] = {
-                "breakfast": False,
-                "lunch": False,
-                "dinner": False,
-                "snacks": False
-            }
-
-        if preferences['appliances'] is None:
-            preferences['appliances'] = {
-                "airFryer": False,
-                "instapot": False,
-                "crockpot": False
-            }
-        
-        # Ensure snacks_per_day has a default value if null
-        if preferences['snacks_per_day'] is None:
-            preferences['snacks_per_day'] = 0
-            
-        # Handle new JSONB fields
-        if preferences['flavor_preferences'] is None:
-            preferences['flavor_preferences'] = {
-                "creamy": False,
-                "cheesy": False,
-                "herbs": False,
-                "umami": False,
-                "sweet": False,
-                "spiced": False,
-                "smoky": False,
-                "garlicky": False,
-                "tangy": False,
-                "peppery": False,
-                "hearty": False,
-                "spicy": False
-            }
-
-        if preferences['spice_level'] is None:
-            preferences['spice_level'] = "medium"
-
-        if preferences['recipe_type_preferences'] is None:
-            preferences['recipe_type_preferences'] = {
-                "stir-fry": False,
-                "grain-bowl": False,
-                "salad": False,
-                "pasta": False,
-                "main-sides": False,
-                "pizza": False,
-                "burger": False,
-                "sandwich": False,
-                "tacos": False,
-                "wrap": False,
-                "soup-stew": False,
-                "bake": False,
-                "family-meals": False
-            }
-
-        if preferences['meal_time_preferences'] is None:
-            preferences['meal_time_preferences'] = {
-                "breakfast": False,
-                "morning-snack": False,
-                "lunch": False,
-                "afternoon-snack": False,
-                "dinner": False,
-                "evening-snack": False
-            }
-
-        if preferences['time_constraints'] is None:
-            preferences['time_constraints'] = {
-                "weekday-breakfast": 10,
-                "weekday-lunch": 15,
-                "weekday-dinner": 30,
-                "weekend-breakfast": 20,
-                "weekend-lunch": 30,
-                "weekend-dinner": 45
-            }
-
-        if preferences['prep_preferences'] is None:
-            preferences['prep_preferences'] = {
-                "batch-cooking": False,
-                "meal-prep": False,
-                "quick-assembly": False,
-                "one-pot": False,
-                "minimal-dishes": False
-            }
-
-        return preferences
+            return preferences
 
     except Exception as e:
         logger.error(f"Error fetching preferences: {str(e)}", exc_info=True)
