@@ -5,6 +5,7 @@ import os
 import asyncio
 import uuid
 from typing import List, Optional, Dict, Any, Set
+from datetime import datetime
 from fastapi import APIRouter, HTTPException, Query, Body, Depends, status, BackgroundTasks
 import openai
 from psycopg2.extras import RealDictCursor
@@ -1161,44 +1162,40 @@ async def get_menu_generation_status(job_id: str):
 @router.get("/active-jobs/{user_id}")
 async def get_active_jobs_for_user(user_id: int):
     """Get any active menu generation jobs for a user"""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
+    # Use the context manager for safer database operations
+    with get_db_cursor(dict_cursor=True) as (cursor, conn):
+        try:
+            cursor.execute("""
+                SELECT job_id, status, progress, message, created_at, updated_at
+                FROM menu_generation_jobs
+                WHERE user_id = %s
+                AND status IN ('started', 'generating', 'processing')
+                ORDER BY created_at DESC
+                LIMIT 5
+            """, (user_id,))
 
-        cursor.execute("""
-            SELECT job_id, status, progress, message, created_at, updated_at
-            FROM menu_generation_jobs
-            WHERE user_id = %s
-            AND status IN ('started', 'generating', 'processing')
-            ORDER BY created_at DESC
-            LIMIT 5
-        """, (user_id,))
+            active_jobs = cursor.fetchall()
 
-        active_jobs = cursor.fetchall()
-        cursor.close()
-        conn.close()
+            # Format the response
+            jobs = []
+            for job in active_jobs:
+                jobs.append({
+                    "job_id": job["job_id"],
+                    "status": job["status"],
+                    "progress": job["progress"],
+                    "message": job["message"],
+                    "created_at": job["created_at"].isoformat() if job["created_at"] else None,
+                    "updated_at": job["updated_at"].isoformat() if job["updated_at"] else None,
+                    "time_running": (datetime.now() - job["created_at"]).total_seconds() if job["created_at"] else 0
+                })
 
-        # Format the response
-        jobs = []
-        for job in active_jobs:
-            jobs.append({
-                "job_id": job["job_id"],
-                "status": job["status"],
-                "progress": job["progress"],
-                "message": job["message"],
-                "created_at": job["created_at"].isoformat() if job["created_at"] else None,
-                "updated_at": job["updated_at"].isoformat() if job["updated_at"] else None,
-                "time_running": (datetime.now() - job["created_at"]).total_seconds() if job["created_at"] else 0
-            })
-
-        return {
-            "active_jobs": jobs,
-            "has_active_jobs": len(jobs) > 0
-        }
-
-    except Exception as e:
-        logger.error(f"Failed to get active jobs for user {user_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+            return {
+                "active_jobs": jobs,
+                "has_active_jobs": len(jobs) > 0
+            }
+        except Exception as e:
+            logger.error(f"Failed to get active jobs for user {user_id}: {str(e)}")
+            raise HTTPException(status_code=500, detail=str(e))
 
 async def generate_menu_background_task(job_id: str, req: GenerateMealPlanRequest):
     """Background task that performs the actual menu generation"""
@@ -2129,52 +2126,50 @@ async def get_menus_for_client(
     user = Depends(get_user_from_token)
 ):
     """Get all menus created for a client by the organization and their sharing status"""
-    try:
-        # Only organization owners can access this endpoint
-        user_id = user.get('user_id')
-        org_id = user.get('organization_id')
-        role = user.get('role', '')
-        
-        if role != 'owner':
-            raise HTTPException(
-                status_code=403, 
-                detail="Only organization owners can access this endpoint"
-            )
-        
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        
+    # Only organization owners can access this endpoint
+    user_id = user.get('user_id')
+    org_id = user.get('organization_id')
+    role = user.get('role', '')
+
+    if role != 'owner':
+        raise HTTPException(
+            status_code=403,
+            detail="Only organization owners can access this endpoint"
+        )
+
+    # Use the context manager for safer database operations
+    with get_db_cursor(dict_cursor=True) as (cursor, conn):
         try:
             # Check if the client belongs to this organization
             cursor.execute("""
-                SELECT id 
-                FROM organization_clients 
+                SELECT id
+                FROM organization_clients
                 WHERE organization_id = %s AND client_id = %s
             """, (org_id, client_id))
-            
+
             if not cursor.fetchone():
                 raise HTTPException(
-                    status_code=404, 
+                    status_code=404,
                     detail="Client not found in your organization"
                 )
-            
+
             # Get all menus created for this client by the organization owner
             cursor.execute("""
-                SELECT 
-                    m.id as menu_id, 
-                    m.meal_plan_json, 
+                SELECT
+                    m.id as menu_id,
+                    m.meal_plan_json,
                     m.created_at::TEXT AS created_at,
                     COALESCE(m.nickname, '') AS nickname,
                     m.user_id as owner_id,
                     up.name as owner_name,
                     (
                         SELECT EXISTS(
-                            SELECT 1 FROM shared_menus sm 
+                            SELECT 1 FROM shared_menus sm
                             WHERE sm.menu_id = m.id AND sm.shared_with = %s
                         )
                     ) as is_shared,
                     (
-                        SELECT sm.created_at::TEXT FROM shared_menus sm 
+                        SELECT sm.created_at::TEXT FROM shared_menus sm
                         WHERE sm.menu_id = m.id AND sm.shared_with = %s
                         LIMIT 1
                     ) as shared_at
@@ -2184,14 +2179,14 @@ async def get_menus_for_client(
                   AND m.for_client_id = %s
                 ORDER BY m.created_at DESC;
             """, (client_id, client_id, user_id, client_id))
-            
+
             menus = cursor.fetchall()
-            
+
             return {
                 "menus": [
                     {
-                        "menu_id": m["menu_id"], 
-                        "meal_plan": m["meal_plan_json"], 
+                        "menu_id": m["menu_id"],
+                        "meal_plan": m["meal_plan_json"],
                         "created_at": m["created_at"],
                         "shared_at": m["shared_at"],
                         "nickname": m["nickname"],
@@ -2200,18 +2195,13 @@ async def get_menus_for_client(
                             "id": m["owner_id"],
                             "name": m["owner_name"]
                         }
-                    } 
+                    }
                     for m in menus
                 ]
             }
-            
-        finally:
-            cursor.close()
-            conn.close()
-            
-    except Exception as e:
-        logger.error(f"Error getting menus for client: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        except Exception as e:
+            logger.error(f"Error getting menus for client: {str(e)}", exc_info=True)
+            raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/generate-for-client/{client_id}")
 async def generate_meal_plan_for_client(
@@ -2455,20 +2445,19 @@ async def share_menu_with_client(
     user = Depends(get_user_from_token)
 ):
     """Share a menu with a specific client"""
-    try:
-        # Verify user owns the menu
-        user_id = user.get('user_id')
-        org_id = user.get('organization_id')
-        role = user.get('role', '')
-        
-        if role != 'owner':
-            raise HTTPException(
-                status_code=403, 
-                detail="Only organization owners can share menus with clients"
-            )
-        
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
+    # Verify user owns the menu
+    user_id = user.get('user_id')
+    org_id = user.get('organization_id')
+    role = user.get('role', '')
+
+    if role != 'owner':
+        raise HTTPException(
+            status_code=403,
+            detail="Only organization owners can share menus with clients"
+        )
+
+    # Use the context manager for safer database operations
+    with get_db_cursor(dict_cursor=True) as (cursor, conn):
         
         try:
             # First verify menu exists and belongs to the user
@@ -2530,21 +2519,17 @@ async def share_menu_with_client(
                 message = "Menu shared successfully"
             
             conn.commit()
-            
+
             return {
                 "share_id": share_id,
                 "menu_id": menu_id,
                 "client_id": client_id,
                 "message": message
             }
-            
-        finally:
-            cursor.close()
-            conn.close()
-            
-    except Exception as e:
-        logger.error(f"Error sharing menu with client: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+
+        except Exception as e:
+            logger.error(f"Error sharing menu with client: {str(e)}", exc_info=True)
+            raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/share/{share_id}")
 async def unshare_menu(
