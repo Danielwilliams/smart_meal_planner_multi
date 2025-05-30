@@ -44,199 +44,198 @@ async def get_client_dashboard(user=Depends(get_user_from_token)):
 
     try:
         with get_db_cursor(dict_cursor=True) as (cursor, conn):
-            
             # The user_id from the token is the user's profile ID
-        # For shared menus, we need to use this same ID as the client_id
-        # since client_id in shared_menus refers to the user profile ID of the client
-        client_id = user_id
-        logger.info(f"Looking for shared menus for client_id/user_id: {client_id}")
+            # For shared menus, we need to use this same ID as the client_id
+            # since client_id in shared_menus refers to the user profile ID of the client
+            client_id = user_id
+            logger.info(f"Looking for shared menus for client_id/user_id: {client_id}")
 
-        # Check if shared_menus table exists
-        cursor.execute("""
-            SELECT EXISTS (
-                SELECT FROM information_schema.tables 
-                WHERE table_schema = 'public' 
-                AND table_name = 'shared_menus'
-            )
-        """)
-        
-        has_shared_menus_table = cursor.fetchone()['exists']
-        
-        shared_menus = []
-        
-        if has_shared_menus_table:
+            # Check if shared_menus table exists
+            cursor.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name = 'shared_menus'
+                )
+            """)
+            
+            has_shared_menus_table = cursor.fetchone()['exists']
+            
+            shared_menus = []
+            
+            if has_shared_menus_table:
+                try:
+                    # First check if there are any shared menus at all (for debugging)
+                    cursor.execute("SELECT COUNT(*) as count FROM shared_menus")
+                    total_count = cursor.fetchone()['count']
+                    logger.info(f"Total shared menus in database: {total_count}")
+                    
+                    # Get shared menus using the actual schema
+                    cursor.execute("""
+                        SELECT 
+                            sm.id as share_id, 
+                            sm.menu_id, 
+                            sm.client_id, 
+                            sm.organization_id, 
+                            sm.permission_level,
+                            sm.shared_at,
+                            sm.message,
+                            m.nickname as title, 
+                            m.nickname,
+                            CASE 
+                                WHEN m.nickname IS NOT NULL AND m.nickname != '' THEN m.nickname
+                                ELSE 'Meal Plan'
+                            END as description,
+                            m.created_at,
+                            o.name as organization_name,
+                            m.duration_days,
+                            m.meal_plan_json
+                        FROM shared_menus sm
+                        JOIN menus m ON sm.menu_id = m.id
+                        LEFT JOIN organizations o ON sm.organization_id = o.id
+                        WHERE sm.client_id = %s AND sm.is_active = TRUE
+                        ORDER BY sm.shared_at DESC
+                    """, (client_id,))
+                    
+                    shared_menus = cursor.fetchall()
+                    logger.info(f"Found {len(shared_menus)} shared menus for user {user_id}")
+                    
+                    # Process menus to ensure proper data types
+                    for menu in shared_menus:
+                        # Parse meal_plan_json if it's a string
+                        if menu.get('meal_plan_json') and isinstance(menu['meal_plan_json'], str):
+                            try:
+                                menu['meal_plan_json'] = json.loads(menu['meal_plan_json'])
+                            except:
+                                menu['meal_plan_json'] = {}
+                        
+                        # Extract meal count from meal_plan_json if available
+                        if isinstance(menu.get('meal_plan_json'), dict):
+                            days = menu['meal_plan_json'].get('days', [])
+                            menu['meal_count'] = len(days)
+                        
+                        # Ensure description is a string
+                        if not menu.get('description') or menu['description'] == menu.get('nickname'):
+                            menu['description'] = menu.get('message') or f"A {menu.get('duration_days', 7)}-day meal plan created for you."
+                except Exception as e:
+                    logger.error(f"Error fetching shared menus for user {user_id}: {e}")
+                    logger.error(f"Full traceback: {traceback.format_exc()}")
+                    # No need for rollback with context manager
+                    shared_menus = []
+            else:
+                logger.warning("shared_menus table does not exist in the database")
+
+            # Also check for menus created directly for this client
+            # Note: menus table doesn't have client_id column, so we skip this query
+            direct_menus = []
+            logger.info("Skipping direct menus query - menus table doesn't have client_id column")
+            
+            # Combine shared menus and direct menus
+            all_menus = shared_menus + direct_menus
+            
+            # Sort by date (shared_at/created_at) - handle datetime objects
             try:
-                # First check if there are any shared menus at all (for debugging)
-                cursor.execute("SELECT COUNT(*) as count FROM shared_menus")
-                total_count = cursor.fetchone()['count']
-                logger.info(f"Total shared menus in database: {total_count}")
-                
-                # Get shared menus using the actual schema
-                cursor.execute("""
-                    SELECT 
-                        sm.id as share_id, 
-                        sm.menu_id, 
-                        sm.client_id, 
-                        sm.organization_id, 
-                        sm.permission_level,
-                        sm.shared_at,
-                        sm.message,
-                        m.nickname as title, 
-                        m.nickname,
-                        CASE 
-                            WHEN m.nickname IS NOT NULL AND m.nickname != '' THEN m.nickname
-                            ELSE 'Meal Plan'
-                        END as description,
-                        m.created_at,
-                        o.name as organization_name,
-                        m.duration_days,
-                        m.meal_plan_json
-                    FROM shared_menus sm
-                    JOIN menus m ON sm.menu_id = m.id
-                    LEFT JOIN organizations o ON sm.organization_id = o.id
-                    WHERE sm.client_id = %s AND sm.is_active = TRUE
-                    ORDER BY sm.shared_at DESC
-                """, (client_id,))
-                
-                shared_menus = cursor.fetchall()
-                logger.info(f"Found {len(shared_menus)} shared menus for user {user_id}")
-                
-                # Process menus to ensure proper data types
-                for menu in shared_menus:
-                    # Parse meal_plan_json if it's a string
-                    if menu.get('meal_plan_json') and isinstance(menu['meal_plan_json'], str):
-                        try:
-                            menu['meal_plan_json'] = json.loads(menu['meal_plan_json'])
-                        except:
-                            menu['meal_plan_json'] = {}
-                    
-                    # Extract meal count from meal_plan_json if available
-                    if isinstance(menu.get('meal_plan_json'), dict):
-                        days = menu['meal_plan_json'].get('days', [])
-                        menu['meal_count'] = len(days)
-                    
-                    # Ensure description is a string
-                    if not menu.get('description') or menu['description'] == menu.get('nickname'):
-                        menu['description'] = menu.get('message') or f"A {menu.get('duration_days', 7)}-day meal plan created for you."
-            except Exception as e:
-                logger.error(f"Error fetching shared menus for user {user_id}: {e}")
-                logger.error(f"Full traceback: {traceback.format_exc()}")
-                # No need for rollback with context manager
-                shared_menus = []
-        else:
-            logger.warning("shared_menus table does not exist in the database")
+                all_menus.sort(key=lambda x: x.get('shared_at') or x.get('created_at') or '', reverse=True)
+            except Exception as sort_error:
+                logger.warning(f"Error sorting menus: {sort_error}")
+            
+            # Use all_menus instead of shared_menus
+            shared_menus = all_menus
 
-        # Also check for menus created directly for this client
-        # Note: menus table doesn't have client_id column, so we skip this query
-        direct_menus = []
-        logger.info("Skipping direct menus query - menus table doesn't have client_id column")
-        
-        # Combine shared menus and direct menus
-        all_menus = shared_menus + direct_menus
-        
-        # Sort by date (shared_at/created_at) - handle datetime objects
-        try:
-            all_menus.sort(key=lambda x: x.get('shared_at') or x.get('created_at') or '', reverse=True)
-        except Exception as sort_error:
-            logger.warning(f"Error sorting menus: {sort_error}")
-        
-        # Use all_menus instead of shared_menus
-        shared_menus = all_menus
-
-        # Get saved recipes
-        saved_recipes = []
-        try:
-            cursor.execute("""
-                SELECT 
-                    id,
-                    recipe_name,
-                    recipe_id,
-                    created_at,
-                    scraped_recipe_id,
-                    user_id,
-                    ingredients,
-                    instructions,
-                    servings,
-                    macros,
-                    prep_time
-                FROM saved_recipes
-                WHERE user_id = %s
-                ORDER BY created_at DESC
-            """, (user_id,))
-
-            saved_recipes = cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Error fetching saved recipes: {e}")
-            # No need for rollback with context manager
+            # Get saved recipes
             saved_recipes = []
-
-        # Get user preferences data (summary)
-        preferences_summary = None
-        try:
-            cursor.execute("""
-                SELECT 
-                    has_preferences,
-                    diet_type,
-                    dietary_restrictions,
-                    calorie_goal,
-                    macro_protein,
-                    macro_carbs,
-                    macro_fat,
-                    prep_complexity
-                FROM user_profiles
-                WHERE id = %s
-            """, (user_id,))
-
-            preferences_summary = cursor.fetchone()
-        except Exception as e:
-            logger.error(f"Error fetching preferences: {e}")
-            # No need for rollback with context manager
-            preferences_summary = None
-
-        # Get organization data
-        organization = None
-        try:
-            if organization_id:
+            try:
                 cursor.execute("""
                     SELECT 
                         id,
-                        name,
-                        description,
-                        owner_id,
-                        created_at
-                    FROM organizations
-                    WHERE id = %s
-                """, (organization_id,))
-                organization = cursor.fetchone()
-            else:
-                # Try to find the organization from menu shares
-                if shared_menus and len(shared_menus) > 0:
-                    organization_id = shared_menus[0].get('organization_id')
-                    if organization_id:
-                        cursor.execute("""
-                            SELECT 
-                                id,
-                                name,
-                                description,
-                                owner_id,
-                                created_at
-                            FROM organizations
-                            WHERE id = %s
-                        """, (organization_id,))
-                        organization = cursor.fetchone()
-        except Exception as e:
-            logger.error(f"Error fetching organization: {e}")
-            # No need for rollback with context manager
-            organization = None
+                        recipe_name,
+                        recipe_id,
+                        created_at,
+                        scraped_recipe_id,
+                        user_id,
+                        ingredients,
+                        instructions,
+                        servings,
+                        macros,
+                        prep_time
+                    FROM saved_recipes
+                    WHERE user_id = %s
+                    ORDER BY created_at DESC
+                """, (user_id,))
 
-        return {
-            "user_id": user_id,
-            "is_client": is_client,
-            "organization": organization,
-            "shared_menus": shared_menus,
-            "saved_recipes_count": len(saved_recipes),
-            "preferences": preferences_summary
-        }
+                saved_recipes = cursor.fetchall()
+            except Exception as e:
+                logger.error(f"Error fetching saved recipes: {e}")
+                # No need for rollback with context manager
+                saved_recipes = []
+
+            # Get user preferences data (summary)
+            preferences_summary = None
+            try:
+                cursor.execute("""
+                    SELECT 
+                        has_preferences,
+                        diet_type,
+                        dietary_restrictions,
+                        calorie_goal,
+                        macro_protein,
+                        macro_carbs,
+                        macro_fat,
+                        prep_complexity
+                    FROM user_profiles
+                    WHERE id = %s
+                """, (user_id,))
+
+                preferences_summary = cursor.fetchone()
+            except Exception as e:
+                logger.error(f"Error fetching preferences: {e}")
+                # No need for rollback with context manager
+                preferences_summary = None
+
+            # Get organization data
+            organization = None
+            try:
+                if organization_id:
+                    cursor.execute("""
+                        SELECT 
+                            id,
+                            name,
+                            description,
+                            owner_id,
+                            created_at
+                        FROM organizations
+                        WHERE id = %s
+                    """, (organization_id,))
+                    organization = cursor.fetchone()
+                else:
+                    # Try to find the organization from menu shares
+                    if shared_menus and len(shared_menus) > 0:
+                        organization_id = shared_menus[0].get('organization_id')
+                        if organization_id:
+                            cursor.execute("""
+                                SELECT 
+                                    id,
+                                    name,
+                                    description,
+                                    owner_id,
+                                    created_at
+                                FROM organizations
+                                WHERE id = %s
+                            """, (organization_id,))
+                            organization = cursor.fetchone()
+            except Exception as e:
+                logger.error(f"Error fetching organization: {e}")
+                # No need for rollback with context manager
+                organization = None
+
+            return {
+                "user_id": user_id,
+                "is_client": is_client,
+                "organization": organization,
+                "shared_menus": shared_menus,
+                "saved_recipes_count": len(saved_recipes),
+                "preferences": preferences_summary
+            }
 
     except Exception as e:
         logger.error(f"Error in get_client_dashboard: {str(e)}", exc_info=True)
@@ -266,109 +265,109 @@ async def get_client_menu(
     try:
         with get_db_cursor(dict_cursor=True) as (cursor, conn):
             # First check if user has access to this menu
-        if user.get('account_type') == 'organization':
-            # Organization owners can access any menu they created
-            cursor.execute("""
-                SELECT 1 FROM menus
-                WHERE id = %s AND user_id = %s
-            """, (menu_id, user_id))
-            has_access = cursor.fetchone() is not None
-        else:
-            # Check if shared_menus table exists
-            cursor.execute("""
-                SELECT EXISTS (
-                    SELECT FROM information_schema.tables 
-                    WHERE table_schema = 'public' 
-                    AND table_name = 'shared_menus'
-                )
-            """)
-            
-            has_shared_menus_table = cursor.fetchone()['exists']
-            
-            if has_shared_menus_table:
-                # Clients can only access menus shared with them
+            if user.get('account_type') == 'organization':
+                # Organization owners can access any menu they created
                 cursor.execute("""
-                    SELECT 1 FROM shared_menus
-                    WHERE menu_id = %s AND client_id = %s
+                    SELECT 1 FROM menus
+                    WHERE id = %s AND user_id = %s
                 """, (menu_id, user_id))
                 has_access = cursor.fetchone() is not None
             else:
-                logger.warning("shared_menus table does not exist in the database")
-                has_access = False
+                # Check if shared_menus table exists
+                cursor.execute("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables 
+                        WHERE table_schema = 'public' 
+                        AND table_name = 'shared_menus'
+                    )
+                """)
+                
+                has_shared_menus_table = cursor.fetchone()['exists']
+                
+                if has_shared_menus_table:
+                    # Clients can only access menus shared with them
+                    cursor.execute("""
+                        SELECT 1 FROM shared_menus
+                        WHERE menu_id = %s AND client_id = %s
+                    """, (menu_id, user_id))
+                    has_access = cursor.fetchone() is not None
+                else:
+                    logger.warning("shared_menus table does not exist in the database")
+                    has_access = False
 
-        if not has_access:
-            raise HTTPException(status_code=403, detail="You don't have access to this menu")
+            if not has_access:
+                raise HTTPException(status_code=403, detail="You don't have access to this menu")
 
-        # Get the menu details
-        cursor.execute("""
-            SELECT 
-                id,
-                user_id,
-                nickname as title,
-                meal_plan_json as description,
-                created_at,
-                meal_plan_json,
-                nickname,
-                created_at as updated_at
-            FROM menus
-            WHERE id = %s
-        """, (menu_id,))
+            # Get the menu details
+            cursor.execute("""
+                SELECT 
+                    id,
+                    user_id,
+                    nickname as title,
+                    meal_plan_json as description,
+                    created_at,
+                    meal_plan_json,
+                    nickname,
+                    created_at as updated_at
+                FROM menus
+                WHERE id = %s
+            """, (menu_id,))
 
-        menu = cursor.fetchone()
+            menu = cursor.fetchone()
 
-        if not menu:
-            raise HTTPException(status_code=404, detail="Menu not found")
+            if not menu:
+                raise HTTPException(status_code=404, detail="Menu not found")
 
-        # Convert JSONB fields
-        if menu.get('meal_plan_json'):
-            if isinstance(menu['meal_plan_json'], str):
-                try:
-                    menu['meal_plan_json'] = json.loads(menu['meal_plan_json'])
-                except:
-                    pass
+            # Convert JSONB fields
+            if menu.get('meal_plan_json'):
+                if isinstance(menu['meal_plan_json'], str):
+                    try:
+                        menu['meal_plan_json'] = json.loads(menu['meal_plan_json'])
+                    except:
+                        pass
             # Also use meal_plan_json for description if it's a dict with title/description
             if isinstance(menu['meal_plan_json'], dict):
                 menu['description'] = menu['meal_plan_json']
-            
-        # Set default values for missing fields
-        menu['meal_plan'] = menu.get('meal_plan_json', {})
-        menu['metadata'] = {}
-        menu['published'] = True
-        menu['image_url'] = None
+                
+            # Set default values for missing fields
+            menu['meal_plan'] = menu.get('meal_plan_json', {})
+            menu['metadata'] = {}
+            menu['published'] = True
+            menu['image_url'] = None
 
-        # Get share information if client is accessing
-        if user.get('account_type') != 'organization':
-            # Check if shared_menus table exists
-            cursor.execute("""
-                SELECT EXISTS (
-                    SELECT FROM information_schema.tables 
-                    WHERE table_schema = 'public' 
-                    AND table_name = 'shared_menus'
-                )
-            """)
-            
-            has_shared_menus_table = cursor.fetchone()['exists']
-            
-            if has_shared_menus_table:
+            # Get share information if client is accessing
+            if user.get('account_type') != 'organization':
+                # Check if shared_menus table exists
                 cursor.execute("""
-                    SELECT 
-                        id as share_id,
-                        menu_id,
-                        client_id,
-                        organization_id,
-                        'read' as permission_level,
-                        shared_at,
-                        message
-                    FROM shared_menus
-                    WHERE menu_id = %s AND client_id = %s
-                """, (menu_id, user_id))
-                share_info = cursor.fetchone()
-                if share_info:
-                    menu['share_info'] = share_info
-            else:
-                logger.warning("shared_menus table does not exist in the database")
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables 
+                        WHERE table_schema = 'public' 
+                        AND table_name = 'shared_menus'
+                    )
+                """)
+                
+                has_shared_menus_table = cursor.fetchone()['exists']
+                
+                if has_shared_menus_table:
+                    cursor.execute("""
+                        SELECT 
+                            id as share_id,
+                            menu_id,
+                            client_id,
+                            organization_id,
+                            'read' as permission_level,
+                            shared_at,
+                            message
+                        FROM shared_menus
+                        WHERE menu_id = %s AND client_id = %s
+                    """, (menu_id, user_id))
+                    share_info = cursor.fetchone()
+                    if share_info:
+                        menu['share_info'] = share_info
+                else:
+                    logger.warning("shared_menus table does not exist in the database")
 
-        return menu
+            return menu
 
     except HTTPException:
         raise
@@ -393,51 +392,51 @@ async def get_client_menu_grocery_list(
         with get_db_cursor(dict_cursor=True) as (cursor, conn):
             # First check if user has access to this menu
             if user.get('account_type') == 'organization':
-            # Organization owners can access any menu they created
-            cursor.execute("""
-                SELECT 1 FROM menus
-                WHERE id = %s AND user_id = %s
-            """, (menu_id, user_id))
-            has_access = cursor.fetchone() is not None
-        else:
-            # Check if shared_menus table exists
-            cursor.execute("""
-                SELECT EXISTS (
-                    SELECT FROM information_schema.tables 
-                    WHERE table_schema = 'public' 
-                    AND table_name = 'shared_menus'
-                )
-            """)
-            
-            has_shared_menus_table = cursor.fetchone()['exists']
-            
-            if has_shared_menus_table:
-                # Clients can only access menus shared with them
+                # Organization owners can access any menu they created
                 cursor.execute("""
-                    SELECT 1 FROM shared_menus
-                    WHERE menu_id = %s AND client_id = %s
+                    SELECT 1 FROM menus
+                    WHERE id = %s AND user_id = %s
                 """, (menu_id, user_id))
                 has_access = cursor.fetchone() is not None
             else:
-                logger.warning("shared_menus table does not exist in the database")
-                has_access = False
+                # Check if shared_menus table exists
+                cursor.execute("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables 
+                        WHERE table_schema = 'public' 
+                        AND table_name = 'shared_menus'
+                    )
+                """)
+                
+                has_shared_menus_table = cursor.fetchone()['exists']
+                
+                if has_shared_menus_table:
+                    # Clients can only access menus shared with them
+                    cursor.execute("""
+                        SELECT 1 FROM shared_menus
+                        WHERE menu_id = %s AND client_id = %s
+                    """, (menu_id, user_id))
+                    has_access = cursor.fetchone() is not None
+                else:
+                    logger.warning("shared_menus table does not exist in the database")
+                    has_access = False
 
-        if not has_access:
-            raise HTTPException(status_code=403, detail="You don't have access to this menu")
+            if not has_access:
+                raise HTTPException(status_code=403, detail="You don't have access to this menu")
 
-        # Get the grocery list
-        cursor.execute("""
-            SELECT 
-                id,
-                menu_id,
-                ingredients,
-                categories,
-                metadata,
-                created_at,
-                updated_at
-            FROM grocery_lists
-            WHERE menu_id = %s
-        """, (menu_id,))
+            # Get the grocery list
+            cursor.execute("""
+                SELECT 
+                    id,
+                    menu_id,
+                    ingredients,
+                    categories,
+                    metadata,
+                    created_at,
+                    updated_at
+                FROM grocery_lists
+                WHERE menu_id = %s
+            """, (menu_id,))
 
         grocery_list = cursor.fetchone()
 
