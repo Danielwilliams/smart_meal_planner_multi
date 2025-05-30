@@ -1,5 +1,6 @@
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from psycopg2 import pool
 from fastapi import HTTPException
 import logging
 from contextlib import contextmanager
@@ -8,18 +9,44 @@ from app.config import RECAPTCHA_SECRET_KEY, DB_NAME, DB_USER, DB_PASSWORD, DB_H
 # Set up logging
 logger = logging.getLogger(__name__)
 
+# Create a connection pool for better concurrency handling
+# This allows multiple concurrent operations to use separate connections
+try:
+    connection_pool = pool.ThreadedConnectionPool(
+        minconn=5,      # Minimum number of connections in the pool
+        maxconn=30,     # Maximum number of connections in the pool
+        dbname=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD,
+        host=DB_HOST,
+        port=DB_PORT
+    )
+    logger.info(f"Database connection pool created with 5-30 connections")
+except Exception as e:
+    logger.error(f"Failed to create database connection pool: {str(e)}")
+    # We'll fall back to direct connections if the pool creation fails
+    connection_pool = None
+
 def get_db_connection():
-    """Get database connection using configuration settings"""
+    """Get database connection using configuration settings or from the connection pool"""
     try:
-        logger.info(f"Attempting to connect to database at {DB_HOST}:{DB_PORT}")
-        conn = psycopg2.connect(
-            dbname=DB_NAME,
-            user=DB_USER,
-            password=DB_PASSWORD,
-            host=DB_HOST,
-            port=DB_PORT
-        )
-        return conn
+        if connection_pool:
+            # Get a connection from the pool
+            logger.debug("Getting connection from pool")
+            conn = connection_pool.getconn()
+            logger.debug("Connection obtained from pool")
+            return conn
+        else:
+            # Fall back to direct connection if pool is not available
+            logger.info(f"Connecting directly to database at {DB_HOST}:{DB_PORT}")
+            conn = psycopg2.connect(
+                dbname=DB_NAME,
+                user=DB_USER,
+                password=DB_PASSWORD,
+                host=DB_HOST,
+                port=DB_PORT
+            )
+            return conn
     except psycopg2.OperationalError as e:
         logger.error(f"Failed to connect to database: {str(e)}")
         logger.error(f"Database connection parameters: host={DB_HOST}, port={DB_PORT}, dbname={DB_NAME}, user={DB_USER}")
@@ -55,8 +82,10 @@ def get_db_cursor(dict_cursor=True):
     """
     conn = None
     cursor = None
+    pooled = False
     try:
         conn = get_db_connection()
+        pooled = connection_pool is not None
         if dict_cursor:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
         else:
@@ -77,10 +106,25 @@ def get_db_cursor(dict_cursor=True):
 
         if conn:
             try:
-                conn.close()
-                logger.debug("Database connection closed successfully")
+                if pooled and connection_pool:
+                    # Return the connection to the pool instead of closing it
+                    connection_pool.putconn(conn)
+                    logger.debug("Database connection returned to pool")
+                else:
+                    # If not using a pool, close the connection directly
+                    conn.close()
+                    logger.debug("Database connection closed successfully")
             except Exception as e:
-                logger.warning(f"Error closing connection: {str(e)}")
+                logger.warning(f"Error handling connection cleanup: {str(e)}")
+
+def close_all_connections():
+    """Close all connections in the pool when shutting down the application"""
+    if connection_pool:
+        try:
+            connection_pool.closeall()
+            logger.info("All database connections in the pool have been closed")
+        except Exception as e:
+            logger.error(f"Error closing connection pool: {str(e)}")
 
 def save_recipe(user_id, menu_id=None, recipe_id=None, recipe_name=None, day_number=None, 
                meal_time=None, notes=None, macros=None, ingredients=None, 

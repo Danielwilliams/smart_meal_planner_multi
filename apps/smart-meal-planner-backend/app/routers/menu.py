@@ -521,14 +521,14 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
         if req.duration_days < 1 or req.duration_days > 7:
             raise HTTPException(400, "duration_days must be between 1 and 7")
 
-        # Fetch user preferences using the context manager
+        # PHASE 1: Fetch user preferences, then close connection
         user_row = None
         logger.info("Opening database connection to fetch user preferences")
 
         # Determine which user's preferences to use
         preference_user_id = req.for_client_id if req.for_client_id else req.user_id
 
-        # Use the context manager for safer database operations
+        # Use the context manager for safer database operations - connection will auto-close
         with get_db_cursor(dict_cursor=True) as (cursor, conn):
             # Fetch user preferences (use client's preferences if for_client_id is provided)
             cursor.execute("""
@@ -562,6 +562,8 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
 
         # Connection is automatically closed by the context manager
         logger.info("Database connection closed after fetching preferences")
+
+        # PHASE 2: Process preferences in memory without a DB connection
 
         # Process preferences
         servings_per_meal = merge_preference(
@@ -1017,8 +1019,8 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
             # Add the day's ingredients to the tracking list
             used_primary_ingredients.append((day_number, day_ingredients))
 
-        # Reopen database connection for saving menu
-        logger.info("Reopening database connection to save generated menu")
+        # PHASE 3: All meal generation complete, now open a new connection to save the menu
+        logger.info("Opening new database connection to save generated menu")
 
         # Use the context manager for safer database operations
         with get_db_cursor(dict_cursor=True) as (cursor, conn):
@@ -1045,6 +1047,9 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
                 menu_id = cursor.fetchone()["id"]
                 conn.commit()
                 logger.info(f"Successfully saved menu with ID {menu_id}")
+
+                # Connection will be automatically closed by context manager
+                logger.info("Database connection closed after saving menu")
 
                 return {
                     "menu_id": menu_id,
@@ -1319,112 +1324,109 @@ async def generate_menu_background_task(job_id: str, req: GenerateMealPlanReques
 @router.get("/latest/{user_id}")
 def get_latest_menu(user_id: int):
     """Fetch the most recent menu for a user"""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
+    # Use the context manager for safer database operations
+    with get_db_cursor(dict_cursor=True) as (cursor, conn):
+        try:
+            cursor.execute("""
+                SELECT id, meal_plan_json, created_at::TEXT AS created_at
+                FROM menus
+                WHERE user_id = %s
+                ORDER BY created_at DESC
+                LIMIT 1;
+            """, (user_id,))
 
-        cursor.execute("""
-            SELECT id, meal_plan_json, created_at::TEXT AS created_at
-            FROM menus
-            WHERE user_id = %s
-            ORDER BY created_at DESC
-            LIMIT 1;
-        """, (user_id,))
+            menu = cursor.fetchone()
 
-        menu = cursor.fetchone()
-        
-        if not menu:
-            raise HTTPException(status_code=404, detail="No menu found for this user.")
+            if not menu:
+                raise HTTPException(status_code=404, detail="No menu found for this user.")
 
-        return {
-            "menu_id": menu["id"],
-            "meal_plan": menu["meal_plan_json"],
-            "created_at": menu["created_at"]
-        }
+            return {
+                "menu_id": menu["id"],
+                "meal_plan": menu["meal_plan_json"],
+                "created_at": menu["created_at"]
+            }
 
-    finally:
-        cursor.close()
-        conn.close()
+        except Exception as e:
+            logger.error(f"Error fetching latest menu: {str(e)}")
+            raise HTTPException(status_code=500, detail="Error fetching latest menu")
 
 @router.get("/history/{user_id}")
 def get_menu_history(user_id: int):
     """Get menu history for a user"""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        
-        cursor.execute("""
-            SELECT 
-                id as menu_id, 
-                meal_plan_json, 
-                created_at::TEXT AS created_at,
-                COALESCE(nickname, '') AS nickname
-            FROM menus
-            WHERE user_id = %s
-            ORDER BY created_at DESC
-            LIMIT 10;
-        """, (user_id,))
+    # Use the context manager for safer database operations
+    with get_db_cursor(dict_cursor=True) as (cursor, conn):
+        try:
+            cursor.execute("""
+                SELECT
+                    id as menu_id,
+                    meal_plan_json,
+                    created_at::TEXT AS created_at,
+                    COALESCE(nickname, '') AS nickname
+                FROM menus
+                WHERE user_id = %s
+                ORDER BY created_at DESC
+                LIMIT 10;
+            """, (user_id,))
 
-        menus = cursor.fetchall()
-        
-        if not menus:
-            raise HTTPException(status_code=404, detail="No menu history found.")
+            menus = cursor.fetchall()
 
-        return [
-            {
-                "menu_id": m["menu_id"], 
-                "meal_plan": m["meal_plan_json"], 
-                "created_at": m["created_at"],
-                "nickname": m["nickname"]
-            } 
-            for m in menus
-        ]
+            if not menus:
+                raise HTTPException(status_code=404, detail="No menu history found.")
 
-    finally:
-        cursor.close()
-        conn.close()
+            return [
+                {
+                    "menu_id": m["menu_id"],
+                    "meal_plan": m["meal_plan_json"],
+                    "created_at": m["created_at"],
+                    "nickname": m["nickname"]
+                }
+                for m in menus
+            ]
+
+        except Exception as e:
+            logger.error(f"Error fetching menu history: {str(e)}")
+            raise HTTPException(status_code=500, detail="Error fetching menu history")
 
 @router.patch("/{menu_id}/nickname")
 async def update_menu_nickname(menu_id: int, nickname: str = Body(..., embed=True)):
     """Update the nickname for a menu"""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        
-        cursor.execute("""
-            UPDATE menus 
-            SET nickname = %s
-            WHERE id = %s
-            RETURNING id;
-        """, (nickname, menu_id))
-        
-        conn.commit()
-        
-        if cursor.rowcount == 0:
-            raise HTTPException(status_code=404, detail="Menu not found")
-            
-        return {"status": "success", "message": "Nickname updated successfully"}
-    
-    finally:
-        cursor.close()
-        conn.close()
+    # Use the context manager for safer database operations
+    with get_db_cursor(dict_cursor=True) as (cursor, conn):
+        try:
+            cursor.execute("""
+                UPDATE menus
+                SET nickname = %s
+                WHERE id = %s
+                RETURNING id;
+            """, (nickname, menu_id))
+
+            conn.commit()
+
+            if cursor.rowcount == 0:
+                raise HTTPException(status_code=404, detail="Menu not found")
+
+            return {"status": "success", "message": "Nickname updated successfully"}
+
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Error updating menu nickname: {str(e)}")
+            raise HTTPException(status_code=500, detail="Error updating menu nickname")
 
 @router.get("/{menu_id}/grocery-list")
 def get_grocery_list(menu_id: int):
     """Get grocery list for a specific menu"""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
+    # Use the context manager for safer database operations
+    with get_db_cursor(dict_cursor=True) as (cursor, conn):
+        try:
+            cursor.execute("""
+                SELECT meal_plan_json
+                FROM menus
+                WHERE id = %s;
+            """, (menu_id,))
 
-        cursor.execute("""
-            SELECT meal_plan_json
-            FROM menus
-            WHERE id = %s;
-        """, (menu_id,))
-
-        menu = cursor.fetchone()
-        if not menu:
-            raise HTTPException(status_code=404, detail="No grocery list found for this menu.")
+            menu = cursor.fetchone()
+            if not menu:
+                raise HTTPException(status_code=404, detail="No grocery list found for this menu.")
 
         # Dump full menu data for debugging
         logging.info(f"Menu {menu_id} data retrieved: meal_plan_json exists: {menu.get('meal_plan_json') is not None}")
@@ -1601,21 +1603,21 @@ def get_grocery_list(menu_id: int):
                     # Skip invalid items
                     continue
         
-        # Log the final grocery list
-        grocery_item_count = len(formatted_grocery_list)
-        logging.info(f"Generated grocery list with {grocery_item_count} items for menu {menu_id}")
-        
-        # Log a sample of items for debugging
-        if formatted_grocery_list:
-            sample_size = min(5, len(formatted_grocery_list))
-            sample = formatted_grocery_list[:sample_size]
-            logging.info(f"Sample of grocery list items: {sample}")
-        
-        return {"menu_id": menu_id, "groceryList": formatted_grocery_list}
+            # Log the final grocery list
+            grocery_item_count = len(formatted_grocery_list)
+            logging.info(f"Generated grocery list with {grocery_item_count} items for menu {menu_id}")
 
-    finally:
-        cursor.close()
-        conn.close()
+            # Log a sample of items for debugging
+            if formatted_grocery_list:
+                sample_size = min(5, len(formatted_grocery_list))
+                sample = formatted_grocery_list[:sample_size]
+                logging.info(f"Sample of grocery list items: {sample}")
+
+            return {"menu_id": menu_id, "groceryList": formatted_grocery_list}
+
+        except Exception as e:
+            logger.error(f"Error generating grocery list: {str(e)}")
+            raise HTTPException(status_code=500, detail="Error generating grocery list")
 
 @router.post("/{menu_id}/add-to-cart")
 def add_grocery_list_to_cart(
@@ -1624,243 +1626,234 @@ def add_grocery_list_to_cart(
     user_token: str = Query(None, description="User token for Walmart or Kroger (if required)"),
 ):
     """Add menu items to a store cart"""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
+    # Use the context manager for safer database operations
+    with get_db_cursor(dict_cursor=True) as (cursor, conn):
+        try:
+            cursor.execute("SELECT meal_plan_json FROM menus WHERE id = %s;", (menu_id,))
+            menu = cursor.fetchone()
+            if not menu:
+                raise HTTPException(status_code=404, detail="Menu not found.")
 
-        cursor.execute("SELECT meal_plan_json FROM menus WHERE id = %s;", (menu_id,))
-        menu = cursor.fetchone()
-        if not menu:
-            raise HTTPException(status_code=404, detail="Menu not found.")
+            grocery_list = aggregate_grocery_list(menu["meal_plan_json"])
+            added_items = []
 
-        grocery_list = aggregate_grocery_list(menu["meal_plan_json"])
-        added_items = []
+            for item in grocery_list:
+                item_name = item["name"]
+                quantity = item["quantity"] or 1
 
-        for item in grocery_list:
-            item_name = item["name"]
-            quantity = item["quantity"] or 1
+                if store == "walmart":
+                    result = add_to_walmart_cart(user_token, item_name, quantity)
+                elif store == "kroger":
+                    result = add_to_kroger_cart(user_token, item_name, quantity)
+                elif store == "mixed":
+                    # For mixed store selection, return pending status for frontend handling
+                    result = {
+                        "store": "User Choice Required",
+                        "item": item_name,
+                        "status": "pending"
+                    }
+                else:
+                    raise HTTPException(status_code=400, detail="Invalid store selection.")
 
-            if store == "walmart":
-                result = add_to_walmart_cart(user_token, item_name, quantity)
-            elif store == "kroger":
-                result = add_to_kroger_cart(user_token, item_name, quantity)
-            elif store == "mixed":
-                # For mixed store selection, return pending status for frontend handling
-                result = {
-                    "store": "User Choice Required",
-                    "item": item_name,
-                    "status": "pending"
-                }
-            else:
-                raise HTTPException(status_code=400, detail="Invalid store selection.")
+                added_items.append(result)
 
-            added_items.append(result)
+            return {
+                "message": "Items added to cart",
+                "addedItems": added_items
+            }
 
-        return {
-            "message": "Items added to cart",
-            "addedItems": added_items
-        }
-
-    finally:
-        cursor.close()
-        conn.close()
+        except Exception as e:
+            logger.error(f"Error adding items to cart: {str(e)}")
+            raise HTTPException(status_code=500, detail="Error adding items to cart")
 
 @router.get("/latest/{user_id}/grocery-list")
 def get_latest_grocery_list(user_id: int):
     """Get grocery list for user's latest menu"""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
+    # Use the context manager for safer database operations
+    with get_db_cursor(dict_cursor=True) as (cursor, conn):
+        try:
+            cursor.execute("""
+                SELECT id, meal_plan_json
+                FROM menus
+                WHERE user_id = %s
+                ORDER BY created_at DESC
+                LIMIT 1;
+            """, (user_id,))
 
-        cursor.execute("""
-            SELECT id, meal_plan_json
-            FROM menus
-            WHERE user_id = %s
-            ORDER BY created_at DESC
-            LIMIT 1;
-        """, (user_id,))
+            menu = cursor.fetchone()
+            if not menu:
+                raise HTTPException(status_code=404, detail="No menu found for this user.")
 
-        menu = cursor.fetchone()
-        if not menu:
-            raise HTTPException(status_code=404, detail="No menu found for this user.")
+            # Generate grocery list from the latest menu
+            grocery_list = aggregate_grocery_list(menu["meal_plan_json"])
 
-        # Generate grocery list from the latest menu
-        grocery_list = aggregate_grocery_list(menu["meal_plan_json"])
+            return {
+                "menu_id": menu["id"],
+                "groceryList": grocery_list
+            }
 
-        return {
-            "menu_id": menu["id"],
-            "groceryList": grocery_list
-        }
-
-    finally:
-        cursor.close()
-        conn.close()
+        except Exception as e:
+            logger.error(f"Error getting latest grocery list: {str(e)}")
+            raise HTTPException(status_code=500, detail="Error getting latest grocery list")
 
 
 @router.get("/{menu_id}")
 def get_menu_details(
-    menu_id: int, 
+    menu_id: int,
     user_id: int = Query(None)
 ):
     """Retrieve full menu details for a specific menu"""
-    conn = get_db_connection()
-    try:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+    # Use the context manager for safer database operations
+    with get_db_cursor(dict_cursor=True) as (cur, conn):
+        try:
             # Fetch the full menu details
             cur.execute("""
-                SELECT 
-                    id AS menu_id, 
-                    meal_plan_json, 
-                    user_id, 
-                    created_at, 
+                SELECT
+                    id AS menu_id,
+                    meal_plan_json,
+                    user_id,
+                    created_at,
                     nickname
-                FROM menus 
+                FROM menus
                 WHERE id = %s
             """, (menu_id,))
             menu = cur.fetchone()
-        
-        if not menu:
-            raise HTTPException(status_code=404, detail="Menu not found")
-        
-        # Track that user viewed this menu if user_id provided
-        if user_id:
-            track_recipe_interaction(user_id, menu_id, "viewed")
-            
-            # Check if menu is saved by this user
-            menu['is_saved'] = is_recipe_saved(user_id, menu_id)
-            
-            # If the menu has recipe-level data, check each recipe
+
+            if not menu:
+                raise HTTPException(status_code=404, detail="Menu not found")
+
+            # Track that user viewed this menu if user_id provided
+            if user_id:
+                track_recipe_interaction(user_id, menu_id, "viewed")
+
+                # Check if menu is saved by this user
+                menu['is_saved'] = is_recipe_saved(user_id, menu_id)
+
+                # If the menu has recipe-level data, check each recipe
             # Parse the meal plan JSON
             menu['meal_plan'] = json.loads(menu['meal_plan_json']) if isinstance(menu['meal_plan_json'], str) else menu['meal_plan_json']
-            
+
             # Check saved status for each recipe in the meal plan
             if 'days' in menu['meal_plan']:
                 for day in menu['meal_plan']['days']:
                     day_number = day.get('dayNumber')
-                    
+
                     if 'meals' in day:
                         for meal in day['meals']:
                             meal_time = meal.get('meal_time')
                             recipe_id = meal.get('id')  # If your recipes have IDs
-                            
+
                             if recipe_id:
                                 meal['is_saved'] = is_recipe_saved(
-                                    user_id, 
-                                    menu_id, 
-                                    recipe_id=recipe_id, 
+                                    user_id,
+                                    menu_id,
+                                    recipe_id=recipe_id,
                                     meal_time=meal_time
                                 )
-        else:
-            # Ensure meal_plan_json is parsed
-            menu['meal_plan'] = json.loads(menu['meal_plan_json']) if isinstance(menu['meal_plan_json'], str) else menu['meal_plan_json']
-        
-        return menu
-    except Exception as e:
-        logger.error(f"Error retrieving menu details: {str(e)}")
-        raise HTTPException(status_code=500, detail="Internal server error")
-    finally:
-        conn.close()
+            else:
+                # Ensure meal_plan_json is parsed if user_id was not provided
+                menu['meal_plan'] = json.loads(menu['meal_plan_json']) if isinstance(menu['meal_plan_json'], str) else menu['meal_plan_json']
+
+            return menu
+
+        except Exception as e:
+            logger.error(f"Error retrieving menu details: {str(e)}")
+            raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/shared")
 async def get_shared_menus(user_id: int = Query(...)):
     """Get menus shared with the current user"""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        
-        cursor.execute("""
-            SELECT 
-                m.id as menu_id, 
-                m.meal_plan_json, 
-                m.user_id, 
-                m.created_at, 
-                m.nickname,
-                sm.permission_level,
-                up.name as shared_by_name
-            FROM menus m
-            JOIN shared_menus sm ON m.id = sm.menu_id
-            JOIN user_profiles up ON m.user_id = up.id
-            WHERE sm.shared_with = %s
-            ORDER BY m.created_at DESC
-        """, (user_id,))
-        
-        shared_menus = cursor.fetchall()
-        return shared_menus
-        
-    except Exception as e:
-        logger.error(f"Error fetching shared menus: {str(e)}")
-        raise HTTPException(status_code=500, detail="Internal server error")
-    finally:
-        conn.close()
+    # Use the context manager for safer database operations
+    with get_db_cursor(dict_cursor=True) as (cursor, conn):
+        try:
+            cursor.execute("""
+                SELECT
+                    m.id as menu_id,
+                    m.meal_plan_json,
+                    m.user_id,
+                    m.created_at,
+                    m.nickname,
+                    sm.permission_level,
+                    up.name as shared_by_name
+                FROM menus m
+                JOIN shared_menus sm ON m.id = sm.menu_id
+                JOIN user_profiles up ON m.user_id = up.id
+                WHERE sm.shared_with = %s
+                ORDER BY m.created_at DESC
+            """, (user_id,))
+
+            shared_menus = cursor.fetchall()
+            return shared_menus
+
+        except Exception as e:
+            logger.error(f"Error fetching shared menus: {str(e)}")
+            raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/shared/{user_id}")
 async def get_shared_menus(user_id: int):
     """Get menus shared with the current user"""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        
-        # First check if the shared_menus table exists
-        cursor.execute("""
-            SELECT EXISTS (
-                SELECT FROM information_schema.tables 
-                WHERE table_name = 'shared_menus'
-            )
-        """)
-        
-        table_exists = cursor.fetchone()
-        
-        if not table_exists or not table_exists['exists']:
-            logger.warning("shared_menus table does not exist")
-            # Create the shared_menus table if it doesn't exist
+    # Use the context manager for safer database operations
+    with get_db_cursor(dict_cursor=True) as (cursor, conn):
+        try:
+            # First check if the shared_menus table exists
             cursor.execute("""
-                CREATE TABLE IF NOT EXISTS shared_menus (
-                    id SERIAL PRIMARY KEY,
-                    menu_id INTEGER NOT NULL,
-                    shared_with INTEGER NOT NULL,
-                    created_by INTEGER NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    organization_id INTEGER,
-                    permission_level VARCHAR(20) DEFAULT 'read'
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables
+                    WHERE table_name = 'shared_menus'
                 )
             """)
-            conn.commit()
-            return []
-        
-        # If the table exists, proceed with fetching shared menus
-        cursor.execute("""
-            SELECT 
-                m.id as menu_id, 
-                m.meal_plan_json, 
-                m.user_id, 
-                m.created_at::TEXT as created_at, 
-                m.nickname,
-                sm.permission_level,
-                up.name as shared_by_name
-            FROM menus m
-            JOIN shared_menus sm ON m.id = sm.menu_id
-            JOIN user_profiles up ON m.user_id = up.id
-            WHERE sm.shared_with = %s
-            ORDER BY m.created_at DESC
-        """, (user_id,))
-        
-        shared_menus = cursor.fetchall()
-        logger.info(f"Found {len(shared_menus)} shared menus for user {user_id}")
-        
-        # Convert datetime objects to strings for JSON serialization
-        for menu in shared_menus:
-            if 'created_at' in menu and not isinstance(menu['created_at'], str):
-                menu['created_at'] = menu['created_at'].isoformat()
-        
-        return shared_menus
-        
-    except Exception as e:
-        logger.error(f"Error fetching shared menus: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Error fetching shared menus: {str(e)}")
-    finally:
-        conn.close()
+
+            table_exists = cursor.fetchone()
+
+            if not table_exists or not table_exists['exists']:
+                logger.warning("shared_menus table does not exist")
+                # Create the shared_menus table if it doesn't exist
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS shared_menus (
+                        id SERIAL PRIMARY KEY,
+                        menu_id INTEGER NOT NULL,
+                        shared_with INTEGER NOT NULL,
+                        created_by INTEGER NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        organization_id INTEGER,
+                        permission_level VARCHAR(20) DEFAULT 'read'
+                    )
+                """)
+                conn.commit()
+                return []
+
+            # If the table exists, proceed with fetching shared menus
+            cursor.execute("""
+                SELECT
+                    m.id as menu_id,
+                    m.meal_plan_json,
+                    m.user_id,
+                    m.created_at::TEXT as created_at,
+                    m.nickname,
+                    sm.permission_level,
+                    up.name as shared_by_name
+                FROM menus m
+                JOIN shared_menus sm ON m.id = sm.menu_id
+                JOIN user_profiles up ON m.user_id = up.id
+                WHERE sm.shared_with = %s
+                ORDER BY m.created_at DESC
+            """, (user_id,))
+
+            shared_menus = cursor.fetchall()
+            logger.info(f"Found {len(shared_menus)} shared menus for user {user_id}")
+
+            # Convert datetime objects to strings for JSON serialization
+            for menu in shared_menus:
+                if 'created_at' in menu and not isinstance(menu['created_at'], str):
+                    menu['created_at'] = menu['created_at'].isoformat()
+
+            return shared_menus
+
+        except Exception as e:
+            logger.error(f"Error fetching shared menus: {str(e)}", exc_info=True)
+            raise HTTPException(status_code=500, detail=f"Error fetching shared menus: {str(e)}")
 
 # New endpoint for client menus
 @router.get("/client/{client_id}")
@@ -1872,29 +1865,29 @@ async def get_client_menus(
     # Check if user is organization owner or the client themselves
     user_id = user.get('user_id')
     org_id = user.get('organization_id')
-    
+
     if user_id != client_id and user.get('role') != 'owner':
         raise HTTPException(
             status_code=403,
             detail="You don't have permission to view this client's menus"
         )
-    
-    conn = get_db_connection()
-    try:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+
+    # Use the context manager for safer database operations
+    with get_db_cursor(dict_cursor=True) as (cur, conn):
+        try:
             # If user is organization owner, get menus they created for this client
             if user.get('role') == 'owner':
                 cur.execute("""
-                    SELECT 
-                        m.id as menu_id, 
+                    SELECT
+                        m.id as menu_id,
                         m.created_at,
                         m.nickname,
                         m.user_id,
                         (SELECT count(*) FROM jsonb_array_elements(
-                            CASE 
-                                WHEN jsonb_typeof(m.meal_plan_json->'days') = 'array' 
-                                THEN m.meal_plan_json->'days' 
-                                ELSE '[]'::jsonb 
+                            CASE
+                                WHEN jsonb_typeof(m.meal_plan_json->'days') = 'array'
+                                THEN m.meal_plan_json->'days'
+                                ELSE '[]'::jsonb
                             END
                         )) as days_count
                     FROM menus m
@@ -1944,8 +1937,10 @@ async def get_client_menus(
             
             menus = cur.fetchall()
             return menus
-    finally:
-        conn.close()
+
+        except Exception as e:
+            logger.error(f"Error fetching client menus: {str(e)}")
+            raise HTTPException(status_code=500, detail="Error fetching client menus")
 
 @router.post("/share/{menu_id}/client/{client_id}")
 async def share_menu_with_client(
@@ -1955,29 +1950,27 @@ async def share_menu_with_client(
     user = Depends(get_user_from_token)
 ):
     """Share a menu with a specific client"""
-    try:
-        user_id = user.get('user_id')
-        role = user.get('role', '')
-        org_id = user.get('organization_id')
-        
-        # Only organization owners can share menus
-        if role != 'owner':
-            raise HTTPException(
-                status_code=403, 
-                detail="Only organization owners can share menus"
-            )
-        
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        
+    # Use the context manager for safer database operations
+    with get_db_cursor(dict_cursor=True) as (cursor, conn):
         try:
+            user_id = user.get('user_id')
+            role = user.get('role', '')
+            org_id = user.get('organization_id')
+
+            # Only organization owners can share menus
+            if role != 'owner':
+                raise HTTPException(
+                    status_code=403,
+                    detail="Only organization owners can share menus"
+                )
+
             # First check if the menu exists and belongs to this user
             cursor.execute("""
                 SELECT id, user_id
-                FROM menus 
+                FROM menus
                 WHERE id = %s
             """, (menu_id,))
-            
+
             menu = cursor.fetchone()
             
             if not menu:
@@ -2291,50 +2284,44 @@ async def generate_meal_plan_for_client(
     user = Depends(get_user_from_token)
 ):
     """Generate a meal plan for a specific client using their preferences"""
-    try:
-        # Verify user is an organization owner
-        user_id = user.get('user_id')
-        org_id = user.get('organization_id')
-        role = user.get('role', '')
-        
-        if role != 'owner':
-            raise HTTPException(
-                status_code=403, 
-                detail="Only organization owners can generate menus for clients"
-            )
-        
-        # Verify client belongs to this organization
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        
+    # Use the context manager for safer database operations
+    with get_db_cursor(dict_cursor=True) as (cursor, conn):
         try:
+            # Verify user is an organization owner
+            user_id = user.get('user_id')
+            org_id = user.get('organization_id')
+            role = user.get('role', '')
+
+            if role != 'owner':
+                raise HTTPException(
+                    status_code=403,
+                    detail="Only organization owners can generate menus for clients"
+                )
+
+            # Verify client belongs to this organization
             cursor.execute("""
-                SELECT id 
-                FROM organization_clients 
+                SELECT id
+                FROM organization_clients
                 WHERE organization_id = %s AND client_id = %s AND status = 'active'
             """, (org_id, client_id))
-            
+
             client_record = cursor.fetchone()
             if not client_record:
                 raise HTTPException(
-                    status_code=404, 
+                    status_code=404,
                     detail="Client not found or not active in your organization"
                 )
-                
+
             # Set the client_id in the request
             req.for_client_id = client_id
             req.user_id = user_id
-            
+
             # Call the existing meal plan generation function
             return generate_meal_plan_variety(req)
-            
-        finally:
-            cursor.close()
-            conn.close()
-            
-    except Exception as e:
-        logger.error(f"Error generating menu for client: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+
+        except Exception as e:
+            logger.error(f"Error generating menu for client: {str(e)}", exc_info=True)
+            raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/generate-and-share/{client_id}")
 async def generate_and_share_menu(
@@ -2346,26 +2333,24 @@ async def generate_and_share_menu(
     try:
         # Call the generate_meal_plan_for_client function
         result = await generate_meal_plan_for_client(client_id, req, user)
-        
+
         # Get the menu_id from the result
         menu_id = result.get("menu_id")
-        
+
         # Now share this menu with the client automatically
         user_id = user.get('user_id')
         org_id = user.get('organization_id')
-        
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        
-        try:
+
+        # Use the context manager for safer database operations
+        with get_db_cursor(dict_cursor=True) as (cursor, conn):
             # First check if shared_menus table exists
             cursor.execute("""
                 SELECT EXISTS (
-                    SELECT FROM information_schema.tables 
+                    SELECT FROM information_schema.tables
                     WHERE table_schema = 'public' AND table_name = 'shared_menus'
                 )
             """)
-            
+
             table_exists = cursor.fetchone()
             
             if not table_exists or not table_exists['exists']:
@@ -2436,11 +2421,7 @@ async def generate_and_share_menu(
                 "shared": True,
                 "message": "Menu generated and shared successfully"
             }
-                
-        finally:
-            cursor.close()
-            conn.close()
-            
+
     except Exception as e:
         logger.error(f"Error generating and sharing menu: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -2451,32 +2432,30 @@ async def get_menu_sharing_details(
     user = Depends(get_user_from_token)
 ):
     """Get details about who a menu is shared with"""
-    try:
-        # Verify user owns the menu
-        user_id = user.get('user_id')
-        org_id = user.get('organization_id')
-        role = user.get('role', '')
-        
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        
+    # Use the context manager for safer database operations
+    with get_db_cursor(dict_cursor=True) as (cursor, conn):
         try:
+            # Verify user owns the menu
+            user_id = user.get('user_id')
+            org_id = user.get('organization_id')
+            role = user.get('role', '')
+
             # First check if user owns the menu or has it shared with them
             if role == 'owner':
                 cursor.execute("""
-                    SELECT id FROM menus 
+                    SELECT id FROM menus
                     WHERE id = %s AND user_id = %s
                 """, (menu_id, user_id))
-                
+
                 if not cursor.fetchone():
                     raise HTTPException(
                         status_code=403,
                         detail="You can only view sharing details for menus you own"
                     )
-                    
+
                 # Get all clients the menu is shared with
                 cursor.execute("""
-                    SELECT 
+                    SELECT
                         sm.id,
                         sm.shared_with AS client_id,
                         sm.created_at AS shared_at,
@@ -2487,30 +2466,30 @@ async def get_menu_sharing_details(
                     WHERE sm.menu_id = %s
                     ORDER BY sm.created_at DESC
                 """, (menu_id,))
-                
+
                 shared_with = cursor.fetchall()
-                
+
                 return {
                     "menu_id": menu_id,
                     "shared_with": shared_with
                 }
-                
+
             else:  # Client
                 # Check if the menu is shared with this client
                 cursor.execute("""
-                    SELECT id FROM shared_menus 
+                    SELECT id FROM shared_menus
                     WHERE menu_id = %s AND shared_with = %s
                 """, (menu_id, user_id))
-                
+
                 if not cursor.fetchone():
                     raise HTTPException(
                         status_code=403,
                         detail="You don't have access to this menu's sharing details"
                     )
-                
+
                 # For clients, only show that the menu is shared with them
                 cursor.execute("""
-                    SELECT 
+                    SELECT
                         sm.id,
                         sm.shared_with AS client_id,
                         sm.created_at AS shared_at,
@@ -2520,21 +2499,17 @@ async def get_menu_sharing_details(
                     JOIN user_profiles up ON sm.shared_with = up.id
                     WHERE sm.menu_id = %s AND sm.shared_with = %s
                 """, (menu_id, user_id))
-                
+
                 shared_with = cursor.fetchall()
-                
+
                 return {
                     "menu_id": menu_id,
                     "shared_with": shared_with
                 }
-                
-        finally:
-            cursor.close()
-            conn.close()
-            
-    except Exception as e:
-        logger.error(f"Error getting menu sharing details: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+
+        except Exception as e:
+            logger.error(f"Error getting menu sharing details: {str(e)}", exc_info=True)
+            raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/share/{menu_id}/client/{client_id}")
 async def share_menu_with_client(
@@ -2641,22 +2616,20 @@ async def unshare_menu(
     user = Depends(get_user_from_token)
 ):
     """Remove menu sharing"""
-    try:
-        # Verify user has permission
-        user_id = user.get('user_id')
-        org_id = user.get('organization_id')
-        role = user.get('role', '')
-
-        if role != 'owner':
-            raise HTTPException(
-                status_code=403,
-                detail="Only organization owners can unshare menus"
-            )
-
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-
+    # Use the context manager for safer database operations
+    with get_db_cursor(dict_cursor=True) as (cursor, conn):
         try:
+            # Verify user has permission
+            user_id = user.get('user_id')
+            org_id = user.get('organization_id')
+            role = user.get('role', '')
+
+            if role != 'owner':
+                raise HTTPException(
+                    status_code=403,
+                    detail="Only organization owners can unshare menus"
+                )
+
             # Get the share record with menu details
             cursor.execute("""
                 SELECT sm.*, m.user_id as menu_owner_id
@@ -2701,11 +2674,7 @@ async def unshare_menu(
                 "message": "Menu share removed successfully"
             }
 
-        finally:
-            cursor.close()
-            conn.close()
-
-    except Exception as e:
-        logger.error(f"Error unsharing menu: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        except Exception as e:
+            logger.error(f"Error unsharing menu: {str(e)}", exc_info=True)
+            raise HTTPException(status_code=500, detail=str(e))
 
