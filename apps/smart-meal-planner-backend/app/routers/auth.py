@@ -55,6 +55,9 @@ async def send_verification_email(email: str, verification_token: str):
 async def sign_up(user_data: UserSignUp, background_tasks: BackgroundTasks):
     try:
         with get_db_cursor(dict_cursor=False) as (cursor, conn):
+            # Enable autocommit to prevent transaction blocking during menu generation
+            conn.autocommit = True
+            
             # Check if email already exists
             cursor.execute("SELECT id FROM user_profiles WHERE email = %s", (user_data.email,))
             if cursor.fetchone():
@@ -92,8 +95,6 @@ async def sign_up(user_data: UserSignUp, background_tasks: BackgroundTasks):
                     INSERT INTO organizations (name, owner_id)
                     VALUES (%s, %s)
                 """, (user_data.organization_name, user_id))
-            
-            conn.commit()
         
         # Send verification email in background
         background_tasks.add_task(send_verification_email, user_data.email, verification_token)
@@ -124,6 +125,9 @@ async def verify_email(token: str):
         print(f"🔍 Token decoded successfully for email: {email}")
         
         with get_db_cursor(dict_cursor=False) as (cursor, conn):
+            # Enable autocommit to prevent transaction blocking during menu generation
+            conn.autocommit = True
+            
             # First, check if user exists and current verification status
             cursor.execute("""
                 SELECT id, verified, verification_token
@@ -161,8 +165,6 @@ async def verify_email(token: str):
             if cursor.rowcount == 0:
                 print(f"❌ Update failed for {email}")
                 raise HTTPException(status_code=400, detail="Failed to verify email")
-            
-            conn.commit()
         print(f"✅ Email verification successful for {email}")
         return {"message": "Email verified successfully"}
         
@@ -183,6 +185,9 @@ async def resend_verification_email(request: ResendVerificationRequest, backgrou
         email = request.email
         
         with get_db_cursor(dict_cursor=False) as (cursor, conn):
+            # Enable autocommit to prevent transaction blocking during menu generation
+            conn.autocommit = True
+            
             # Check if user exists and is not verified
             cursor.execute("""
                 SELECT id, verified, verification_token 
@@ -212,7 +217,6 @@ async def resend_verification_email(request: ResendVerificationRequest, backgrou
                     SET verification_token = %s
                     WHERE id = %s
                 """, (verification_token, user_id))
-                conn.commit()
             else:
                 verification_token = existing_token
         
@@ -231,6 +235,9 @@ async def resend_verification_email(request: ResendVerificationRequest, backgrou
 async def login(user_data: UserLogin):
     try:
         with get_db_cursor(dict_cursor=False) as (cursor, conn):
+            # Enable autocommit to prevent transaction blocking during menu generation
+            conn.autocommit = True
+            
             logger.info("DB connection established")
             logger.info("Cursor created")
 
@@ -288,7 +295,6 @@ async def login(user_data: UserLogin):
                 SET last_login = CURRENT_TIMESTAMP
                 WHERE id = %s
             """, (user_id,))
-            conn.commit()
 
         logger.info("Generating token")
 
@@ -344,6 +350,9 @@ async def get_account_info(current_user: Dict[str, Any] = Depends(get_user_from_
     
     try:
         with get_db_cursor(dict_cursor=True) as (cursor, conn):
+            # Enable autocommit to prevent transaction blocking during menu generation
+            conn.autocommit = True
+            
             # Get user details from database
             cursor.execute("""
                 SELECT 

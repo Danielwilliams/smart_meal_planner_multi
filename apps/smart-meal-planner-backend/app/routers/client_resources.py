@@ -44,6 +44,8 @@ async def get_client_dashboard(user=Depends(get_user_from_token)):
 
     try:
         with get_db_cursor(dict_cursor=True) as (cursor, conn):
+            # Enable autocommit to prevent transaction blocking during menu generation
+            conn.autocommit = True
             # The user_id from the token is the user's profile ID
             # For shared menus, we need to use this same ID as the client_id
             # since client_id in shared_menus refers to the user profile ID of the client
@@ -264,6 +266,8 @@ async def get_client_menu(
 
     try:
         with get_db_cursor(dict_cursor=True) as (cursor, conn):
+            # Enable autocommit to prevent transaction blocking during menu generation
+            conn.autocommit = True
             # First check if user has access to this menu
             if user.get('account_type') == 'organization':
                 # Organization owners can access any menu they created
@@ -390,6 +394,8 @@ async def get_client_menu_grocery_list(
 
     try:
         with get_db_cursor(dict_cursor=True) as (cursor, conn):
+            # Enable autocommit to prevent transaction blocking during menu generation
+            conn.autocommit = True
             # First check if user has access to this menu
             if user.get('account_type') == 'organization':
                 # Organization owners can access any menu they created
@@ -594,21 +600,20 @@ async def org_get_client_menus(
     # If no organization_id in token but has user_id, check the database
     if not is_authorized and user_id:
         try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            
-            # Check if user is an organization owner in any organization
-            cursor.execute("""
-                SELECT id FROM organizations WHERE owner_id = %s
-            """, (user_id,))
-            
-            org_result = cursor.fetchone()
-            if org_result:
-                organization_id = org_result[0]
-                is_authorized = True
-                logger.info(f"User {user_id} authorized as owner of organization {organization_id}")
-            
-            conn.close()
+            with get_db_cursor() as (cursor, conn):
+                # Enable autocommit to prevent transaction blocking
+                conn.autocommit = True
+                
+                # Check if user is an organization owner in any organization
+                cursor.execute("""
+                    SELECT id FROM organizations WHERE owner_id = %s
+                """, (user_id,))
+                
+                org_result = cursor.fetchone()
+                if org_result:
+                    organization_id = org_result[0]
+                    is_authorized = True
+                    logger.info(f"User {user_id} authorized as owner of organization {organization_id}")
         except Exception as e:
             logger.error(f"Error checking organization ownership: {e}")
     
@@ -616,131 +621,126 @@ async def org_get_client_menus(
         raise HTTPException(status_code=403, detail="Only organization owners can access this endpoint")
 
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        
-        # Enable autocommit to prevent transaction issues
-        conn.autocommit = True
-
-        # First check if the client belongs to this organization
-        logger.info(f"Checking if client {client_id} belongs to organization {organization_id}")
-        cursor.execute("""
-            SELECT 1 FROM organization_clients
-            WHERE organization_id = %s AND client_id = %s AND status = 'active'
-        """, (organization_id, client_id))
-        
-        client_check = cursor.fetchone()
-        logger.info(f"Client check result: {client_check}")
-        
-        if not client_check:
-            # Let's debug what's in organization_clients
-            cursor.execute("""
-                SELECT * FROM organization_clients
-                WHERE organization_id = %s
-            """, (organization_id,))
-            all_org_clients = cursor.fetchall()
-            logger.info(f"All clients in organization {organization_id}: {all_org_clients}")
+        with get_db_cursor(dict_cursor=True) as (cursor, conn):
+            # Enable autocommit to prevent transaction blocking
+            conn.autocommit = True
             
-            raise HTTPException(status_code=404, detail="Client not found in your organization")
-
-        # First check if shared_menus table exists
-        cursor.execute("""
-            SELECT EXISTS (
-                SELECT FROM information_schema.tables 
-                WHERE table_schema = 'public' 
-                AND table_name = 'shared_menus'
-            )
-        """)
-        
-        has_shared_menus_table = cursor.fetchone()['exists']
-        logger.info(f"shared_menus table exists: {has_shared_menus_table}")
-        
-        shared_menus = []
-        
-        if has_shared_menus_table:
-            try:
-                # Get all menus shared with this client using known schema
-                logger.info(f"Querying shared menus for client_id={client_id}, organization_id={organization_id}")
+            # First check if the client belongs to this organization
+            logger.info(f"Checking if client {client_id} belongs to organization {organization_id}")
+            cursor.execute("""
+                SELECT 1 FROM organization_clients
+                WHERE organization_id = %s AND client_id = %s AND status = 'active'
+            """, (organization_id, client_id))
+            
+            client_check = cursor.fetchone()
+            logger.info(f"Client check result: {client_check}")
+            
+            if not client_check:
+                # Let's debug what's in organization_clients
                 cursor.execute("""
-                    SELECT 
-                        m.id,
-                        m.nickname as title,
-                        CASE 
-                            WHEN m.nickname IS NOT NULL AND m.nickname != '' THEN m.nickname
-                            ELSE 'Meal Plan'
-                        END as description,
-                        m.created_at,
-                        m.nickname,
-                        'read' as permission_level,
-                        ms.shared_at,
-                        ms.id as share_id,
-                        ms.message,
-                        m.duration_days,
-                        m.meal_plan_json
-                    FROM menus m
-                    JOIN shared_menus ms ON m.id = ms.menu_id
-                    WHERE ms.client_id = %s AND ms.organization_id = %s AND ms.is_active = TRUE
-                    ORDER BY ms.shared_at DESC
-                """, (client_id, organization_id))
+                    SELECT * FROM organization_clients
+                    WHERE organization_id = %s
+                """, (organization_id,))
+                all_org_clients = cursor.fetchall()
+                logger.info(f"All clients in organization {organization_id}: {all_org_clients}")
                 
-                shared_menus = cursor.fetchall()
-                logger.info(f"Found {len(shared_menus)} shared menus for client {client_id}")
-                
-                # Process menus to ensure proper data types
-                for menu in shared_menus:
-                    # Parse meal_plan_json if it's a string
-                    if menu.get('meal_plan_json') and isinstance(menu['meal_plan_json'], str):
-                        try:
-                            menu['meal_plan_json'] = json.loads(menu['meal_plan_json'])
-                        except:
-                            menu['meal_plan_json'] = {}
-                    
-                    # Extract meal count from meal_plan_json if available
-                    if isinstance(menu.get('meal_plan_json'), dict):
-                        days = menu['meal_plan_json'].get('days', [])
-                        menu['meal_count'] = len(days)
-                    
-                    # Ensure description is a string
-                    if not menu.get('description') or menu['description'] == menu.get('nickname'):
-                        menu['description'] = menu.get('message') or f"A {menu.get('duration_days', 7)}-day meal plan created for you."
-                    
-                    # Add menu_id field for frontend compatibility
-                    menu['menu_id'] = menu['id']
-                
-                # Debug: check what's in shared_menus table for this client
-                cursor.execute("""
-                    SELECT * FROM shared_menus WHERE client_id = %s
-                """, (client_id,))
-                all_shared = cursor.fetchall()
-                logger.info(f"All shared_menus records for client {client_id}: {len(all_shared)} records")
-                if all_shared:
-                    logger.info(f"First record sample: {all_shared[0]}")
-                    
-            except Exception as e:
-                logger.error(f"Error fetching shared menus for client {client_id}: {e}")
-                logger.error(f"Full traceback: {traceback.format_exc()}")
-                shared_menus = []
-        else:
-            logger.warning("shared_menus table does not exist in the database")
+                raise HTTPException(status_code=404, detail="Client not found in your organization")
 
-        # Skip direct menus query - menus table doesn't have client_id column
-        direct_menus = []
-        logger.info("Skipping direct menus query - menus table doesn't have client_id column")
+            # First check if shared_menus table exists
+            cursor.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name = 'shared_menus'
+                )
+            """)
+            
+            has_shared_menus_table = cursor.fetchone()['exists']
+            logger.info(f"shared_menus table exists: {has_shared_menus_table}")
+            
+            shared_menus = []
+            
+            if has_shared_menus_table:
+                try:
+                    # Get all menus shared with this client using known schema
+                    logger.info(f"Querying shared menus for client_id={client_id}, organization_id={organization_id}")
+                    cursor.execute("""
+                        SELECT 
+                            m.id,
+                            m.nickname as title,
+                            CASE 
+                                WHEN m.nickname IS NOT NULL AND m.nickname != '' THEN m.nickname
+                                ELSE 'Meal Plan'
+                            END as description,
+                            m.created_at,
+                            m.nickname,
+                            'read' as permission_level,
+                            ms.shared_at,
+                            ms.id as share_id,
+                            ms.message,
+                            m.duration_days,
+                            m.meal_plan_json
+                        FROM menus m
+                        JOIN shared_menus ms ON m.id = ms.menu_id
+                        WHERE ms.client_id = %s AND ms.organization_id = %s AND ms.is_active = TRUE
+                        ORDER BY ms.shared_at DESC
+                    """, (client_id, organization_id))
+                    
+                    shared_menus = cursor.fetchall()
+                    logger.info(f"Found {len(shared_menus)} shared menus for client {client_id}")
+                    
+                    # Process menus to ensure proper data types
+                    for menu in shared_menus:
+                        # Parse meal_plan_json if it's a string
+                        if menu.get('meal_plan_json') and isinstance(menu['meal_plan_json'], str):
+                            try:
+                                menu['meal_plan_json'] = json.loads(menu['meal_plan_json'])
+                            except:
+                                menu['meal_plan_json'] = {}
+                        
+                        # Extract meal count from meal_plan_json if available
+                        if isinstance(menu.get('meal_plan_json'), dict):
+                            days = menu['meal_plan_json'].get('days', [])
+                            menu['meal_count'] = len(days)
+                        
+                        # Ensure description is a string
+                        if not menu.get('description') or menu['description'] == menu.get('nickname'):
+                            menu['description'] = menu.get('message') or f"A {menu.get('duration_days', 7)}-day meal plan created for you."
+                        
+                        # Add menu_id field for frontend compatibility
+                        menu['menu_id'] = menu['id']
+                    
+                    # Debug: check what's in shared_menus table for this client
+                    cursor.execute("""
+                        SELECT * FROM shared_menus WHERE client_id = %s
+                    """, (client_id,))
+                    all_shared = cursor.fetchall()
+                    logger.info(f"All shared_menus records for client {client_id}: {len(all_shared)} records")
+                    if all_shared:
+                        logger.info(f"First record sample: {all_shared[0]}")
+                        
+                except Exception as e:
+                    logger.error(f"Error fetching shared menus for client {client_id}: {e}")
+                    logger.error(f"Full traceback: {traceback.format_exc()}")
+                    shared_menus = []
+            else:
+                logger.warning("shared_menus table does not exist in the database")
 
-        # Combine the results
-        all_menus = direct_menus + shared_menus
-        logger.info(f"Returning total of {len(all_menus)} menus")
+            # Skip direct menus query - menus table doesn't have client_id column
+            direct_menus = []
+            logger.info("Skipping direct menus query - menus table doesn't have client_id column")
 
-        return all_menus
+            # Combine the results
+            all_menus = direct_menus + shared_menus
+            logger.info(f"Returning total of {len(all_menus)} menus")
+
+            return all_menus
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error in org_get_client_menus: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
-    finally:
-        if conn:
-            conn.close()
 
 @router.get("/organizations/clients/{client_id}/preferences")
 @router.post("/organizations/clients/{client_id}/preferences")

@@ -67,21 +67,20 @@ async def subscription_status(user = Depends(get_user_from_token)):
         is_client = False
         if 'account_type' in user and user['account_type'] == 'client':
             # Get the organization ID for this client
-            conn = get_db_connection()
-            try:
-                with conn.cursor() as cur:
-                    cur.execute("""
-                        SELECT organization_id FROM organization_clients
-                        WHERE client_id = %s
-                    """, (user_id,))
-                    
-                    org_result = cur.fetchone()
-                    if org_result:
-                        organization_id = org_result[0]
-                        is_client = True
-            finally:
-                if conn:
-                    conn.close()
+            from app.db import get_db_cursor
+            with get_db_cursor() as (cur, conn):
+                # Enable autocommit to prevent transaction blocking during menu generation
+                conn.autocommit = True
+                
+                cur.execute("""
+                    SELECT organization_id FROM organization_clients
+                    WHERE client_id = %s
+                """, (user_id,))
+                
+                org_result = cur.fetchone()
+                if org_result:
+                    organization_id = org_result[0]
+                    is_client = True
         
         # Get subscription details
         subscription = None
