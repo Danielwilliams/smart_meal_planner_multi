@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel
 from psycopg2.extras import RealDictCursor
-from ..db import get_db_connection
+from ..db import get_db_connection, get_db_cursor
 from ..utils.auth_middleware import require_organization_owner, get_user_from_token
 from typing import List, Dict, Any, Optional
 import logging
@@ -42,16 +42,10 @@ async def get_client_dashboard(user=Depends(get_user_from_token)):
     if not is_client:
         raise HTTPException(status_code=403, detail="User is not a client")
 
-    conn = None
-    cursor = None
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        
-        # Enable autocommit to prevent transaction issues
-        conn.autocommit = True
-        
-        # The user_id from the token is the user's profile ID
+        with get_db_cursor(dict_cursor=True) as (cursor, conn):
+            
+            # The user_id from the token is the user's profile ID
         # For shared menus, we need to use this same ID as the client_id
         # since client_id in shared_menus refers to the user profile ID of the client
         client_id = user_id
@@ -127,9 +121,7 @@ async def get_client_dashboard(user=Depends(get_user_from_token)):
             except Exception as e:
                 logger.error(f"Error fetching shared menus for user {user_id}: {e}")
                 logger.error(f"Full traceback: {traceback.format_exc()}")
-                # If autocommit is off, rollback the transaction
-                if not conn.autocommit:
-                    conn.rollback()
+                # No need for rollback with context manager
                 shared_menus = []
         else:
             logger.warning("shared_menus table does not exist in the database")
@@ -175,8 +167,7 @@ async def get_client_dashboard(user=Depends(get_user_from_token)):
             saved_recipes = cursor.fetchall()
         except Exception as e:
             logger.error(f"Error fetching saved recipes: {e}")
-            if not conn.autocommit:
-                conn.rollback()
+            # No need for rollback with context manager
             saved_recipes = []
 
         # Get user preferences data (summary)
@@ -199,8 +190,7 @@ async def get_client_dashboard(user=Depends(get_user_from_token)):
             preferences_summary = cursor.fetchone()
         except Exception as e:
             logger.error(f"Error fetching preferences: {e}")
-            if not conn.autocommit:
-                conn.rollback()
+            # No need for rollback with context manager
             preferences_summary = None
 
         # Get organization data
@@ -236,8 +226,7 @@ async def get_client_dashboard(user=Depends(get_user_from_token)):
                         organization = cursor.fetchone()
         except Exception as e:
             logger.error(f"Error fetching organization: {e}")
-            if not conn.autocommit:
-                conn.rollback()
+            # No need for rollback with context manager
             organization = None
 
         return {
@@ -260,11 +249,6 @@ async def get_client_dashboard(user=Depends(get_user_from_token)):
             "traceback": traceback.format_exc()
         }
         raise HTTPException(status_code=500, detail=error_detail)
-    finally:
-        if 'cursor' in locals() and cursor:
-            cursor.close()
-        if 'conn' in locals() and conn:
-            conn.close()
 
 @router.get("/client/menus/{menu_id}")
 async def get_client_menu(
@@ -280,10 +264,8 @@ async def get_client_menu(
         raise HTTPException(status_code=400, detail="Invalid user token")
 
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-
-        # First check if user has access to this menu
+        with get_db_cursor(dict_cursor=True) as (cursor, conn):
+            # First check if user has access to this menu
         if user.get('account_type') == 'organization':
             # Organization owners can access any menu they created
             cursor.execute("""
@@ -393,9 +375,6 @@ async def get_client_menu(
     except Exception as e:
         logger.error(f"Error in get_client_menu: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
-    finally:
-        if conn:
-            conn.close()
 
 @router.get("/client/menus/{menu_id}/grocery-list")
 async def get_client_menu_grocery_list(
@@ -411,11 +390,9 @@ async def get_client_menu_grocery_list(
         raise HTTPException(status_code=400, detail="Invalid user token")
 
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-
-        # First check if user has access to this menu
-        if user.get('account_type') == 'organization':
+        with get_db_cursor(dict_cursor=True) as (cursor, conn):
+            # First check if user has access to this menu
+            if user.get('account_type') == 'organization':
             # Organization owners can access any menu they created
             cursor.execute("""
                 SELECT 1 FROM menus
@@ -582,9 +559,6 @@ async def get_client_menu_grocery_list(
     except Exception as e:
         logger.error(f"Error in get_client_menu_grocery_list: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
-    finally:
-        if conn:
-            conn.close()
 
 # New endpoints to support mobile app specific patterns
 

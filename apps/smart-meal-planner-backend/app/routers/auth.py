@@ -2,7 +2,7 @@
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, Request
 from datetime import datetime, timedelta
 from ..models.user import UserSignUp, UserLogin, ForgotPasswordRequest, ResetPasswordRequest, UserProgress, ResendVerificationRequest
-from ..db import get_db_connection
+from ..db import get_db_connection, get_db_cursor
 from pydantic import EmailStr
 import bcrypt
 import secrets
@@ -54,48 +54,46 @@ async def send_verification_email(email: str, verification_token: str):
 @router.post("/signup")
 async def sign_up(user_data: UserSignUp, background_tasks: BackgroundTasks):
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Check if email already exists
-        cursor.execute("SELECT id FROM user_profiles WHERE email = %s", (user_data.email,))
-        if cursor.fetchone():
-            raise HTTPException(status_code=400, detail="Email already registered")
-        
-        # Create verification token
-        verification_token = jwt.encode({
-            'email': user_data.email,
-            'exp': datetime.utcnow() + timedelta(hours=24)
-        }, JWT_SECRET, algorithm=JWT_ALGORITHM)
-        
-        # Hash password
-        hashed_password = bcrypt.hashpw(user_data.password.encode('utf-8'), bcrypt.gensalt())
-        
-        # Insert user with verified=False
-        cursor.execute("""
-            INSERT INTO user_profiles 
-            (email, name, hashed_password, verified, verification_token, account_type)
-            VALUES (%s, %s, %s, %s, %s, %s)
-            RETURNING id
-        """, (
-            user_data.email,
-            user_data.name,
-            hashed_password.decode('utf-8'),
-            False,
-            verification_token,
-            user_data.account_type
-        ))
-        
-        user_id = cursor.fetchone()[0]
-        
-        # If this is an organization account, create the organization
-        if user_data.account_type == "organization" and user_data.organization_name:
+        with get_db_cursor(dict_cursor=False) as (cursor, conn):
+            # Check if email already exists
+            cursor.execute("SELECT id FROM user_profiles WHERE email = %s", (user_data.email,))
+            if cursor.fetchone():
+                raise HTTPException(status_code=400, detail="Email already registered")
+            
+            # Create verification token
+            verification_token = jwt.encode({
+                'email': user_data.email,
+                'exp': datetime.utcnow() + timedelta(hours=24)
+            }, JWT_SECRET, algorithm=JWT_ALGORITHM)
+            
+            # Hash password
+            hashed_password = bcrypt.hashpw(user_data.password.encode('utf-8'), bcrypt.gensalt())
+            
+            # Insert user with verified=False
             cursor.execute("""
-                INSERT INTO organizations (name, owner_id)
-                VALUES (%s, %s)
-            """, (user_data.organization_name, user_id))
-        
-        conn.commit()
+                INSERT INTO user_profiles 
+                (email, name, hashed_password, verified, verification_token, account_type)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                RETURNING id
+            """, (
+                user_data.email,
+                user_data.name,
+                hashed_password.decode('utf-8'),
+                False,
+                verification_token,
+                user_data.account_type
+            ))
+            
+            user_id = cursor.fetchone()[0]
+            
+            # If this is an organization account, create the organization
+            if user_data.account_type == "organization" and user_data.organization_name:
+                cursor.execute("""
+                    INSERT INTO organizations (name, owner_id)
+                    VALUES (%s, %s)
+                """, (user_data.organization_name, user_id))
+            
+            conn.commit()
         
         # Send verification email in background
         background_tasks.add_task(send_verification_email, user_data.email, verification_token)
@@ -111,8 +109,6 @@ async def sign_up(user_data: UserSignUp, background_tasks: BackgroundTasks):
     except Exception as e:
         print(f"Signup error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        cursor.close()
 
 
 @router.get("/verify-email/{token}")
@@ -127,48 +123,46 @@ async def verify_email(token: str):
         
         print(f"🔍 Token decoded successfully for email: {email}")
         
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # First, check if user exists and current verification status
-        cursor.execute("""
-            SELECT id, verified, verification_token
-            FROM user_profiles
-            WHERE email = %s
-        """, (email,))
-        
-        user_result = cursor.fetchone()
-        if not user_result:
-            print(f"❌ User not found for email: {email}")
-            raise HTTPException(status_code=400, detail="User not found")
-        
-        user_id, is_verified, stored_token = user_result
-        print(f"🔍 User found - ID: {user_id}, Verified: {is_verified}, Has token: {bool(stored_token)}")
-        
-        if is_verified:
-            print(f"✅ User {email} is already verified")
-            return {"message": "Email already verified"}
-        
-        # Check if stored token matches
-        if stored_token != token:
-            print(f"❌ Token mismatch for {email}")
-            print(f"   Stored token: {stored_token[:20] if stored_token else 'None'}...")
-            print(f"   Provided token: {token[:20]}...")
-            raise HTTPException(status_code=400, detail="Invalid verification token")
-        
-        # Update user verification status
-        cursor.execute("""
-            UPDATE user_profiles
-            SET verified = true, verification_token = NULL
-            WHERE email = %s AND verification_token = %s
-            RETURNING id
-        """, (email, token))
-        
-        if cursor.rowcount == 0:
-            print(f"❌ Update failed for {email}")
-            raise HTTPException(status_code=400, detail="Failed to verify email")
-        
-        conn.commit()
+        with get_db_cursor(dict_cursor=False) as (cursor, conn):
+            # First, check if user exists and current verification status
+            cursor.execute("""
+                SELECT id, verified, verification_token
+                FROM user_profiles
+                WHERE email = %s
+            """, (email,))
+            
+            user_result = cursor.fetchone()
+            if not user_result:
+                print(f"❌ User not found for email: {email}")
+                raise HTTPException(status_code=400, detail="User not found")
+            
+            user_id, is_verified, stored_token = user_result
+            print(f"🔍 User found - ID: {user_id}, Verified: {is_verified}, Has token: {bool(stored_token)}")
+            
+            if is_verified:
+                print(f"✅ User {email} is already verified")
+                return {"message": "Email already verified"}
+            
+            # Check if stored token matches
+            if stored_token != token:
+                print(f"❌ Token mismatch for {email}")
+                print(f"   Stored token: {stored_token[:20] if stored_token else 'None'}...")
+                print(f"   Provided token: {token[:20]}...")
+                raise HTTPException(status_code=400, detail="Invalid verification token")
+            
+            # Update user verification status
+            cursor.execute("""
+                UPDATE user_profiles
+                SET verified = true, verification_token = NULL
+                WHERE email = %s AND verification_token = %s
+                RETURNING id
+            """, (email, token))
+            
+            if cursor.rowcount == 0:
+                print(f"❌ Update failed for {email}")
+                raise HTTPException(status_code=400, detail="Failed to verify email")
+            
+            conn.commit()
         print(f"✅ Email verification successful for {email}")
         return {"message": "Email verified successfully"}
         
@@ -181,11 +175,6 @@ async def verify_email(token: str):
     except Exception as e:
         print(f"❌ Unexpected error in email verification: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
-    finally:
-        if 'cursor' in locals():
-            cursor.close()
-        if 'conn' in locals():
-            conn.close()
 
 @router.post("/resend-verification")
 async def resend_verification_email(request: ResendVerificationRequest, background_tasks: BackgroundTasks):
@@ -193,41 +182,39 @@ async def resend_verification_email(request: ResendVerificationRequest, backgrou
     try:
         email = request.email
         
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Check if user exists and is not verified
-        cursor.execute("""
-            SELECT id, verified, verification_token 
-            FROM user_profiles 
-            WHERE email = %s
-        """, (email,))
-        
-        user = cursor.fetchone()
-        
-        if not user:
-            raise HTTPException(status_code=404, detail="Account not found")
-        
-        user_id, verified, existing_token = user
-        
-        if verified:
-            raise HTTPException(status_code=400, detail="Account is already verified")
-        
-        # Generate a new verification token if needed
-        if not existing_token:
-            verification_token = jwt.encode({
-                'email': email,
-                'exp': datetime.utcnow() + timedelta(hours=24)
-            }, JWT_SECRET, algorithm=JWT_ALGORITHM)
-            
+        with get_db_cursor(dict_cursor=False) as (cursor, conn):
+            # Check if user exists and is not verified
             cursor.execute("""
-                UPDATE user_profiles
-                SET verification_token = %s
-                WHERE id = %s
-            """, (verification_token, user_id))
-            conn.commit()
-        else:
-            verification_token = existing_token
+                SELECT id, verified, verification_token 
+                FROM user_profiles 
+                WHERE email = %s
+            """, (email,))
+            
+            user = cursor.fetchone()
+            
+            if not user:
+                raise HTTPException(status_code=404, detail="Account not found")
+            
+            user_id, verified, existing_token = user
+            
+            if verified:
+                raise HTTPException(status_code=400, detail="Account is already verified")
+            
+            # Generate a new verification token if needed
+            if not existing_token:
+                verification_token = jwt.encode({
+                    'email': email,
+                    'exp': datetime.utcnow() + timedelta(hours=24)
+                }, JWT_SECRET, algorithm=JWT_ALGORITHM)
+                
+                cursor.execute("""
+                    UPDATE user_profiles
+                    SET verification_token = %s
+                    WHERE id = %s
+                """, (verification_token, user_id))
+                conn.commit()
+            else:
+                verification_token = existing_token
         
         # Send verification email in background
         background_tasks.add_task(send_verification_email, email, verification_token)
@@ -239,77 +226,69 @@ async def resend_verification_email(request: ResendVerificationRequest, backgrou
     except Exception as e:
         print(f"Resend verification error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        if 'cursor' in locals():
-            cursor.close()
-        if 'conn' in locals():
-            conn.close()
 
 @router.post("/login")
 async def login(user_data: UserLogin):
-    conn = None
-    cursor = None
     try:
-        conn = get_db_connection()
-        logger.info("DB connection established")
-        cursor = conn.cursor()
-        logger.info("Cursor created")
+        with get_db_cursor(dict_cursor=False) as (cursor, conn):
+            logger.info("DB connection established")
+            logger.info("Cursor created")
 
-        # Updated query to include verified status
-        cursor.execute("""
-            SELECT
-                id,
-                email,
-                name,
-                hashed_password,
-                profile_complete,
-                has_preferences,
-                has_generated_menu,
-                has_shopping_list,
-                verified,
-                account_type
-            FROM user_profiles
-            WHERE email = %s
-        """, (user_data.email,))
+            # Updated query to include verified status
+            cursor.execute("""
+                SELECT
+                    id,
+                    email,
+                    name,
+                    hashed_password,
+                    profile_complete,
+                    has_preferences,
+                    has_generated_menu,
+                    has_shopping_list,
+                    verified,
+                    account_type
+                FROM user_profiles
+                WHERE email = %s
+            """, (user_data.email,))
 
-        logger.info("Query executed, checking results")
+            logger.info("Query executed, checking results")
 
-        user = cursor.fetchone()
+            user = cursor.fetchone()
 
-        logger.info(f"User found: {bool(user)}")
+            logger.info(f"User found: {bool(user)}")
 
-        if not user:
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid email or password"
-            )
+            if not user:
+                raise HTTPException(
+                    status_code=401,
+                    detail="Invalid email or password"
+                )
 
-        # Unpack user data (added verified at the end)
-        user_id, email, name, stored_hash, profile_complete, has_prefs, has_menu, has_list, verified, account_type = user
+            # Unpack user data (added verified at the end)
+            user_id, email, name, stored_hash, profile_complete, has_prefs, has_menu, has_list, verified, account_type = user
 
-        # Check if email is verified
-        if not verified:
-            raise HTTPException(
-                status_code=401,
-                detail="Please verify your email before logging in"
-            )
+            # Check if email is verified
+            if not verified:
+                raise HTTPException(
+                    status_code=401,
+                    detail="Please verify your email before logging in"
+                )
 
-        logger.info("Verifying password")
+            logger.info("Verifying password")
 
-        # Verify password
-        if not bcrypt.checkpw(user_data.password.encode('utf-8'), stored_hash.encode('utf-8')):
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid email or password"
-            )
+            # Verify password
+            if not bcrypt.checkpw(user_data.password.encode('utf-8'), stored_hash.encode('utf-8')):
+                raise HTTPException(
+                    status_code=401,
+                    detail="Invalid email or password"
+                )
 
-        # Update last login timestamp
-        cursor.execute("""
-            UPDATE user_profiles
-            SET last_login = CURRENT_TIMESTAMP
-            WHERE id = %s
-        """, (user_id,))
-        conn.commit()
+            # Update last login timestamp
+            cursor.execute("""
+                UPDATE user_profiles
+                SET last_login = CURRENT_TIMESTAMP
+                WHERE id = %s
+            """, (user_id,))
+            conn.commit()
 
         logger.info("Generating token")
 
@@ -348,28 +327,10 @@ async def login(user_data: UserLogin):
         raise
     except Exception as e:
         logger.error(f"Login error: {str(e)}")  # Add logging
-        if conn:
-            try:
-                conn.rollback()
-            except Exception as rb_e:
-                logger.error(f"Failed to rollback transaction: {str(rb_e)}")
         raise HTTPException(
             status_code=500,
             detail=f"Internal server error: {str(e)}"
         )
-    finally:
-        if cursor:
-            try:
-                cursor.close()
-                logger.debug("Cursor closed successfully")
-            except Exception as e:
-                logger.warning(f"Error closing cursor: {str(e)}")
-        if conn:
-            try:
-                conn.close()
-                logger.debug("Connection closed successfully")
-            except Exception as e:
-                logger.warning(f"Error closing connection: {str(e)}")
 
 @router.get("/account-info")
 @router.post("/account-info") 
@@ -381,9 +342,8 @@ async def get_account_info(current_user: Dict[str, Any] = Depends(get_user_from_
     if not current_user:
         raise HTTPException(status_code=401, detail="Authentication required")
     
-    conn = get_db_connection()
     try:
-        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+        with get_db_cursor(dict_cursor=True) as (cursor, conn):
             # Get user details from database
             cursor.execute("""
                 SELECT 
@@ -447,8 +407,6 @@ async def get_account_info(current_user: Dict[str, Any] = Depends(get_user_from_
     except Exception as e:
         logger.error(f"Error retrieving account info: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
-    finally:
-        conn.close()
 
 @router.get("/me")
 @router.post("/me")
@@ -475,39 +433,34 @@ async def get_current_user(current_user: Dict[str, Any] = Depends(get_user_from_
 @router.patch("/{user_id}/progress")
 async def update_user_progress(user_id: int, progress: UserProgress):
     """Update user progress flags in the database"""
-    conn = get_db_connection()
     try:
-        cursor = conn.cursor()
-        
-        # Update all progress flags
-        cursor.execute("""
-            UPDATE user_profiles 
-            SET 
-                has_preferences = COALESCE(%s, has_preferences),
-                has_generated_menu = COALESCE(%s, has_generated_menu),
-                has_shopping_list = COALESCE(%s, has_shopping_list)
-            WHERE id = %s
-            RETURNING id
-        """, (
-            progress.has_preferences,
-            progress.has_generated_menu,
-            progress.has_shopping_list,
-            user_id
-        ))
-        
-        conn.commit()
+        with get_db_cursor(dict_cursor=False) as (cursor, conn):
+            # Update all progress flags
+            cursor.execute("""
+                UPDATE user_profiles 
+                SET 
+                    has_preferences = COALESCE(%s, has_preferences),
+                    has_generated_menu = COALESCE(%s, has_generated_menu),
+                    has_shopping_list = COALESCE(%s, has_shopping_list)
+                WHERE id = %s
+                RETURNING id
+            """, (
+                progress.has_preferences,
+                progress.has_generated_menu,
+                progress.has_shopping_list,
+                user_id
+            ))
+            
+            conn.commit()
 
-        if cursor.rowcount == 0:
-            raise HTTPException(status_code=404, detail="User not found")
+            if cursor.rowcount == 0:
+                raise HTTPException(status_code=404, detail="User not found")
 
-        return {"status": "success", "message": "User progress updated"}
+            return {"status": "success", "message": "User progress updated"}
 
     except Exception as e:
         logger.error(f"Error updating user progress: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to update user progress")
-    finally:
-        cursor.close()
-        conn.close()
 
 @router.post("/forgot-password")
 async def forgot_password(request: ForgotPasswordRequest, background_tasks: BackgroundTasks):
@@ -515,42 +468,40 @@ async def forgot_password(request: ForgotPasswordRequest, background_tasks: Back
     try:
         email = request.email
         
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Check if user exists
-        cursor.execute("""
-            SELECT id, name, verified
-            FROM user_profiles 
-            WHERE email = %s
-        """, (email,))
-        
-        user = cursor.fetchone()
-        
-        if not user:
-            # Return success even if email doesn't exist (security best practice)
-            return {"message": "If an account with that email exists, we've sent a password reset link."}
-        
-        user_id, name, verified = user
-        
-        if not verified:
-            raise HTTPException(status_code=400, detail="Please verify your email before resetting your password")
-        
-        # Generate password reset token
-        reset_token = jwt.encode({
-            'user_id': user_id,
-            'email': email,
-            'type': 'password_reset',
-            'exp': datetime.utcnow() + timedelta(hours=1)  # Token expires in 1 hour
-        }, JWT_SECRET, algorithm=JWT_ALGORITHM)
-        
-        # Store reset token in database
-        cursor.execute("""
-            UPDATE user_profiles
-            SET reset_password_token = %s
-            WHERE id = %s
-        """, (reset_token, user_id))
-        conn.commit()
+        with get_db_cursor(dict_cursor=False) as (cursor, conn):
+            # Check if user exists
+            cursor.execute("""
+                SELECT id, name, verified
+                FROM user_profiles 
+                WHERE email = %s
+            """, (email,))
+            
+            user = cursor.fetchone()
+            
+            if not user:
+                # Return success even if email doesn't exist (security best practice)
+                return {"message": "If an account with that email exists, we've sent a password reset link."}
+            
+            user_id, name, verified = user
+            
+            if not verified:
+                raise HTTPException(status_code=400, detail="Please verify your email before resetting your password")
+            
+            # Generate password reset token
+            reset_token = jwt.encode({
+                'user_id': user_id,
+                'email': email,
+                'type': 'password_reset',
+                'exp': datetime.utcnow() + timedelta(hours=1)  # Token expires in 1 hour
+            }, JWT_SECRET, algorithm=JWT_ALGORITHM)
+            
+            # Store reset token in database
+            cursor.execute("""
+                UPDATE user_profiles
+                SET reset_password_token = %s
+                WHERE id = %s
+            """, (reset_token, user_id))
+            conn.commit()
         
         # Send password reset email in background
         background_tasks.add_task(send_password_reset_email, email, name, reset_token)
@@ -562,11 +513,6 @@ async def forgot_password(request: ForgotPasswordRequest, background_tasks: Back
     except Exception as e:
         logger.error(f"Forgot password error: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")
-    finally:
-        if 'cursor' in locals():
-            cursor.close()
-        if 'conn' in locals():
-            conn.close()
 
 @router.post("/reset-password")
 async def reset_password(request: ResetPasswordRequest):
@@ -590,32 +536,30 @@ async def reset_password(request: ResetPasswordRequest):
         except jwt.JWTError:
             raise HTTPException(status_code=400, detail="Invalid reset token")
         
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Verify token exists in database and user exists
-        cursor.execute("""
-            SELECT id, reset_password_token
-            FROM user_profiles 
-            WHERE id = %s AND email = %s
-        """, (user_id, email))
-        
-        user = cursor.fetchone()
-        
-        if not user or user[1] != reset_token:
-            raise HTTPException(status_code=400, detail="Invalid or expired reset token")
-        
-        # Hash new password
-        hashed_password = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt())
-        
-        # Update password and clear reset token
-        cursor.execute("""
-            UPDATE user_profiles
-            SET hashed_password = %s, reset_password_token = NULL
-            WHERE id = %s
-        """, (hashed_password.decode('utf-8'), user_id))
-        
-        conn.commit()
+        with get_db_cursor(dict_cursor=False) as (cursor, conn):
+            # Verify token exists in database and user exists
+            cursor.execute("""
+                SELECT id, reset_password_token
+                FROM user_profiles 
+                WHERE id = %s AND email = %s
+            """, (user_id, email))
+            
+            user = cursor.fetchone()
+            
+            if not user or user[1] != reset_token:
+                raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+            
+            # Hash new password
+            hashed_password = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt())
+            
+            # Update password and clear reset token
+            cursor.execute("""
+                UPDATE user_profiles
+                SET hashed_password = %s, reset_password_token = NULL
+                WHERE id = %s
+            """, (hashed_password.decode('utf-8'), user_id))
+            
+            conn.commit()
         
         return {"message": "Password reset successful. You can now log in with your new password."}
         
@@ -624,11 +568,6 @@ async def reset_password(request: ResetPasswordRequest):
     except Exception as e:
         logger.error(f"Reset password error: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")
-    finally:
-        if 'cursor' in locals():
-            cursor.close()
-        if 'conn' in locals():
-            conn.close()
 
 async def send_password_reset_email(email: str, name: str, reset_token: str):
     """Send password reset email to user"""

@@ -5,7 +5,7 @@ import jwt
 import logging
 from psycopg2.extras import RealDictCursor
 from app.config import JWT_SECRET, JWT_ALGORITHM
-from app.db import get_db_connection
+from app.db import get_db_connection, get_db_cursor
 
 logger = logging.getLogger(__name__)
 
@@ -65,9 +65,8 @@ async def get_user_from_token(request: Request, use_cache=True):
 
 async def get_user_organization_role(user_id: int):
     """Get user's organization and role if any"""
-    conn = get_db_connection()
     try:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        with get_db_cursor(dict_cursor=True) as (cur, conn):
             # Check if user is an organization owner
             cur.execute("""
                 SELECT id as organization_id FROM organizations 
@@ -129,8 +128,9 @@ async def get_user_organization_role(user_id: int):
                 "role": None,
                 "is_admin": is_admin
             }
-    finally:
-        conn.close()
+    except Exception as e:
+        logger.error(f"Error in get_user_organization_role: {str(e)}")
+        raise
         
 async def is_organization_admin(user_id: int) -> bool:
     """
@@ -142,9 +142,8 @@ async def is_organization_admin(user_id: int) -> bool:
     Returns:
         bool: True if the user is an organization admin, False otherwise
     """
-    conn = get_db_connection()
     try:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        with get_db_cursor(dict_cursor=True) as (cur, conn):
             # Check if user is an organization owner
             cur.execute("""
                 SELECT id FROM organizations 
@@ -163,8 +162,9 @@ async def is_organization_admin(user_id: int) -> bool:
             org_admin = cur.fetchone()
             
             return org_admin is not None
-    finally:
-        conn.close()
+    except Exception as e:
+        logger.error(f"Error in is_organization_admin: {str(e)}")
+        return False
 
 def admin_required(user = Depends(get_user_from_token)):
     """Middleware to require admin permissions"""
