@@ -84,19 +84,33 @@ def get_db_cursor(dict_cursor=True):
     cursor = None
     pooled = False
     try:
+        # Get connection from pool or directly
+        logger.info("Attempting to connect to database at " + DB_HOST + ":" + DB_PORT)
         conn = get_db_connection()
         pooled = connection_pool is not None
+
+        # Create cursor
         if dict_cursor:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
         else:
             cursor = conn.cursor()
+
+        # Yield the cursor and connection
         yield cursor, conn
+
     except Exception as e:
+        # Handle exception and rollback if needed
         logger.error(f"Database error in context manager: {str(e)}", exc_info=True)
         if conn:
-            conn.rollback()
+            try:
+                conn.rollback()
+                logger.info("Transaction rolled back due to error")
+            except Exception as rb_e:
+                logger.error(f"Error during rollback: {str(rb_e)}")
         raise
+
     finally:
+        # Always clean up resources
         if cursor:
             try:
                 cursor.close()

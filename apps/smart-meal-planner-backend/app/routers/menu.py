@@ -328,118 +328,110 @@ else:
 # Background Job Management Functions
 def save_job_status(job_id: str, status_data: dict):
     """Save job status to database"""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
+    # Use the context manager for safer database operations
+    with get_db_cursor() as (cursor, conn):
+        try:
+            cursor.execute("""
+                INSERT INTO menu_generation_jobs
+                (job_id, user_id, client_id, status, progress, message, request_data)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (job_id)
+                DO UPDATE SET
+                    status = EXCLUDED.status,
+                    progress = EXCLUDED.progress,
+                    message = EXCLUDED.message,
+                    updated_at = CURRENT_TIMESTAMP
+            """, (
+                job_id,
+                status_data.get('user_id'),
+                status_data.get('client_id'),
+                status_data.get('status', 'started'),
+                status_data.get('progress', 0),
+                status_data.get('message', 'Starting...'),
+                json.dumps(status_data.get('request_data', {}))
+            ))
 
-        cursor.execute("""
-            INSERT INTO menu_generation_jobs
-            (job_id, user_id, client_id, status, progress, message, request_data)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (job_id)
-            DO UPDATE SET
-                status = EXCLUDED.status,
-                progress = EXCLUDED.progress,
-                message = EXCLUDED.message,
-                updated_at = CURRENT_TIMESTAMP
-        """, (
-            job_id,
-            status_data.get('user_id'),
-            status_data.get('client_id'),
-            status_data.get('status', 'started'),
-            status_data.get('progress', 0),
-            status_data.get('message', 'Starting...'),
-            json.dumps(status_data.get('request_data', {}))
-        ))
+            conn.commit()
+            logger.info(f"Saved job status for {job_id}: {status_data.get('status')} ({status_data.get('progress')}%)")
 
-        conn.commit()
-        cursor.close()
-        conn.close()
-        logger.info(f"Saved job status for {job_id}: {status_data.get('status')} ({status_data.get('progress')}%)")
-
-    except Exception as e:
-        logger.error(f"Failed to save job status for {job_id}: {str(e)}")
+        except Exception as e:
+            logger.error(f"Failed to save job status for {job_id}: {str(e)}")
+            conn.rollback()
 
 def update_job_status(job_id: str, status_data: dict):
     """Update existing job status"""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
+    # Use the context manager for safer database operations
+    with get_db_cursor() as (cursor, conn):
+        try:
+            update_fields = []
+            update_values = []
 
-        update_fields = []
-        update_values = []
+            if 'status' in status_data:
+                update_fields.append("status = %s")
+                update_values.append(status_data['status'])
 
-        if 'status' in status_data:
-            update_fields.append("status = %s")
-            update_values.append(status_data['status'])
+            if 'progress' in status_data:
+                update_fields.append("progress = %s")
+                update_values.append(status_data['progress'])
 
-        if 'progress' in status_data:
-            update_fields.append("progress = %s")
-            update_values.append(status_data['progress'])
+            if 'message' in status_data:
+                update_fields.append("message = %s")
+                update_values.append(status_data['message'])
 
-        if 'message' in status_data:
-            update_fields.append("message = %s")
-            update_values.append(status_data['message'])
+            if 'result_data' in status_data:
+                update_fields.append("result_data = %s")
+                update_values.append(json.dumps(status_data['result_data']))
 
-        if 'result_data' in status_data:
-            update_fields.append("result_data = %s")
-            update_values.append(json.dumps(status_data['result_data']))
+            if 'error_message' in status_data:
+                update_fields.append("error_message = %s")
+                update_values.append(status_data['error_message'])
 
-        if 'error_message' in status_data:
-            update_fields.append("error_message = %s")
-            update_values.append(status_data['error_message'])
+            if update_fields:
+                update_fields.append("updated_at = CURRENT_TIMESTAMP")
+                update_values.append(job_id)
 
-        if update_fields:
-            update_fields.append("updated_at = CURRENT_TIMESTAMP")
-            update_values.append(job_id)
+                query = f"""
+                    UPDATE menu_generation_jobs
+                    SET {', '.join(update_fields)}
+                    WHERE job_id = %s
+                """
 
-            query = f"""
-                UPDATE menu_generation_jobs
-                SET {', '.join(update_fields)}
-                WHERE job_id = %s
-            """
+                cursor.execute(query, update_values)
+                conn.commit()
+                logger.info(f"Updated job {job_id}: {status_data.get('status')} ({status_data.get('progress')}%)")
 
-            cursor.execute(query, update_values)
-            conn.commit()
-
-        cursor.close()
-        conn.close()
-        logger.info(f"Updated job {job_id}: {status_data.get('status')} ({status_data.get('progress')}%)")
-
-    except Exception as e:
-        logger.error(f"Failed to update job status for {job_id}: {str(e)}")
+        except Exception as e:
+            logger.error(f"Failed to update job status for {job_id}: {str(e)}")
+            conn.rollback()
 
 def get_job_status_from_database(job_id: str) -> Optional[dict]:
     """Retrieve job status from database"""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
+    # Use the context manager for safer database operations
+    with get_db_cursor(dict_cursor=True) as (cursor, conn):
+        try:
+            cursor.execute("""
+                SELECT job_id, user_id, client_id, status, progress, message,
+                       result_data, error_message, created_at, updated_at
+                FROM menu_generation_jobs
+                WHERE job_id = %s
+            """, (job_id,))
 
-        cursor.execute("""
-            SELECT job_id, user_id, client_id, status, progress, message,
-                   result_data, error_message, created_at, updated_at
-            FROM menu_generation_jobs
-            WHERE job_id = %s
-        """, (job_id,))
+            row = cursor.fetchone()
 
-        row = cursor.fetchone()
-        cursor.close()
-        conn.close()
+            if row:
+                result = dict(row)
+                # Parse JSON fields
+                if result['result_data']:
+                    try:
+                        result['result_data'] = json.loads(result['result_data'])
+                    except:
+                        result['result_data'] = None
+                return result
+            return None
 
-        if row:
-            result = dict(row)
-            # Parse JSON fields
-            if result['result_data']:
-                try:
-                    result['result_data'] = json.loads(result['result_data'])
-                except:
-                    result['result_data'] = None
-            return result
-        return None
-
-    except Exception as e:
-        logger.error(f"Failed to get job status for {job_id}: {str(e)}")
-        return None
+        except Exception as e:
+            logger.error(f"Failed to get job status for {job_id}: {str(e)}")
+            return None
 
 def merge_preference(db_value, req_value, default=None):
     """Helper function to merge preferences with precedence to request parameters"""
@@ -1210,7 +1202,6 @@ async def get_active_jobs_for_user(user_id: int):
 
 async def generate_menu_background_task(job_id: str, req: GenerateMealPlanRequest):
     """Background task that performs the actual menu generation"""
-    conn = None
     try:
         logger.info(f"Background task started for job {job_id}")
 
@@ -1225,82 +1216,28 @@ async def generate_menu_background_task(job_id: str, req: GenerateMealPlanReques
         logger.info(f"Calling generate_meal_plan_variety for job {job_id}")
         menu_result = generate_meal_plan_variety(req)
 
-        # Update status: Processing complete
-        # Use a new database connection for updating job status
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        # Update status: Processing complete using the job status function that handles its own connection
+        update_job_status(job_id, {
+            "status": "completed",
+            "progress": 100,
+            "message": "Menu generation completed successfully!",
+            "result_data": menu_result
+        })
 
-        # Convert result data to JSON if needed
-        result_json = json.dumps(menu_result) if menu_result else None
-
-        cursor.execute("""
-            UPDATE menu_generation_jobs
-            SET
-                status = 'completed',
-                progress = 100,
-                message = 'Menu generation completed successfully!',
-                result_data = %s,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE job_id = %s
-        """, (result_json, job_id))
-
-        conn.commit()
         logger.info(f"Background task completed successfully for job {job_id}")
 
     except Exception as e:
         logger.error(f"Background task failed for job {job_id}: {str(e)}", exc_info=True)
 
-        # Update status: Failed - ensure we use a new connection if the existing one failed
-        if conn is None:
-            try:
-                conn = get_db_connection()
-                cursor = conn.cursor()
+        # Update status: Failed - using the job status function that handles its own connection
+        update_job_status(job_id, {
+            "status": "failed",
+            "progress": 0,
+            "message": "Menu generation failed",
+            "error_message": str(e)
+        })
 
-                cursor.execute("""
-                    UPDATE menu_generation_jobs
-                    SET
-                        status = 'failed',
-                        progress = 0,
-                        message = 'Menu generation failed',
-                        error_message = %s,
-                        updated_at = CURRENT_TIMESTAMP
-                    WHERE job_id = %s
-                """, (str(e), job_id))
-
-                conn.commit()
-            except Exception as db_e:
-                logger.error(f"Failed to update job status after error: {str(db_e)}")
-                if conn:
-                    conn.rollback()
-        else:
-            try:
-                cursor = conn.cursor()
-
-                cursor.execute("""
-                    UPDATE menu_generation_jobs
-                    SET
-                        status = 'failed',
-                        progress = 0,
-                        message = 'Menu generation failed',
-                        error_message = %s,
-                        updated_at = CURRENT_TIMESTAMP
-                    WHERE job_id = %s
-                """, (str(e), job_id))
-
-                conn.commit()
-            except Exception as db_e:
-                logger.error(f"Failed to update job status after error: {str(db_e)}")
-                if conn:
-                    conn.rollback()
     finally:
-        # Ensure all resources are properly cleaned up
-        if conn:
-            try:
-                conn.close()
-                logger.debug(f"Connection closed in background task for job {job_id}")
-            except Exception as e:
-                logger.warning(f"Error closing connection in background task: {str(e)}")
-
         # Clean up concurrency controls
         try:
             # Remove user from active generations tracking
