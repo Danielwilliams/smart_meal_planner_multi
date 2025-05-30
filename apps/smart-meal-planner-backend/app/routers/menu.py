@@ -1365,181 +1365,181 @@ def get_grocery_list(menu_id: int):
             if not menu:
                 raise HTTPException(status_code=404, detail="No grocery list found for this menu.")
 
-        # Dump full menu data for debugging
-        logging.info(f"Menu {menu_id} data retrieved: meal_plan_json exists: {menu.get('meal_plan_json') is not None}")
-        
-        # Print raw menu structure for debugging
-        menu_keys = list(menu.keys()) if menu else []
-        logging.info(f"Menu {menu_id} has these fields: {menu_keys}")
-        
-        # Specific debugging for menu 393
-        if menu_id == 393:
-            logging.info(f"SPECIAL HANDLING FOR MENU 393: {json.dumps(menu, default=str)[:1000]}")
-            
-            # If we have meal_plan_json, try to log its structure
-            if menu.get('meal_plan_json'):
-                if isinstance(menu['meal_plan_json'], str):
-                    try:
-                        parsed = json.loads(menu['meal_plan_json'])
-                        logging.info(f"Menu 393 meal_plan_json parsed structure: {list(parsed.keys()) if isinstance(parsed, dict) else 'not a dict'}")
-                    except json.JSONDecodeError:
-                        logging.error("Menu 393 meal_plan_json is not valid JSON")
-                else:
-                    logging.info(f"Menu 393 meal_plan_json raw type: {type(menu['meal_plan_json'])}")
-                    
-        # Use meal_plan_json
-        menu_data = menu.get("meal_plan_json")
-            
-        # Log raw menu data type
-        logging.info(f"Menu {menu_id} data type: {type(menu_data)}")
-        
-        # If menu data is None, try different approaches
-        if menu_data is None:
-            logging.warning(f"Menu {menu_id} has no meal_plan_json or meal_plan data")
-            # Try to use the entire menu object
-            menu_data = menu
-            
-        # Try to normalize the menu data for ingredient extraction
-        try:
-            # Handle any menu data format - normalize it first
-            logging.info(f"Normalizing menu data for extraction")
-            
-            # If menu_data is a string, try to parse it 
-            if isinstance(menu_data, str):
-                try:
-                    menu_data = json.loads(menu_data)
-                except json.JSONDecodeError:
-                    logging.error(f"Failed to parse menu_data as JSON string")
-            
-            # For consistent handling, always try the grocery aggregator first
-            grocery_list = aggregate_grocery_list(menu_data)
-            
-        except Exception as e:
-            logging.error(f"Error during extraction: {str(e)}")
-            # Fall back to regular aggregator with raw data
-            grocery_list = aggregate_grocery_list(menu_data)
-        
-        # If grocery list is empty, try different approaches
-        if not grocery_list and menu_data:
-            logging.info(f"First attempt produced empty grocery list for menu {menu_id}, trying alternate approach")
-            
-            # If we have a JSON string, try to parse it
-            if isinstance(menu_data, str):
-                try:
-                    parsed_data = json.loads(menu_data)
-                    logging.info(f"Successfully parsed menu_data as JSON with keys: {list(parsed_data.keys()) if isinstance(parsed_data, dict) else 'not a dict'}")
-                    grocery_list = aggregate_grocery_list(parsed_data)
-                except json.JSONDecodeError:
-                    logging.error(f"Failed to parse menu data as JSON for menu {menu_id}")
-            
-            # If we have a dict already, try wrapping it
-            elif isinstance(menu_data, dict):
-                logging.info(f"Trying with wrapped menu_data, keys: {list(menu_data.keys())}")
-                grocery_list = aggregate_grocery_list({"meal_plan_json": menu_data})
-        
-        # Still empty? Try one more time with the full menu object
-        if not grocery_list:
-            logging.info(f"Second attempt produced empty grocery list for menu {menu_id}, trying with full menu object")
-            grocery_list = aggregate_grocery_list(menu)
-            
-        # Log debugging info for troubleshooting
-        if not grocery_list:
-            logging.warning(f"All extraction attempts for menu {menu_id} failed to produce a grocery list")
-            
-            # As a last resort, try a direct parse of raw menu data to extract ingredients
+            # Dump full menu data for debugging
+            logging.info(f"Menu {menu_id} data retrieved: meal_plan_json exists: {menu.get('meal_plan_json') is not None}")
+
+            # Print raw menu structure for debugging
+            menu_keys = list(menu.keys()) if menu else []
+            logging.info(f"Menu {menu_id} has these fields: {menu_keys}")
+
+            # Specific debugging for menu 393
+            if menu_id == 393:
+                logging.info(f"SPECIAL HANDLING FOR MENU 393: {json.dumps(menu, default=str)[:1000]}")
+
+                # If we have meal_plan_json, try to log its structure
+                if menu.get('meal_plan_json'):
+                    if isinstance(menu['meal_plan_json'], str):
+                        try:
+                            parsed = json.loads(menu['meal_plan_json'])
+                            logging.info(f"Menu 393 meal_plan_json parsed structure: {list(parsed.keys()) if isinstance(parsed, dict) else 'not a dict'}")
+                        except json.JSONDecodeError:
+                            logging.error("Menu 393 meal_plan_json is not valid JSON")
+                    else:
+                        logging.info(f"Menu 393 meal_plan_json raw type: {type(menu['meal_plan_json'])}")
+
+            # Use meal_plan_json
+            menu_data = menu.get("meal_plan_json")
+
+            # Log raw menu data type
+            logging.info(f"Menu {menu_id} data type: {type(menu_data)}")
+
+            # If menu data is None, try different approaches
+            if menu_data is None:
+                logging.warning(f"Menu {menu_id} has no meal_plan_json or meal_plan data")
+                # Try to use the entire menu object
+                menu_data = menu
+
+            # Try to normalize the menu data for ingredient extraction
             try:
-                logging.info(f"Attempting direct scan of menu data as last resort for menu {menu_id}")
-                
-                # Function to scan any object structure for ingredients
-                def scan_for_ingredients(obj, depth=0, path=""):
-                    """Recursively scan any object structure for ingredients"""
-                    if depth > 10:  # Prevent infinite recursion
-                        return []
-                        
-                    found_ingredients = []
-                    
-                    # Handle arrays
-                    if isinstance(obj, list):
-                        for idx, item in enumerate(obj):
-                            found_ingredients.extend(scan_for_ingredients(item, depth + 1, f"{path}[{idx}]"))
-                        return found_ingredients
-                    
-                    # Handle dictionaries
-                    if isinstance(obj, dict):
-                        # Check for ingredients array
-                        if 'ingredients' in obj and isinstance(obj['ingredients'], list):
-                            logging.info(f"Found ingredients array at {path} with {len(obj['ingredients'])} items")
-                            
-                            for ing in obj['ingredients']:
-                                if isinstance(ing, dict) and 'name' in ing:
-                                    name = ing.get('name', '')
-                                    quantity = ing.get('quantity', '') or ing.get('amount', '')
-                                    if name:
+                # Handle any menu data format - normalize it first
+                logging.info(f"Normalizing menu data for extraction")
+
+                # If menu_data is a string, try to parse it
+                if isinstance(menu_data, str):
+                    try:
+                        menu_data = json.loads(menu_data)
+                    except json.JSONDecodeError:
+                        logging.error(f"Failed to parse menu_data as JSON string")
+
+                # For consistent handling, always try the grocery aggregator first
+                grocery_list = aggregate_grocery_list(menu_data)
+
+            except Exception as e:
+                logging.error(f"Error during extraction: {str(e)}")
+                # Fall back to regular aggregator with raw data
+                grocery_list = aggregate_grocery_list(menu_data)
+
+            # If grocery list is empty, try different approaches
+            if not grocery_list and menu_data:
+                logging.info(f"First attempt produced empty grocery list for menu {menu_id}, trying alternate approach")
+
+                # If we have a JSON string, try to parse it
+                if isinstance(menu_data, str):
+                    try:
+                        parsed_data = json.loads(menu_data)
+                        logging.info(f"Successfully parsed menu_data as JSON with keys: {list(parsed_data.keys()) if isinstance(parsed_data, dict) else 'not a dict'}")
+                        grocery_list = aggregate_grocery_list(parsed_data)
+                    except json.JSONDecodeError:
+                        logging.error(f"Failed to parse menu data as JSON for menu {menu_id}")
+
+                # If we have a dict already, try wrapping it
+                elif isinstance(menu_data, dict):
+                    logging.info(f"Trying with wrapped menu_data, keys: {list(menu_data.keys())}")
+                    grocery_list = aggregate_grocery_list({"meal_plan_json": menu_data})
+
+            # Still empty? Try one more time with the full menu object
+            if not grocery_list:
+                logging.info(f"Second attempt produced empty grocery list for menu {menu_id}, trying with full menu object")
+                grocery_list = aggregate_grocery_list(menu)
+
+            # Log debugging info for troubleshooting
+            if not grocery_list:
+                logging.warning(f"All extraction attempts for menu {menu_id} failed to produce a grocery list")
+
+                # As a last resort, try a direct parse of raw menu data to extract ingredients
+                try:
+                    logging.info(f"Attempting direct scan of menu data as last resort for menu {menu_id}")
+
+                    # Function to scan any object structure for ingredients
+                    def scan_for_ingredients(obj, depth=0, path=""):
+                        """Recursively scan any object structure for ingredients"""
+                        if depth > 10:  # Prevent infinite recursion
+                            return []
+
+                        found_ingredients = []
+
+                        # Handle arrays
+                        if isinstance(obj, list):
+                            for idx, item in enumerate(obj):
+                                found_ingredients.extend(scan_for_ingredients(item, depth + 1, f"{path}[{idx}]"))
+                            return found_ingredients
+
+                        # Handle dictionaries
+                        if isinstance(obj, dict):
+                            # Check for ingredients array
+                            if 'ingredients' in obj and isinstance(obj['ingredients'], list):
+                                logging.info(f"Found ingredients array at {path} with {len(obj['ingredients'])} items")
+
+                                for ing in obj['ingredients']:
+                                    if isinstance(ing, dict) and 'name' in ing:
+                                        name = ing.get('name', '')
+                                        quantity = ing.get('quantity', '') or ing.get('amount', '')
+                                        if name:
+                                            found_ingredients.append({
+                                                "name": f"{quantity} {name}".strip(),
+                                                "quantity": ""
+                                            })
+                                            logging.info(f"Extracted ingredient: {quantity} {name}")
+                                    elif isinstance(ing, str):
                                         found_ingredients.append({
-                                            "name": f"{quantity} {name}".strip(),
+                                            "name": ing,
                                             "quantity": ""
                                         })
-                                        logging.info(f"Extracted ingredient: {quantity} {name}")
-                                elif isinstance(ing, str):
-                                    found_ingredients.append({
-                                        "name": ing,
-                                        "quantity": ""
-                                    })
                                     logging.info(f"Extracted string ingredient: {ing}")
                         
                         # Recursively check all nested objects
                         for key, value in obj.items():
                             if isinstance(value, (dict, list)):
                                 found_ingredients.extend(scan_for_ingredients(value, depth + 1, f"{path}.{key}"))
-                    
-                    return found_ingredients
-                
-                # Try to extract using direct scan
-                direct_ingredients = scan_for_ingredients(menu_data)
-                
-                if direct_ingredients:
-                    logging.info(f"Direct scan found {len(direct_ingredients)} ingredients")
-                    grocery_list = direct_ingredients
-                else:
-                    # If menu_data didn't work, try scanning the whole menu object
-                    logging.info("Trying to scan entire menu object")
-                    direct_ingredients = scan_for_ingredients(menu)
+
+                        return found_ingredients
+
+                    # Try to extract using direct scan
+                    direct_ingredients = scan_for_ingredients(menu_data)
+
                     if direct_ingredients:
-                        logging.info(f"Full menu scan found {len(direct_ingredients)} ingredients")
+                        logging.info(f"Direct scan found {len(direct_ingredients)} ingredients")
                         grocery_list = direct_ingredients
-            except Exception as scan_error:
-                logging.error(f"Error during direct scan: {str(scan_error)}")
-                # If all attempts fail, at least return an empty list
+                    else:
+                        # If menu_data didn't work, try scanning the whole menu object
+                        logging.info("Trying to scan entire menu object")
+                        direct_ingredients = scan_for_ingredients(menu)
+                        if direct_ingredients:
+                            logging.info(f"Full menu scan found {len(direct_ingredients)} ingredients")
+                            grocery_list = direct_ingredients
+                except Exception as scan_error:
+                    logging.error(f"Error during direct scan: {str(scan_error)}")
+                    # If all attempts fail, at least return an empty list
+                    grocery_list = []
+
+            # Make sure grocery_list isn't None
+            if grocery_list is None:
                 grocery_list = []
-        
-        # Make sure grocery_list isn't None
-        if grocery_list is None:
-            grocery_list = []
-            
-        # Ensure all items have proper format
-        formatted_grocery_list = []
-        for item in grocery_list:
-            if isinstance(item, dict) and 'name' in item:
-                # Already in correct format
-                formatted_grocery_list.append(item)
-            elif isinstance(item, str):
-                # Convert string to object format
-                formatted_grocery_list.append({
-                    "name": item,
-                    "quantity": ""
-                })
-            else:
-                # Try to extract name from unknown format
-                try:
-                    name = str(item)
+
+            # Ensure all items have proper format
+            formatted_grocery_list = []
+            for item in grocery_list:
+                if isinstance(item, dict) and 'name' in item:
+                    # Already in correct format
+                    formatted_grocery_list.append(item)
+                elif isinstance(item, str):
+                    # Convert string to object format
                     formatted_grocery_list.append({
-                        "name": name,
+                        "name": item,
                         "quantity": ""
                     })
-                except:
-                    # Skip invalid items
-                    continue
-        
+                else:
+                    # Try to extract name from unknown format
+                    try:
+                        name = str(item)
+                        formatted_grocery_list.append({
+                            "name": name,
+                            "quantity": ""
+                        })
+                    except:
+                        # Skip invalid items
+                        continue
+
             # Log the final grocery list
             grocery_item_count = len(formatted_grocery_list)
             logging.info(f"Generated grocery list with {grocery_item_count} items for menu {menu_id}")
