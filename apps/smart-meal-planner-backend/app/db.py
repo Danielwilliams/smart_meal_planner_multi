@@ -13,15 +13,15 @@ logger = logging.getLogger(__name__)
 # This allows multiple concurrent operations to use separate connections
 try:
     connection_pool = pool.ThreadedConnectionPool(
-        minconn=5,      # Minimum number of connections in the pool
-        maxconn=30,     # Maximum number of connections in the pool
+        minconn=10,     # Minimum number of connections in the pool - increased for better concurrency
+        maxconn=50,     # Maximum number of connections in the pool - increased for concurrent operations
         dbname=DB_NAME,
         user=DB_USER,
         password=DB_PASSWORD,
         host=DB_HOST,
         port=DB_PORT
     )
-    logger.info(f"Database connection pool created with 5-30 connections")
+    logger.info(f"Database connection pool created with 10-50 connections")
 except Exception as e:
     logger.error(f"Failed to create database connection pool: {str(e)}")
     # We'll fall back to direct connections if the pool creation fails
@@ -145,15 +145,13 @@ def save_recipe(user_id, menu_id=None, recipe_id=None, recipe_name=None, day_num
                instructions=None, complexity_level=None, appliance_used=None, servings=None,
                scraped_recipe_id=None, recipe_source=None):
     """Save a recipe or entire menu to user's favorites with complete recipe data"""
-    conn = None
     try:
         logger.info(f"Saving recipe: user={user_id}, menu={menu_id}, recipe={recipe_id}, meal_time={meal_time}, scraped_id={scraped_recipe_id}, source={recipe_source}")
         logger.info(f"With ingredients: {ingredients}")
         logger.info(f"With instructions: {instructions}")
         logger.info(f"With macros: {macros}")
         
-        conn = get_db_connection()
-        with conn.cursor() as cur:
+        with get_db_cursor() as (cur, conn):
             # Check if already saved
             if recipe_source == 'scraped':
                 # For scraped recipes
@@ -306,20 +304,13 @@ def save_recipe(user_id, menu_id=None, recipe_id=None, recipe_name=None, day_num
             return saved_id
     except Exception as e:
         logger.error(f"Error saving recipe: {str(e)}", exc_info=True)
-        if conn:
-            conn.rollback()
         return None
-    finally:
-        if conn:
-            conn.close()
 
 def unsave_recipe(user_id, saved_id=None, menu_id=None, recipe_id=None, meal_time=None, scraped_recipe_id=None):
     """Remove a recipe from saved/favorites"""
-    conn = None
     try:
         logger.info(f"Unsaving recipe: user={user_id}, saved_id={saved_id}, menu={menu_id}, recipe={recipe_id}, scraped={scraped_recipe_id}")
-        conn = get_db_connection()
-        with conn.cursor() as cur:
+        with get_db_cursor() as (cur, conn):
             if saved_id:
                 cur.execute("""
                     DELETE FROM saved_recipes
@@ -396,20 +387,13 @@ def unsave_recipe(user_id, saved_id=None, menu_id=None, recipe_id=None, meal_tim
             return False
     except Exception as e:
         logger.error(f"Error unsaving recipe: {str(e)}", exc_info=True)
-        if conn:
-            conn.rollback()
         return False
-    finally:
-        if conn:
-            conn.close()
 
 def get_user_saved_recipes(user_id):
     """Get all saved recipes for a user"""
-    conn = None
     try:
         logger.info(f"Getting saved recipes for user: {user_id}")
-        conn = get_db_connection()
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        with get_db_cursor() as (cur, conn):
             cur.execute("""
                 SELECT sr.*, m.nickname as menu_nickname, sc.image_url, sc.title as scraped_title,
                        sc.complexity as scraped_complexity, sc.cuisine
@@ -426,17 +410,12 @@ def get_user_saved_recipes(user_id):
     except Exception as e:
         logger.error(f"Error getting saved recipes: {str(e)}", exc_info=True)
         return []
-    finally:
-        if conn:
-            conn.close()
 
 def is_recipe_saved(user_id, menu_id, recipe_id=None, meal_time=None):
     """Check if a recipe is saved by the user"""
-    conn = None
     try:
         logger.info(f"Checking if recipe is saved: user={user_id}, menu={menu_id}, recipe={recipe_id}")
-        conn = get_db_connection()
-        with conn.cursor() as cur:
+        with get_db_cursor(dict_cursor=False) as (cur, conn):
             if recipe_id and meal_time:
                 cur.execute("""
                     SELECT COUNT(*) FROM saved_recipes
@@ -454,17 +433,12 @@ def is_recipe_saved(user_id, menu_id, recipe_id=None, meal_time=None):
     except Exception as e:
         logger.error(f"Error checking if recipe is saved: {str(e)}", exc_info=True)
         return False
-    finally:
-        if conn:
-            conn.close()
 
 def get_saved_recipe_id(user_id, menu_id, recipe_id=None, meal_time=None):
     """Get the saved_id for a recipe if it exists"""
-    conn = None
     try:
         logger.info(f"Getting saved recipe ID: user={user_id}, menu={menu_id}, recipe={recipe_id}")
-        conn = get_db_connection()
-        with conn.cursor() as cur:
+        with get_db_cursor(dict_cursor=False) as (cur, conn):
             if recipe_id and meal_time:
                 cur.execute("""
                     SELECT id FROM saved_recipes
@@ -483,17 +457,12 @@ def get_saved_recipe_id(user_id, menu_id, recipe_id=None, meal_time=None):
     except Exception as e:
         logger.error(f"Error getting saved recipe ID: {str(e)}", exc_info=True)
         return None
-    finally:
-        if conn:
-            conn.close()
 
 def get_saved_recipe_by_id(user_id, saved_id):
     """Get saved recipe details by ID"""
-    conn = None
     try:
         logger.info(f"Getting saved recipe by ID: {saved_id}")
-        conn = get_db_connection()
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        with get_db_cursor() as (cur, conn):
             cur.execute("""
                 SELECT sr.*, m.nickname as menu_nickname
                 FROM saved_recipes sr
@@ -507,17 +476,12 @@ def get_saved_recipe_by_id(user_id, saved_id):
     except Exception as e:
         logger.error(f"Error getting saved recipe by ID: {str(e)}", exc_info=True)
         return None
-    finally:
-        if conn:
-            conn.close()
 
 def track_recipe_interaction(user_id, recipe_id, interaction_type, rating=None):
     """Record user interaction with a recipe"""
-    conn = None
     try:
         logger.info(f"Tracking recipe interaction: user={user_id}, recipe={recipe_id}, type={interaction_type}")
-        conn = get_db_connection()
-        with conn.cursor() as cur:
+        with get_db_cursor(dict_cursor=False) as (cur, conn):
             cur.execute("""
                 INSERT INTO recipe_interactions 
                 (user_id, recipe_id, interaction_type, rating, timestamp)
@@ -530,9 +494,4 @@ def track_recipe_interaction(user_id, recipe_id, interaction_type, rating=None):
             return interaction_id
     except Exception as e:
         logger.error(f"Error tracking recipe interaction: {str(e)}", exc_info=True)
-        if conn:
-            conn.rollback()
         return None
-    finally:
-        if conn:
-            conn.close()
