@@ -8,13 +8,14 @@ from typing import List, Optional, Dict, Any, Set
 from fastapi import APIRouter, HTTPException, Query, Body, Depends, status, BackgroundTasks
 import openai
 from psycopg2.extras import RealDictCursor
-from ..db import get_db_connection
+from ..db import get_db_connection, get_db_cursor
 from sqlalchemy.orm import Session
 from ..config import OPENAI_API_KEY
 from ..models.user import GenerateMealPlanRequest
 from ..models.menus import SaveMenuRequest
 from pydantic import BaseModel
 from ..crud import menu_crud
+import threading
 
 # Define a get_db dependency function since it's not in the db.py file
 def get_db():
@@ -47,6 +48,14 @@ from ..integration.walmart import add_to_cart as add_to_walmart_cart
 from ..db import track_recipe_interaction, is_recipe_saved
 from ..utils.auth_utils import get_user_from_token
 from datetime import datetime
+
+# Concurrency control - limit to 3 concurrent menu generations
+MAX_CONCURRENT_GENERATIONS = 3
+generation_semaphore = asyncio.Semaphore(MAX_CONCURRENT_GENERATIONS)
+
+# Track menu generations by user to prevent duplicates
+active_user_generations = {}
+user_generation_lock = threading.Lock()
 
 # Model for menu sharing requests
 class ShareMenuRequest(BaseModel):
@@ -1055,30 +1064,62 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
 async def start_menu_generation_async(req: GenerateMealPlanRequest, background_tasks: BackgroundTasks):
     """Start menu generation as a background job and return job ID immediately"""
     try:
-        # Generate unique job ID
-        job_id = str(uuid.uuid4())
+        user_id = req.user_id
 
-        # Save initial job status
-        save_job_status(job_id, {
-            "user_id": req.user_id,
-            "client_id": req.for_client_id,
-            "status": "started",
-            "progress": 0,
-            "message": "Starting meal plan generation...",
-            "request_data": req.dict()
-        })
+        # Check if user already has an active generation
+        with user_generation_lock:
+            if user_id in active_user_generations:
+                # Return the existing job ID instead of starting a new one
+                existing_job = active_user_generations[user_id]
+                logger.info(f"User {user_id} already has an active generation job: {existing_job}")
+                return {
+                    "job_id": existing_job,
+                    "status": "already_running",
+                    "message": "You already have a menu generation in progress"
+                }
 
-        # Start background task
-        background_tasks.add_task(generate_menu_background_task, job_id, req)
+        # Check if we're at the maximum concurrent generations
+        if not generation_semaphore.locked():
+            # We have capacity for another generation
+            await generation_semaphore.acquire()
 
-        logger.info(f"Started background menu generation job {job_id} for user {req.user_id}")
+            # Generate unique job ID
+            job_id = str(uuid.uuid4())
 
-        return {
-            "job_id": job_id,
-            "status": "started",
-            "message": "Menu generation started"
-        }
+            # Track this job for the user
+            with user_generation_lock:
+                active_user_generations[user_id] = job_id
 
+            # Save initial job status
+            save_job_status(job_id, {
+                "user_id": req.user_id,
+                "client_id": req.for_client_id,
+                "status": "started",
+                "progress": 0,
+                "message": "Starting meal plan generation...",
+                "request_data": req.dict()
+            })
+
+            # Start background task
+            background_tasks.add_task(generate_menu_background_task, job_id, req)
+
+            logger.info(f"Started background menu generation job {job_id} for user {req.user_id}")
+
+            return {
+                "job_id": job_id,
+                "status": "started",
+                "message": "Menu generation started"
+            }
+        else:
+            # We're at capacity, return a rate limit response
+            logger.warning(f"Rate limit reached for menu generation. User {user_id} will need to wait.")
+            raise HTTPException(
+                status_code=429,
+                detail="Too many concurrent menu generations. Please try again in a few moments."
+            )
+
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to start background menu generation: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -1162,6 +1203,7 @@ async def get_active_jobs_for_user(user_id: int):
 
 async def generate_menu_background_task(job_id: str, req: GenerateMealPlanRequest):
     """Background task that performs the actual menu generation"""
+    conn = None
     try:
         logger.info(f"Background task started for job {job_id}")
 
@@ -1177,25 +1219,100 @@ async def generate_menu_background_task(job_id: str, req: GenerateMealPlanReques
         menu_result = generate_meal_plan_variety(req)
 
         # Update status: Processing complete
-        update_job_status(job_id, {
-            "status": "completed",
-            "progress": 100,
-            "message": "Menu generation completed successfully!",
-            "result_data": menu_result
-        })
+        # Use a new database connection for updating job status
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
 
+        # Convert result data to JSON if needed
+        result_json = json.dumps(menu_result) if menu_result else None
+
+        cursor.execute("""
+            UPDATE menu_generation_jobs
+            SET
+                status = 'completed',
+                progress = 100,
+                message = 'Menu generation completed successfully!',
+                result_data = %s,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE job_id = %s
+        """, (result_json, job_id))
+
+        conn.commit()
         logger.info(f"Background task completed successfully for job {job_id}")
 
     except Exception as e:
         logger.error(f"Background task failed for job {job_id}: {str(e)}", exc_info=True)
 
-        # Update status: Failed
-        update_job_status(job_id, {
-            "status": "failed",
-            "progress": 0,
-            "message": "Menu generation failed",
-            "error_message": str(e)
-        })
+        # Update status: Failed - ensure we use a new connection if the existing one failed
+        if conn is None:
+            try:
+                conn = get_db_connection()
+                cursor = conn.cursor()
+
+                cursor.execute("""
+                    UPDATE menu_generation_jobs
+                    SET
+                        status = 'failed',
+                        progress = 0,
+                        message = 'Menu generation failed',
+                        error_message = %s,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE job_id = %s
+                """, (str(e), job_id))
+
+                conn.commit()
+            except Exception as db_e:
+                logger.error(f"Failed to update job status after error: {str(db_e)}")
+                if conn:
+                    conn.rollback()
+        else:
+            try:
+                cursor = conn.cursor()
+
+                cursor.execute("""
+                    UPDATE menu_generation_jobs
+                    SET
+                        status = 'failed',
+                        progress = 0,
+                        message = 'Menu generation failed',
+                        error_message = %s,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE job_id = %s
+                """, (str(e), job_id))
+
+                conn.commit()
+            except Exception as db_e:
+                logger.error(f"Failed to update job status after error: {str(db_e)}")
+                if conn:
+                    conn.rollback()
+    finally:
+        # Ensure all resources are properly cleaned up
+        if conn:
+            try:
+                conn.close()
+                logger.debug(f"Connection closed in background task for job {job_id}")
+            except Exception as e:
+                logger.warning(f"Error closing connection in background task: {str(e)}")
+
+        # Clean up concurrency controls
+        try:
+            # Remove user from active generations tracking
+            with user_generation_lock:
+                user_id = req.user_id
+                if user_id in active_user_generations and active_user_generations[user_id] == job_id:
+                    del active_user_generations[user_id]
+                    logger.info(f"Removed user {user_id} from active generations tracking")
+
+            # Release semaphore to allow another generation to start
+            generation_semaphore.release()
+            logger.info(f"Released generation semaphore for job {job_id}")
+        except Exception as e:
+            logger.error(f"Error cleaning up concurrency controls: {str(e)}")
+            # Still try to release the semaphore even if there was an error
+            try:
+                generation_semaphore.release()
+            except:
+                pass
 
 @router.get("/latest/{user_id}")
 def get_latest_menu(user_id: int):

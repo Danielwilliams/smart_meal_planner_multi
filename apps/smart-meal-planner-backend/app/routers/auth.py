@@ -247,15 +247,17 @@ async def resend_verification_email(request: ResendVerificationRequest, backgrou
 
 @router.post("/login")
 async def login(user_data: UserLogin):
+    conn = None
+    cursor = None
     try:
         conn = get_db_connection()
-        print("DB connection established")
+        logger.info("DB connection established")
         cursor = conn.cursor()
-        print("Cursor created")
-        
+        logger.info("Cursor created")
+
         # Updated query to include verified status
         cursor.execute("""
-            SELECT 
+            SELECT
                 id,
                 email,
                 name,
@@ -266,27 +268,25 @@ async def login(user_data: UserLogin):
                 has_shopping_list,
                 verified,
                 account_type
-            FROM user_profiles 
+            FROM user_profiles
             WHERE email = %s
         """, (user_data.email,))
 
-        print("Query executed, checking results")
-        
+        logger.info("Query executed, checking results")
+
         user = cursor.fetchone()
 
-        print(f"User found: {bool(user)}")
-        
+        logger.info(f"User found: {bool(user)}")
+
         if not user:
             raise HTTPException(
                 status_code=401,
                 detail="Invalid email or password"
             )
 
-
-
         # Unpack user data (added verified at the end)
         user_id, email, name, stored_hash, profile_complete, has_prefs, has_menu, has_list, verified, account_type = user
-        
+
         # Check if email is verified
         if not verified:
             raise HTTPException(
@@ -294,7 +294,7 @@ async def login(user_data: UserLogin):
                 detail="Please verify your email before logging in"
             )
 
-        print("Verifying password")
+        logger.info("Verifying password")
 
         # Verify password
         if not bcrypt.checkpw(user_data.password.encode('utf-8'), stored_hash.encode('utf-8')):
@@ -303,17 +303,15 @@ async def login(user_data: UserLogin):
                 detail="Invalid email or password"
             )
 
-
-
         # Update last login timestamp
         cursor.execute("""
-            UPDATE user_profiles 
-            SET last_login = CURRENT_TIMESTAMP 
+            UPDATE user_profiles
+            SET last_login = CURRENT_TIMESTAMP
             WHERE id = %s
         """, (user_id,))
         conn.commit()
 
-        print("Generating token")
+        logger.info("Generating token")
 
         # Generate JWT token
         token_payload = {
@@ -324,10 +322,10 @@ async def login(user_data: UserLogin):
             "account_type": account_type,
             "exp": datetime.utcnow() + timedelta(hours=12)
         }
-        
+
         token = jwt.encode(token_payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
-        print("Token generated, returning response")
+        logger.info("Token generated, returning response")
 
         # Return successful response
         return {
@@ -349,13 +347,29 @@ async def login(user_data: UserLogin):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Login error: {str(e)}")  # Add logging
+        logger.error(f"Login error: {str(e)}")  # Add logging
+        if conn:
+            try:
+                conn.rollback()
+            except Exception as rb_e:
+                logger.error(f"Failed to rollback transaction: {str(rb_e)}")
         raise HTTPException(
             status_code=500,
             detail=f"Internal server error: {str(e)}"
         )
     finally:
-        cursor.close()
+        if cursor:
+            try:
+                cursor.close()
+                logger.debug("Cursor closed successfully")
+            except Exception as e:
+                logger.warning(f"Error closing cursor: {str(e)}")
+        if conn:
+            try:
+                conn.close()
+                logger.debug("Connection closed successfully")
+            except Exception as e:
+                logger.warning(f"Error closing connection: {str(e)}")
 
 @router.get("/account-info")
 @router.post("/account-info") 

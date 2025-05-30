@@ -2,7 +2,7 @@ import json
 import traceback
 from fastapi import APIRouter, HTTPException
 from psycopg2.extras import RealDictCursor
-from ..db import get_db_connection
+from ..db import get_db_connection, get_db_cursor
 from ..models.user import PreferencesUpdate
 import logging
 
@@ -15,35 +15,32 @@ router = APIRouter(prefix="/preferences", tags=["Preferences"])
 
 @router.get("/{id}")
 def get_user_preferences(id: int):
-    conn = None
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-
-        cursor.execute("""
-            SELECT 
-                diet_type,
-                dietary_restrictions,
-                disliked_ingredients,
-                recipe_type,
-                macro_protein,
-                macro_carbs,
-                macro_fat,
-                calorie_goal,
-                meal_times,
-                appliances,
-                prep_complexity,
-                servings_per_meal,
-                snacks_per_day,
-                flavor_preferences,
-                spice_level,
-                recipe_type_preferences,
-                meal_time_preferences,
-                time_constraints,
-                prep_preferences
-            FROM user_profiles
-            WHERE id = %s
-        """, (id,))
+        with get_db_cursor(dict_cursor=True) as (cursor, conn):
+            cursor.execute("""
+                SELECT
+                    diet_type,
+                    dietary_restrictions,
+                    disliked_ingredients,
+                    recipe_type,
+                    macro_protein,
+                    macro_carbs,
+                    macro_fat,
+                    calorie_goal,
+                    meal_times,
+                    appliances,
+                    prep_complexity,
+                    servings_per_meal,
+                    snacks_per_day,
+                    flavor_preferences,
+                    spice_level,
+                    recipe_type_preferences,
+                    meal_time_preferences,
+                    time_constraints,
+                    prep_preferences
+                FROM user_profiles
+                WHERE id = %s
+            """, (id,))
 
         preferences = cursor.fetchone()
 
@@ -217,12 +214,9 @@ def get_user_preferences(id: int):
     except Exception as e:
         logger.error(f"Error fetching preferences: {str(e)}", exc_info=True)
         raise HTTPException(
-            status_code=500, 
+            status_code=500,
             detail=f"Internal server error: {str(e)}"
         )
-    finally:
-        if conn:
-            conn.close()
 
 @router.put("/{id}")
 async def update_preferences(id: int, preferences: PreferencesUpdate):
@@ -237,120 +231,112 @@ async def update_preferences(id: int, preferences: PreferencesUpdate):
         if hasattr(preferences, 'spiceLevel'):
             logger.debug(f"SpiceLevel value: {preferences.spiceLevel}")
 
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        
-        update_fields = []
-        params = []
+        with get_db_cursor(dict_cursor=True) as (cursor, conn):
+            update_fields = []
+            params = []
 
-        # Handle each field that might be updated
-        if preferences.diet_type is not None:
-            update_fields.append("diet_type = %s")
-            params.append(preferences.diet_type)
-        
-        if preferences.dietary_restrictions is not None:
-            update_fields.append("dietary_restrictions = %s")
-            params.append(preferences.dietary_restrictions)
-        
-        if preferences.disliked_ingredients is not None:
-            update_fields.append("disliked_ingredients = %s")
-            params.append(preferences.disliked_ingredients)
-        
-        if preferences.recipe_type is not None:
-            update_fields.append("recipe_type = %s")
-            params.append(preferences.recipe_type)
-        
-        if preferences.meal_times is not None:
-            meal_times_data = preferences.meal_times
-            update_fields.append("meal_times = %s::jsonb")
-            params.append(json.dumps(meal_times_data))
-        
-        if preferences.macro_protein is not None:
-            update_fields.append("macro_protein = %s")
-            params.append(preferences.macro_protein)
-        
-        if preferences.macro_carbs is not None:
-            update_fields.append("macro_carbs = %s")
-            params.append(preferences.macro_carbs)
-        
-        if preferences.macro_fat is not None:
-            update_fields.append("macro_fat = %s")
-            params.append(preferences.macro_fat)
-        
-        if preferences.calorie_goal is not None:
-            update_fields.append("calorie_goal = %s")
-            params.append(preferences.calorie_goal)
+            # Handle each field that might be updated
+            if preferences.diet_type is not None:
+                update_fields.append("diet_type = %s")
+                params.append(preferences.diet_type)
 
-                # Add new fields
-        if preferences.appliances is not None:
-            update_fields.append("appliances = %s::jsonb")
-            params.append(json.dumps(preferences.appliances))
-        
-        if preferences.prep_complexity is not None:
-            update_fields.append("prep_complexity = %s")
-            params.append(preferences.prep_complexity)
+            if preferences.dietary_restrictions is not None:
+                update_fields.append("dietary_restrictions = %s")
+                params.append(preferences.dietary_restrictions)
 
-        if preferences.servings_per_meal is not None:
-            update_fields.append("servings_per_meal = %s")
-            params.append(preferences.servings_per_meal)
+            if preferences.disliked_ingredients is not None:
+                update_fields.append("disliked_ingredients = %s")
+                params.append(preferences.disliked_ingredients)
 
-        # Add snacks_per_day field to the update query
-        if preferences.snacks_per_day is not None:
-            update_fields.append("snacks_per_day = %s")
-            params.append(preferences.snacks_per_day)
-            
-        # New preference fields
-        if preferences.flavor_preferences is not None:
-            update_fields.append("flavor_preferences = %s::jsonb")
-            params.append(json.dumps(preferences.flavor_preferences))
+            if preferences.recipe_type is not None:
+                update_fields.append("recipe_type = %s")
+                params.append(preferences.recipe_type)
 
-        if hasattr(preferences, 'spice_level') and preferences.spice_level is not None:
-            update_fields.append("spice_level = %s")
-            params.append(preferences.spice_level)
-            
-        if preferences.recipe_type_preferences is not None:
-            update_fields.append("recipe_type_preferences = %s::jsonb")
-            params.append(json.dumps(preferences.recipe_type_preferences))
-            
-        if preferences.meal_time_preferences is not None:
-            update_fields.append("meal_time_preferences = %s::jsonb")
-            params.append(json.dumps(preferences.meal_time_preferences))
-            
-        if preferences.time_constraints is not None:
-            update_fields.append("time_constraints = %s::jsonb")
-            params.append(json.dumps(preferences.time_constraints))
-            
-        if preferences.prep_preferences is not None:
-            update_fields.append("prep_preferences = %s::jsonb")
-            params.append(json.dumps(preferences.prep_preferences))
-        
-        # Add id to params
-        params.append(id)
-        
-        if update_fields:
-            query = f"""
-            UPDATE user_profiles 
-            SET {', '.join(update_fields)}
-            WHERE id = %s
-            RETURNING id
-            """
-            
-            cursor.execute(query, params)
-            conn.commit()
-            
-            if cursor.rowcount == 0:
-                raise HTTPException(status_code=404, detail="User not found")
-        
-        return {"status": "success", "message": "Preferences updated successfully"}
-    
+            if preferences.meal_times is not None:
+                meal_times_data = preferences.meal_times
+                update_fields.append("meal_times = %s::jsonb")
+                params.append(json.dumps(meal_times_data))
+
+            if preferences.macro_protein is not None:
+                update_fields.append("macro_protein = %s")
+                params.append(preferences.macro_protein)
+
+            if preferences.macro_carbs is not None:
+                update_fields.append("macro_carbs = %s")
+                params.append(preferences.macro_carbs)
+
+            if preferences.macro_fat is not None:
+                update_fields.append("macro_fat = %s")
+                params.append(preferences.macro_fat)
+
+            if preferences.calorie_goal is not None:
+                update_fields.append("calorie_goal = %s")
+                params.append(preferences.calorie_goal)
+
+            # Add new fields
+            if preferences.appliances is not None:
+                update_fields.append("appliances = %s::jsonb")
+                params.append(json.dumps(preferences.appliances))
+
+            if preferences.prep_complexity is not None:
+                update_fields.append("prep_complexity = %s")
+                params.append(preferences.prep_complexity)
+
+            if preferences.servings_per_meal is not None:
+                update_fields.append("servings_per_meal = %s")
+                params.append(preferences.servings_per_meal)
+
+            # Add snacks_per_day field to the update query
+            if preferences.snacks_per_day is not None:
+                update_fields.append("snacks_per_day = %s")
+                params.append(preferences.snacks_per_day)
+
+            # New preference fields
+            if preferences.flavor_preferences is not None:
+                update_fields.append("flavor_preferences = %s::jsonb")
+                params.append(json.dumps(preferences.flavor_preferences))
+
+            if hasattr(preferences, 'spice_level') and preferences.spice_level is not None:
+                update_fields.append("spice_level = %s")
+                params.append(preferences.spice_level)
+
+            if preferences.recipe_type_preferences is not None:
+                update_fields.append("recipe_type_preferences = %s::jsonb")
+                params.append(json.dumps(preferences.recipe_type_preferences))
+
+            if preferences.meal_time_preferences is not None:
+                update_fields.append("meal_time_preferences = %s::jsonb")
+                params.append(json.dumps(preferences.meal_time_preferences))
+
+            if preferences.time_constraints is not None:
+                update_fields.append("time_constraints = %s::jsonb")
+                params.append(json.dumps(preferences.time_constraints))
+
+            if preferences.prep_preferences is not None:
+                update_fields.append("prep_preferences = %s::jsonb")
+                params.append(json.dumps(preferences.prep_preferences))
+
+            # Add id to params
+            params.append(id)
+
+            if update_fields:
+                query = f"""
+                UPDATE user_profiles
+                SET {', '.join(update_fields)}
+                WHERE id = %s
+                RETURNING id
+                """
+
+                cursor.execute(query, params)
+                conn.commit()
+
+                if cursor.rowcount == 0:
+                    raise HTTPException(status_code=404, detail="User not found")
+
+            return {"status": "success", "message": "Preferences updated successfully"}
+
     except HTTPException:
         raise
     except Exception as e:
-        conn.rollback()
-        print(f"Error updating preferences: {e}")
-        print(traceback.format_exc())
+        logger.error(f"Error updating preferences: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error updating preferences: {str(e)}")
-    
-    finally:
-        if conn:
-            conn.close()

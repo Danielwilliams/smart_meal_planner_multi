@@ -2,6 +2,7 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 from fastapi import HTTPException
 import logging
+from contextlib import contextmanager
 from app.config import RECAPTCHA_SECRET_KEY, DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, DB_PORT
 
 # Set up logging
@@ -32,6 +33,54 @@ def get_db_connection():
             status_code=500,
             detail="An unexpected error occurred while connecting to database."
         )
+
+@contextmanager
+def get_db_cursor(dict_cursor=True):
+    """
+    Context manager for safely handling database connections and cursors.
+
+    Usage:
+    ```
+    with get_db_cursor() as (cursor, conn):
+        cursor.execute("SELECT * FROM table")
+        results = cursor.fetchall()
+        conn.commit()  # if needed
+    ```
+
+    Args:
+        dict_cursor (bool): If True, uses RealDictCursor, otherwise uses regular cursor
+
+    Yields:
+        tuple: (cursor, connection) tuple for use in the with block
+    """
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        if dict_cursor:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+        else:
+            cursor = conn.cursor()
+        yield cursor, conn
+    except Exception as e:
+        logger.error(f"Database error in context manager: {str(e)}", exc_info=True)
+        if conn:
+            conn.rollback()
+        raise
+    finally:
+        if cursor:
+            try:
+                cursor.close()
+                logger.debug("Database cursor closed successfully")
+            except Exception as e:
+                logger.warning(f"Error closing cursor: {str(e)}")
+
+        if conn:
+            try:
+                conn.close()
+                logger.debug("Database connection closed successfully")
+            except Exception as e:
+                logger.warning(f"Error closing connection: {str(e)}")
 
 def save_recipe(user_id, menu_id=None, recipe_id=None, recipe_name=None, day_number=None, 
                meal_time=None, notes=None, macros=None, ingredients=None, 
