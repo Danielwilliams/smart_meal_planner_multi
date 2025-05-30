@@ -319,6 +319,8 @@ else:
 # Background Job Management Functions
 def save_job_status(job_id: str, status_data: dict):
     """Save job status to database"""
+    conn = None
+    cursor = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -344,15 +346,31 @@ def save_job_status(job_id: str, status_data: dict):
         ))
 
         conn.commit()
-        cursor.close()
-        conn.close()
         logger.info(f"Saved job status for {job_id}: {status_data.get('status')} ({status_data.get('progress')}%)")
 
     except Exception as e:
         logger.error(f"Failed to save job status for {job_id}: {str(e)}")
+        if conn:
+            try:
+                conn.rollback()
+            except Exception as rb_e:
+                logger.error(f"Failed to rollback transaction: {str(rb_e)}")
+    finally:
+        if cursor:
+            try:
+                cursor.close()
+            except Exception as e:
+                logger.warning(f"Error closing cursor: {str(e)}")
+        if conn:
+            try:
+                conn.close()
+            except Exception as e:
+                logger.warning(f"Error closing connection: {str(e)}")
 
 def update_job_status(job_id: str, status_data: dict):
     """Update existing job status"""
+    conn = None
+    cursor = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -374,7 +392,11 @@ def update_job_status(job_id: str, status_data: dict):
 
         if 'result_data' in status_data:
             update_fields.append("result_data = %s")
-            update_values.append(json.dumps(status_data['result_data']))
+            # Make sure result_data is properly serialized
+            result_data = status_data['result_data']
+            if isinstance(result_data, (dict, list, tuple)):
+                result_data = json.dumps(result_data)
+            update_values.append(result_data)
 
         if 'error_message' in status_data:
             update_fields.append("error_message = %s")
@@ -393,15 +415,31 @@ def update_job_status(job_id: str, status_data: dict):
             cursor.execute(query, update_values)
             conn.commit()
 
-        cursor.close()
-        conn.close()
         logger.info(f"Updated job {job_id}: {status_data.get('status')} ({status_data.get('progress')}%)")
 
     except Exception as e:
         logger.error(f"Failed to update job status for {job_id}: {str(e)}")
+        if conn:
+            try:
+                conn.rollback()
+            except Exception as rb_e:
+                logger.error(f"Failed to rollback transaction: {str(rb_e)}")
+    finally:
+        if cursor:
+            try:
+                cursor.close()
+            except Exception as e:
+                logger.warning(f"Error closing cursor: {str(e)}")
+        if conn:
+            try:
+                conn.close()
+            except Exception as e:
+                logger.warning(f"Error closing connection: {str(e)}")
 
 def get_job_status_from_database(job_id: str) -> Optional[dict]:
     """Retrieve job status from database"""
+    conn = None
+    cursor = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -414,23 +452,34 @@ def get_job_status_from_database(job_id: str) -> Optional[dict]:
         """, (job_id,))
 
         row = cursor.fetchone()
-        cursor.close()
-        conn.close()
 
         if row:
             result = dict(row)
             # Parse JSON fields
-            if result['result_data']:
+            if result['result_data'] and isinstance(result['result_data'], str):
                 try:
                     result['result_data'] = json.loads(result['result_data'])
-                except:
-                    result['result_data'] = None
+                except Exception as json_e:
+                    logger.warning(f"Failed to parse result_data JSON for job {job_id}: {str(json_e)}")
+                    # Keep the string value instead of setting to None
+                    # This way we don't lose the data even if it's not valid JSON
             return result
         return None
 
     except Exception as e:
         logger.error(f"Failed to get job status for {job_id}: {str(e)}")
         return None
+    finally:
+        if cursor:
+            try:
+                cursor.close()
+            except Exception as e:
+                logger.warning(f"Error closing cursor: {str(e)}")
+        if conn:
+            try:
+                conn.close()
+            except Exception as e:
+                logger.warning(f"Error closing connection: {str(e)}")
 
 def merge_preference(db_value, req_value, default=None):
     """Helper function to merge preferences with precedence to request parameters"""
