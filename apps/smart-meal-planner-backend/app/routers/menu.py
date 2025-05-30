@@ -10,34 +10,12 @@ from fastapi import APIRouter, HTTPException, Query, Body, Depends, status, Back
 import openai
 from psycopg2.extras import RealDictCursor
 from ..db import get_db_connection, get_db_cursor
-from sqlalchemy.orm import Session
 from ..config import OPENAI_API_KEY
 from ..models.user import GenerateMealPlanRequest
 from ..models.menus import SaveMenuRequest
 from pydantic import BaseModel
 from ..crud import menu_crud
 import threading
-
-# Define a get_db dependency function since it's not in the db.py file
-def get_db():
-    """SQLAlchemy db session dependency for FastAPI"""
-    from sqlalchemy.orm import sessionmaker
-    from sqlalchemy import create_engine
-    from ..config import DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, DB_PORT
-
-    # Create engine
-    DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-    engine = create_engine(DATABASE_URL)
-
-    # Create session
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-    # Create and yield session for use in endpoint
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 import logging
 from ..utils.grocery_aggregator import aggregate_grocery_list
 
