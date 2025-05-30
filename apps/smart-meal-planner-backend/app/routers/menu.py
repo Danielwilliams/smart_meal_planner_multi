@@ -2115,14 +2115,13 @@ async def share_menu_with_client(
                     "shared": True,
                     "message": "Menu shared successfully"
                 }
-                
+
+        except Exception as e:
+            logger.error(f"Error sharing menu with client: {str(e)}", exc_info=True)
+            raise HTTPException(status_code=500, detail=str(e))
         finally:
             cursor.close()
             conn.close()
-            
-    except Exception as e:
-        logger.error(f"Error sharing menu with client: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/for-client/{client_id}")
 async def get_menus_for_client(
