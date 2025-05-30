@@ -85,7 +85,7 @@ def get_db_cursor(dict_cursor=True):
     pooled = False
     try:
         # Get connection from pool or directly
-        logger.info("Attempting to connect to database at " + DB_HOST + ":" + DB_PORT)
+        logger.info(f"Attempting to connect to database at {DB_HOST}:{DB_PORT}")
         conn = get_db_connection()
         pooled = connection_pool is not None
 
