@@ -1131,12 +1131,11 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest, job_id: str = None)
 # Background Job Endpoints
 @router.post("/generate-async")
 async def start_menu_generation_async(req: GenerateMealPlanRequest, background_tasks: BackgroundTasks):
-    """Run entire menu generation in thread pool immediately to prevent any blocking"""
-    import asyncio
-    import concurrent.futures
+    """Use Python threading to completely isolate menu generation from FastAPI"""
+    import threading
     
     try:
-        logger.info(f"THREAD POOL: Starting immediate thread pool execution for user {req.user_id}")
+        logger.info(f"PYTHON THREADING: Starting menu generation for user {req.user_id}")
         
         # Generate unique job ID for tracking
         job_id = str(uuid.uuid4())
@@ -1153,16 +1152,21 @@ async def start_menu_generation_async(req: GenerateMealPlanRequest, background_t
                 "last_updated": datetime.utcnow()
             }
         
-        # Use asyncio.create_task to run the thread pool execution concurrently
-        # This ensures it runs in background without blocking the response
-        task = asyncio.create_task(run_generation_in_thread_pool_task(job_id, req))
+        # Start generation in a completely separate Python thread
+        # This should be completely isolated from FastAPI
+        thread = threading.Thread(
+            target=run_generation_in_python_thread,
+            args=(job_id, req),
+            daemon=True  # Dies when main process dies
+        )
+        thread.start()
         
-        logger.info(f"THREAD POOL: Task created for job {job_id}, returning immediately")
+        logger.info(f"PYTHON THREADING: Started thread for job {job_id}, returning immediately")
         
         return {
             "job_id": job_id,
             "status": "started", 
-            "message": "Menu generation started in thread pool"
+            "message": "Menu generation started in Python thread"
         }
         
     except Exception as e:
@@ -1321,6 +1325,54 @@ async def cancel_menu_generation_job(job_id: str, user=Depends(get_user_from_tok
     except Exception as e:
         logger.error(f"Failed to cancel job {job_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+def run_generation_in_python_thread(job_id: str, req: GenerateMealPlanRequest):
+    """Run the entire menu generation process in a completely separate Python thread"""
+    try:
+        logger.info(f"PYTHON THREADING: Executing job {job_id} in separate thread")
+        
+        # Update status to generating
+        with _status_cache_lock:
+            if job_id in _job_status_cache:
+                _job_status_cache[job_id].update({
+                    "status": "generating",
+                    "progress": 10,
+                    "message": "Running in Python thread...",
+                    "last_updated": datetime.utcnow()
+                })
+        
+        # Run the ENTIRE generation process in this thread
+        # This should be completely isolated from FastAPI event loop
+        logger.info(f"PYTHON THREADING: Calling generate_meal_plan_variety for job {job_id}")
+        result = generate_meal_plan_variety(req, job_id)
+        logger.info(f"PYTHON THREADING: Generation completed for job {job_id}")
+        
+        # Update status to completed
+        with _status_cache_lock:
+            if job_id in _job_status_cache:
+                _job_status_cache[job_id].update({
+                    "status": "completed",
+                    "progress": 100,
+                    "message": "Menu generation completed successfully!",
+                    "result_data": result,
+                    "last_updated": datetime.utcnow()
+                })
+        
+        logger.info(f"PYTHON THREADING: Job {job_id} completed successfully")
+        
+    except Exception as e:
+        logger.error(f"PYTHON THREADING: Job {job_id} failed: {str(e)}", exc_info=True)
+        
+        # Update status to failed
+        with _status_cache_lock:
+            if job_id in _job_status_cache:
+                _job_status_cache[job_id].update({
+                    "status": "failed",
+                    "progress": 0,
+                    "message": "Menu generation failed",
+                    "error_message": str(e),
+                    "last_updated": datetime.utcnow()
+                })
 
 async def run_generation_in_thread_pool_task(job_id: str, req: GenerateMealPlanRequest):
     """Async task that runs the entire menu generation process in a thread pool"""
