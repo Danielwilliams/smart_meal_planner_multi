@@ -29,8 +29,8 @@ from ..db import track_recipe_interaction, is_recipe_saved
 from ..utils.auth_utils import get_user_from_token
 from datetime import datetime
 
-# Concurrency control - limit to 3 concurrent menu generations
-MAX_CONCURRENT_GENERATIONS = 3
+# Concurrency control - increased limit for better user experience
+MAX_CONCURRENT_GENERATIONS = 10  # Increased from 3 to allow more concurrent users
 generation_semaphore = asyncio.Semaphore(MAX_CONCURRENT_GENERATIONS)
 
 # Track menu generations by user to prevent duplicates
@@ -1222,10 +1222,36 @@ async def get_menu_generation_status(job_id: str):
 
 @router.get("/active-jobs/{user_id}")
 async def get_active_jobs_for_user(user_id: int):
-    """Get any active menu generation jobs for a user"""
-    # Use the context manager for safer database operations
-    with get_db_cursor(dict_cursor=True) as (cursor, conn):
-        try:
+    """Get any active menu generation jobs for a user with optimized caching"""
+    try:
+        # First check in-memory cache for active jobs (much faster)
+        active_from_cache = []
+        with _status_cache_lock:
+            for job_id, job_data in _job_status_cache.items():
+                if (job_data.get('user_id') == user_id and 
+                    job_data.get('status') in ['started', 'generating', 'processing']):
+                    active_from_cache.append({
+                        "job_id": job_id,
+                        "status": job_data.get('status'),
+                        "progress": job_data.get('progress'),
+                        "message": job_data.get('message'),
+                        "created_at": job_data.get('created_at').isoformat() if job_data.get('created_at') else None,
+                        "updated_at": job_data.get('last_updated').isoformat() if job_data.get('last_updated') else None,
+                    })
+        
+        # If we found active jobs in cache, return them immediately (faster response during generation)
+        if active_from_cache:
+            return {
+                "active_jobs": active_from_cache,
+                "has_active_jobs": True,
+                "source": "cache"  # Debug info
+            }
+        
+        # Fall back to database query for comprehensive check
+        with get_db_cursor(dict_cursor=True) as (cursor, conn):
+            # Enable autocommit for faster read operations during generation
+            conn.autocommit = True
+            
             cursor.execute("""
                 SELECT job_id, status, progress, message, created_at, updated_at
                 FROM menu_generation_jobs
@@ -1252,11 +1278,64 @@ async def get_active_jobs_for_user(user_id: int):
 
             return {
                 "active_jobs": jobs,
-                "has_active_jobs": len(jobs) > 0
+                "has_active_jobs": len(jobs) > 0,
+                "source": "database"  # Debug info
             }
-        except Exception as e:
-            logger.error(f"Failed to get active jobs for user {user_id}: {str(e)}")
-            raise HTTPException(status_code=500, detail=str(e))
+            
+    except Exception as e:
+        logger.error(f"Failed to get active jobs for user {user_id}: {str(e)}")
+        # Return empty result instead of error to avoid blocking UI
+        return {
+            "active_jobs": [],
+            "has_active_jobs": False,
+            "error": str(e)
+        }
+
+@router.post("/cancel-job/{job_id}")
+async def cancel_menu_generation_job(job_id: str, user=Depends(get_user_from_token)):
+    """Cancel an active menu generation job"""
+    try:
+        if not user:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        
+        user_id = user.get('user_id')
+        
+        # Check if this job belongs to the user
+        with _status_cache_lock:
+            job_data = _job_status_cache.get(job_id)
+            if not job_data or job_data.get('user_id') != user_id:
+                # Also check database for older jobs
+                status = get_job_status_from_database(job_id)
+                if not status or status.get('user_id') != user_id:
+                    raise HTTPException(status_code=404, detail="Job not found or access denied")
+        
+        # Update job status to cancelled
+        batch_update_job_status(job_id, {
+            "status": "cancelled",
+            "progress": 0,
+            "message": "Job cancelled by user",
+        }, force_db_update=True)  # Force database write for cancellation
+        
+        # Clean up user tracking
+        with user_generation_lock:
+            if user_id in active_user_generations and active_user_generations[user_id] == job_id:
+                del active_user_generations[user_id]
+                logger.info(f"Cleaned up cancelled job {job_id} for user {user_id}")
+        
+        # Clean up cache
+        cleanup_job_cache(job_id)
+        
+        return {
+            "success": True,
+            "message": "Job cancelled successfully",
+            "job_id": job_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to cancel job {job_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 async def generate_menu_background_task(job_id: str, req: GenerateMealPlanRequest):
     """Background task that performs the actual menu generation with minimal DB connections"""
@@ -2710,4 +2789,30 @@ async def get_database_connection_stats():
     except Exception as e:
         logger.error(f"Error getting database stats: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/debug/concurrency")
+async def get_concurrency_debug_info():
+    """Get current concurrency state for debugging blocking issues"""
+    try:
+        with _status_cache_lock:
+            cached_jobs = list(_job_status_cache.keys())
+        
+        with user_generation_lock:
+            active_users = dict(active_user_generations)
+        
+        # Check semaphore availability
+        available_slots = generation_semaphore._value if hasattr(generation_semaphore, '_value') else "unknown"
+        
+        return {
+            "max_concurrent_generations": MAX_CONCURRENT_GENERATIONS,
+            "available_semaphore_slots": available_slots,
+            "cached_job_count": len(cached_jobs),
+            "active_user_generations": active_users,
+            "cached_job_ids": cached_jobs[:5],  # First 5 for debugging
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting concurrency debug info: {str(e)}")
+        return {"error": str(e)}
 
