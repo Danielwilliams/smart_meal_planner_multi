@@ -1131,66 +1131,28 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest, job_id: str = None)
 # Background Job Endpoints
 @router.post("/generate-async")
 async def start_menu_generation_async(req: GenerateMealPlanRequest, background_tasks: BackgroundTasks):
-    """Start menu generation as a background job and return job ID immediately"""
+    """TEMPORARY: Make this synchronous to test concurrency issues"""
     try:
-        user_id = req.user_id
-
-        # Check if user already has an active generation
-        with user_generation_lock:
-            if user_id in active_user_generations:
-                # Return the existing job ID instead of starting a new one
-                existing_job = active_user_generations[user_id]
-                logger.info(f"User {user_id} already has an active generation job: {existing_job}")
-                return {
-                    "job_id": existing_job,
-                    "status": "already_running",
-                    "message": "You already have a menu generation in progress"
-                }
-
-        # Check if we're at the maximum concurrent generations
-        if not generation_semaphore.locked():
-            # We have capacity for another generation
-            await generation_semaphore.acquire()
-
-            # Generate unique job ID
-            job_id = str(uuid.uuid4())
-
-            # Track this job for the user
-            with user_generation_lock:
-                active_user_generations[user_id] = job_id
-
-            # Save initial job status
-            save_job_status(job_id, {
-                "user_id": req.user_id,
-                "client_id": req.for_client_id,
-                "status": "started",
-                "progress": 0,
-                "message": "Starting meal plan generation...",
-                "request_data": req.dict()
-            })
-
-            # Start background task
-            background_tasks.add_task(generate_menu_background_task, job_id, req)
-
-            logger.info(f"Started background menu generation job {job_id} for user {req.user_id}")
-
-            return {
-                "job_id": job_id,
-                "status": "started",
-                "message": "Menu generation started"
-            }
-        else:
-            # We're at capacity, return a rate limit response
-            logger.warning(f"Rate limit reached for menu generation. User {user_id} will need to wait.")
-            raise HTTPException(
-                status_code=429,
-                detail="Too many concurrent menu generations. Please try again in a few moments."
-            )
-
+        logger.info(f"TESTING: Making synchronous call instead of background task for user {req.user_id}")
+        
+        # Call the synchronous generation function directly
+        result = generate_meal_plan_variety(req, job_id=None)
+        
+        logger.info(f"TESTING: Synchronous generation completed for user {req.user_id}")
+        
+        # Return a fake job response that mimics completed status
+        fake_job_id = str(uuid.uuid4())
+        return {
+            "job_id": fake_job_id,
+            "status": "completed",
+            "message": "Menu generation completed synchronously",
+            "result": result
+        }
+        
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to start background menu generation: {str(e)}")
+        logger.error(f"Failed to start synchronous menu generation: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/job-status/{job_id}")
