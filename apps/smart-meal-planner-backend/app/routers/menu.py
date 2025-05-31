@@ -551,6 +551,11 @@ def get_prep_complexity_level(complexity_value):
 def generate_meal_plan_variety(req: GenerateMealPlanRequest, job_id: str = None):
     """Generate a meal plan based on user preferences and requirements"""
     try:
+        import threading
+        current_thread = threading.current_thread()
+        logger.info(f"THREAD_EXECUTION_DEBUG: generate_meal_plan_variety called on thread: {current_thread.name} (ID: {current_thread.ident})")
+        logger.info(f"THREAD_EXECUTION_DEBUG: Job ID: {job_id}, User ID: {req.user_id}")
+        
         if req.duration_days < 1 or req.duration_days > 7:
             raise HTTPException(400, "duration_days must be between 1 and 7")
 
@@ -958,6 +963,12 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest, job_id: str = None)
                     # Progressive timeout reduction: 2min, 90s, 60s for retries
                     timeout = max(60, 120 - (attempt * 30))
                     
+                    # Debug which thread OpenAI call is happening on
+                    import threading
+                    current_thread = threading.current_thread()
+                    logger.info(f"OPENAI_THREAD_DEBUG: About to call OpenAI on thread: {current_thread.name} (ID: {current_thread.ident})")
+                    logger.info(f"OPENAI_THREAD_DEBUG: Day {day_number}, attempt {attempt + 1}, timeout {timeout}s")
+                    
                     response = openai.ChatCompletion.create(
                         model=openai_model,
                         messages=[
@@ -971,6 +982,8 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest, job_id: str = None)
                         top_p=1,
                         request_timeout=timeout  # Progressive timeout: 120s, 90s, 60s
                     )
+                    
+                    logger.info(f"OPENAI_THREAD_DEBUG: OpenAI call completed on thread: {current_thread.name} (ID: {current_thread.ident})")
                     
                     logger.info(f"Received OpenAI response for day {day_number}")
                     
@@ -1131,12 +1144,13 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest, job_id: str = None)
 # Background Job Endpoints
 @router.post("/generate-async")
 async def start_menu_generation_async(req: GenerateMealPlanRequest, background_tasks: BackgroundTasks):
-    """Restore the asyncio.create_task approach that was closest to working"""
+    """Debug the asyncio.create_task approach to see why thread pool isn't working"""
     try:
-        logger.info(f"RESTORE: Starting asyncio task for user {req.user_id}")
+        logger.info(f"DEBUG_ASYNCIO: Starting menu generation for user {req.user_id}")
         
         # Generate unique job ID for tracking
         job_id = str(uuid.uuid4())
+        logger.info(f"DEBUG_ASYNCIO: Generated job_id {job_id}")
         
         # Save initial job status in cache immediately
         with _status_cache_lock:
@@ -1149,22 +1163,30 @@ async def start_menu_generation_async(req: GenerateMealPlanRequest, background_t
                 "created_at": datetime.utcnow(),
                 "last_updated": datetime.utcnow()
             }
+        logger.info(f"DEBUG_ASYNCIO: Cached initial job status for {job_id}")
         
-        # Use asyncio.create_task to run the thread pool execution concurrently
-        # This was the version that was closest to working
+        # Test asyncio task creation step by step
         import asyncio
-        task = asyncio.create_task(run_generation_with_thread_pool(job_id, req))
+        logger.info(f"DEBUG_ASYNCIO: About to create asyncio task for {job_id}")
         
-        logger.info(f"RESTORE: Created asyncio task for job {job_id}, returning immediately")
+        # Create the task explicitly and capture it
+        logger.info(f"DEBUG_ASYNCIO: Calling asyncio.create_task with run_generation_with_thread_pool")
+        task = asyncio.create_task(run_generation_with_thread_pool(job_id, req))
+        logger.info(f"DEBUG_ASYNCIO: Task created successfully: {task}")
+        
+        # Check if task was created and is running
+        logger.info(f"DEBUG_ASYNCIO: Task done: {task.done()}, cancelled: {task.cancelled()}")
+        
+        logger.info(f"DEBUG_ASYNCIO: Returning job_id {job_id} to client immediately")
         
         return {
             "job_id": job_id,
             "status": "started", 
-            "message": "Menu generation started with asyncio task"
+            "message": "Menu generation started with detailed debug logging"
         }
         
     except Exception as e:
-        logger.error(f"Failed to start menu generation: {str(e)}")
+        logger.error(f"DEBUG_ASYNCIO: Failed to start menu generation: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/job-status/{job_id}")
@@ -1321,12 +1343,13 @@ async def cancel_menu_generation_job(job_id: str, user=Depends(get_user_from_tok
         raise HTTPException(status_code=500, detail=str(e))
 
 async def run_generation_with_thread_pool(job_id: str, req: GenerateMealPlanRequest):
-    """Restore the asyncio + ThreadPoolExecutor approach that was closest to working"""
+    """Debug the thread pool execution to see why it's not isolating OpenAI calls"""
     import asyncio
     import concurrent.futures
     
     try:
-        logger.info(f"RESTORE: Starting thread pool execution for job {job_id}")
+        logger.info(f"THREAD_POOL_DEBUG: Function called for job {job_id}")
+        logger.info(f"THREAD_POOL_DEBUG: Request user_id: {req.user_id}")
         
         # Update status to generating
         with _status_cache_lock:
@@ -1337,18 +1360,27 @@ async def run_generation_with_thread_pool(job_id: str, req: GenerateMealPlanRequ
                     "message": "Running in thread pool...",
                     "last_updated": datetime.utcnow()
                 })
+        logger.info(f"THREAD_POOL_DEBUG: Updated cache status for {job_id}")
         
-        # Use ThreadPoolExecutor to run the generation
+        # Get the current event loop
         loop = asyncio.get_running_loop()
+        logger.info(f"THREAD_POOL_DEBUG: Got running loop: {loop}")
+        
+        # Create ThreadPoolExecutor
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            logger.info(f"RESTORE: Submitting job {job_id} to thread pool")
+            logger.info(f"THREAD_POOL_DEBUG: Created executor: {executor}")
+            logger.info(f"THREAD_POOL_DEBUG: About to submit job {job_id} to thread pool")
+            
+            # Submit to thread pool
+            logger.info(f"THREAD_POOL_DEBUG: Calling loop.run_in_executor for {job_id}")
             result = await loop.run_in_executor(
                 executor,
                 generate_meal_plan_variety,
                 req,
                 job_id
             )
-            logger.info(f"RESTORE: Generation completed for job {job_id}")
+            logger.info(f"THREAD_POOL_DEBUG: Thread pool execution completed for job {job_id}")
+            logger.info(f"THREAD_POOL_DEBUG: Result type: {type(result)}")
         
         # Update status to completed
         with _status_cache_lock:
@@ -1361,10 +1393,10 @@ async def run_generation_with_thread_pool(job_id: str, req: GenerateMealPlanRequ
                     "last_updated": datetime.utcnow()
                 })
         
-        logger.info(f"RESTORE: Job {job_id} completed successfully")
+        logger.info(f"THREAD_POOL_DEBUG: Job {job_id} completed successfully")
         
     except Exception as e:
-        logger.error(f"RESTORE: Job {job_id} failed: {str(e)}", exc_info=True)
+        logger.error(f"THREAD_POOL_DEBUG: Job {job_id} failed: {str(e)}", exc_info=True)
         
         # Update status to failed
         with _status_cache_lock:
