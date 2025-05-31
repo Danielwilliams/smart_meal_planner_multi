@@ -1131,46 +1131,25 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest, job_id: str = None)
 # Background Job Endpoints
 @router.post("/generate-async")
 async def start_menu_generation_async(req: GenerateMealPlanRequest, background_tasks: BackgroundTasks):
-    """Use Python threading to completely isolate menu generation from FastAPI"""
-    import threading
-    
+    """EMERGENCY REVERT: Simple synchronous call that was working"""
     try:
-        logger.info(f"PYTHON THREADING: Starting menu generation for user {req.user_id}")
+        logger.info(f"EMERGENCY: Running synchronous generation for user {req.user_id}")
         
-        # Generate unique job ID for tracking
-        job_id = str(uuid.uuid4())
+        # Just call the generation function directly and return immediately
+        result = generate_meal_plan_variety(req, job_id=None)
         
-        # Save initial job status in cache immediately
-        with _status_cache_lock:
-            _job_status_cache[job_id] = {
-                "user_id": req.user_id,
-                "client_id": req.for_client_id,
-                "status": "started",
-                "progress": 0,
-                "message": "Starting meal plan generation...",
-                "created_at": datetime.utcnow(),
-                "last_updated": datetime.utcnow()
-            }
-        
-        # Start generation in a completely separate Python thread
-        # This should be completely isolated from FastAPI
-        thread = threading.Thread(
-            target=run_generation_in_python_thread,
-            args=(job_id, req),
-            daemon=True  # Dies when main process dies
-        )
-        thread.start()
-        
-        logger.info(f"PYTHON THREADING: Started thread for job {job_id}, returning immediately")
+        # Create a fake job ID for compatibility
+        fake_job_id = str(uuid.uuid4())
         
         return {
-            "job_id": job_id,
-            "status": "started", 
-            "message": "Menu generation started in Python thread"
+            "job_id": fake_job_id,
+            "status": "completed",
+            "message": "Menu generation completed",
+            "result": result
         }
         
     except Exception as e:
-        logger.error(f"Failed to start menu generation: {str(e)}")
+        logger.error(f"Emergency generation failed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/job-status/{job_id}")
