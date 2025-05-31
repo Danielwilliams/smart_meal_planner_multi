@@ -1398,9 +1398,10 @@ async def generate_menu_background_task(job_id: str, req: GenerateMealPlanReques
                     del active_user_generations[user_id]
                     logger.info(f"Removed user {user_id} from active generations tracking")
 
-            # Clean up job status cache to prevent memory leaks
-            cleanup_job_cache(job_id)
-            logger.info(f"Cleaned up job cache for {job_id}")
+            # DON'T clean up completed job cache immediately - let frontend see completion status
+            # The cache will be cleaned up after a delay or by periodic cleanup
+            # cleanup_job_cache(job_id)  # DISABLED - causing frontend to miss completion status
+            logger.info(f"Leaving job {job_id} in cache for frontend to detect completion")
 
             # Release semaphore to allow another generation to start
             generation_semaphore.release()
