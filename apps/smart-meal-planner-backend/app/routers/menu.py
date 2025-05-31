@@ -319,7 +319,7 @@ def batch_update_job_status(job_id: str, status_data: dict, force_db_update: boo
         status_data: Dictionary containing status information
         force_db_update: If True, forces a database write regardless of status
     """
-    critical_statuses = {'started', 'completed', 'failed'}
+    critical_statuses = {'started', 'generating', 'completed', 'failed'}
     is_critical = status_data.get('status') in critical_statuses
     
     # Always update in-memory cache
@@ -352,8 +352,17 @@ def cleanup_job_cache(job_id: str):
 
 # Background Job Management Functions
 def save_job_status(job_id: str, status_data: dict):
-    """Save job status to database with minimal connection time"""
+    """Save job status to database with minimal connection time and update cache"""
     try:
+        # First, update the cache to ensure immediate availability
+        with _status_cache_lock:
+            if job_id not in _job_status_cache:
+                _job_status_cache[job_id] = {}
+            _job_status_cache[job_id].update(status_data)
+            _job_status_cache[job_id]['last_updated'] = datetime.utcnow()
+            _job_status_cache[job_id]['created_at'] = datetime.utcnow()
+        
+        # Then save to database
         with get_db_cursor() as (cursor, conn):
             # Enable autocommit for faster operations
             conn.autocommit = True
@@ -379,7 +388,7 @@ def save_job_status(job_id: str, status_data: dict):
             ))
 
             # No commit needed with autocommit=True
-            logger.info(f"Saved job status for {job_id}: {status_data.get('status')} ({status_data.get('progress')}%)")
+            logger.info(f"Saved job status for {job_id}: {status_data.get('status')} ({status_data.get('progress')}%) to both cache and DB")
 
     except Exception as e:
         logger.error(f"Failed to save job status for {job_id}: {str(e)}")
