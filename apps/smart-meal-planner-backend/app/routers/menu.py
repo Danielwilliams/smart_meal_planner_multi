@@ -1131,21 +1131,31 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest, job_id: str = None)
 # Background Job Endpoints
 @router.post("/generate-async")
 async def start_menu_generation_async(req: GenerateMealPlanRequest, background_tasks: BackgroundTasks):
-    """TEMPORARY: Make this synchronous to test concurrency issues"""
+    """Run menu generation in thread pool to avoid blocking the event loop"""
     try:
-        logger.info(f"TESTING: Making synchronous call instead of background task for user {req.user_id}")
+        logger.info(f"TESTING: Running generation in thread pool for user {req.user_id}")
         
-        # Call the synchronous generation function directly
-        result = generate_meal_plan_variety(req, job_id=None)
+        # Run the synchronous generation function in a thread pool to avoid blocking
+        import asyncio
+        import concurrent.futures
         
-        logger.info(f"TESTING: Synchronous generation completed for user {req.user_id}")
+        loop = asyncio.get_event_loop()
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            result = await loop.run_in_executor(
+                executor, 
+                generate_meal_plan_variety, 
+                req, 
+                None  # job_id
+            )
+        
+        logger.info(f"TESTING: Thread pool generation completed for user {req.user_id}")
         
         # Return a fake job response that mimics completed status
         fake_job_id = str(uuid.uuid4())
         return {
             "job_id": fake_job_id,
             "status": "completed",
-            "message": "Menu generation completed synchronously",
+            "message": "Menu generation completed in thread pool",
             "result": result
         }
         
