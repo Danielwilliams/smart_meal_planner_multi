@@ -3,11 +3,61 @@ from psycopg2.extras import RealDictCursor
 from psycopg2 import pool
 from fastapi import HTTPException
 import logging
+import time
+import threading
 from contextlib import contextmanager
 from app.config import RECAPTCHA_SECRET_KEY, DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, DB_PORT
 
 # Set up logging
 logger = logging.getLogger(__name__)
+
+# Connection monitoring for detecting future issues
+_connection_stats = {
+    'total_connections': 0,
+    'active_connections': 0,
+    'peak_connections': 0,
+    'connection_errors': 0,
+    'last_pool_exhaustion': None,
+    'last_reset': time.time()
+}
+_stats_lock = threading.Lock()
+
+def log_connection_stats():
+    """Log current connection pool statistics for monitoring"""
+    if connection_pool:
+        try:
+            with _stats_lock:
+                # Get pool info if available
+                # Note: psycopg2 doesn't expose direct pool stats, so we track our own
+                logger.info(f"Connection Stats - Active: {_connection_stats['active_connections']}, "
+                           f"Peak: {_connection_stats['peak_connections']}, "
+                           f"Total Requests: {_connection_stats['total_connections']}, "
+                           f"Errors: {_connection_stats['connection_errors']}")
+        except Exception as e:
+            logger.warning(f"Error logging connection stats: {e}")
+
+def update_connection_stats(operation: str, success: bool = True):
+    """Update connection statistics for monitoring"""
+    with _stats_lock:
+        if operation == 'acquire':
+            _connection_stats['total_connections'] += 1
+            if success:
+                _connection_stats['active_connections'] += 1
+                _connection_stats['peak_connections'] = max(
+                    _connection_stats['peak_connections'], 
+                    _connection_stats['active_connections']
+                )
+            else:
+                _connection_stats['connection_errors'] += 1
+                if 'pool' in str(operation).lower():  # Pool exhaustion
+                    _connection_stats['last_pool_exhaustion'] = time.time()
+        elif operation == 'release':
+            _connection_stats['active_connections'] = max(0, _connection_stats['active_connections'] - 1)
+        
+        # Log stats every 50 connections or if there are errors
+        if (_connection_stats['total_connections'] % 50 == 0 or 
+            _connection_stats['connection_errors'] > 0):
+            log_connection_stats()
 
 # Create a connection pool for better concurrency handling
 # This allows multiple concurrent operations to use separate connections
@@ -35,6 +85,7 @@ def get_db_connection():
             logger.debug("Getting connection from pool")
             conn = connection_pool.getconn()
             logger.debug("Connection obtained from pool")
+            update_connection_stats('acquire', True)
             return conn
         else:
             # Fall back to direct connection if pool is not available
@@ -46,16 +97,19 @@ def get_db_connection():
                 host=DB_HOST,
                 port=DB_PORT
             )
+            update_connection_stats('acquire', True)
             return conn
     except psycopg2.OperationalError as e:
         logger.error(f"Failed to connect to database: {str(e)}")
         logger.error(f"Database connection parameters: host={DB_HOST}, port={DB_PORT}, dbname={DB_NAME}, user={DB_USER}")
+        update_connection_stats('acquire', False)
         raise HTTPException(
             status_code=500,
             detail="Unable to connect to database. Please try again later."
         )
     except Exception as e:
         logger.error(f"Unexpected error connecting to database: {str(e)}")
+        update_connection_stats('acquire', False)
         raise HTTPException(
             status_code=500,
             detail="An unexpected error occurred while connecting to database."
@@ -124,12 +178,15 @@ def get_db_cursor(dict_cursor=True):
                     # Return the connection to the pool instead of closing it
                     connection_pool.putconn(conn)
                     logger.debug("Database connection returned to pool")
+                    update_connection_stats('release')
                 else:
                     # If not using a pool, close the connection directly
                     conn.close()
                     logger.debug("Database connection closed successfully")
+                    update_connection_stats('release')
             except Exception as e:
                 logger.warning(f"Error handling connection cleanup: {str(e)}")
+                update_connection_stats('release')  # Still count as released even with error
 
 def close_all_connections():
     """Close all connections in the pool when shutting down the application"""

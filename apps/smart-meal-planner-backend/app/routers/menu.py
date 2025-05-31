@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException, Query, Body, Depends, status, Back
 import openai
 from psycopg2.extras import RealDictCursor
 from ..db import get_db_connection, get_db_cursor
+from ..db import _connection_stats, _stats_lock, log_connection_stats
 from ..config import OPENAI_API_KEY
 from ..models.user import GenerateMealPlanRequest
 from ..models.menus import SaveMenuRequest
@@ -304,12 +305,54 @@ else:
     except Exception as e:
         logger.error(f"Failed to configure OpenAI API key: {str(e)}")
 
+# In-memory status tracking to reduce database connections during generation
+_job_status_cache = {}
+_status_cache_lock = threading.Lock()
+
+def batch_update_job_status(job_id: str, status_data: dict, force_db_update: bool = False):
+    """
+    Batch status updates to reduce database connections during menu generation.
+    Only writes to database for critical milestones or when forced.
+    """
+    critical_statuses = {'started', 'completed', 'failed'}
+    is_critical = status_data.get('status') in critical_statuses
+    
+    # Always update in-memory cache
+    with _status_cache_lock:
+        if job_id not in _job_status_cache:
+            _job_status_cache[job_id] = {}
+        _job_status_cache[job_id].update(status_data)
+        _job_status_cache[job_id]['last_updated'] = datetime.utcnow()
+    
+    # Only write to database for critical statuses or forced updates
+    if is_critical or force_db_update:
+        update_job_status(job_id, status_data)
+        logger.info(f"Status update written to DB for {job_id}: {status_data.get('status')}")
+    else:
+        logger.info(f"Status cached for {job_id}: {status_data.get('status')} (DB write skipped)")
+
+def get_cached_job_status(job_id: str) -> Optional[dict]:
+    """Get job status from cache first, fallback to database"""
+    with _status_cache_lock:
+        if job_id in _job_status_cache:
+            return _job_status_cache[job_id].copy()
+    
+    # Fallback to database
+    return get_job_status_from_database(job_id)
+
+def cleanup_job_cache(job_id: str):
+    """Clean up job from cache when completed"""
+    with _status_cache_lock:
+        _job_status_cache.pop(job_id, None)
+
 # Background Job Management Functions
 def save_job_status(job_id: str, status_data: dict):
-    """Save job status to database"""
-    # Use the context manager for safer database operations
-    with get_db_cursor() as (cursor, conn):
-        try:
+    """Save job status to database with minimal connection time"""
+    try:
+        with get_db_cursor() as (cursor, conn):
+            # Enable autocommit for faster operations
+            conn.autocommit = True
+            
             cursor.execute("""
                 INSERT INTO menu_generation_jobs
                 (job_id, user_id, client_id, status, progress, message, request_data)
@@ -330,18 +373,21 @@ def save_job_status(job_id: str, status_data: dict):
                 json.dumps(status_data.get('request_data', {}))
             ))
 
-            conn.commit()
+            # No commit needed with autocommit=True
             logger.info(f"Saved job status for {job_id}: {status_data.get('status')} ({status_data.get('progress')}%)")
 
-        except Exception as e:
-            logger.error(f"Failed to save job status for {job_id}: {str(e)}")
-            conn.rollback()
+    except Exception as e:
+        logger.error(f"Failed to save job status for {job_id}: {str(e)}")
+        # No rollback needed with autocommit=True
 
 def update_job_status(job_id: str, status_data: dict):
-    """Update existing job status"""
-    # Use the context manager for safer database operations
-    with get_db_cursor() as (cursor, conn):
-        try:
+    """Update existing job status with minimal connection usage"""
+    # Only open a connection when absolutely necessary, minimize connection time
+    try:
+        with get_db_cursor() as (cursor, conn):
+            # Enable autocommit to reduce transaction time
+            conn.autocommit = True
+            
             update_fields = []
             update_values = []
 
@@ -376,18 +422,20 @@ def update_job_status(job_id: str, status_data: dict):
                 """
 
                 cursor.execute(query, update_values)
-                conn.commit()
+                # No commit needed with autocommit=True
                 logger.info(f"Updated job {job_id}: {status_data.get('status')} ({status_data.get('progress')}%)")
 
-        except Exception as e:
-            logger.error(f"Failed to update job status for {job_id}: {str(e)}")
-            conn.rollback()
+    except Exception as e:
+        logger.error(f"Failed to update job status for {job_id}: {str(e)}")
+        # No rollback needed with autocommit=True
 
 def get_job_status_from_database(job_id: str) -> Optional[dict]:
-    """Retrieve job status from database"""
-    # Use the context manager for safer database operations
-    with get_db_cursor(dict_cursor=True) as (cursor, conn):
-        try:
+    """Retrieve job status from database with minimal connection time"""
+    try:
+        with get_db_cursor(dict_cursor=True) as (cursor, conn):
+            # Enable autocommit for faster read operations
+            conn.autocommit = True
+            
             cursor.execute("""
                 SELECT job_id, user_id, client_id, status, progress, message,
                        result_data, error_message, created_at, updated_at
@@ -408,9 +456,9 @@ def get_job_status_from_database(job_id: str) -> Optional[dict]:
                 return result
             return None
 
-        except Exception as e:
-            logger.error(f"Failed to get job status for {job_id}: {str(e)}")
-            return None
+    except Exception as e:
+        logger.error(f"Failed to get job status for {job_id}: {str(e)}")
+        return None
 
 def merge_preference(db_value, req_value, default=None):
     """Helper function to merge preferences with precedence to request parameters"""
@@ -1104,9 +1152,10 @@ async def start_menu_generation_async(req: GenerateMealPlanRequest, background_t
 
 @router.get("/job-status/{job_id}")
 async def get_menu_generation_status(job_id: str):
-    """Get the status of a background menu generation job"""
+    """Get the status of a background menu generation job with cache optimization"""
     try:
-        status = get_job_status_from_database(job_id)
+        # Use cached status first to reduce database load during generation
+        status = get_cached_job_status(job_id)
 
         if not status:
             raise HTTPException(status_code=404, detail="Job not found")
@@ -1114,19 +1163,19 @@ async def get_menu_generation_status(job_id: str):
         # Format response
         response = {
             "job_id": job_id,
-            "status": status["status"],
-            "progress": status["progress"],
-            "message": status["message"],
-            "created_at": status["created_at"].isoformat() if status["created_at"] else None,
-            "updated_at": status["updated_at"].isoformat() if status["updated_at"] else None
+            "status": status.get("status"),
+            "progress": status.get("progress"),
+            "message": status.get("message"),
+            "created_at": status.get("created_at").isoformat() if status.get("created_at") else None,
+            "updated_at": status.get("updated_at").isoformat() if status.get("updated_at") else None
         }
 
         # Include result data if completed
-        if status["status"] == "completed" and status["result_data"]:
+        if status.get("status") == "completed" and status.get("result_data"):
             response["result"] = status["result_data"]
 
         # Include error if failed
-        if status["status"] == "failed" and status["error_message"]:
+        if status.get("status") == "failed" and status.get("error_message"):
             response["error"] = status["error_message"]
 
         return response
@@ -1176,23 +1225,28 @@ async def get_active_jobs_for_user(user_id: int):
             raise HTTPException(status_code=500, detail=str(e))
 
 async def generate_menu_background_task(job_id: str, req: GenerateMealPlanRequest):
-    """Background task that performs the actual menu generation"""
+    """Background task that performs the actual menu generation with minimal DB connections"""
+    start_time = time.time()
     try:
         logger.info(f"Background task started for job {job_id}")
 
-        # Update status: Starting AI generation
-        update_job_status(job_id, {
+        # Update status: Starting AI generation (writes to DB - critical status)
+        batch_update_job_status(job_id, {
             "status": "generating",
             "progress": 10,
             "message": "Calling AI to generate your meal plan..."
         })
 
         # Call the existing synchronous generation function
+        # This function handles its own connections properly
         logger.info(f"Calling generate_meal_plan_variety for job {job_id}")
         menu_result = generate_meal_plan_variety(req)
+        
+        generation_time = time.time() - start_time
+        logger.info(f"Menu generation completed in {generation_time:.2f} seconds")
 
-        # Update status: Processing complete using the job status function that handles its own connection
-        update_job_status(job_id, {
+        # Update status: Processing complete (writes to DB - critical status)
+        batch_update_job_status(job_id, {
             "status": "completed",
             "progress": 100,
             "message": "Menu generation completed successfully!",
@@ -1204,8 +1258,8 @@ async def generate_menu_background_task(job_id: str, req: GenerateMealPlanReques
     except Exception as e:
         logger.error(f"Background task failed for job {job_id}: {str(e)}", exc_info=True)
 
-        # Update status: Failed - using the job status function that handles its own connection
-        update_job_status(job_id, {
+        # Update status: Failed (writes to DB - critical status)
+        batch_update_job_status(job_id, {
             "status": "failed",
             "progress": 0,
             "message": "Menu generation failed",
@@ -1213,7 +1267,7 @@ async def generate_menu_background_task(job_id: str, req: GenerateMealPlanReques
         })
 
     finally:
-        # Clean up concurrency controls
+        # Clean up concurrency controls and cache
         try:
             # Remove user from active generations tracking
             with user_generation_lock:
@@ -1221,6 +1275,10 @@ async def generate_menu_background_task(job_id: str, req: GenerateMealPlanReques
                 if user_id in active_user_generations and active_user_generations[user_id] == job_id:
                     del active_user_generations[user_id]
                     logger.info(f"Removed user {user_id} from active generations tracking")
+
+            # Clean up job status cache to prevent memory leaks
+            cleanup_job_cache(job_id)
+            logger.info(f"Cleaned up job cache for {job_id}")
 
             # Release semaphore to allow another generation to start
             generation_semaphore.release()
@@ -1235,10 +1293,12 @@ async def generate_menu_background_task(job_id: str, req: GenerateMealPlanReques
 
 @router.get("/latest/{user_id}")
 def get_latest_menu(user_id: int):
-    """Fetch the most recent menu for a user"""
-    # Use the context manager for safer database operations
-    with get_db_cursor(dict_cursor=True) as (cursor, conn):
-        try:
+    """Fetch the most recent menu for a user with minimal connection time"""
+    try:
+        with get_db_cursor(dict_cursor=True) as (cursor, conn):
+            # Enable autocommit for faster read operations
+            conn.autocommit = True
+            
             cursor.execute("""
                 SELECT id, meal_plan_json, created_at::TEXT AS created_at
                 FROM menus
@@ -1258,9 +1318,11 @@ def get_latest_menu(user_id: int):
                 "created_at": menu["created_at"]
             }
 
-        except Exception as e:
-            logger.error(f"Error fetching latest menu: {str(e)}")
-            raise HTTPException(status_code=500, detail="Error fetching latest menu")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching latest menu: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error fetching latest menu")
 
 @router.get("/history/{user_id}")
 def get_menu_history(user_id: int):
@@ -2576,4 +2638,42 @@ async def unshare_menu(
         except Exception as e:
             logger.error(f"Error unsharing menu: {str(e)}", exc_info=True)
             raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/db-stats")
+async def get_database_connection_stats():
+    """Get database connection pool statistics for monitoring"""
+    try:
+        with _stats_lock:
+            stats = _connection_stats.copy()
+            
+        # Calculate uptime
+        uptime_seconds = time.time() - stats['last_reset']
+        
+        # Add additional calculated metrics
+        stats['uptime_minutes'] = round(uptime_seconds / 60, 2)
+        stats['connections_per_minute'] = round(stats['total_connections'] / (uptime_seconds / 60), 2) if uptime_seconds > 0 else 0
+        stats['error_rate'] = round((stats['connection_errors'] / max(stats['total_connections'], 1)) * 100, 2)
+        
+        # Check for potential issues
+        warnings = []
+        if stats['error_rate'] > 5:
+            warnings.append(f"High error rate: {stats['error_rate']}%")
+        if stats['peak_connections'] > 40:  # 80% of max pool size
+            warnings.append(f"High peak connections: {stats['peak_connections']}/50")
+        if stats['last_pool_exhaustion']:
+            time_since_exhaustion = time.time() - stats['last_pool_exhaustion']
+            if time_since_exhaustion < 300:  # Last 5 minutes
+                warnings.append(f"Recent pool exhaustion: {round(time_since_exhaustion/60, 1)} minutes ago")
+        
+        stats['warnings'] = warnings
+        stats['status'] = 'critical' if len(warnings) > 1 else ('warning' if warnings else 'healthy')
+        
+        # Force a stats log for monitoring
+        log_connection_stats()
+        
+        return stats
+        
+    except Exception as e:
+        logger.error(f"Error getting database stats: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
