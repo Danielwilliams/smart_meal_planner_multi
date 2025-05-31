@@ -313,6 +313,11 @@ def batch_update_job_status(job_id: str, status_data: dict, force_db_update: boo
     """
     Batch status updates to reduce database connections during menu generation.
     Only writes to database for critical milestones or when forced.
+    
+    Args:
+        job_id: The job identifier
+        status_data: Dictionary containing status information
+        force_db_update: If True, forces a database write regardless of status
     """
     critical_statuses = {'started', 'completed', 'failed'}
     is_critical = status_data.get('status') in critical_statuses
@@ -329,7 +334,7 @@ def batch_update_job_status(job_id: str, status_data: dict, force_db_update: boo
         update_job_status(job_id, status_data)
         logger.info(f"Status update written to DB for {job_id}: {status_data.get('status')}")
     else:
-        logger.info(f"Status cached for {job_id}: {status_data.get('status')} (DB write skipped)")
+        logger.debug(f"Status cached for {job_id}: {status_data.get('status')} (DB write skipped)")
 
 def get_cached_job_status(job_id: str) -> Optional[dict]:
     """Get job status from cache first, fallback to database"""
@@ -534,7 +539,7 @@ def get_prep_complexity_level(complexity_value):
     return "complex"
 
 @router.post("/generate")
-def generate_meal_plan_variety(req: GenerateMealPlanRequest):
+def generate_meal_plan_variety(req: GenerateMealPlanRequest, job_id: str = None):
     """Generate a meal plan based on user preferences and requirements"""
     try:
         if req.duration_days < 1 or req.duration_days > 7:
@@ -848,6 +853,14 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
         for day_number in range(1, req.duration_days + 1):
             logger.info(f"Generating day {day_number} of {req.duration_days}")
             
+            # Update progress during generation (only to cache, not database)
+            if job_id:
+                progress = 10 + (day_number - 1) * (80 / req.duration_days)  # 10-90% range
+                batch_update_job_status(job_id, {
+                    "progress": round(progress),
+                    "message": f"Generating day {day_number} of {req.duration_days}..."
+                }, force_db_update=False)  # Cache only to reduce DB load
+            
             # Get used ingredients that are within the last 3 days
             recent_ingredients = []
             for past_day, ingredients in used_primary_ingredients:
@@ -933,6 +946,9 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
             
             for attempt in range(MAX_RETRIES):
                 try:
+                    # Progressive timeout reduction: 2min, 90s, 60s for retries
+                    timeout = max(60, 120 - (attempt * 30))
+                    
                     response = openai.ChatCompletion.create(
                         model=openai_model,
                         messages=[
@@ -944,7 +960,7 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
                         max_tokens=3000,
                         temperature=0.2,  # Slight creativity for variety
                         top_p=1,
-                        request_timeout=600  # 10 minutes timeout
+                        request_timeout=timeout  # Progressive timeout: 120s, 90s, 60s
                     )
                     
                     logger.info(f"Received OpenAI response for day {day_number}")
@@ -1003,10 +1019,20 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
                     logger.error("OpenAI authentication failed")
                     raise HTTPException(500, "OpenAI API key authentication failed")
                 except openai.error.APIError as e:
-                    logger.error(f"OpenAI API error: {str(e)}")
+                    error_type = type(e).__name__
+                    logger.error(f"OpenAI API error ({error_type}): {str(e)}")
+                    
+                    # Update progress with retry information
+                    if job_id:
+                        current_progress = 10 + (day_number - 1) * (80 / req.duration_days)
+                        batch_update_job_status(job_id, {
+                            "progress": round(current_progress),
+                            "message": f"Retrying day {day_number} due to {error_type} (attempt {attempt + 1}/{MAX_RETRIES})..."
+                        }, force_db_update=False)
+                    
                     if attempt == MAX_RETRIES - 1:
-                        raise HTTPException(500, f"OpenAI API error: {str(e)}")
-                    time.sleep(1)
+                        raise HTTPException(500, f"OpenAI API error: {error_type} - {str(e)}")
+                    time.sleep(2)  # Slightly longer wait between retries
 
             # Ensure day number is set correctly
             day_json["dayNumber"] = day_number
@@ -1037,6 +1063,14 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest):
             
             # Add the day's ingredients to the tracking list
             used_primary_ingredients.append((day_number, day_ingredients))
+            
+            # Update progress after successful day completion
+            if job_id:
+                progress = 10 + day_number * (80 / req.duration_days)  # 10-90% range
+                batch_update_job_status(job_id, {
+                    "progress": round(progress),
+                    "message": f"Completed day {day_number} of {req.duration_days}. Saving to database..."
+                }, force_db_update=False)  # Cache only
 
         # PHASE 3: All meal generation complete, now open a new connection to save the menu
         logger.info("Opening new database connection to save generated menu")
@@ -1237,10 +1271,10 @@ async def generate_menu_background_task(job_id: str, req: GenerateMealPlanReques
             "message": "Calling AI to generate your meal plan..."
         })
 
-        # Call the existing synchronous generation function
+        # Call the existing synchronous generation function with job_id for progress tracking
         # This function handles its own connections properly
         logger.info(f"Calling generate_meal_plan_variety for job {job_id}")
-        menu_result = generate_meal_plan_variety(req)
+        menu_result = generate_meal_plan_variety(req, job_id)
         
         generation_time = time.time() - start_time
         logger.info(f"Menu generation completed in {generation_time:.2f} seconds")
