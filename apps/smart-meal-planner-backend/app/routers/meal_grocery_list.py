@@ -7,7 +7,7 @@ in a menu, rather than aggregating all ingredients into a single list.
 
 from fastapi import APIRouter, HTTPException, Query, BackgroundTasks
 from psycopg2.extras import RealDictCursor
-from ..db import get_db_connection
+from ..db import get_db_cursor
 from ..utils.meal_grocery_generator import get_meal_shopping_list
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
@@ -69,9 +69,8 @@ def get_meal_shopping_lists(
     # If cache is disabled or invalid, proceed with generating new shopping lists
     logger.info(f"Generating new meal shopping lists for menu {menu_id}")
 
-    conn = get_db_connection()
     try:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        with get_db_cursor() as (cur, conn):
             # Verify the menu exists and get the data
             cur.execute("""
                 SELECT
@@ -88,26 +87,24 @@ def get_meal_shopping_lists(
                 logger.warning(f"Menu {menu_id} not found")
                 raise HTTPException(status_code=404, detail="Menu not found")
 
-        # Generate meal-specific shopping lists
-        result = get_meal_shopping_list(menu_id, menu_data)
-        
-        # Store in cache
-        MEAL_SHOPPING_LIST_CACHE[cache_key] = {
-            'data': result,
-            'timestamp': time.time()
-        }
-        
-        # Add metadata to the response
-        result['cached'] = False
-        result['cache_timestamp'] = datetime.now().isoformat()
-        
-        return result
+            # Generate meal-specific shopping lists
+            result = get_meal_shopping_list(menu_id, menu_data)
+            
+            # Store in cache
+            MEAL_SHOPPING_LIST_CACHE[cache_key] = {
+                'data': result,
+                'timestamp': time.time()
+            }
+            
+            # Add metadata to the response
+            result['cached'] = False
+            result['cache_timestamp'] = datetime.now().isoformat()
+            
+            return result
         
     except Exception as e:
         logger.error(f"Error generating meal shopping lists: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
-    finally:
-        conn.close()
 
 @router.post("/{menu_id}/meal-shopping-lists")
 async def post_meal_shopping_lists(menu_id: int, request: MealShoppingListRequest = None):
