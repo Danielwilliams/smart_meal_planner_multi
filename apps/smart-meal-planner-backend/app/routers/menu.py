@@ -319,7 +319,7 @@ def batch_update_job_status(job_id: str, status_data: dict, force_db_update: boo
         status_data: Dictionary containing status information
         force_db_update: If True, forces a database write regardless of status
     """
-    critical_statuses = {'started', 'generating', 'completed', 'failed'}
+    critical_statuses = {'started', 'completed', 'failed'}
     is_critical = status_data.get('status') in critical_statuses
     
     # Always update in-memory cache
@@ -1357,7 +1357,7 @@ async def generate_menu_background_task(job_id: str, req: GenerateMealPlanReques
             "status": "generating",
             "progress": 10,
             "message": "Calling AI to generate your meal plan..."
-        })
+        }, force_db_update=True)  # Force DB write for initial generating status
 
         # Call the existing synchronous generation function with job_id for progress tracking
         # This function handles its own connections properly
