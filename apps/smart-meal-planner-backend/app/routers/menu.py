@@ -1280,6 +1280,11 @@ def generate_meal_plan_legacy(req: GenerateMealPlanRequest, job_id: str = None):
             system_prompt = f"""You are an advanced meal planning assistant that creates detailed, nutritionally balanced meal plans.
             Your task is to generate meal plans with precise cooking instructions while strictly adhering to user preferences.
             
+            🚨 ABSOLUTELY CRITICAL - ZERO TOLERANCE RULES:
+            1. NEVER EVER use these disliked ingredients: {', '.join(disliked_ingredients) if disliked_ingredients else 'None'}
+            2. Check EVERY ingredient against the disliked list before including it
+            3. If an ingredient is disliked, find a complete substitute - do not use it at all
+            
             CRITICAL: You MUST generate meals for ALL meal times specified by the user, including breakfast, lunch, dinner, and snacks if requested.
             
             Pay special attention to the following preference areas:
@@ -1289,7 +1294,9 @@ def generate_meal_plan_legacy(req: GenerateMealPlanRequest, job_id: str = None):
             4. Time constraints - Aim for recipes within time limits. Up to 25% over is acceptable for better nutrition/taste balance
             5. Meal preparation preferences - Use batch cooking, one-pot meals, etc. when specified
             
-            Respect both dietary restrictions and detailed preferences to create personalized and practical meal plans."""
+            Respect both dietary restrictions and detailed preferences to create personalized and practical meal plans.
+            
+            REMINDER: Absolutely NO disliked ingredients: {', '.join(disliked_ingredients) if disliked_ingredients else 'None'}"""
             
             # Create a more concise and structured user prompt
             user_prompt = f"""
@@ -1298,7 +1305,9 @@ def generate_meal_plan_legacy(req: GenerateMealPlanRequest, job_id: str = None):
             ### User Profile
             - Servings per meal: {servings_per_meal}
             - Dietary preferences: {', '.join(dietary_restrictions)}
-            - Disliked foods: {', '.join(disliked_ingredients)}
+            
+            🚨 FORBIDDEN INGREDIENTS (NEVER USE): {', '.join(disliked_ingredients) if disliked_ingredients else 'None'}
+            
             - Preferred cuisines: {recipe_type}
             - Diet type: {diet_type}
             - Available appliances: {appliances_str}
@@ -1332,8 +1341,8 @@ def generate_meal_plan_legacy(req: GenerateMealPlanRequest, job_id: str = None):
             - Carbs: {carbs_goal}% ({round((calorie_goal * carbs_goal / 100) / 4)}g)
             - Fat: {fat_goal}% ({round((calorie_goal * fat_goal / 100) / 9)}g)
 
-            ### Critical Constraints
-            1. DO NOT use disliked ingredients
+            ### 🚨 CRITICAL CONSTRAINTS - ABSOLUTE RULES:
+            1. 🚫 ABSOLUTELY NO DISLIKED INGREDIENTS: {', '.join(disliked_ingredients) if disliked_ingredients else 'None'} 
             2. DO NOT repeat meal titles from this list: {', '.join(used_meal_titles) if used_meal_titles else 'None'}
             3. DO NOT use primary ingredients that appeared in the last 3 days: {recent_ingredients_str}
             4. DO NOT use the same protein source more than once per day
@@ -1423,10 +1432,31 @@ def generate_meal_plan_legacy(req: GenerateMealPlanRequest, job_id: str = None):
                             
                             if issues:
                                 logger.warning(f"Validation issues in day {day_number}: {issues}")
-                                if attempt < MAX_RETRIES - 1:
-                                    # Add validation feedback in the next attempt
-                                    user_prompt += f"\n\n### Validation Feedback\nPlease fix these issues in your meal plan:\n" + "\n".join([f"- {issue}" for issue in issues])
-                                    continue
+                                
+                                # Check for CRITICAL issues (disliked ingredients) vs minor issues
+                                critical_issues = [issue for issue in issues if 'disliked ingredient' in issue.lower()]
+                                minor_issues = [issue for issue in issues if 'disliked ingredient' not in issue.lower()]
+                                
+                                if critical_issues:
+                                    # ALWAYS retry for disliked ingredients - these are unacceptable
+                                    logger.error(f"CRITICAL: Disliked ingredient violations found: {critical_issues}")
+                                    if attempt < MAX_RETRIES - 1:
+                                        user_prompt += f"\n\n### CRITICAL VALIDATION ERRORS - MUST FIX:\n" + "\n".join([f"- {issue}" for issue in critical_issues])
+                                        user_prompt += f"\n\nREMINDER: ABSOLUTELY NO disliked ingredients: {', '.join(disliked_ingredients)}"
+                                        continue
+                                    else:
+                                        # Last attempt failed - this is unacceptable for disliked ingredients
+                                        raise HTTPException(500, f"Failed to generate menu without disliked ingredients after {MAX_RETRIES} attempts: {critical_issues}")
+                                
+                                elif minor_issues and attempt < MAX_RETRIES - 1:
+                                    # Only retry minor issues (time constraints, repeated titles) on early attempts  
+                                    serious_minor_issues = [issue for issue in minor_issues if ('repeated' in issue.lower() or 'missing' in issue.lower())]
+                                    if serious_minor_issues:
+                                        user_prompt += f"\n\n### Validation Feedback\nPlease fix these issues:\n" + "\n".join([f"- {issue}" for issue in serious_minor_issues])
+                                        continue
+                                    else:
+                                        logger.info(f"Accepting meal plan with minor time constraint issues: {minor_issues}")
+                                        # Accept the plan with minor issues
                             
                             # Fix common issues in the meal plan
                             day_json = fix_common_issues(day_json, day_number, servings_per_meal)
