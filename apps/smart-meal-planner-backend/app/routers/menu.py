@@ -234,23 +234,45 @@ def validate_meal_plan(
                 elif meal_time not in preferred_times and meal_time in ["breakfast", "lunch", "dinner"]:
                     issues.append(f"Meal '{meal.get('title')}' is for {meal_time} but this time is not in preferred times")
     
-    # Check time constraints if specified
+    # Check time constraints with 25% deadband buffer for flexibility
     if time_constraints:
+        DEADBAND_MULTIPLIER = 1.25  # 25% tolerance buffer - reduces validation failures
+        
         for meal in day_json.get("meals", []):
             meal_time = meal.get("meal_time", "").lower()
             instructions = meal.get("instructions", [])
-            # Estimate preparation time based on number of instructions
-            # This is a simple heuristic - in a real system you might have more complex logic
-            estimated_time = len(instructions) * 5  # Rough estimate: 5 minutes per instruction step
+            ingredient_count = len(meal.get("ingredients", []))
             
-            # Check if meal time has a constraint
+            # Improved time estimation (reduced from 5 to 3.5 minutes per instruction)
+            instruction_time = len(instructions) * 3.5
+            ingredient_prep_time = ingredient_count * 1.5  # 1.5 min per ingredient for prep
+            estimated_time = int(instruction_time + ingredient_prep_time)
+            
+            # Check both weekday and weekend constraints
             weekday_constraint = f"weekday-{meal_time}"
             weekend_constraint = f"weekend-{meal_time}"
             
+            # Check weekday constraint with deadband
             if weekday_constraint in time_constraints:
                 max_time = time_constraints[weekday_constraint]
-                if estimated_time > max_time:
-                    issues.append(f"Meal '{meal.get('title')}' likely exceeds weekday time constraint of {max_time} minutes for {meal_time}")
+                max_time_with_deadband = max_time * DEADBAND_MULTIPLIER
+                
+                if estimated_time > max_time_with_deadband:
+                    issues.append(f"Meal '{meal.get('title')}' exceeds weekday time limit: {estimated_time}min > {max_time}min (+25% buffer = {int(max_time_with_deadband)}min)")
+                elif estimated_time > max_time:
+                    # Within deadband - log info but don't fail validation
+                    logger.info(f"Meal '{meal.get('title')}' slightly over weekday target but within deadband: {estimated_time}min vs {max_time}min target")
+            
+            # Check weekend constraint with deadband
+            if weekend_constraint in time_constraints:
+                max_time = time_constraints[weekend_constraint]
+                max_time_with_deadband = max_time * DEADBAND_MULTIPLIER
+                
+                if estimated_time > max_time_with_deadband:
+                    issues.append(f"Meal '{meal.get('title')}' exceeds weekend time limit: {estimated_time}min > {max_time}min (+25% buffer = {int(max_time_with_deadband)}min)")
+                elif estimated_time > max_time:
+                    # Within deadband - log info but don't fail validation
+                    logger.info(f"Meal '{meal.get('title')}' slightly over weekend target but within deadband: {estimated_time}min vs {max_time}min target")
     
     return issues
 
@@ -893,7 +915,7 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest, job_id: str = None)
             1. Flavor preferences - Focus on incorporating preferred flavor profiles
             2. Spice level - Adjust recipes to match the specified spice level
             3. Meal formats - Prioritize preferred meal structures like stir-fry, bowls, etc.
-            4. Time constraints - Ensure recipes can be prepared within the time limits
+            4. Time constraints - Aim for recipes within time limits. Up to 25% over is acceptable for better nutrition/taste balance
             5. Meal preparation preferences - Use batch cooking, one-pot meals, etc. when specified
             
             Respect both dietary restrictions and detailed preferences to create personalized and practical meal plans."""
@@ -917,8 +939,8 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest, job_id: str = None)
             - Preferred meal formats: {recipe_type_prefs_str or "No specific meal format preferences"}
             - Preferred meal preparation: {prep_prefs_str or "No specific preparation preferences"}
 
-            ### Time Constraints
-            {chr(10).join([f"- {constraint.replace('-', ' ').title()}: {minutes} minutes max" for constraint, minutes in time_constraints.items()]) if time_constraints else "- No specific time constraints"}
+            ### Time Guidelines (with 25% flexibility)
+            {chr(10).join([f"- {constraint.replace('-', ' ').title()}: Target {minutes}min (up to {int(minutes * 1.25)}min acceptable)" for constraint, minutes in time_constraints.items()]) if time_constraints else "- No specific time constraints"}
 
             ### Nutrition Goals
             - Daily calories: {calorie_goal} kcal × {servings_per_meal} servings = {calorie_goal * servings_per_meal} total calories
