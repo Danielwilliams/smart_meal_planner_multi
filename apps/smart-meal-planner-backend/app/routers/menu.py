@@ -942,6 +942,19 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest, job_id: str = None)
             ### Time Guidelines (with 25% flexibility)
             {chr(10).join([f"- {constraint.replace('-', ' ').title()}: Target {minutes}min (up to {int(minutes * 1.25)}min acceptable)" for constraint, minutes in time_constraints.items()]) if time_constraints else "- No specific time constraints"}
 
+            ### **Preparation Guidelines:**
+            - When designing weekday breakfasts, keep preparation time under {time_constraints.get('weekday-breakfast', 15)} minutes.
+            - For lunches on workdays, aim for {time_constraints.get('weekday-lunch', 20)} minute preparation times.
+            - Weekend meals can be more elaborate, but respect the time constraints provided.
+            - If "Quick Assembly" is preferred, prioritize meals with minimal cooking and more assembly.
+            - If "One Pot" is preferred, design recipes that can be prepared in a single cooking vessel.
+            - If "Batch Cooking" is preferred, suggest recipes that scale well and can be partially prepared in advance.
+
+            #### **Quick Prep Tips:**
+            - **Use pre-cooked proteins** such as rotisserie chicken, grilled shrimp, or canned beans to save cooking time.
+            - **Incorporate pre-prepped vegetables** like bagged salad mixes, frozen stir-fry blends, or pre-cut bell peppers.
+            - **Consider sauces and dressings** that are ready-made or require minimal mixing.
+
             ### Nutrition Goals
             - Daily calories: {calorie_goal} kcal × {servings_per_meal} servings = {calorie_goal * servings_per_meal} total calories
             - Protein: {protein_goal}% ({round((calorie_goal * protein_goal / 100) / 4)}g)
