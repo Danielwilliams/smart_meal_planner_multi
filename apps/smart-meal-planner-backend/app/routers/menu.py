@@ -593,6 +593,7 @@ def generate_meal_plan_single_request(req: GenerateMealPlanRequest, job_id: str 
         preference_user_id = req.for_client_id if req.for_client_id else req.user_id
 
         with get_db_cursor(dict_cursor=True) as (cursor, conn):
+            # Fetch user preferences
             cursor.execute("""
                 SELECT recipe_type, macro_protein, macro_carbs, macro_fat, calorie_goal,
                        appliances, prep_complexity, servings_per_meal, meal_times,
@@ -606,10 +607,70 @@ def generate_meal_plan_single_request(req: GenerateMealPlanRequest, job_id: str 
             if not user_row:
                 raise HTTPException(404, f"User {preference_user_id} not found")
 
+            # Fetch recent menu history to avoid repeats (last 14 menus)
+            cursor.execute("""
+                SELECT meal_plan_json, created_at, nickname
+                FROM menus 
+                WHERE user_id = %s OR for_client_id = %s
+                ORDER BY created_at DESC 
+                LIMIT 14
+            """, (preference_user_id, preference_user_id))
+            
+            recent_menus = cursor.fetchall()
+
         # Extract user preferences (same logic as before)
         dietary_restrictions = user_row.get('dietary_restrictions', []) or []
         disliked_ingredients = user_row.get('disliked_ingredients', []) or []
         time_constraints = user_row.get('time_constraints', {}) or {}
+
+        # Extract meal titles from recent menus to avoid repeats
+        used_meal_titles = set()
+        used_primary_ingredients = set()
+        recent_menu_summaries = []
+        
+        for menu in recent_menus:
+            try:
+                meal_plan = menu['meal_plan_json']
+                if isinstance(meal_plan, str):
+                    meal_plan = json.loads(meal_plan)
+                
+                menu_summary = f"Menu from {menu['created_at'].strftime('%Y-%m-%d')}"
+                if menu['nickname']:
+                    menu_summary += f" ({menu['nickname']})"
+                
+                meal_titles_in_menu = []
+                if isinstance(meal_plan, dict) and 'days' in meal_plan:
+                    for day in meal_plan['days']:
+                        if 'meals' in day:
+                            for meal in day['meals']:
+                                title = meal.get('title', '')
+                                if title:
+                                    used_meal_titles.add(title.lower())
+                                    meal_titles_in_menu.append(title)
+                                
+                                # Extract primary ingredients
+                                ingredients = meal.get('ingredients', [])
+                                if ingredients and len(ingredients) > 0:
+                                    primary_ingredient = ingredients[0].get('name', '') if isinstance(ingredients[0], dict) else str(ingredients[0])
+                                    if primary_ingredient:
+                                        used_primary_ingredients.add(primary_ingredient.lower())
+                
+                if meal_titles_in_menu:
+                    menu_summary += f": {', '.join(meal_titles_in_menu[:3])}" + ("..." if len(meal_titles_in_menu) > 3 else "")
+                    recent_menu_summaries.append(menu_summary)
+                    
+            except (json.JSONDecodeError, KeyError, TypeError) as e:
+                logger.warning(f"Could not parse menu history: {e}")
+                continue
+
+        logger.info(f"Found {len(used_meal_titles)} meal titles and {len(used_primary_ingredients)} primary ingredients to avoid")
+        
+        # Create history context for OpenAI
+        recent_history_text = ""
+        if recent_menu_summaries:
+            recent_history_text = "\n".join([f"- {summary}" for summary in recent_menu_summaries[:7]])  # Show last 7 menus
+        else:
+            recent_history_text = "- No previous menus found"
         
         # Build comprehensive system prompt for self-validation
         system_prompt = f"""You are an advanced meal planning assistant that creates complete, self-validated meal plans.
@@ -618,9 +679,13 @@ CRITICAL SELF-VALIDATION REQUIREMENTS - CHECK BEFORE RESPONDING:
 1. Verify NO disliked ingredients are used: {', '.join(disliked_ingredients) if disliked_ingredients else 'None'}
 2. Confirm ALL required meal times are included each day: {req.meal_times if hasattr(req, 'meal_times') else 'breakfast, lunch, dinner'}
 3. Ensure NO meal titles repeat across the entire {req.duration_days}-day plan
-4. Respect time constraints with 25% flexibility buffer
-5. Follow all dietary restrictions: {', '.join(dietary_restrictions) if dietary_restrictions else 'None'}
-6. If any issues found, automatically correct them before responding
+4. AVOID all previously used meal titles: {', '.join(sorted(used_meal_titles)[:20]) if used_meal_titles else 'None'}{'...' if len(used_meal_titles) > 20 else ''}
+5. AVOID reusing primary ingredients from recent menus: {', '.join(sorted(used_primary_ingredients)[:15]) if used_primary_ingredients else 'None'}{'...' if len(used_primary_ingredients) > 15 else ''}
+6. Respect time constraints with 25% flexibility buffer
+7. Follow all dietary restrictions: {', '.join(dietary_restrictions) if dietary_restrictions else 'None'}
+8. If any issues found, automatically correct them before responding
+
+VARIETY IS CRITICAL: Create completely new and different meals from the user's previous menus. Be creative and avoid repetition.
 
 ONLY return a meal plan that passes ALL validation checks. Self-correct any issues during generation."""
 
@@ -634,6 +699,15 @@ ONLY return a meal plan that passes ALL validation checks. Self-correct any issu
 - Time constraints: {time_constraints if time_constraints else 'No specific constraints'}
 - Required meal times each day: {req.meal_times if hasattr(req, 'meal_times') else 'breakfast, lunch, dinner'}
 - Snacks per day: {req.snacks_per_day}
+
+### PREVIOUS MENU HISTORY (AVOID REPEATING THESE):
+{recent_history_text}
+
+### CRITICAL AVOIDANCE REQUIREMENTS:
+- DO NOT repeat any meal titles from previous menus
+- DO NOT reuse primary ingredients as main components
+- CREATE COMPLETELY NEW AND DIFFERENT meals for maximum variety
+- Be creative with cuisines, cooking methods, and ingredient combinations
 
 ### Quality Requirements
 - Ensure variety: NO repeated meal titles across all {req.duration_days} days
