@@ -8,6 +8,9 @@ from typing import List, Optional, Dict, Any, Set
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, Query, Body, Depends, status, BackgroundTasks
 import openai
+
+# Feature flag for optimized generation method
+USE_OPTIMIZED_GENERATION = True  # Set to False to use legacy method
 from psycopg2.extras import RealDictCursor
 from ..db import get_db_connection, get_db_cursor
 from ..db import _connection_stats, _stats_lock, log_connection_stats
@@ -569,9 +572,235 @@ def get_prep_complexity_level(complexity_value):
         return "standard"
     return "complex"
 
+def generate_meal_plan_single_request(req: GenerateMealPlanRequest, job_id: str = None):
+    """Generate entire meal plan in one OpenAI call with self-validation - NEW OPTIMIZED APPROACH"""
+    try:
+        import threading
+        import time
+        
+        generation_start_time = time.time()
+        MAX_GENERATION_TIME = 300  # 5 minutes maximum for single request
+        
+        current_thread = threading.current_thread()
+        logger.info(f"SINGLE_REQUEST_DEBUG: Starting optimized single-request generation on thread: {current_thread.name}")
+        logger.info(f"Job ID: {job_id}, User ID: {req.user_id}, Duration: {req.duration_days} days")
+        
+        if req.duration_days < 1 or req.duration_days > 7:
+            raise HTTPException(400, "duration_days must be between 1 and 7")
+
+        # PHASE 1: Fetch user preferences once
+        user_row = None
+        preference_user_id = req.for_client_id if req.for_client_id else req.user_id
+
+        with get_db_cursor(dict_cursor=True) as (cursor, conn):
+            cursor.execute("""
+                SELECT recipe_type, macro_protein, macro_carbs, macro_fat, calorie_goal,
+                       appliances, prep_complexity, servings_per_meal, meal_times,
+                       dietary_restrictions, disliked_ingredients, snacks_per_day,
+                       flavor_preferences, spice_level, recipe_type_preferences,
+                       meal_time_preferences, time_constraints, prep_preferences
+                FROM user_profiles WHERE id = %s
+            """, (preference_user_id,))
+            
+            user_row = cursor.fetchone()
+            if not user_row:
+                raise HTTPException(404, f"User {preference_user_id} not found")
+
+        # Extract user preferences (same logic as before)
+        dietary_restrictions = user_row.get('dietary_restrictions', []) or []
+        disliked_ingredients = user_row.get('disliked_ingredients', []) or []
+        time_constraints = user_row.get('time_constraints', {}) or {}
+        
+        # Build comprehensive system prompt for self-validation
+        system_prompt = f"""You are an advanced meal planning assistant that creates complete, self-validated meal plans.
+
+CRITICAL SELF-VALIDATION REQUIREMENTS - CHECK BEFORE RESPONDING:
+1. Verify NO disliked ingredients are used: {', '.join(disliked_ingredients) if disliked_ingredients else 'None'}
+2. Confirm ALL required meal times are included each day: {req.meal_times if hasattr(req, 'meal_times') else 'breakfast, lunch, dinner'}
+3. Ensure NO meal titles repeat across the entire {req.duration_days}-day plan
+4. Respect time constraints with 25% flexibility buffer
+5. Follow all dietary restrictions: {', '.join(dietary_restrictions) if dietary_restrictions else 'None'}
+6. If any issues found, automatically correct them before responding
+
+ONLY return a meal plan that passes ALL validation checks. Self-correct any issues during generation."""
+
+        # Build comprehensive user prompt
+        user_prompt = f"""Generate a complete {req.duration_days}-day meal plan that is self-validated and ready to use.
+
+### User Requirements
+- Servings per meal: {req.servings_per_meal}
+- Dietary restrictions: {', '.join(dietary_restrictions) if dietary_restrictions else 'None'}
+- Disliked ingredients: {', '.join(disliked_ingredients) if disliked_ingredients else 'None'} (NEVER use these)
+- Time constraints: {time_constraints if time_constraints else 'No specific constraints'}
+- Required meal times each day: {req.meal_times if hasattr(req, 'meal_times') else 'breakfast, lunch, dinner'}
+- Snacks per day: {req.snacks_per_day}
+
+### Quality Requirements
+- Ensure variety: NO repeated meal titles across all {req.duration_days} days
+- Include detailed cooking instructions for each meal
+- Provide nutritional information per serving and per meal
+- Respect all dietary restrictions and preferences
+- Generate consolidated grocery list organized by store categories
+
+### Response Format
+Return a JSON object with this exact structure:
+{{
+    "meal_plan": {{
+        "days": [
+            {{
+                "dayNumber": 1,
+                "meals": [
+                    {{
+                        "meal_time": "breakfast",
+                        "title": "Meal Name",
+                        "ingredients": [
+                            {{"name": "ingredient", "quantity": "amount", "calories": "X", "protein": "Xg", "carbs": "Xg", "fat": "Xg"}}
+                        ],
+                        "instructions": ["Step 1", "Step 2"],
+                        "servings": {req.servings_per_meal},
+                        "macros": {{
+                            "perServing": {{"calories": X, "protein": "Xg", "carbs": "Xg", "fat": "Xg"}},
+                            "perMeal": {{"calories": X, "protein": "Xg", "carbs": "Xg", "fat": "Xg"}}
+                        }}
+                    }}
+                ],
+                "snacks": [] // Include if snacks_per_day > 0
+            }}
+            // ... repeat for all {req.duration_days} days
+        ]
+    }},
+    "grocery_list": {{
+        "produce": ["item with quantity"],
+        "dairy": ["item with quantity"],
+        "meat": ["item with quantity"],
+        "pantry": ["item with quantity"],
+        "frozen": ["item with quantity"]
+    }},
+    "validation_summary": {{
+        "disliked_ingredients_avoided": true,
+        "all_meal_times_included": true,
+        "no_repeated_titles": true,
+        "time_constraints_respected": true
+    }}
+}}
+
+IMPORTANT: Self-validate your response before finalizing. Ensure no disliked ingredients, no repeated meal titles, and all requirements are met."""
+
+        # Update progress
+        if job_id:
+            batch_update_job_status(job_id, {
+                "progress": 20,
+                "message": f"Generating complete {req.duration_days}-day meal plan..."
+            }, force_db_update=False)
+
+        # Single comprehensive OpenAI call
+        openai_model = determine_model(req.ai_model if req.ai_model else "default")
+        logger.info(f"Using {openai_model} model for single-request generation")
+
+        response = openai.ChatCompletion.create(
+            model=openai_model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            max_tokens=8000,  # Larger token limit for complete plan
+            temperature=0.2,
+            request_timeout=180  # 3 minutes timeout for single large request
+        )
+
+        logger.info("Received complete meal plan from OpenAI")
+
+        # Update progress
+        if job_id:
+            batch_update_job_status(job_id, {
+                "progress": 70,
+                "message": "Processing and validating meal plan..."
+            }, force_db_update=False)
+
+        # Parse the response
+        response_content = response.choices[0].message.content
+        try:
+            meal_plan_data = json.loads(response_content)
+        except json.JSONDecodeError:
+            logger.error("Failed to parse OpenAI response as JSON")
+            raise HTTPException(500, "Invalid meal plan format received")
+
+        # Validate the structure
+        if "meal_plan" not in meal_plan_data or "days" not in meal_plan_data["meal_plan"]:
+            raise HTTPException(500, "Invalid meal plan structure")
+
+        final_plan = meal_plan_data["meal_plan"]
+        grocery_list = meal_plan_data.get("grocery_list", {})
+
+        # Update progress
+        if job_id:
+            batch_update_job_status(job_id, {
+                "progress": 90,
+                "message": "Finalizing meal plan..."
+            }, force_db_update=False)
+
+        # PHASE 2: Save to database (connection closed after generation)
+        menu_id = None
+        with get_db_cursor(dict_cursor=False) as (cursor, conn):
+            # Insert menu record
+            cursor.execute("""
+                INSERT INTO menus (user_id, meal_plan_json, duration_days, for_client_id, nickname)
+                VALUES (%s, %s, %s, %s, %s)
+                RETURNING id
+            """, (
+                req.user_id,
+                json.dumps(final_plan),
+                req.duration_days,
+                req.for_client_id,
+                req.nickname or f"{req.duration_days}-day meal plan"
+            ))
+            
+            menu_id = cursor.fetchone()[0]
+            conn.commit()
+
+        # Update progress to complete
+        if job_id:
+            batch_update_job_status(job_id, {
+                "progress": 100,
+                "status": "completed",
+                "message": "Meal plan generated successfully!",
+                "result_data": json.dumps({"menu_id": menu_id})
+            }, force_db_update=True)
+
+        logger.info(f"Single-request meal plan generation completed in {time.time() - generation_start_time:.1f}s")
+
+        return {
+            "message": "Meal plan generated successfully using optimized single-request approach",
+            "menu_id": menu_id,
+            "meal_plan": final_plan,
+            "grocery_list": grocery_list,
+            "generation_method": "single_request_optimized"
+        }
+
+    except Exception as e:
+        logger.error(f"Error in single-request generation: {str(e)}")
+        if job_id:
+            batch_update_job_status(job_id, {
+                "status": "error",
+                "error_message": str(e),
+                "progress": 0
+            }, force_db_update=True)
+        raise HTTPException(500, f"Generation failed: {str(e)}")
+
 @router.post("/generate")
 def generate_meal_plan_variety(req: GenerateMealPlanRequest, job_id: str = None):
-    """Generate a meal plan based on user preferences and requirements"""
+    """Generate a meal plan - routes to optimized or legacy method based on feature flag"""
+    
+    if USE_OPTIMIZED_GENERATION:
+        logger.info(f"Using optimized single-request generation for user {req.user_id}")
+        return generate_meal_plan_single_request(req, job_id)
+    else:
+        logger.info(f"Using legacy multi-request generation for user {req.user_id}")
+        return generate_meal_plan_legacy(req, job_id)
+
+@router.post("/generate-legacy")  
+def generate_meal_plan_legacy(req: GenerateMealPlanRequest, job_id: str = None):
+    """Legacy meal plan generation (7 separate API calls) - kept as fallback"""
     try:
         import threading
         current_thread = threading.current_thread()
