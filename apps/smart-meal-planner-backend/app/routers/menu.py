@@ -771,16 +771,43 @@ IMPORTANT: Self-validate your response before finalizing. Ensure no disliked ing
         openai_model = determine_model(req.ai_model if req.ai_model else "default")
         logger.info(f"Using {openai_model} model for single-request generation")
 
-        response = openai.ChatCompletion.create(
-            model=openai_model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            max_tokens=8000,  # Larger token limit for complete plan
-            temperature=0.2,
-            request_timeout=180  # 3 minutes timeout for single large request
-        )
+        # Determine appropriate token limit based on model
+        max_tokens = 4000  # Safe limit for most models (under 4096 completion token limit)
+        if "gpt-4" in openai_model.lower():
+            max_tokens = 4000  # GPT-4 has 4096 completion token limit
+        elif "gpt-3.5" in openai_model.lower():
+            max_tokens = 3500  # GPT-3.5 has 4096 completion token limit, be conservative
+        
+        logger.info(f"Using {max_tokens} max_tokens for model {openai_model}")
+
+        try:
+            response = openai.ChatCompletion.create(
+                model=openai_model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                max_tokens=max_tokens,
+                temperature=0.3,  # Slightly higher for more variety
+                request_timeout=180  # 3 minutes timeout for single large request
+            )
+        except openai.error.InvalidRequestError as e:
+            if "max_tokens" in str(e):
+                # Retry with smaller token limit
+                logger.warning(f"Token limit too high, retrying with 3000 tokens: {e}")
+                max_tokens = 3000
+                response = openai.ChatCompletion.create(
+                    model=openai_model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    max_tokens=max_tokens,
+                    temperature=0.3,
+                    request_timeout=180
+                )
+            else:
+                raise
 
         logger.info("Received complete meal plan from OpenAI")
 
@@ -793,11 +820,26 @@ IMPORTANT: Self-validate your response before finalizing. Ensure no disliked ing
 
         # Parse the response
         response_content = response.choices[0].message.content
+        logger.info(f"Received response content length: {len(response_content)} characters")
+        
         try:
             meal_plan_data = json.loads(response_content)
-        except json.JSONDecodeError:
-            logger.error("Failed to parse OpenAI response as JSON")
-            raise HTTPException(500, "Invalid meal plan format received")
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse OpenAI response as JSON: {e}")
+            logger.error(f"Response content preview: {response_content[:500]}...")
+            
+            # Try to extract JSON from response if it's wrapped in markdown or has extra text
+            import re
+            json_match = re.search(r'\{.*\}', response_content, re.DOTALL)
+            if json_match:
+                try:
+                    meal_plan_data = json.loads(json_match.group())
+                    logger.info("Successfully extracted JSON from response")
+                except json.JSONDecodeError:
+                    logger.error("Could not extract valid JSON from response")
+                    raise HTTPException(500, f"Invalid meal plan format received. Error: {e}")
+            else:
+                raise HTTPException(500, f"No JSON found in response. Error: {e}")
 
         # Validate the structure
         if "meal_plan" not in meal_plan_data or "days" not in meal_plan_data["meal_plan"]:
@@ -863,11 +905,24 @@ IMPORTANT: Self-validate your response before finalizing. Ensure no disliked ing
 
 @router.post("/generate")
 def generate_meal_plan_variety(req: GenerateMealPlanRequest, job_id: str = None):
-    """Generate a meal plan - routes to optimized or legacy method based on feature flag"""
+    """Generate a meal plan - tries optimized method first, falls back to legacy if needed"""
     
     if USE_OPTIMIZED_GENERATION:
-        logger.info(f"Using optimized single-request generation for user {req.user_id}")
-        return generate_meal_plan_single_request(req, job_id)
+        try:
+            logger.info(f"Attempting optimized single-request generation for user {req.user_id}")
+            return generate_meal_plan_single_request(req, job_id)
+        except Exception as e:
+            logger.error(f"Optimized generation failed: {str(e)}")
+            logger.info(f"Falling back to legacy multi-request generation for user {req.user_id}")
+            
+            # Reset job status for retry
+            if job_id:
+                batch_update_job_status(job_id, {
+                    "progress": 5,
+                    "message": "Retrying with legacy method..."
+                }, force_db_update=False)
+            
+            return generate_meal_plan_legacy(req, job_id)
     else:
         logger.info(f"Using legacy multi-request generation for user {req.user_id}")
         return generate_meal_plan_legacy(req, job_id)
