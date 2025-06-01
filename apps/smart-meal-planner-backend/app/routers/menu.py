@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException, Query, Body, Depends, status, Back
 import openai
 
 # Feature flag for optimized generation method
-USE_OPTIMIZED_GENERATION = True  # Set to False to use legacy method
+USE_OPTIMIZED_GENERATION = False  # TEMPORARY: Disabled due to token limit issues - single request too large
 from psycopg2.extras import RealDictCursor
 from ..db import get_db_connection, get_db_cursor
 from ..db import _connection_stats, _stats_lock, log_connection_stats
@@ -771,12 +771,12 @@ IMPORTANT: Self-validate your response before finalizing. Ensure no disliked ing
         openai_model = determine_model(req.ai_model if req.ai_model else "default")
         logger.info(f"Using {openai_model} model for single-request generation")
 
-        # Determine appropriate token limit based on model
-        max_tokens = 4000  # Safe limit for most models (under 4096 completion token limit)
+        # Determine appropriate token limit based on model - be more aggressive for single request
+        max_tokens = 4095  # Maximum possible for completion tokens
         if "gpt-4" in openai_model.lower():
-            max_tokens = 4000  # GPT-4 has 4096 completion token limit
+            max_tokens = 4095  # GPT-4 has 4096 completion token limit
         elif "gpt-3.5" in openai_model.lower():
-            max_tokens = 3500  # GPT-3.5 has 4096 completion token limit, be conservative
+            max_tokens = 4095  # GPT-3.5 has 4096 completion token limit, use maximum
         
         logger.info(f"Using {max_tokens} max_tokens for model {openai_model}")
 
@@ -826,7 +826,15 @@ IMPORTANT: Self-validate your response before finalizing. Ensure no disliked ing
             meal_plan_data = json.loads(response_content)
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse OpenAI response as JSON: {e}")
+            logger.error(f"Response content length: {len(response_content)} characters")
             logger.error(f"Response content preview: {response_content[:500]}...")
+            logger.error(f"Response content ending: ...{response_content[-500:]}")
+            
+            # Check if response was truncated (common issue with token limits)
+            if len(response_content) >= 13000:  # Likely truncated if very long but invalid JSON
+                logger.error("Response appears to be truncated due to token limit")
+                logger.info("🔄 OPTIMIZATION: Response truncated, falling back to legacy method")
+                raise HTTPException(500, f"Response truncated due to token limit - falling back to legacy method")
             
             # Try to extract JSON from response if it's wrapped in markdown or has extra text
             import re
