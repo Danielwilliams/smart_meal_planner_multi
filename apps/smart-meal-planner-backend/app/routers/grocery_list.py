@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Query, Body, BackgroundTasks
 from psycopg2.extras import RealDictCursor
-from ..db import get_db_connection
+from ..db import get_db_connection, get_db_cursor
 from ..utils.grocery_aggregator import aggregate_grocery_list
 from ..config import OPENAI_API_KEY
 from pydantic import BaseModel
@@ -39,11 +39,13 @@ def get_menu_details(menu_id: int):
     """
     Retrieve full menu details for a specific menu
     """
-    conn = get_db_connection()
     try:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        with get_db_cursor(dict_cursor=True) as (cursor, conn):
+            # Enable autocommit to prevent blocking during menu generation
+            conn.autocommit = True
+            
             # Fetch the full menu details
-            cur.execute("""
+            cursor.execute("""
                 SELECT
                     id AS menu_id,
                     meal_plan_json,
@@ -53,17 +55,18 @@ def get_menu_details(menu_id: int):
                 FROM menus
                 WHERE id = %s
             """, (menu_id,))
-            menu = cur.fetchone()
+            menu = cursor.fetchone()
 
         if not menu:
             raise HTTPException(status_code=404, detail="Menu not found")
 
-        # Ensure meal_plan_json is parsed
+        # Convert to dict and ensure meal_plan_json is parsed
+        menu = dict(menu)
         menu['meal_plan'] = json.loads(menu['meal_plan_json']) if isinstance(menu['meal_plan_json'], str) else menu['meal_plan_json']
 
         return menu
     except Exception as e:
-        print("Error retrieving menu details:", e)
+        logger.error(f"Error retrieving menu details: {e}")
         # Return a more specific error
         if "not found" in str(e).lower():
             raise HTTPException(status_code=404, detail="Menu not found")
@@ -71,8 +74,6 @@ def get_menu_details(menu_id: int):
             raise HTTPException(status_code=403, detail="Permission error: You don't have access to this menu")
         else:
             raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
-    finally:
-        conn.close()
 
 
 @router.get("/{menu_id}/grocery-list")

@@ -909,17 +909,22 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest, job_id: str = None)
     
     if USE_OPTIMIZED_GENERATION:
         try:
-            logger.info(f"Attempting optimized single-request generation for user {req.user_id}")
-            return generate_meal_plan_single_request(req, job_id)
+            logger.info(f"🚀 OPTIMIZATION: Attempting optimized single-request generation for user {req.user_id}")
+            result = generate_meal_plan_single_request(req, job_id)
+            logger.info(f"✅ OPTIMIZATION: Single-request generation successful for user {req.user_id}")
+            return result
         except Exception as e:
-            logger.error(f"Optimized generation failed: {str(e)}")
-            logger.info(f"Falling back to legacy multi-request generation for user {req.user_id}")
+            logger.error(f"❌ OPTIMIZATION: Single-request generation failed: {str(e)}")
+            logger.error(f"❌ OPTIMIZATION: Exception type: {type(e).__name__}")
+            import traceback
+            logger.error(f"❌ OPTIMIZATION: Traceback: {traceback.format_exc()}")
+            logger.info(f"🔄 FALLBACK: Switching to legacy multi-request generation for user {req.user_id}")
             
             # Reset job status for retry
             if job_id:
                 batch_update_job_status(job_id, {
                     "progress": 5,
-                    "message": "Retrying with legacy method..."
+                    "message": "Optimized method failed, retrying with legacy method..."
                 }, force_db_update=False)
             
             return generate_meal_plan_legacy(req, job_id)
