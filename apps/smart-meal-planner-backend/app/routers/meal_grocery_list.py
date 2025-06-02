@@ -8,7 +8,7 @@ in a menu, rather than aggregating all ingredients into a single list.
 from fastapi import APIRouter, HTTPException, Query, BackgroundTasks
 from psycopg2.extras import RealDictCursor
 # Use the enhanced DB with specialized connection pools
-from ..db_enhanced_actual import get_db_cursor
+from ..db_simplified import get_db_cursor
 from ..utils.meal_grocery_generator import get_meal_shopping_list
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any

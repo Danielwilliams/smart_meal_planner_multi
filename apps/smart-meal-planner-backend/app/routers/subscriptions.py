@@ -17,7 +17,7 @@ from app.models.subscription import (
     SubscriptionType, SubscriptionStatus, PaymentProvider
 )
 from app.utils.auth_middleware import get_user_from_token
-from app.db import get_db_connection
+from app.db_simplified import get_db_connection, get_db_cursor
 
 # Set up logging
 logger = logging.getLogger(__name__)

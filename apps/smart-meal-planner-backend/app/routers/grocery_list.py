@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query, Body, BackgroundTasks
 from psycopg2.extras import RealDictCursor
 # Use the enhanced DB with specialized connection pools
-from ..db_enhanced_actual import get_db_cursor, get_db_connection
+from ..db_simplified import get_db_cursor, get_db_connection
 from ..utils.grocery_aggregator import aggregate_grocery_list
 from ..config import OPENAI_API_KEY
 from pydantic import BaseModel

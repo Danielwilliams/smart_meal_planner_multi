@@ -10,6 +10,9 @@ from dotenv import load_dotenv
 # Import S3 helper for initialization
 from app.utils.s3.s3_utils import s3_helper
 
+# Import database helpers for initialization
+from app.db_simplified import connection_pool, close_all_connections
+
 # Import enhanced CORS middleware
 from app.middleware.cors_middleware import setup_cors_middleware
 
@@ -169,17 +172,13 @@ def create_app() -> FastAPI:
     async def health_check():
         # Check if client notes tables exist
         try:
-            from app.db import get_db_connection
-            conn = get_db_connection()
-            with conn.cursor() as cur:
+            from app.db_simplified import get_db_cursor
+            with get_db_cursor(autocommit=True) as (cur, conn):
                 cur.execute("SELECT 1 FROM client_notes LIMIT 1")
                 client_notes_exists = True
         except:
             client_notes_exists = False
-        finally:
-            if 'conn' in locals():
-                conn.close()
-        
+
         return {
             "status": "healthy",
             "client_notes_migration": "completed" if client_notes_exists else "pending"
@@ -244,56 +243,51 @@ def create_app() -> FastAPI:
     async def verify_password_hashing():
         """Verify that Kroger password hashing is working correctly"""
         try:
-            from app.db import get_db_connection
+            from app.db_simplified import get_db_cursor
             from app.utils.password_utils import hash_kroger_password, verify_kroger_password
             from psycopg2.extras import RealDictCursor
-            
+
             results = {}
-            
+
             # Check migration status
-            conn = get_db_connection()
-            try:
-                with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                    # Get overall statistics
+            with get_db_cursor(dict_cursor=True, autocommit=True) as (cur, conn):
+                # Get overall statistics
+                cur.execute("""
+                    SELECT
+                        COUNT(*) as total_users,
+                        0 as users_with_username,
+                        0 as users_with_plain_password,
+                        0 as users_with_hashed_password,
+                        0 as users_with_salt,
+                        0 as users_with_both
+                    FROM user_profiles;
+                """)
+                results["migration_stats"] = dict(cur.fetchone())
+
+                # Check applied migrations
+                cur.execute("""
+                    SELECT EXISTS (
+                        SELECT 1 FROM information_schema.tables
+                        WHERE table_name = 'applied_migrations'
+                    ) as table_exists;
+                """)
+                table_exists = cur.fetchone()['table_exists']
+
+                if table_exists:
                     cur.execute("""
-                        SELECT 
-                            COUNT(*) as total_users,
-                            0 as users_with_username,
-                            0 as users_with_plain_password,
-                            0 as users_with_hashed_password,
-                            0 as users_with_salt,
-                            0 as users_with_both
-                        FROM user_profiles;
+                        SELECT migration_name, status, applied_at, execution_time_seconds
+                        FROM applied_migrations
+                        WHERE migration_name = '001_hash_kroger_passwords'
+                        ORDER BY applied_at DESC
+                        LIMIT 1;
                     """)
-                    results["migration_stats"] = dict(cur.fetchone())
-                    
-                    # Check applied migrations
-                    cur.execute("""
-                        SELECT EXISTS (
-                            SELECT 1 FROM information_schema.tables 
-                            WHERE table_name = 'applied_migrations'
-                        ) as table_exists;
-                    """)
-                    table_exists = cur.fetchone()['table_exists']
-                    
-                    if table_exists:
-                        cur.execute("""
-                            SELECT migration_name, status, applied_at, execution_time_seconds
-                            FROM applied_migrations 
-                            WHERE migration_name = '001_hash_kroger_passwords'
-                            ORDER BY applied_at DESC
-                            LIMIT 1;
-                        """)
-                        migration_record = cur.fetchone()
-                        results["migration_record"] = dict(migration_record) if migration_record else None
-                    else:
-                        results["migration_record"] = None
-                    
-                    # Kroger functionality removed - no password verification needed
-                    results["verification_test"] = None
-                        
-            finally:
-                conn.close()
+                    migration_record = cur.fetchone()
+                    results["migration_record"] = dict(migration_record) if migration_record else None
+                else:
+                    results["migration_record"] = None
+
+                # Kroger functionality removed - no password verification needed
+                results["verification_test"] = None
             
             # Test new password hashing
             test_password = "test_password_123"
@@ -332,33 +326,28 @@ def create_app() -> FastAPI:
     async def clear_plaintext_passwords():
         """Clear plain text Kroger passwords (only if verification passes)"""
         try:
-            from app.db import get_db_connection
+            from app.db_simplified import get_db_cursor
             from psycopg2.extras import RealDictCursor
-            
+
             # First verify the system is working
             verification_result = await verify_password_hashing()
-            
+
             if verification_result.get("overall_status") != "PASS":
                 return {
                     "error": "Password verification failed - will not clear plain text passwords",
                     "verification_result": verification_result
                 }
-            
-            # Get count before clearing
-            conn = get_db_connection()
-            try:
-                with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                    # Kroger functionality removed - no passwords to clear
-                    return {
-                        "status": "success",
-                        "message": "Kroger functionality has been removed - no passwords to clear",
-                        "passwords_cleared": 0,
-                        "remaining_plain_text": 0,
-                        "verification_passed": True
-                    }
-                    
-            finally:
-                conn.close()
+
+            # Use context manager for database operations
+            with get_db_cursor(dict_cursor=True, autocommit=True) as (cur, conn):
+                # Kroger functionality removed - no passwords to clear
+                return {
+                    "status": "success",
+                    "message": "Kroger functionality has been removed - no passwords to clear",
+                    "passwords_cleared": 0,
+                    "remaining_plain_text": 0,
+                    "verification_passed": True
+                }
                 
         except Exception as e:
             return {
@@ -389,6 +378,12 @@ async def extend_timeout_for_menu_routes(request, call_next):
 async def startup_event():
     """Run startup tasks."""
     try:
+        # Log connection pool status
+        if connection_pool:
+            logger.info(f"✅ Database connection pool initialized with min={connection_pool._minconn}, max={connection_pool._maxconn} connections")
+        else:
+            logger.warning("⚠️ Database connection pool not initialized - will use direct connections")
+
         # Print all loaded routes for debugging
         from fastapi.routing import APIRoute
         routes = [route.path for route in app.router.routes]
@@ -434,3 +429,15 @@ async def startup_event():
 async def catch_all_patch(full_path: str):
     logger.info(f"Catch-all PATCH route hit for path: {full_path}")
     return {"status": "received", "path": full_path}
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Run shutdown tasks."""
+    logger.info("🛑 Application shutting down")
+
+    # Close all database connections
+    try:
+        close_all_connections()
+        logger.info("✅ Database connections closed successfully")
+    except Exception as e:
+        logger.error(f"❌ Error closing database connections: {str(e)}")
