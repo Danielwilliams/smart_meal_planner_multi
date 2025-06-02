@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 from app.utils.s3.s3_utils import s3_helper
 
 # Import database helpers for initialization
-from app.db_super_simple import connection_pool, close_all_connections  # Using the super simple DB module
+from app.db import connection_pool, close_all_connections  # Using the ultra-simplified DB module
 
 # Import enhanced CORS middleware
 from app.middleware.cors_middleware import setup_cors_middleware
@@ -172,7 +172,7 @@ def create_app() -> FastAPI:
     async def health_check():
         # Check if client notes tables exist
         try:
-            from app.db_super_simple import get_db_cursor
+            from app.db import get_db_cursor
 
             # Try to access the database
             try:
@@ -199,7 +199,7 @@ def create_app() -> FastAPI:
     async def reset_connections():
         """Admin endpoint to force reset the connection pool"""
         try:
-            from app.db_super_simple import close_all_connections, connection_pool
+            from app.db import close_all_connections, connection_pool
 
             # Log the reset attempt
             logger.info("Attempting to close all database connections")

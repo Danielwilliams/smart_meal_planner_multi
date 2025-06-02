@@ -2,7 +2,7 @@
 
 from fastapi import Depends, HTTPException
 from app.utils.auth_utils import get_user_from_token
-from app.db_super_simple import get_db_cursor
+from app.db import get_db_cursor
 import logging
 
 logger = logging.getLogger(__name__)
