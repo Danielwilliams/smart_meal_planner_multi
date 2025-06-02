@@ -139,11 +139,12 @@ def get_pool_by_type(pool_type='general'):
     else:
         return general_pool
 
-def get_db_connection(pool_type='general'):
+def get_db_connection(pool_type='general', autocommit=False):
     """Get database connection from the appropriate pool
 
     Args:
         pool_type: The type of pool to use ('general', 'ai', or 'read')
+        autocommit: If True, sets the connection to autocommit mode
     """
     connection_pool = get_pool_by_type(pool_type)
 
@@ -154,6 +155,19 @@ def get_db_connection(pool_type='general'):
             conn = connection_pool.getconn()
             logger.debug(f"Connection obtained from {pool_type} pool")
             update_connection_stats('acquire', pool_type, True)
+
+            # Make sure we're not in a transaction before setting autocommit
+            # Rollback any active transaction to start with a clean state
+            try:
+                conn.rollback()
+                logger.debug(f"Rolled back any existing transaction for {pool_type} pool connection")
+            except Exception as e:
+                logger.warning(f"Error rolling back transaction: {str(e)}")
+
+            # Set autocommit mode if requested
+            if autocommit:
+                conn.autocommit = True
+                logger.debug(f"Set autocommit=True for {pool_type} connection")
 
             # Set statement timeout on the connection to prevent long-running queries
             # This timeout is in milliseconds (30 seconds)
@@ -173,6 +187,12 @@ def get_db_connection(pool_type='general'):
                 port=DB_PORT
             )
             update_connection_stats('acquire', pool_type, True)
+
+            # Set autocommit mode if requested
+            if autocommit:
+                conn.autocommit = True
+                logger.debug(f"Set autocommit=True for direct connection (no {pool_type} pool)")
+
             return conn
     except psycopg2.OperationalError as e:
         logger.error(f"Failed to connect to database: {str(e)}")
@@ -218,17 +238,13 @@ def get_db_cursor(dict_cursor=True, pool_type='general', autocommit=False):
     cursor = None
     pooled = False
     try:
-        # Get connection from pool or directly
+        # Get connection from pool or directly with autocommit parameter
         logger.info(f"Attempting to connect to database using {pool_type} pool")
-        conn = get_db_connection(pool_type=pool_type)
+        conn = get_db_connection(pool_type=pool_type, autocommit=autocommit)
         pool_obj = get_pool_by_type(pool_type)
         pooled = pool_obj is not None
 
-        # Set autocommit mode BEFORE creating cursor if requested
-        # This prevents "set_session cannot be used inside a transaction" errors
-        if autocommit:
-            conn.autocommit = True
-            logger.debug(f"Set autocommit=True for {pool_type} connection")
+        # Note: autocommit is now set in get_db_connection if requested
 
         # Create cursor
         if dict_cursor:
