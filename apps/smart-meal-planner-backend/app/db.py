@@ -139,47 +139,29 @@ def get_pool_by_type(pool_type='general'):
     else:
         return general_pool
 
-def get_db_connection(pool_type='general', timeout=10):
-    """Get database connection from the appropriate pool with timeout
+def get_db_connection(pool_type='general'):
+    """Get database connection from the appropriate pool
 
     Args:
         pool_type: The type of pool to use ('general', 'ai', or 'read')
-        timeout: Maximum time in seconds to wait for a connection
     """
-    start_time = time.time()
     connection_pool = get_pool_by_type(pool_type)
 
     try:
         if connection_pool:
-            # Get a connection from the pool with timeout
+            # Get a connection from the pool
             logger.debug(f"Getting connection from {pool_type} pool")
+            conn = connection_pool.getconn()
+            logger.debug(f"Connection obtained from {pool_type} pool")
+            update_connection_stats('acquire', pool_type, True)
 
-            # Implement timeout mechanism
-            while time.time() - start_time < timeout:
-                try:
-                    conn = connection_pool.getconn(key=None)
-                    logger.debug(f"Connection obtained from {pool_type} pool")
-                    update_connection_stats('acquire', pool_type, True)
+            # Set statement timeout on the connection to prevent long-running queries
+            # This timeout is in milliseconds (30 seconds)
+            cursor = conn.cursor()
+            cursor.execute("SET statement_timeout = 30000;")
+            cursor.close()
 
-                    # Set statement timeout on the connection to prevent long-running queries
-                    # This timeout is in milliseconds
-                    cursor = conn.cursor()
-                    cursor.execute(f"SET statement_timeout = {timeout * 1000};")
-                    cursor.close()
-
-                    return conn
-                except pool.PoolError:
-                    # If pool is exhausted, wait a bit and retry
-                    time.sleep(0.1)
-                    continue
-
-            # If we get here, timeout was reached
-            logger.error(f"Timeout reached waiting for {pool_type} pool connection")
-            update_connection_stats('acquire', pool_type, False)
-            raise HTTPException(
-                status_code=503,
-                detail=f"Database connection pool '{pool_type}' is currently exhausted. Please try again later."
-            )
+            return conn
         else:
             # Fall back to direct connection if pool is not available
             logger.info(f"Connecting directly to database at {DB_HOST}:{DB_PORT} (no {pool_type} pool)")
@@ -188,8 +170,7 @@ def get_db_connection(pool_type='general', timeout=10):
                 user=DB_USER,
                 password=DB_PASSWORD,
                 host=DB_HOST,
-                port=DB_PORT,
-                connect_timeout=timeout
+                port=DB_PORT
             )
             update_connection_stats('acquire', pool_type, True)
             return conn
@@ -210,14 +191,13 @@ def get_db_connection(pool_type='general', timeout=10):
         )
 
 @contextmanager
-def get_db_cursor(dict_cursor=True, pool_type='general', timeout=10):
+def get_db_cursor(dict_cursor=True, pool_type='general'):
     """
     Context manager for safely handling database connections and cursors.
 
     Args:
         dict_cursor: If True, uses RealDictCursor, otherwise uses regular cursor
         pool_type: The type of pool to use ('general', 'ai', or 'read')
-        timeout: Maximum time in seconds to wait for a connection
 
     Usage:
     ```
@@ -233,7 +213,7 @@ def get_db_cursor(dict_cursor=True, pool_type='general', timeout=10):
     try:
         # Get connection from pool or directly
         logger.info(f"Attempting to connect to database using {pool_type} pool")
-        conn = get_db_connection(pool_type=pool_type, timeout=timeout)
+        conn = get_db_connection(pool_type=pool_type)
         pool_obj = get_pool_by_type(pool_type)
         pooled = pool_obj is not None
 

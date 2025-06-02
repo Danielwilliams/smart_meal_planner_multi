@@ -961,7 +961,7 @@ def generate_meal_plan_legacy(req: GenerateMealPlanRequest, job_id: str = None):
         preference_user_id = req.for_client_id if req.for_client_id else req.user_id
 
         # Use the read pool for user preferences retrieval to avoid blocking other operations
-        with get_db_cursor(dict_cursor=True, pool_type='read', timeout=10) as (cursor, conn):
+        with get_db_cursor(dict_cursor=True, pool_type='read') as (cursor, conn):
             # Enable autocommit for faster read operations
             conn.autocommit = True
 
@@ -1538,7 +1538,7 @@ def generate_meal_plan_legacy(req: GenerateMealPlanRequest, job_id: str = None):
         logger.info("Opening new database connection to save generated menu")
 
         # Use the AI pool for saving menu data since this is part of the AI process
-        with get_db_cursor(dict_cursor=True, pool_type='ai', timeout=20) as (cursor, conn):
+        with get_db_cursor(dict_cursor=True, pool_type='ai') as (cursor, conn):
             try:
                 # Prepare the plan data as JSON string once
                 plan_json = json.dumps(final_plan)
@@ -2084,7 +2084,7 @@ def get_latest_menu(user_id: int):
     """Fetch the most recent menu for a user with minimal connection time"""
     try:
         # Use the read pool for quick menu retrieval
-        with get_db_cursor(dict_cursor=True, pool_type='read', timeout=10) as (cursor, conn):
+        with get_db_cursor(dict_cursor=True, pool_type='read') as (cursor, conn):
             # Enable autocommit for faster read operations
             conn.autocommit = True
             
@@ -2117,7 +2117,7 @@ def get_latest_menu(user_id: int):
 def get_menu_history(user_id: int):
     """Get menu history for a user"""
     # Use the read pool for menu history retrieval
-    with get_db_cursor(dict_cursor=True, pool_type='read', timeout=10) as (cursor, conn):
+    with get_db_cursor(dict_cursor=True, pool_type='read') as (cursor, conn):
         # Enable autocommit for faster read operations
         conn.autocommit = True
         try:
@@ -2156,7 +2156,7 @@ def get_menu_history(user_id: int):
 async def update_menu_nickname(menu_id: int, nickname: str = Body(..., embed=True)):
     """Update the nickname for a menu"""
     # Use the general pool for standard write operations
-    with get_db_cursor(dict_cursor=True, pool_type='general', timeout=15) as (cursor, conn):
+    with get_db_cursor(dict_cursor=True, pool_type='general') as (cursor, conn):
         try:
             cursor.execute("""
                 UPDATE menus
@@ -2181,7 +2181,7 @@ async def update_menu_nickname(menu_id: int, nickname: str = Body(..., embed=Tru
 def get_grocery_list(menu_id: int):
     """Get grocery list for a specific menu"""
     # Use the read pool for grocery list operations
-    with get_db_cursor(dict_cursor=True, pool_type='read', timeout=10) as (cursor, conn):
+    with get_db_cursor(dict_cursor=True, pool_type='read') as (cursor, conn):
         # Enable autocommit for faster read operations
         conn.autocommit = True
         try:

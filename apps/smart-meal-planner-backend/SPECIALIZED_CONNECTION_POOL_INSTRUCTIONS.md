@@ -2,6 +2,10 @@
 
 We've modified the Smart Meal Planner's database connection handling to use specialized connection pools for different types of operations. This addresses the concurrency issues where menu generation was blocking shopping list access.
 
+## IMPORTANT: Fix for ThreadedConnectionPool.getconn() Error
+
+The initial implementation encountered an error with the ThreadedConnectionPool.getconn() method not accepting a timeout parameter. The code has been updated to remove all timeout parameters from function calls.
+
 ## Summary of Changes
 
 1. **Enhanced db.py with three specialized connection pools**:

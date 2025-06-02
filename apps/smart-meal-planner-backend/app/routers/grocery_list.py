@@ -42,7 +42,7 @@ def get_menu_details(menu_id: int):
     """
     try:
         # Use the read pool for menu retrieval to prevent blocking during menu generation
-        with get_db_cursor(dict_cursor=True, pool_type='read', timeout=10) as (cursor, conn):
+        with get_db_cursor(dict_cursor=True, pool_type='read') as (cursor, conn):
             # Enable autocommit to prevent blocking during menu generation
             conn.autocommit = True
 
