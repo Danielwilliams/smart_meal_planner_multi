@@ -473,8 +473,7 @@ def save_recipe(user_id, menu_id=None, recipe_id=None, recipe_name=None, day_num
                     instructions = COALESCE(%s, instructions),
                     complexity_level = COALESCE(%s, complexity_level),
                     appliance_used = COALESCE(%s, appliance_used),
-                    servings = COALESCE(%s, servings),
-                    updated_at = CURRENT_TIMESTAMP
+                    servings = COALESCE(%s, servings)
                     WHERE id = %s
                     RETURNING id
                 """, (
@@ -562,7 +561,7 @@ def get_user_saved_recipes(user_id):
             cur.execute("""
                 SELECT * FROM saved_recipes
                 WHERE user_id = %s
-                ORDER BY updated_at DESC
+                ORDER BY created_at DESC
             """, (user_id,))
 
             recipes = cur.fetchall()
@@ -602,10 +601,10 @@ def get_user_saved_recipes(user_id):
             with get_db_cursor(dict_cursor=True, autocommit=True) as (cur, conn):
                 cur.execute("""
                     SELECT id, user_id, menu_id, recipe_id, recipe_name,
-                           meal_time, scraped_recipe_id, recipe_source, updated_at
+                           meal_time, scraped_recipe_id, recipe_source, created_at
                     FROM saved_recipes
                     WHERE user_id = %s
-                    ORDER BY updated_at DESC
+                    ORDER BY created_at DESC
                 """, (user_id,))
 
                 minimal_recipes = cur.fetchall()

@@ -55,6 +55,7 @@ from app.routers import custom_menu  # Add custom menu router
 from app.routers import organization_clients_alt
 from app.routers import invitations_alt
 from app.routers import saved_recipes_alt
+from app.routers import saved_recipes_debug
 from app.routers import client_resources  # Add client resources router
 from app.routers import test_invitation # Test invitation router for debugging
 from app.routers import organization_branding  # Add organization branding router
@@ -151,6 +152,7 @@ def create_app() -> FastAPI:
     app.include_router(organization_clients_alt.router)
     app.include_router(invitations_alt.router)
     app.include_router(saved_recipes_alt.router)
+    app.include_router(saved_recipes_debug.router)
     app.include_router(client_resources.router)
     app.include_router(test_invitation.router)
     
