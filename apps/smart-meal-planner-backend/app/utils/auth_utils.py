@@ -66,28 +66,28 @@ async def get_user_from_token(request: Request, use_cache=True):
 async def get_user_organization_role(user_id: int):
     """Get user's organization and role if any"""
     try:
-        with get_db_cursor(dict_cursor=True) as (cur, conn):
+        with get_db_cursor(dict_cursor=True, autocommit=True) as (cur, conn):
             # Check if user is an organization owner
             cur.execute("""
-                SELECT id as organization_id FROM organizations 
+                SELECT id as organization_id FROM organizations
                 WHERE owner_id = %s
             """, (user_id,))
             org_owner = cur.fetchone()
-            
+
             if org_owner:
                 return {
                     "organization_id": org_owner["organization_id"],
                     "role": "owner",
                     "is_admin": True
                 }
-            
+
             # Check if user is a client of any organization (including inactive)
             cur.execute("""
                 SELECT organization_id, role, status FROM organization_clients
                 WHERE client_id = %s
             """, (user_id,))
             org_client = cur.fetchone()
-            
+
             if org_client:
                 if org_client["status"] == 'active':
                     return {
@@ -104,14 +104,14 @@ async def get_user_organization_role(user_id: int):
                         "is_admin": False,
                         "client_status": "inactive"
                     }
-            
+
             # Check if user has admin role in the system
             cur.execute("""
                 SELECT role FROM users
                 WHERE id = %s
             """, (user_id,))
             user_record = cur.fetchone()
-            
+
             is_admin = False
             if user_record and user_record.get("role") == "admin":
                 is_admin = True
@@ -121,7 +121,7 @@ async def get_user_organization_role(user_id: int):
                     "is_admin": True,
                     "Role": "admin"  # Add Role field for frontend compatibility
                 }
-            
+
             # User has no organizational affiliation
             return {
                 "organization_id": None,
@@ -130,40 +130,48 @@ async def get_user_organization_role(user_id: int):
             }
     except Exception as e:
         logger.error(f"Error in get_user_organization_role: {str(e)}")
-        raise
+        # Return a minimal default set of permissions instead of raising
+        # This prevents authentication failures due to DB connection issues
+        return {
+            "organization_id": None,
+            "role": None,
+            "is_admin": False,
+            "error": f"Database error: {str(e)}"
+        }
         
 async def is_organization_admin(user_id: int) -> bool:
     """
     Check if a user is an organization admin (owner or admin role)
-    
+
     Args:
         user_id: The user ID to check
-        
+
     Returns:
         bool: True if the user is an organization admin, False otherwise
     """
     try:
-        with get_db_cursor(dict_cursor=True) as (cur, conn):
+        with get_db_cursor(dict_cursor=True, autocommit=True) as (cur, conn):
             # Check if user is an organization owner
             cur.execute("""
-                SELECT id FROM organizations 
+                SELECT id FROM organizations
                 WHERE owner_id = %s
             """, (user_id,))
             org_owner = cur.fetchone()
-            
+
             if org_owner:
                 return True
-            
+
             # Check if user is an organization admin
             cur.execute("""
                 SELECT organization_id, role FROM organization_clients
                 WHERE client_id = %s AND role = 'admin' AND status = 'active'
             """, (user_id,))
             org_admin = cur.fetchone()
-            
+
             return org_admin is not None
     except Exception as e:
         logger.error(f"Error in is_organization_admin: {str(e)}")
+        # Always return False on error, as this is a security-related function
         return False
 
 def admin_required(user = Depends(get_user_from_token)):
