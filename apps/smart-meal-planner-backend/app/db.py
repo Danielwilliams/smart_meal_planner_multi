@@ -339,24 +339,43 @@ def get_user_saved_recipes(user_id):
         logger.info(f"Getting saved recipes for user: {user_id}")
         with get_db_cursor(dict_cursor=True) as (cur, conn):
             cur.execute("""
-                SELECT 
+                SELECT
                     sr.id, sr.user_id, sr.menu_id, sr.recipe_id, sr.recipe_name,
                     sr.day_number, sr.meal_time, sr.notes, sr.macros, sr.ingredients,
                     sr.instructions, sr.complexity_level, sr.appliance_used, sr.servings,
                     sr.created_at, sr.updated_at, sr.scraped_recipe_id, sr.recipe_source,
                     m.nickname as menu_nickname
-                FROM 
+                FROM
                     saved_recipes sr
-                LEFT JOIN 
+                LEFT JOIN
                     menus m ON sr.menu_id = m.id
-                WHERE 
+                WHERE
                     sr.user_id = %s
-                ORDER BY 
+                ORDER BY
                     sr.updated_at DESC
             """, (user_id,))
-            
+
             recipes = cur.fetchall()
             return recipes
     except Exception as e:
         logger.error(f"Error getting saved recipes: {str(e)}")
         return []
+
+def get_saved_recipe_by_id(user_id, saved_id):
+    """Get saved recipe details by ID"""
+    try:
+        logger.info(f"Getting saved recipe by ID: {saved_id}")
+        with get_db_cursor() as (cur, conn):
+            cur.execute("""
+                SELECT sr.*, m.nickname as menu_nickname
+                FROM saved_recipes sr
+                LEFT JOIN menus m ON sr.menu_id = m.id
+                WHERE sr.id = %s AND sr.user_id = %s
+            """, (saved_id, user_id))
+
+            result = cur.fetchone()
+            logger.info(f"Found saved recipe: {result is not None}")
+            return result
+    except Exception as e:
+        logger.error(f"Error getting saved recipe by ID: {str(e)}")
+        return None
