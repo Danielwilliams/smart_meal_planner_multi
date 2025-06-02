@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, Body
+from fastapi import APIRouter, Depends, HTTPException, Request, Body, JSONResponse
 from typing import Optional, List, Dict, Any
 import logging
 import json
@@ -290,64 +290,60 @@ if ENABLE_SUBSCRIPTION_FEATURES:
             """
             try:
                 # Check if the customer already exists in our database
-                conn = get_db_connection()
-                try:
-                    with conn.cursor() as cur:
-                        if organization_id:
-                            # Check organization subscription
-                            cur.execute("""
-                                SELECT stripe_customer_id FROM subscriptions
-                                WHERE organization_id = %s
-                            """, (organization_id,))
-                        else:
-                            # Check user subscription
-                            cur.execute("""
-                                SELECT stripe_customer_id FROM subscriptions
-                                WHERE user_id = %s
-                            """, (user_id,))
+                with get_db_cursor(dict_cursor=False, autocommit=True) as (cur, conn):
+                    if organization_id:
+                        # Check organization subscription
+                        cur.execute("""
+                            SELECT stripe_customer_id FROM subscriptions
+                            WHERE organization_id = %s
+                        """, (organization_id,))
+                    else:
+                        # Check user subscription
+                        cur.execute("""
+                            SELECT stripe_customer_id FROM subscriptions
+                            WHERE user_id = %s
+                        """, (user_id,))
 
-                        result = cur.fetchone()
+                    result = cur.fetchone()
 
-                        if result and result[0]:
-                            # Customer exists, return the ID
-                            logger.info(f"Found existing Stripe customer: {result[0]}")
-                            return result[0]
+                    if result and result[0]:
+                        # Customer exists, return the ID
+                        logger.info(f"Found existing Stripe customer: {result[0]}")
+                        return result[0]
 
-                        # No customer found, get user details to create one
-                        if organization_id:
-                            # Get organization details
-                            cur.execute("""
-                                SELECT o.name, u.email
-                                FROM organizations o
-                                JOIN user_profiles u ON o.owner_id = u.id
-                                WHERE o.id = %s
-                            """, (organization_id,))
+                    # No customer found, get user details to create one
+                    if organization_id:
+                        # Get organization details
+                        cur.execute("""
+                            SELECT o.name, u.email
+                            FROM organizations o
+                            JOIN user_profiles u ON o.owner_id = u.id
+                            WHERE o.id = %s
+                        """, (organization_id,))
 
-                            org_data = cur.fetchone()
-                            if not org_data:
-                                raise HTTPException(
-                                    status_code=404,
-                                    detail="Organization not found"
-                                )
+                        org_data = cur.fetchone()
+                        if not org_data:
+                            raise HTTPException(
+                                status_code=404,
+                                detail="Organization not found"
+                            )
 
-                            name, email = org_data
-                        else:
-                            # Get user details
-                            cur.execute("""
-                                SELECT name, email FROM user_profiles
-                                WHERE id = %s
-                            """, (user_id,))
+                        name, email = org_data
+                    else:
+                        # Get user details
+                        cur.execute("""
+                            SELECT name, email FROM user_profiles
+                            WHERE id = %s
+                        """, (user_id,))
 
-                            user_data = cur.fetchone()
-                            if not user_data:
-                                raise HTTPException(
-                                    status_code=404,
-                                    detail="User not found"
-                                )
+                        user_data = cur.fetchone()
+                        if not user_data:
+                            raise HTTPException(
+                                status_code=404,
+                                detail="User not found"
+                            )
 
-                            name, email = user_data
-                finally:
-                    conn.close()
+                        name, email = user_data
 
                 # Create Stripe customer
                 customer = stripe.Customer.create(
@@ -362,38 +358,34 @@ if ENABLE_SUBSCRIPTION_FEATURES:
                 logger.info(f"Created new Stripe customer: {customer.id}")
 
                 # Store the customer ID in our database
-                conn = get_db_connection()
-                try:
-                    with conn.cursor() as cur:
-                        # Check if a subscription already exists
-                        if organization_id:
-                            cur.execute("""
-                                SELECT id FROM subscriptions
-                                WHERE organization_id = %s
-                            """, (organization_id,))
-                        else:
-                            cur.execute("""
-                                SELECT id FROM subscriptions
-                                WHERE user_id = %s
-                            """, (user_id,))
+                with get_db_cursor(dict_cursor=False, autocommit=False) as (cur, conn):
+                    # Check if a subscription already exists
+                    if organization_id:
+                        cur.execute("""
+                            SELECT id FROM subscriptions
+                            WHERE organization_id = %s
+                        """, (organization_id,))
+                    else:
+                        cur.execute("""
+                            SELECT id FROM subscriptions
+                            WHERE user_id = %s
+                        """, (user_id,))
 
-                        sub_result = cur.fetchone()
+                    sub_result = cur.fetchone()
 
-                        if sub_result:
-                            # Update existing subscription
-                            sub_id = sub_result[0]
-                            cur.execute("""
-                                UPDATE subscriptions
-                                SET stripe_customer_id = %s
-                                WHERE id = %s
-                            """, (customer.id, sub_id))
-                        else:
-                            # No subscription exists yet, will be created when checkout completes
-                            pass
+                    if sub_result:
+                        # Update existing subscription
+                        sub_id = sub_result[0]
+                        cur.execute("""
+                            UPDATE subscriptions
+                            SET stripe_customer_id = %s
+                            WHERE id = %s
+                        """, (customer.id, sub_id))
+                    else:
+                        # No subscription exists yet, will be created when checkout completes
+                        pass
 
-                        conn.commit()
-                finally:
-                    conn.close()
+                    conn.commit()
 
                 return customer.id
 
@@ -452,25 +444,20 @@ async def create_checkout_session(
         # If this is an organization admin, they might be subscribing for the organization
         if subscription_type == SubscriptionType.organization:
             # Check if the user is an organization admin
-            conn = get_db_connection()
-            try:
-                with conn.cursor() as cur:
-                    cur.execute("""
-                        SELECT id FROM organizations
-                        WHERE owner_id = %s
-                    """, (user_id,))
+            with get_db_cursor(dict_cursor=False, autocommit=True) as (cur, conn):
+                cur.execute("""
+                    SELECT id FROM organizations
+                    WHERE owner_id = %s
+                """, (user_id,))
 
-                    org_result = cur.fetchone()
-                    if org_result:
-                        organization_id = org_result[0]
-                    else:
-                        raise HTTPException(
-                            status_code=403,
-                            detail="You must be an organization owner to purchase an organization subscription"
-                        )
-            finally:
-                if conn:
-                    conn.close()
+                org_result = cur.fetchone()
+                if org_result:
+                    organization_id = org_result[0]
+                else:
+                    raise HTTPException(
+                        status_code=403,
+                        detail="You must be an organization owner to purchase an organization subscription"
+                    )
 
         # Get or create Stripe customer
         customer_id = await get_or_create_stripe_customer(user_id, organization_id)
@@ -670,61 +657,57 @@ async def handle_checkout_completed(event_data):
         from app.models.subscription import create_subscription, update_subscription, log_subscription_event
 
         # Check if a subscription already exists
-        conn = get_db_connection()
-        try:
-            with conn.cursor() as cur:
-                if organization_id:
-                    cur.execute("""
-                        SELECT id FROM subscriptions
-                        WHERE organization_id = %s
-                    """, (organization_id,))
-                else:
-                    cur.execute("""
-                        SELECT id FROM subscriptions
-                        WHERE user_id = %s
-                    """, (user_id,))
+        with get_db_cursor(dict_cursor=False, autocommit=True) as (cur, conn):
+            if organization_id:
+                cur.execute("""
+                    SELECT id FROM subscriptions
+                    WHERE organization_id = %s
+                """, (organization_id,))
+            else:
+                cur.execute("""
+                    SELECT id FROM subscriptions
+                    WHERE user_id = %s
+                """, (user_id,))
 
-                result = cur.fetchone()
+            result = cur.fetchone()
 
-                if result:
-                    # Update existing subscription
-                    subscription_db_id = result[0]
-                    update_subscription(
-                        subscription_id=subscription_db_id,
-                        status="active",
-                        current_period_start=current_period_start,
-                        current_period_end=current_period_end,
-                        cancel_at_period_end=cancel_at_period_end,
-                        stripe_status=stripe_status,
-                        stripe_subscription_id=subscription_id,
-                        stripe_price_id=price_id
-                    )
-                    logger.info(f"Updated existing subscription: {subscription_db_id}")
-                else:
-                    # Create new subscription
-                    subscription_db_id = create_subscription(
-                        user_id=user_id,
-                        organization_id=organization_id,
-                        subscription_type=subscription_type or ("individual" if user_id else "organization"),
-                        payment_provider="stripe",
-                        monthly_amount=monthly_amount,
-                        stripe_customer_id=customer_id,
-                        stripe_subscription_id=subscription_id,
-                        stripe_price_id=price_id
-                    )
-                    logger.info(f"Created new subscription: {subscription_db_id}")
+            if result:
+                # Update existing subscription
+                subscription_db_id = result[0]
+                update_subscription(
+                    subscription_id=subscription_db_id,
+                    status="active",
+                    current_period_start=current_period_start,
+                    current_period_end=current_period_end,
+                    cancel_at_period_end=cancel_at_period_end,
+                    stripe_status=stripe_status,
+                    stripe_subscription_id=subscription_id,
+                    stripe_price_id=price_id
+                )
+                logger.info(f"Updated existing subscription: {subscription_db_id}")
+            else:
+                # Create new subscription
+                subscription_db_id = create_subscription(
+                    user_id=user_id,
+                    organization_id=organization_id,
+                    subscription_type=subscription_type or ("individual" if user_id else "organization"),
+                    payment_provider="stripe",
+                    monthly_amount=monthly_amount,
+                    stripe_customer_id=customer_id,
+                    stripe_subscription_id=subscription_id,
+                    stripe_price_id=price_id
+                )
+                logger.info(f"Created new subscription: {subscription_db_id}")
 
-                # Log the event
-                if subscription_db_id:
-                    log_subscription_event(
-                        subscription_id=subscription_db_id,
-                        event_type="checkout_completed",
-                        event_data=event_data,
-                        payment_provider="stripe",
-                        provider_event_id=event_data.id
-                    )
-        finally:
-            conn.close()
+            # Log the event
+            if subscription_db_id:
+                log_subscription_event(
+                    subscription_id=subscription_db_id,
+                    event_type="checkout_completed",
+                    event_data=event_data,
+                    payment_provider="stripe",
+                    provider_event_id=event_data.id
+                )
 
     except Exception as e:
         logger.error(f"Error handling checkout completed: {str(e)}", exc_info=True)
@@ -744,87 +727,83 @@ async def handle_subscription_created(event_data):
             return
 
         # Try to find the subscription in our database by stripe_subscription_id
-        conn = get_db_connection()
-        try:
-            with conn.cursor() as cur:
+        with get_db_cursor(dict_cursor=False, autocommit=True) as (cur, conn):
+            cur.execute("""
+                SELECT id, user_id, organization_id FROM subscriptions
+                WHERE stripe_subscription_id = %s
+            """, (event_data.id,))
+
+            result = cur.fetchone()
+
+            if result:
+                # Subscription already exists, just log the event
+                subscription_id, user_id, organization_id = result
+                logger.info(f"Subscription {event_data.id} already exists: {subscription_id}")
+            else:
+                # Try to find the user or organization by customer ID
                 cur.execute("""
                     SELECT id, user_id, organization_id FROM subscriptions
-                    WHERE stripe_subscription_id = %s
-                """, (event_data.id,))
+                    WHERE stripe_customer_id = %s
+                """, (customer_id,))
 
                 result = cur.fetchone()
 
                 if result:
-                    # Subscription already exists, just log the event
+                    # Found a subscription with this customer ID
                     subscription_id, user_id, organization_id = result
-                    logger.info(f"Subscription {event_data.id} already exists: {subscription_id}")
+
+                    # Update the subscription with the new subscription ID
+                    from app.models.subscription import update_subscription
+                    update_subscription(
+                        subscription_id=subscription_id,
+                        stripe_subscription_id=event_data.id
+                    )
+                    logger.info(f"Updated subscription {subscription_id} with new subscription ID: {event_data.id}")
                 else:
-                    # Try to find the user or organization by customer ID
-                    cur.execute("""
-                        SELECT id, user_id, organization_id FROM subscriptions
-                        WHERE stripe_customer_id = %s
-                    """, (customer_id,))
+                    # We couldn't find a subscription, try to find the customer in Stripe
+                    try:
+                        stripe_customer = stripe.Customer.retrieve(customer_id)
+                        customer_metadata = stripe_customer.get("metadata", {})
 
-                    result = cur.fetchone()
+                        user_id = int(customer_metadata.get("user_id")) if customer_metadata.get("user_id") else None
+                        organization_id = int(customer_metadata.get("organization_id")) if customer_metadata.get("organization_id") else None
 
-                    if result:
-                        # Found a subscription with this customer ID
-                        subscription_id, user_id, organization_id = result
+                        if user_id or organization_id:
+                            # We found the user/organization, create a new subscription
+                            logger.info(f"Creating new subscription from metadata: user_id={user_id}, org_id={organization_id}")
 
-                        # Update the subscription with the new subscription ID
-                        from app.models.subscription import update_subscription
-                        update_subscription(
-                            subscription_id=subscription_id,
-                            stripe_subscription_id=event_data.id
-                        )
-                        logger.info(f"Updated subscription {subscription_id} with new subscription ID: {event_data.id}")
-                    else:
-                        # We couldn't find a subscription, try to find the customer in Stripe
-                        try:
-                            stripe_customer = stripe.Customer.retrieve(customer_id)
-                            customer_metadata = stripe_customer.get("metadata", {})
+                            # Extract subscription data
+                            stripe_status = event_data.status
+                            current_period_start = datetime.fromtimestamp(event_data.current_period_start)
+                            current_period_end = datetime.fromtimestamp(event_data.current_period_end)
+                            cancel_at_period_end = event_data.cancel_at_period_end
 
-                            user_id = int(customer_metadata.get("user_id")) if customer_metadata.get("user_id") else None
-                            organization_id = int(customer_metadata.get("organization_id")) if customer_metadata.get("organization_id") else None
+                            # Get the price ID and amount
+                            price_id = None
+                            monthly_amount = 0.0
 
-                            if user_id or organization_id:
-                                # We found the user/organization, create a new subscription
-                                logger.info(f"Creating new subscription from metadata: user_id={user_id}, org_id={organization_id}")
+                            if event_data.items.data:
+                                price = event_data.items.data[0].price
+                                price_id = price.id
+                                monthly_amount = price.unit_amount / 100.0  # Convert from cents to dollars
 
-                                # Extract subscription data
-                                stripe_status = event_data.status
-                                current_period_start = datetime.fromtimestamp(event_data.current_period_start)
-                                current_period_end = datetime.fromtimestamp(event_data.current_period_end)
-                                cancel_at_period_end = event_data.cancel_at_period_end
-
-                                # Get the price ID and amount
-                                price_id = None
-                                monthly_amount = 0.0
-
-                                if event_data.items.data:
-                                    price = event_data.items.data[0].price
-                                    price_id = price.id
-                                    monthly_amount = price.unit_amount / 100.0  # Convert from cents to dollars
-
-                                # Create subscription
-                                from app.models.subscription import create_subscription
-                                subscription_id = create_subscription(
-                                    user_id=user_id,
-                                    organization_id=organization_id,
-                                    subscription_type=("individual" if user_id else "organization"),
-                                    payment_provider="stripe",
-                                    monthly_amount=monthly_amount,
-                                    stripe_customer_id=customer_id,
-                                    stripe_subscription_id=event_data.id,
-                                    stripe_price_id=price_id
-                                )
-                                logger.info(f"Created new subscription from event: {subscription_id}")
-                            else:
-                                logger.error(f"Could not find user/organization for customer: {customer_id}")
-                        except Exception as customer_err:
-                            logger.error(f"Error retrieving customer {customer_id}: {str(customer_err)}")
-        finally:
-            conn.close()
+                            # Create subscription
+                            from app.models.subscription import create_subscription
+                            subscription_id = create_subscription(
+                                user_id=user_id,
+                                organization_id=organization_id,
+                                subscription_type=("individual" if user_id else "organization"),
+                                payment_provider="stripe",
+                                monthly_amount=monthly_amount,
+                                stripe_customer_id=customer_id,
+                                stripe_subscription_id=event_data.id,
+                                stripe_price_id=price_id
+                            )
+                            logger.info(f"Created new subscription from event: {subscription_id}")
+                        else:
+                            logger.error(f"Could not find user/organization for customer: {customer_id}")
+                    except Exception as customer_err:
+                        logger.error(f"Error retrieving customer {customer_id}: {str(customer_err)}")
 
         # Log the event in our database
         if subscription_id:
@@ -846,57 +825,53 @@ async def handle_subscription_updated(event_data):
         logger.info(f"Processing subscription.updated: {event_data.id}")
 
         # Find the subscription in our database
-        conn = get_db_connection()
-        try:
-            with conn.cursor() as cur:
-                cur.execute("""
-                    SELECT id FROM subscriptions
-                    WHERE stripe_subscription_id = %s
-                """, (event_data.id,))
+        with get_db_cursor(dict_cursor=False, autocommit=True) as (cur, conn):
+            cur.execute("""
+                SELECT id FROM subscriptions
+                WHERE stripe_subscription_id = %s
+            """, (event_data.id,))
 
-                result = cur.fetchone()
+            result = cur.fetchone()
 
-                if not result:
-                    logger.error(f"Subscription {event_data.id} not found in database")
-                    return
+            if not result:
+                logger.error(f"Subscription {event_data.id} not found in database")
+                return
 
-                subscription_id = result[0]
+            subscription_id = result[0]
 
-                # Extract updated subscription data
-                stripe_status = event_data.status
-                current_period_start = datetime.fromtimestamp(event_data.current_period_start)
-                current_period_end = datetime.fromtimestamp(event_data.current_period_end)
-                cancel_at_period_end = event_data.cancel_at_period_end
+            # Extract updated subscription data
+            stripe_status = event_data.status
+            current_period_start = datetime.fromtimestamp(event_data.current_period_start)
+            current_period_end = datetime.fromtimestamp(event_data.current_period_end)
+            cancel_at_period_end = event_data.cancel_at_period_end
 
-                # Check for cancellation
-                canceled_at = None
-                if event_data.canceled_at:
-                    canceled_at = datetime.fromtimestamp(event_data.canceled_at)
+            # Check for cancellation
+            canceled_at = None
+            if event_data.canceled_at:
+                canceled_at = datetime.fromtimestamp(event_data.canceled_at)
 
-                # Update subscription in our database
-                from app.models.subscription import update_subscription
-                update_subscription(
-                    subscription_id=subscription_id,
-                    status=stripe_status,
-                    current_period_start=current_period_start,
-                    current_period_end=current_period_end,
-                    cancel_at_period_end=cancel_at_period_end,
-                    canceled_at=canceled_at,
-                    stripe_status=stripe_status
-                )
-                logger.info(f"Updated subscription {subscription_id} with new status: {stripe_status}")
+            # Update subscription in our database
+            from app.models.subscription import update_subscription
+            update_subscription(
+                subscription_id=subscription_id,
+                status=stripe_status,
+                current_period_start=current_period_start,
+                current_period_end=current_period_end,
+                cancel_at_period_end=cancel_at_period_end,
+                canceled_at=canceled_at,
+                stripe_status=stripe_status
+            )
+            logger.info(f"Updated subscription {subscription_id} with new status: {stripe_status}")
 
-                # Log the event
-                from app.models.subscription import log_subscription_event
-                log_subscription_event(
-                    subscription_id=subscription_id,
-                    event_type="subscription_updated",
-                    event_data=event_data,
-                    payment_provider="stripe",
-                    provider_event_id=event_data.id
-                )
-        finally:
-            conn.close()
+            # Log the event
+            from app.models.subscription import log_subscription_event
+            log_subscription_event(
+                subscription_id=subscription_id,
+                event_type="subscription_updated",
+                event_data=event_data,
+                payment_provider="stripe",
+                provider_event_id=event_data.id
+            )
 
     except Exception as e:
         logger.error(f"Error handling subscription updated: {str(e)}", exc_info=True)
@@ -907,43 +882,39 @@ async def handle_subscription_deleted(event_data):
         logger.info(f"Processing subscription.deleted: {event_data.id}")
 
         # Find the subscription in our database
-        conn = get_db_connection()
-        try:
-            with conn.cursor() as cur:
-                cur.execute("""
-                    SELECT id FROM subscriptions
-                    WHERE stripe_subscription_id = %s
-                """, (event_data.id,))
+        with get_db_cursor(dict_cursor=False, autocommit=True) as (cur, conn):
+            cur.execute("""
+                SELECT id FROM subscriptions
+                WHERE stripe_subscription_id = %s
+            """, (event_data.id,))
 
-                result = cur.fetchone()
+            result = cur.fetchone()
 
-                if not result:
-                    logger.error(f"Subscription {event_data.id} not found in database")
-                    return
+            if not result:
+                logger.error(f"Subscription {event_data.id} not found in database")
+                return
 
-                subscription_id = result[0]
+            subscription_id = result[0]
 
-                # Update subscription in our database
-                from app.models.subscription import update_subscription
-                update_subscription(
-                    subscription_id=subscription_id,
-                    status="canceled",
-                    canceled_at=datetime.now(),
-                    stripe_status="canceled"
-                )
-                logger.info(f"Marked subscription {subscription_id} as canceled")
+            # Update subscription in our database
+            from app.models.subscription import update_subscription
+            update_subscription(
+                subscription_id=subscription_id,
+                status="canceled",
+                canceled_at=datetime.now(),
+                stripe_status="canceled"
+            )
+            logger.info(f"Marked subscription {subscription_id} as canceled")
 
-                # Log the event
-                from app.models.subscription import log_subscription_event
-                log_subscription_event(
-                    subscription_id=subscription_id,
-                    event_type="subscription_deleted",
-                    event_data=event_data,
-                    payment_provider="stripe",
-                    provider_event_id=event_data.id
-                )
-        finally:
-            conn.close()
+            # Log the event
+            from app.models.subscription import log_subscription_event
+            log_subscription_event(
+                subscription_id=subscription_id,
+                event_type="subscription_deleted",
+                event_data=event_data,
+                payment_provider="stripe",
+                provider_event_id=event_data.id
+            )
 
     except Exception as e:
         logger.error(f"Error handling subscription deleted: {str(e)}", exc_info=True)
@@ -960,61 +931,57 @@ async def handle_invoice_paid(event_data):
             return
 
         # Find the subscription in our database
-        conn = get_db_connection()
-        try:
-            with conn.cursor() as cur:
-                cur.execute("""
-                    SELECT id FROM subscriptions
-                    WHERE stripe_subscription_id = %s
-                """, (subscription_id,))
+        with get_db_cursor(dict_cursor=False, autocommit=True) as (cur, conn):
+            cur.execute("""
+                SELECT id FROM subscriptions
+                WHERE stripe_subscription_id = %s
+            """, (subscription_id,))
 
-                result = cur.fetchone()
+            result = cur.fetchone()
 
-                if not result:
-                    logger.error(f"Subscription {subscription_id} not found in database")
-                    return
+            if not result:
+                logger.error(f"Subscription {subscription_id} not found in database")
+                return
 
-                db_subscription_id = result[0]
+            db_subscription_id = result[0]
 
-                # Create an invoice record
-                from app.models.subscription import create_invoice
+            # Create an invoice record
+            from app.models.subscription import create_invoice
 
-                # Extract invoice data
-                amount_due = event_data.amount_due / 100.0  # Convert from cents to dollars
-                amount_paid = event_data.amount_paid / 100.0  # Convert from cents to dollars
-                currency = event_data.currency
-                status = event_data.status
+            # Extract invoice data
+            amount_due = event_data.amount_due / 100.0  # Convert from cents to dollars
+            amount_paid = event_data.amount_paid / 100.0  # Convert from cents to dollars
+            currency = event_data.currency
+            status = event_data.status
 
-                # Get period dates
-                period_start = datetime.fromtimestamp(event_data.period_start)
-                period_end = datetime.fromtimestamp(event_data.period_end)
+            # Get period dates
+            period_start = datetime.fromtimestamp(event_data.period_start)
+            period_end = datetime.fromtimestamp(event_data.period_end)
 
-                # Create invoice
-                invoice_id = create_invoice(
-                    subscription_id=db_subscription_id,
-                    payment_provider="stripe",
-                    status=status,
-                    amount_due=amount_due,
-                    amount_paid=amount_paid,
-                    currency=currency,
-                    period_start=period_start,
-                    period_end=period_end,
-                    paid_at=datetime.now(),
-                    stripe_invoice_id=event_data.id
-                )
-                logger.info(f"Created invoice record: {invoice_id}")
+            # Create invoice
+            invoice_id = create_invoice(
+                subscription_id=db_subscription_id,
+                payment_provider="stripe",
+                status=status,
+                amount_due=amount_due,
+                amount_paid=amount_paid,
+                currency=currency,
+                period_start=period_start,
+                period_end=period_end,
+                paid_at=datetime.now(),
+                stripe_invoice_id=event_data.id
+            )
+            logger.info(f"Created invoice record: {invoice_id}")
 
-                # Log the event
-                from app.models.subscription import log_subscription_event
-                log_subscription_event(
-                    subscription_id=db_subscription_id,
-                    event_type="invoice_paid",
-                    event_data=event_data,
-                    payment_provider="stripe",
-                    provider_event_id=event_data.id
-                )
-        finally:
-            conn.close()
+            # Log the event
+            from app.models.subscription import log_subscription_event
+            log_subscription_event(
+                subscription_id=db_subscription_id,
+                event_type="invoice_paid",
+                event_data=event_data,
+                payment_provider="stripe",
+                provider_event_id=event_data.id
+            )
 
     except Exception as e:
         logger.error(f"Error handling invoice paid: {str(e)}", exc_info=True)
@@ -1031,69 +998,65 @@ async def handle_invoice_payment_failed(event_data):
             return
 
         # Find the subscription in our database
-        conn = get_db_connection()
-        try:
-            with conn.cursor() as cur:
-                cur.execute("""
-                    SELECT id FROM subscriptions
-                    WHERE stripe_subscription_id = %s
-                """, (subscription_id,))
+        with get_db_cursor(dict_cursor=False, autocommit=True) as (cur, conn):
+            cur.execute("""
+                SELECT id FROM subscriptions
+                WHERE stripe_subscription_id = %s
+            """, (subscription_id,))
 
-                result = cur.fetchone()
+            result = cur.fetchone()
 
-                if not result:
-                    logger.error(f"Subscription {subscription_id} not found in database")
-                    return
+            if not result:
+                logger.error(f"Subscription {subscription_id} not found in database")
+                return
 
-                db_subscription_id = result[0]
+            db_subscription_id = result[0]
 
-                # Create an invoice record
-                from app.models.subscription import create_invoice
+            # Create an invoice record
+            from app.models.subscription import create_invoice
 
-                # Extract invoice data
-                amount_due = event_data.amount_due / 100.0  # Convert from cents to dollars
-                amount_paid = event_data.amount_paid / 100.0  # Convert from cents to dollars
-                currency = event_data.currency
-                status = "unpaid"
+            # Extract invoice data
+            amount_due = event_data.amount_due / 100.0  # Convert from cents to dollars
+            amount_paid = event_data.amount_paid / 100.0  # Convert from cents to dollars
+            currency = event_data.currency
+            status = "unpaid"
 
-                # Get period dates
-                period_start = datetime.fromtimestamp(event_data.period_start)
-                period_end = datetime.fromtimestamp(event_data.period_end)
+            # Get period dates
+            period_start = datetime.fromtimestamp(event_data.period_start)
+            period_end = datetime.fromtimestamp(event_data.period_end)
 
-                # Create invoice
-                invoice_id = create_invoice(
-                    subscription_id=db_subscription_id,
-                    payment_provider="stripe",
-                    status=status,
-                    amount_due=amount_due,
-                    amount_paid=amount_paid,
-                    currency=currency,
-                    period_start=period_start,
-                    period_end=period_end,
-                    stripe_invoice_id=event_data.id
-                )
-                logger.info(f"Created failed invoice record: {invoice_id}")
+            # Create invoice
+            invoice_id = create_invoice(
+                subscription_id=db_subscription_id,
+                payment_provider="stripe",
+                status=status,
+                amount_due=amount_due,
+                amount_paid=amount_paid,
+                currency=currency,
+                period_start=period_start,
+                period_end=period_end,
+                stripe_invoice_id=event_data.id
+            )
+            logger.info(f"Created failed invoice record: {invoice_id}")
 
-                # Update subscription status
-                from app.models.subscription import update_subscription
-                update_subscription(
-                    subscription_id=db_subscription_id,
-                    status="past_due",
-                    stripe_status="past_due"
-                )
-                logger.info(f"Updated subscription {db_subscription_id} status to past_due")
+            # Update subscription status
+            from app.models.subscription import update_subscription
+            update_subscription(
+                subscription_id=db_subscription_id,
+                status="past_due",
+                stripe_status="past_due"
+            )
+            logger.info(f"Updated subscription {db_subscription_id} status to past_due")
 
-                # Log the event
-                from app.models.subscription import log_subscription_event
-                log_subscription_event(
-                    subscription_id=db_subscription_id,
-                    event_type="invoice_payment_failed",
-                    event_data=event_data,
-                    payment_provider="stripe",
-                    provider_event_id=event_data.id
-                )
-        finally:
-            conn.close()
+            # Log the event
+            from app.models.subscription import log_subscription_event
+            log_subscription_event(
+                subscription_id=db_subscription_id,
+                event_type="invoice_payment_failed",
+                event_data=event_data,
+                payment_provider="stripe",
+                provider_event_id=event_data.id
+            )
 
     except Exception as e:
         logger.error(f"Error handling invoice payment failed: {str(e)}", exc_info=True)
@@ -1118,60 +1081,56 @@ async def cancel_user_subscription(
 
     try:
         # Find the user's subscription
-        conn = get_db_connection()
-        try:
-            with conn.cursor() as cur:
-                cur.execute("""
-                    SELECT id, stripe_subscription_id, payment_provider
-                    FROM subscriptions
-                    WHERE user_id = %s AND status = 'active'
-                """, (user_id,))
+        with get_db_cursor(dict_cursor=False, autocommit=True) as (cur, conn):
+            cur.execute("""
+                SELECT id, stripe_subscription_id, payment_provider
+                FROM subscriptions
+                WHERE user_id = %s AND status = 'active'
+            """, (user_id,))
 
-                result = cur.fetchone()
+            result = cur.fetchone()
 
-                if not result:
-                    raise HTTPException(
-                        status_code=404,
-                        detail="No active subscription found"
-                    )
-
-                subscription_id, stripe_subscription_id, payment_provider = result
-
-                # Check if this is a Stripe subscription
-                if payment_provider != 'stripe':
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Cancellation not supported for {payment_provider} subscriptions"
-                    )
-
-                if not stripe_subscription_id:
-                    raise HTTPException(
-                        status_code=400,
-                        detail="Missing Stripe subscription ID"
-                    )
-
-                # Cancel the subscription in Stripe
-                stripe_subscription = stripe.Subscription.modify(
-                    stripe_subscription_id,
-                    cancel_at_period_end=cancel_at_period_end
+            if not result:
+                raise HTTPException(
+                    status_code=404,
+                    detail="No active subscription found"
                 )
 
-                # Update our database
-                from app.models.subscription import cancel_subscription
-                cancel_subscription(subscription_id, cancel_at_period_end=cancel_at_period_end)
+            subscription_id, stripe_subscription_id, payment_provider = result
 
-                if cancel_at_period_end:
-                    message = "Your subscription will be canceled at the end of the billing period"
-                else:
-                    message = "Your subscription has been canceled immediately"
+            # Check if this is a Stripe subscription
+            if payment_provider != 'stripe':
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Cancellation not supported for {payment_provider} subscriptions"
+                )
 
-                return {
-                    "success": True,
-                    "message": message,
-                    "cancel_at_period_end": cancel_at_period_end
-                }
-        finally:
-            conn.close()
+            if not stripe_subscription_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Missing Stripe subscription ID"
+                )
+
+            # Cancel the subscription in Stripe
+            stripe_subscription = stripe.Subscription.modify(
+                stripe_subscription_id,
+                cancel_at_period_end=cancel_at_period_end
+            )
+
+            # Update our database
+            from app.models.subscription import cancel_subscription
+            cancel_subscription(subscription_id, cancel_at_period_end=cancel_at_period_end)
+
+            if cancel_at_period_end:
+                message = "Your subscription will be canceled at the end of the billing period"
+            else:
+                message = "Your subscription has been canceled immediately"
+
+            return {
+                "success": True,
+                "message": message,
+                "cancel_at_period_end": cancel_at_period_end
+            }
 
     except stripe.error.StripeError as e:
         logger.error(f"Stripe error canceling subscription: {str(e)}")

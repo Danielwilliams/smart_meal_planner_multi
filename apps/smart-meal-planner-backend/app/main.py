@@ -199,10 +199,13 @@ def create_app() -> FastAPI:
     async def reset_connections():
         """Admin endpoint to force reset the connection pool"""
         try:
-            from app.db import close_all_connections, connection_pool
+            from app.db import close_all_connections, connection_pool, get_connection_stats
 
             # Log the reset attempt
             logger.info("Attempting to close all database connections")
+
+            # Get current connection stats
+            before_stats = get_connection_stats()
 
             # Close all connections
             try:
@@ -213,17 +216,60 @@ def create_app() -> FastAPI:
                 result = False
                 logger.error(f"Failed to close connections: {str(e)}")
 
-            # Return simple status
+            # Get new connection stats
+            after_stats = get_connection_stats()
+
+            # Return detailed status
             return {
                 "status": "success" if result else "failed",
                 "message": "Connection pool reset" if result else "Failed to reset connection pool",
-                "pool_exists": connection_pool is not None
+                "pool_exists": connection_pool is not None,
+                "before": before_stats,
+                "after": after_stats
             }
         except Exception as e:
             logger.error(f"Error resetting connection pool: {str(e)}")
             return {
                 "status": "error",
                 "message": f"Error: {str(e)}"
+            }
+
+    @app.get("/admin/db-stats")
+    async def get_db_stats():
+        """Get current database connection statistics"""
+        try:
+            from app.db import get_connection_stats, connection_pool
+
+            # Get connection stats
+            stats = get_connection_stats()
+
+            # Get pool information if available
+            pool_info = {}
+            if connection_pool:
+                pool_info = {
+                    "min_connections": connection_pool._minconn,
+                    "max_connections": connection_pool._maxconn,
+                    # The closed attribute was added in psycopg2 2.8+
+                    "closed": getattr(connection_pool, "closed", False)
+                }
+
+                # Try to get more detailed pool stats
+                try:
+                    pool_info["used_connections"] = len(connection_pool._used)
+                    pool_info["free_connections"] = len(connection_pool._pool)
+                except (AttributeError, TypeError):
+                    # These attributes might not be accessible
+                    pass
+
+            return {
+                "connection_tracking": stats,
+                "pool_info": pool_info
+            }
+        except Exception as e:
+            logger.error(f"Error getting DB stats: {str(e)}")
+            return {
+                "status": "error",
+                "message": f"Error getting DB stats: {str(e)}"
             }
 
     @app.get("/api-test")

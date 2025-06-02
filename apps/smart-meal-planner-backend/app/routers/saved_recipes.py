@@ -40,10 +40,18 @@ async def add_saved_recipe(
     client_id: Optional[int] = Query(None)  # Optional client ID for organization owners
 ):
     """Save a recipe or entire menu to user's favorites with complete recipe data"""
+    # Check if user is authenticated
+    if not user:
+        logger.error("Authentication required to save recipes")
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required"
+        )
+
     user_id = user.get('user_id')
     logger.info(f"POST /saved-recipes/ called for user {user_id}")
     logger.info(f"Request data: {req.dict()}")
-    
+
     try:
         # Log the incoming request data in detail
         logger.info(f"Received recipe save request: {req}")
@@ -145,8 +153,16 @@ async def remove_saved_recipe(
     user = Depends(get_user_from_token)
 ):
     """Remove a recipe from saved/favorites"""
+    # Check if user is authenticated
+    if not user:
+        logger.error("Authentication required to remove saved recipes")
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required"
+        )
+
     user_id = user.get('user_id')
-    
+
     try:
         success = unsave_recipe(user_id=user_id, saved_id=saved_id)
         
@@ -173,20 +189,28 @@ async def list_saved_recipes(
     user = Depends(get_user_from_token)
 ):
     """Get all saved recipes for current user"""
+    # Check if user is authenticated
+    if not user:
+        logger.error("Authentication required for saved recipes access")
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required"
+        )
+
     user_id = user.get('user_id')
-    
+
     try:
         saved_recipes = get_user_saved_recipes(user_id)
-        
+
         return {
-            "status": "success", 
+            "status": "success",
             "saved_recipes": saved_recipes
         }
-    
+
     except Exception as e:
         logger.error(f"Error fetching saved recipes: {str(e)}")
         raise HTTPException(
-            status_code=500, 
+            status_code=500,
             detail=f"Error fetching saved recipes: {str(e)}"
         )
 
@@ -199,8 +223,16 @@ async def get_client_saved_recipes(
     Get all saved recipes for a specific client.
     Only accessible by organization owners for their clients.
     """
+    # Check if user is authenticated
+    if not user:
+        logger.error("Authentication required to access client saved recipes")
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required"
+        )
+
     trainer_id = user.get('user_id')
-    
+
     try:
         # Verify the trainer has access to this client
         conn = get_db_connection()
@@ -266,11 +298,18 @@ async def check_recipe_saved(
 ):
     """
     Check if a recipe is saved by the current user.
-    
+
     Required parameters:
     - Either menu_id OR scraped_recipe_id must be provided
     """
-    """Check if a recipe is saved by the current user"""
+    # Check if user is authenticated
+    if not user:
+        logger.error("Authentication required to check saved recipes")
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required"
+        )
+
     user_id = user.get('user_id')
 
     # Parse string parameters to proper types
@@ -348,8 +387,16 @@ async def get_saved_recipe_details(
     user = Depends(get_user_from_token)
 ):
     """Get details of a specific saved recipe"""
+    # Check if user is authenticated
+    if not user:
+        logger.error("Authentication required to view saved recipe details")
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required"
+        )
+
     user_id = user.get('user_id')
-    
+
     try:
         recipe = get_saved_recipe_by_id(user_id, saved_id)
         
