@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Body
 from app.utils.auth_utils import get_user_from_token
 from app.utils.auth_middleware import require_organization_owner
 from app.models.user import UserWithRole
-from app.db import get_db_connection
+from app.db import get_db_cursor
 from typing import List, Dict, Any
 from pydantic import BaseModel, EmailStr
 import logging
@@ -61,9 +61,8 @@ async def get_organization_clients(
     
     # If not authorized through token, check database directly
     if not is_authorized:
-        conn = get_db_connection()
         try:
-            with conn.cursor() as cur:
+            with get_db_cursor(autocommit=True) as (cur, conn):
                 # Check if user is org owner
                 cur.execute("""
                     SELECT 1 FROM organizations 
@@ -73,8 +72,12 @@ async def get_organization_clients(
                 if cur.fetchone():
                     is_authorized = True
                     logger.info("Access granted: Database confirms user is organization owner")
-        finally:
-            conn.close()
+        except Exception as e:
+            logger.error(f"Error checking organization ownership: {str(e)}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Database error: {str(e)}"
+            )
     
     # If still not authorized, return 403
     if not is_authorized:
@@ -85,9 +88,8 @@ async def get_organization_clients(
         )
     
     # If we get here, the user is authorized
-    conn = get_db_connection()
     try:
-        with conn.cursor() as cur:
+        with get_db_cursor(autocommit=True) as (cur, conn):
             cur.execute("""
                 SELECT up.id, up.email, up.name, up.profile_complete, 
                        oc.organization_id, oc.role, oc.status
@@ -102,13 +104,13 @@ async def get_organization_clients(
             logger.info(f"Found {len(clients)} clients for org_id={org_id}")
             
             client_list = [{
-                "id": client[0],
-                "email": client[1],
-                "name": client[2],
-                "profile_complete": client[3],
-                "organization_id": client[4],
-                "role": client[5],
-                "status": client[6]
+                "id": client["id"],
+                "email": client["email"],
+                "name": client["name"],
+                "profile_complete": client["profile_complete"],
+                "organization_id": client["organization_id"],
+                "role": client["role"],
+                "status": client["status"]
             } for client in clients]
             
             return {
@@ -116,8 +118,12 @@ async def get_organization_clients(
                 "total": len(client_list),
                 "organization_id": org_id
             }
-    finally:
-        conn.close()
+    except Exception as e:
+        logger.error(f"Error fetching organization clients: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Database error: {str(e)}"
+        )
 
 @router.post("/{org_id}/{client_id}")
 async def add_client_to_organization_by_id(
@@ -133,9 +139,8 @@ async def add_client_to_organization_by_id(
             detail="You don't have access to this organization"
         )
     
-    conn = get_db_connection()
     try:
-        with conn.cursor() as cur:
+        with get_db_cursor() as (cur, conn):
             # Check if client exists
             cur.execute("SELECT 1 FROM user_profiles WHERE id = %s", (client_id,))
             if not cur.fetchone():
@@ -180,8 +185,12 @@ async def add_client_to_organization_by_id(
             
             conn.commit()
             return {"message": "Client added to organization successfully"}
-    finally:
-        conn.close()
+    except Exception as e:
+        logger.error(f"Error adding client to organization: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Database error: {str(e)}"
+        )
 
 @router.post("/add-by-email")
 async def add_client_by_email(
@@ -197,9 +206,8 @@ async def add_client_by_email(
             detail="You don't have access to this organization"
         )
     
-    conn = get_db_connection()
     try:
-        with conn.cursor() as cur:
+        with get_db_cursor() as (cur, conn):
             # Check if user with email exists
             cur.execute("SELECT id FROM user_profiles WHERE email = %s", (client_data.email,))
             user_result = cur.fetchone()
@@ -210,7 +218,7 @@ async def add_client_by_email(
                     detail="No user found with that email"
                 )
             
-            client_id = user_result[0]
+            client_id = user_result["id"]
             
             # Check if client is already in this organization
             cur.execute("""
@@ -251,8 +259,14 @@ async def add_client_by_email(
                 "message": "Client added to organization successfully",
                 "client_id": client_id
             }
-    finally:
-        conn.close()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error adding client by email: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Database error: {str(e)}"
+        )
 
 @router.put("/{org_id}/clients/{client_id}/status")
 async def update_client_status(
@@ -288,9 +302,8 @@ async def update_client_status(
             detail="Only organization owners can update client status"
         )
     
-    conn = get_db_connection()
     try:
-        with conn.cursor() as cur:
+        with get_db_cursor() as (cur, conn):
             # Verify the client belongs to this organization
             cur.execute("""
                 SELECT id, status FROM organization_clients
@@ -304,7 +317,7 @@ async def update_client_status(
                     detail="Client not found in this organization"
                 )
             
-            current_status = client_record[1]
+            current_status = client_record["status"]
             
             # Update the client status
             cur.execute("""
@@ -321,8 +334,8 @@ async def update_client_status(
             """, (client_id,))
             
             client_info = cur.fetchone()
-            client_name = client_info[0] if client_info else "Unknown"
-            client_email = client_info[1] if client_info else "Unknown"
+            client_name = client_info["name"] if client_info else "Unknown"
+            client_email = client_info["email"] if client_info else "Unknown"
             
             conn.commit()
             
@@ -340,10 +353,12 @@ async def update_client_status(
         raise
     except Exception as e:
         logger.error(f"Error updating client status: {str(e)}")
-        conn.rollback()
+        if 'conn' in locals():
+            try:
+                conn.rollback()
+            except:
+                pass
         raise HTTPException(
             status_code=500,
-            detail="Failed to update client status"
+            detail=f"Database error: {str(e)}"
         )
-    finally:
-        conn.close()
