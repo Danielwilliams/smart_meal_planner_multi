@@ -13,7 +13,6 @@ from app.config import DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, DB_PORT
 
 # Set up logging
 logger = logging.getLogger(__name__)
-logger.warning("Using compatibility db.py module - imports redirected to db_super_simple.py")
 
 # Create a single connection pool
 try:
