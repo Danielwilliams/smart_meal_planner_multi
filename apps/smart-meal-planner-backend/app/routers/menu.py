@@ -960,8 +960,8 @@ def generate_meal_plan_legacy(req: GenerateMealPlanRequest, job_id: str = None):
         # Determine which user's preferences to use
         preference_user_id = req.for_client_id if req.for_client_id else req.user_id
 
-        # Use the read pool for user preferences retrieval to avoid blocking other operations
-        with get_db_cursor(dict_cursor=True, pool_type='read', autocommit=True) as (cursor, conn):
+        # Use autocommit for user preferences retrieval to avoid blocking other operations
+        with get_db_cursor(dict_cursor=True, autocommit=True) as (cursor, conn):
             # Autocommit is enabled at connection creation time
 
             # Fetch user preferences (use client's preferences if for_client_id is provided)
@@ -1537,7 +1537,7 @@ def generate_meal_plan_legacy(req: GenerateMealPlanRequest, job_id: str = None):
         logger.info("Opening new database connection to save generated menu")
 
         # Use the AI pool for saving menu data since this is part of the AI process
-        with get_db_cursor(dict_cursor=True, pool_type='ai') as (cursor, conn):
+        with get_db_cursor(dict_cursor=True) as (cursor, conn):
             try:
                 # Prepare the plan data as JSON string once
                 plan_json = json.dumps(final_plan)
@@ -2082,8 +2082,8 @@ async def generate_menu_background_task(job_id: str, req: GenerateMealPlanReques
 def get_latest_menu(user_id: int):
     """Fetch the most recent menu for a user with minimal connection time"""
     try:
-        # Use the read pool for quick menu retrieval
-        with get_db_cursor(dict_cursor=True, pool_type='read', autocommit=True) as (cursor, conn):
+        # Use autocommit for quick menu retrieval
+        with get_db_cursor(dict_cursor=True, autocommit=True) as (cursor, conn):
             # Autocommit is enabled at connection creation time
             
             cursor.execute("""
@@ -2114,8 +2114,8 @@ def get_latest_menu(user_id: int):
 @router.get("/history/{user_id}")
 def get_menu_history(user_id: int):
     """Get menu history for a user"""
-    # Use the read pool for menu history retrieval
-    with get_db_cursor(dict_cursor=True, pool_type='read', autocommit=True) as (cursor, conn):
+    # Use autocommit for menu history retrieval
+    with get_db_cursor(dict_cursor=True, autocommit=True) as (cursor, conn):
         # Autocommit is enabled at connection creation time
         try:
             cursor.execute("""
@@ -2153,7 +2153,7 @@ def get_menu_history(user_id: int):
 async def update_menu_nickname(menu_id: int, nickname: str = Body(..., embed=True)):
     """Update the nickname for a menu"""
     # Use the general pool for standard write operations
-    with get_db_cursor(dict_cursor=True, pool_type='general') as (cursor, conn):
+    with get_db_cursor(dict_cursor=True) as (cursor, conn):
         try:
             cursor.execute("""
                 UPDATE menus
@@ -2177,8 +2177,8 @@ async def update_menu_nickname(menu_id: int, nickname: str = Body(..., embed=Tru
 @router.get("/{menu_id}/grocery-list")
 def get_grocery_list(menu_id: int):
     """Get grocery list for a specific menu"""
-    # Use the read pool for grocery list operations
-    with get_db_cursor(dict_cursor=True, pool_type='read', autocommit=True) as (cursor, conn):
+    # Use autocommit for grocery list operations
+    with get_db_cursor(dict_cursor=True, autocommit=True) as (cursor, conn):
         # Autocommit is enabled at connection creation time
         try:
             cursor.execute("""

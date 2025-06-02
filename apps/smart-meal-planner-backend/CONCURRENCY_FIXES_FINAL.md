@@ -66,6 +66,14 @@ We've simplified the database connection handling to use a single robust connect
 3. **Observability**: Added connection statistics for monitoring
 4. **Maintainability**: Simplified codebase with a single connection pool approach
 
+## Important Note
+
+The specialized connection pools approach has been completely removed in favor of a single unified pool. This means:
+
+1. The `pool_type` parameter is no longer supported in `get_db_cursor()` calls
+2. All router files have been updated to remove `pool_type='read'` or `pool_type='ai'` parameters
+3. Setting `autocommit=True` is now the primary way to optimize read-heavy operations
+
 ## Usage Guidelines
 
 When working with database connections in the application:

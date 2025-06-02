@@ -71,8 +71,8 @@ def get_meal_shopping_lists(
     logger.info(f"Generating new meal shopping lists for menu {menu_id}")
 
     try:
-        # Use the read pool for shopping list operations to prevent blocking during menu generation
-        with get_db_cursor(dict_cursor=True, pool_type='read', autocommit=True) as (cur, conn):
+        # Use autocommit for shopping list operations to prevent blocking during menu generation
+        with get_db_cursor(dict_cursor=True, autocommit=True) as (cur, conn):
             # Autocommit is enabled at connection creation time
 
             # Verify the menu exists and get the data

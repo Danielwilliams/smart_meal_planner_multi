@@ -41,8 +41,8 @@ def get_menu_details(menu_id: int):
     Retrieve full menu details for a specific menu
     """
     try:
-        # Use the read pool for menu retrieval to prevent blocking during menu generation
-        with get_db_cursor(dict_cursor=True, pool_type='read', autocommit=True) as (cursor, conn):
+        # Use autocommit for menu retrieval to prevent blocking during menu generation
+        with get_db_cursor(dict_cursor=True, autocommit=True) as (cursor, conn):
             # Autocommit is enabled at connection creation time
 
             # Fetch the full menu details
@@ -564,10 +564,9 @@ async def post_ai_shopping_list(menu_id: int, background_tasks: BackgroundTasks,
     # If we don't have a valid cache entry, process the request
     # First, get the basic grocery list which is faster
     try:
-        # Use read pool for fast grocery list operations
-        with get_db_cursor(dict_cursor=True, pool_type='read', timeout=10) as (cur, conn):
-            # Enable autocommit for faster read operations
-            conn.autocommit = True
+        # Use autocommit for fast grocery list operations
+        with get_db_cursor(dict_cursor=True, autocommit=True) as (cur, conn):
+            # Autocommit is enabled at connection creation time
 
             # Fetch the meal_plan_json field
             cur.execute("SELECT meal_plan_json FROM menus WHERE id=%s", (menu_id,))
