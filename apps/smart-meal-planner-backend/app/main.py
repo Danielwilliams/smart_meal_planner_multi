@@ -172,17 +172,49 @@ def create_app() -> FastAPI:
     async def health_check():
         # Check if client notes tables exist
         try:
-            from app.db_simplified import get_db_cursor
+            from app.db_simplified import get_db_cursor, _connection_stats, log_connection_stats
             with get_db_cursor(autocommit=True) as (cur, conn):
                 cur.execute("SELECT 1 FROM client_notes LIMIT 1")
                 client_notes_exists = True
-        except:
+
+            # Log connection stats for monitoring
+            log_connection_stats()
+        except Exception as e:
+            logger.error(f"Health check failed: {str(e)}")
             client_notes_exists = False
 
         return {
             "status": "healthy",
-            "client_notes_migration": "completed" if client_notes_exists else "pending"
+            "client_notes_migration": "completed" if client_notes_exists else "pending",
+            "connection_stats": _connection_stats
         }
+
+    @app.post("/admin/reset-connections")
+    async def reset_connections():
+        """Admin endpoint to force reset the connection pool"""
+        try:
+            from app.db_simplified import reset_connection_pool, _connection_stats
+
+            # Log before stats
+            logger.info(f"Connection stats before reset: {_connection_stats}")
+
+            # Reset the pool
+            result = reset_connection_pool()
+
+            # Log after stats
+            logger.info(f"Connection stats after reset: {_connection_stats}")
+
+            return {
+                "status": "success" if result else "failed",
+                "message": "Connection pool reset" if result else "Failed to reset connection pool",
+                "connection_stats": _connection_stats
+            }
+        except Exception as e:
+            logger.error(f"Error resetting connection pool: {str(e)}")
+            return {
+                "status": "error",
+                "message": f"Error: {str(e)}"
+            }
 
     @app.get("/api-test")
     async def api_test():
