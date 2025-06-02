@@ -549,70 +549,117 @@ def unsave_recipe(user_id, saved_id=None, menu_id=None, recipe_id=None, meal_tim
 
 def get_user_saved_recipes(user_id):
     """Get all saved recipes for a user"""
-    try:
-        logger.info(f"Getting saved recipes for user: {user_id}")
-        with get_db_cursor(dict_cursor=True, autocommit=True) as (cur, conn):
-            try:
-                # Use a simpler query first to verify we can access the saved_recipes table
-                cur.execute("SELECT COUNT(*) FROM saved_recipes WHERE user_id = %s", (user_id,))
-                count = cur.fetchone()
-                logger.info(f"Found {count['count']} saved recipes for user {user_id}")
+    if not user_id:
+        logger.error("get_user_saved_recipes called with empty user_id")
+        return []
 
-                # Now execute the full query
+    logger.info(f"Getting saved recipes for user: {user_id}")
+
+    # Try with the simpler approach first - no joins
+    try:
+        with get_db_cursor(dict_cursor=True, autocommit=True) as (cur, conn):
+            # Simple query without join to get basic recipe data
+            cur.execute("""
+                SELECT * FROM saved_recipes
+                WHERE user_id = %s
+                ORDER BY updated_at DESC
+            """, (user_id,))
+
+            recipes = cur.fetchall()
+            logger.info(f"Successfully fetched {len(recipes)} saved recipes for user {user_id}")
+
+            # If that worked, try to get menu nicknames separately
+            if recipes:
+                try:
+                    # Get menu IDs from recipes
+                    menu_ids = {r['menu_id'] for r in recipes if r['menu_id'] is not None}
+
+                    if menu_ids:
+                        # Get menu nicknames
+                        menu_id_list = list(menu_ids)
+                        placeholders = ', '.join(['%s'] * len(menu_id_list))
+                        cur.execute(f"""
+                            SELECT id, nickname FROM menus
+                            WHERE id IN ({placeholders})
+                        """, menu_id_list)
+
+                        menu_nicknames = {m['id']: m['nickname'] for m in cur.fetchall()}
+
+                        # Add menu nicknames to recipes
+                        for recipe in recipes:
+                            if recipe['menu_id'] in menu_nicknames:
+                                recipe['menu_nickname'] = menu_nicknames[recipe['menu_id']]
+                except Exception as menu_e:
+                    # If menu query fails, just continue with the recipes we have
+                    logger.warning(f"Error fetching menu nicknames: {str(menu_e)}")
+
+            return recipes
+    except Exception as e:
+        logger.error(f"Error with simple saved recipes query: {str(e)}")
+
+        # As a fallback, try an even simpler approach with minimal fields
+        try:
+            with get_db_cursor(dict_cursor=True, autocommit=True) as (cur, conn):
                 cur.execute("""
-                    SELECT
-                        sr.id, sr.user_id, sr.menu_id, sr.recipe_id, sr.recipe_name,
-                        sr.day_number, sr.meal_time, sr.notes, sr.macros, sr.ingredients,
-                        sr.instructions, sr.complexity_level, sr.appliance_used, sr.servings,
-                        sr.created_at, sr.updated_at, sr.scraped_recipe_id, sr.recipe_source,
-                        m.nickname as menu_nickname
-                    FROM
-                        saved_recipes sr
-                    LEFT JOIN
-                        menus m ON sr.menu_id = m.id
-                    WHERE
-                        sr.user_id = %s
-                    ORDER BY
-                        sr.updated_at DESC
+                    SELECT id, user_id, menu_id, recipe_id, recipe_name,
+                           meal_time, scraped_recipe_id, recipe_source, updated_at
+                    FROM saved_recipes
+                    WHERE user_id = %s
+                    ORDER BY updated_at DESC
                 """, (user_id,))
 
-                recipes = cur.fetchall()
-                logger.info(f"Successfully fetched {len(recipes)} saved recipes for user {user_id}")
-                return recipes
-            except Exception as inner_e:
-                logger.error(f"Error in saved recipes query: {str(inner_e)}")
-                # Try a simpler query without the join to identify the issue
-                try:
-                    cur.execute("""
-                        SELECT * FROM saved_recipes
-                        WHERE user_id = %s
-                        LIMIT 10
-                    """, (user_id,))
-                    simple_recipes = cur.fetchall()
-                    logger.info(f"Simple query found {len(simple_recipes)} recipes")
-                except Exception as simple_e:
-                    logger.error(f"Even simple query failed: {str(simple_e)}")
-                raise inner_e
-    except Exception as e:
-        logger.error(f"Error getting saved recipes: {str(e)}", exc_info=True)
-        # Return empty list instead of failing
-        return []
+                minimal_recipes = cur.fetchall()
+                logger.info(f"Fallback query returned {len(minimal_recipes)} recipes")
+                return minimal_recipes
+        except Exception as fallback_e:
+            logger.error(f"Even fallback recipe query failed: {str(fallback_e)}")
+            # Last resort - return empty list instead of failing
+            return []
 
 def get_saved_recipe_by_id(user_id, saved_id):
     """Get saved recipe details by ID"""
-    try:
-        logger.info(f"Getting saved recipe by ID: {saved_id}")
-        with get_db_cursor() as (cur, conn):
-            cur.execute("""
-                SELECT sr.*, m.nickname as menu_nickname
-                FROM saved_recipes sr
-                LEFT JOIN menus m ON sr.menu_id = m.id
-                WHERE sr.id = %s AND sr.user_id = %s
-            """, (saved_id, user_id))
+    if not user_id or not saved_id:
+        logger.error("get_saved_recipe_by_id called with empty user_id or saved_id")
+        return None
 
-            result = cur.fetchone()
-            logger.info(f"Found saved recipe: {result is not None}")
-            return result
+    try:
+        logger.info(f"Getting saved recipe by ID: {saved_id} for user {user_id}")
+
+        # Try with join query first
+        try:
+            with get_db_cursor(dict_cursor=True, autocommit=True) as (cur, conn):
+                cur.execute("""
+                    SELECT sr.*, m.nickname as menu_nickname
+                    FROM saved_recipes sr
+                    LEFT JOIN menus m ON sr.menu_id = m.id
+                    WHERE sr.id = %s AND sr.user_id = %s
+                """, (saved_id, user_id))
+
+                result = cur.fetchone()
+                if result:
+                    logger.info(f"Found saved recipe with ID {saved_id}")
+                    return result
+                else:
+                    logger.info(f"No saved recipe found with ID {saved_id}")
+                    return None
+        except Exception as e:
+            logger.warning(f"Error with joined query for saved recipe: {str(e)}")
+
+            # Try with simpler query as fallback
+            with get_db_cursor(dict_cursor=True, autocommit=True) as (cur, conn):
+                cur.execute("""
+                    SELECT * FROM saved_recipes
+                    WHERE id = %s AND user_id = %s
+                """, (saved_id, user_id))
+
+                result = cur.fetchone()
+                if result:
+                    logger.info(f"Found saved recipe with simpler query: {saved_id}")
+                    return result
+                else:
+                    logger.info(f"No saved recipe found with simpler query: {saved_id}")
+                    return None
+
     except Exception as e:
         logger.error(f"Error getting saved recipe by ID: {str(e)}")
         return None

@@ -33,6 +33,75 @@ async def test_endpoint():
     """Test endpoint to verify routing works"""
     return {"status": "saved-recipes route working"}
 
+@router.get("/debug")
+async def debug_saved_recipes(user = Depends(get_user_from_token)):
+    """Debug endpoint to check saved recipes table status"""
+    # Check if user is authenticated
+    if not user:
+        logger.error("Authentication required for saved recipes debug")
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required"
+        )
+
+    user_id = user.get('user_id')
+    logger.info(f"DEBUG: Checking saved recipes for user {user_id}")
+
+    result = {
+        "user_id": user_id,
+        "table_info": {},
+        "user_recipes": {}
+    }
+
+    try:
+        from app.db import get_db_connection, get_db_cursor, connection_pool, get_connection_stats
+
+        # Get connection stats
+        result["connection_stats"] = get_connection_stats()
+
+        # Check if the saved_recipes table exists
+        with get_db_cursor(dict_cursor=True, autocommit=True) as (cur, conn):
+            # Check table exists
+            cur.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables
+                    WHERE table_schema = 'public'
+                    AND table_name = 'saved_recipes'
+                ) as table_exists
+            """)
+            table_exists = cur.fetchone()['table_exists']
+            result["table_info"]["table_exists"] = table_exists
+
+            if table_exists:
+                # Count total recipes
+                cur.execute("SELECT COUNT(*) as total FROM saved_recipes")
+                result["table_info"]["total_recipes"] = cur.fetchone()['total']
+
+                # Count user's recipes
+                cur.execute("SELECT COUNT(*) as user_recipes FROM saved_recipes WHERE user_id = %s", (user_id,))
+                result["user_recipes"]["count"] = cur.fetchone()['user_recipes']
+
+                # Get recipe IDs if any exist
+                if result["user_recipes"]["count"] > 0:
+                    cur.execute("""
+                        SELECT id, recipe_name, created_at
+                        FROM saved_recipes
+                        WHERE user_id = %s
+                        ORDER BY created_at DESC
+                        LIMIT 10
+                    """, (user_id,))
+                    result["user_recipes"]["samples"] = cur.fetchall()
+                else:
+                    result["user_recipes"]["samples"] = []
+
+        return result
+    except Exception as e:
+        logger.error(f"Error in debug endpoint: {str(e)}")
+        return {
+            "error": str(e),
+            "user_id": user_id
+        }
+
 @router.post("/")
 async def add_saved_recipe(
     req: SaveRecipeRequest,
