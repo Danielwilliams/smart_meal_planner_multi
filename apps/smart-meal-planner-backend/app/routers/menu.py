@@ -12,8 +12,9 @@ import openai
 # Feature flag for optimized generation method
 USE_OPTIMIZED_GENERATION = False  # TEMPORARY: Disabled due to token limit issues - single request too large
 from psycopg2.extras import RealDictCursor
-from ..db import get_db_connection, get_db_cursor
-from ..db import _connection_stats, _stats_lock, log_connection_stats
+# Use the enhanced DB with specialized connection pools
+from ..db_enhanced_actual import get_db_connection, get_db_cursor
+from ..db_enhanced_actual import _connection_stats, _stats_lock, log_connection_stats
 from ..config import OPENAI_API_KEY
 from ..models.user import GenerateMealPlanRequest
 from ..models.menus import SaveMenuRequest
@@ -959,8 +960,11 @@ def generate_meal_plan_legacy(req: GenerateMealPlanRequest, job_id: str = None):
         # Determine which user's preferences to use
         preference_user_id = req.for_client_id if req.for_client_id else req.user_id
 
-        # Use the context manager for safer database operations - connection will auto-close
-        with get_db_cursor(dict_cursor=True) as (cursor, conn):
+        # Use the read pool for user preferences retrieval to avoid blocking other operations
+        with get_db_cursor(dict_cursor=True, pool_type='read', timeout=10) as (cursor, conn):
+            # Enable autocommit for faster read operations
+            conn.autocommit = True
+
             # Fetch user preferences (use client's preferences if for_client_id is provided)
             cursor.execute("""
                 SELECT
@@ -1533,8 +1537,8 @@ def generate_meal_plan_legacy(req: GenerateMealPlanRequest, job_id: str = None):
         # PHASE 3: All meal generation complete, now open a new connection to save the menu
         logger.info("Opening new database connection to save generated menu")
 
-        # Use the context manager for safer database operations
-        with get_db_cursor(dict_cursor=True) as (cursor, conn):
+        # Use the AI pool for saving menu data since this is part of the AI process
+        with get_db_cursor(dict_cursor=True, pool_type='ai', timeout=20) as (cursor, conn):
             try:
                 # Prepare the plan data as JSON string once
                 plan_json = json.dumps(final_plan)
@@ -2079,7 +2083,8 @@ async def generate_menu_background_task(job_id: str, req: GenerateMealPlanReques
 def get_latest_menu(user_id: int):
     """Fetch the most recent menu for a user with minimal connection time"""
     try:
-        with get_db_cursor(dict_cursor=True) as (cursor, conn):
+        # Use the read pool for quick menu retrieval
+        with get_db_cursor(dict_cursor=True, pool_type='read', timeout=10) as (cursor, conn):
             # Enable autocommit for faster read operations
             conn.autocommit = True
             
@@ -2111,8 +2116,10 @@ def get_latest_menu(user_id: int):
 @router.get("/history/{user_id}")
 def get_menu_history(user_id: int):
     """Get menu history for a user"""
-    # Use the context manager for safer database operations
-    with get_db_cursor(dict_cursor=True) as (cursor, conn):
+    # Use the read pool for menu history retrieval
+    with get_db_cursor(dict_cursor=True, pool_type='read', timeout=10) as (cursor, conn):
+        # Enable autocommit for faster read operations
+        conn.autocommit = True
         try:
             cursor.execute("""
                 SELECT
@@ -2148,8 +2155,8 @@ def get_menu_history(user_id: int):
 @router.patch("/{menu_id}/nickname")
 async def update_menu_nickname(menu_id: int, nickname: str = Body(..., embed=True)):
     """Update the nickname for a menu"""
-    # Use the context manager for safer database operations
-    with get_db_cursor(dict_cursor=True) as (cursor, conn):
+    # Use the general pool for standard write operations
+    with get_db_cursor(dict_cursor=True, pool_type='general', timeout=15) as (cursor, conn):
         try:
             cursor.execute("""
                 UPDATE menus
@@ -2173,8 +2180,10 @@ async def update_menu_nickname(menu_id: int, nickname: str = Body(..., embed=Tru
 @router.get("/{menu_id}/grocery-list")
 def get_grocery_list(menu_id: int):
     """Get grocery list for a specific menu"""
-    # Use the context manager for safer database operations
-    with get_db_cursor(dict_cursor=True) as (cursor, conn):
+    # Use the read pool for grocery list operations
+    with get_db_cursor(dict_cursor=True, pool_type='read', timeout=10) as (cursor, conn):
+        # Enable autocommit for faster read operations
+        conn.autocommit = True
         try:
             cursor.execute("""
                 SELECT meal_plan_json

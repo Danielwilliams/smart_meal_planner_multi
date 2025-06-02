@@ -7,7 +7,8 @@ in a menu, rather than aggregating all ingredients into a single list.
 
 from fastapi import APIRouter, HTTPException, Query, BackgroundTasks
 from psycopg2.extras import RealDictCursor
-from ..db import get_db_cursor
+# Use the enhanced DB with specialized connection pools
+from ..db_enhanced_actual import get_db_cursor
 from ..utils.meal_grocery_generator import get_meal_shopping_list
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
@@ -70,7 +71,11 @@ def get_meal_shopping_lists(
     logger.info(f"Generating new meal shopping lists for menu {menu_id}")
 
     try:
-        with get_db_cursor() as (cur, conn):
+        # Use the read pool for shopping list operations to prevent blocking during menu generation
+        with get_db_cursor(dict_cursor=True, pool_type='read', timeout=10) as (cur, conn):
+            # Enable autocommit for faster read operations
+            conn.autocommit = True
+
             # Verify the menu exists and get the data
             cur.execute("""
                 SELECT

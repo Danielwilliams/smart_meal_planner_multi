@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query, Body, BackgroundTasks
 from psycopg2.extras import RealDictCursor
-from ..db import get_db_connection, get_db_cursor
+# Use the enhanced DB with specialized connection pools
+from ..db_enhanced_actual import get_db_cursor, get_db_connection
 from ..utils.grocery_aggregator import aggregate_grocery_list
 from ..config import OPENAI_API_KEY
 from pydantic import BaseModel
@@ -40,10 +41,11 @@ def get_menu_details(menu_id: int):
     Retrieve full menu details for a specific menu
     """
     try:
-        with get_db_cursor(dict_cursor=True) as (cursor, conn):
+        # Use the read pool for menu retrieval to prevent blocking during menu generation
+        with get_db_cursor(dict_cursor=True, pool_type='read', timeout=10) as (cursor, conn):
             # Enable autocommit to prevent blocking during menu generation
             conn.autocommit = True
-            
+
             # Fetch the full menu details
             cursor.execute("""
                 SELECT
@@ -562,9 +564,12 @@ async def post_ai_shopping_list(menu_id: int, background_tasks: BackgroundTasks,
     
     # If we don't have a valid cache entry, process the request
     # First, get the basic grocery list which is faster
-    conn = get_db_connection()
     try:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        # Use read pool for fast grocery list operations
+        with get_db_cursor(dict_cursor=True, pool_type='read', timeout=10) as (cur, conn):
+            # Enable autocommit for faster read operations
+            conn.autocommit = True
+
             # Fetch the meal_plan_json field
             cur.execute("SELECT meal_plan_json FROM menus WHERE id=%s", (menu_id,))
             row = cur.fetchone()
@@ -633,8 +638,6 @@ async def post_ai_shopping_list(menu_id: int, background_tasks: BackgroundTasks,
             "status": "error",
             "menu_id": menu_id
         }
-    finally:
-        conn.close()
 
 @router.get("/{menu_id}/ai-shopping-list/status")
 async def get_ai_shopping_list_status(menu_id: int, preferences: Optional[str] = None):
