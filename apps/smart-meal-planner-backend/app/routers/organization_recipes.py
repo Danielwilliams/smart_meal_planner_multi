@@ -1,7 +1,7 @@
 # app/routers/organization_recipes.py
 
 from fastapi import APIRouter, HTTPException, Depends, status, Query
-from app.db import get_db_connection
+from app.db import get_db_cursor
 from app.models.user import (
     OrganizationRecipe, OrganizationRecipeCreate, OrganizationRecipeUpdate,
     OrganizationRecipeCategory, OrganizationRecipeCategoryCreate, OrganizationRecipeCategoryUpdate,
@@ -20,24 +20,28 @@ logger = logging.getLogger(__name__)
 
 def get_user_organization_id(user_id: int) -> int:
     """Get the organization ID for a user, ensuring they are an organization owner"""
-    conn = get_db_connection()
     try:
-        with conn.cursor() as cur:
+        with get_db_cursor(dict_cursor=False, autocommit=True) as (cur, conn):
             # Check if user owns an organization
             cur.execute("""
-                SELECT id FROM organizations 
+                SELECT id FROM organizations
                 WHERE owner_id = %s
             """, (user_id,))
-            
+
             result = cur.fetchone()
             if not result:
+                logger.warning(f"User {user_id} attempted to access organization as owner but is not an owner")
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Access denied: User is not an organization owner"
                 )
             return result[0]
-    finally:
-        conn.close()
+    except Exception as e:
+        logger.error(f"Error getting user's organization ID: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database error while checking organization access"
+        )
 
 # Recipe Categories Management
 
@@ -558,12 +562,11 @@ async def get_menu_defaults(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied to this organization"
         )
-    
-    conn = get_db_connection()
+
     try:
-        with conn.cursor() as cur:
+        with get_db_cursor(dict_cursor=False, autocommit=True) as (cur, conn):
             cur.execute("""
-                SELECT 
+                SELECT
                     id, organization_id, default_planning_period, default_meals_per_day,
                     include_snacks, default_snacks_per_day, serving_sizes,
                     nutritional_targets, dietary_defaults, client_delivery_settings,
@@ -571,14 +574,46 @@ async def get_menu_defaults(
                 FROM organization_menu_defaults
                 WHERE organization_id = %s
             """, (organization_id,))
-            
+
             result = cur.fetchone()
             if not result:
+                logger.warning(f"Menu defaults not found for organization {organization_id}")
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="Menu defaults not found"
                 )
             
+            # Handle JSON data fields
+            serving_sizes = result[6] if result[6] is not None else {}
+            nutritional_targets = result[7] if result[7] is not None else {}
+            dietary_defaults = result[8] if result[8] is not None else {}
+            client_delivery_settings = result[9] if result[9] is not None else {}
+
+            # Check if any fields are strings (JSON encoded) and need to be parsed
+            if isinstance(serving_sizes, str):
+                try:
+                    serving_sizes = json.loads(serving_sizes)
+                except:
+                    serving_sizes = {}
+
+            if isinstance(nutritional_targets, str):
+                try:
+                    nutritional_targets = json.loads(nutritional_targets)
+                except:
+                    nutritional_targets = {}
+
+            if isinstance(dietary_defaults, str):
+                try:
+                    dietary_defaults = json.loads(dietary_defaults)
+                except:
+                    dietary_defaults = {}
+
+            if isinstance(client_delivery_settings, str):
+                try:
+                    client_delivery_settings = json.loads(client_delivery_settings)
+                except:
+                    client_delivery_settings = {}
+
             return {
                 "id": result[0],
                 "organization_id": result[1],
@@ -586,25 +621,23 @@ async def get_menu_defaults(
                 "default_meals_per_day": result[3],
                 "include_snacks": result[4],
                 "default_snacks_per_day": result[5],
-                "serving_sizes": result[6] if result[6] else {},
-                "nutritional_targets": result[7] if result[7] else {},
-                "dietary_defaults": result[8] if result[8] else {},
-                "client_delivery_settings": result[9] if result[9] else {},
+                "serving_sizes": serving_sizes,
+                "nutritional_targets": nutritional_targets,
+                "dietary_defaults": dietary_defaults,
+                "client_delivery_settings": client_delivery_settings,
                 "created_at": result[10],
                 "updated_at": result[11],
                 "updated_by": result[12]
             }
-            
+
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error getting menu defaults: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to get menu defaults"
+            detail=f"Failed to get menu defaults: {str(e)}"
         )
-    finally:
-        conn.close()
 
 @router.put("/{organization_id}/menu-defaults", response_model=OrganizationMenuDefaults)
 async def update_menu_defaults(
@@ -620,10 +653,9 @@ async def update_menu_defaults(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied to this organization"
         )
-    
-    conn = get_db_connection()
+
     try:
-        with conn.cursor() as cur:
+        with get_db_cursor(dict_cursor=False) as (cur, conn):
             # Build dynamic update query
             update_fields = []
             params = []
@@ -689,7 +721,38 @@ async def update_menu_defaults(
                 )
             
             conn.commit()
-            
+
+            # Handle JSON data fields
+            serving_sizes = result[6] if result[6] is not None else {}
+            nutritional_targets = result[7] if result[7] is not None else {}
+            dietary_defaults = result[8] if result[8] is not None else {}
+            client_delivery_settings = result[9] if result[9] is not None else {}
+
+            # Parse JSON strings if needed
+            if isinstance(serving_sizes, str):
+                try:
+                    serving_sizes = json.loads(serving_sizes)
+                except:
+                    serving_sizes = {}
+
+            if isinstance(nutritional_targets, str):
+                try:
+                    nutritional_targets = json.loads(nutritional_targets)
+                except:
+                    nutritional_targets = {}
+
+            if isinstance(dietary_defaults, str):
+                try:
+                    dietary_defaults = json.loads(dietary_defaults)
+                except:
+                    dietary_defaults = {}
+
+            if isinstance(client_delivery_settings, str):
+                try:
+                    client_delivery_settings = json.loads(client_delivery_settings)
+                except:
+                    client_delivery_settings = {}
+
             return {
                 "id": result[0],
                 "organization_id": result[1],
@@ -697,26 +760,23 @@ async def update_menu_defaults(
                 "default_meals_per_day": result[3],
                 "include_snacks": result[4],
                 "default_snacks_per_day": result[5],
-                "serving_sizes": result[6] if result[6] else {},
-                "nutritional_targets": result[7] if result[7] else {},
-                "dietary_defaults": result[8] if result[8] else {},
-                "client_delivery_settings": result[9] if result[9] else {},
+                "serving_sizes": serving_sizes,
+                "nutritional_targets": nutritional_targets,
+                "dietary_defaults": dietary_defaults,
+                "client_delivery_settings": client_delivery_settings,
                 "created_at": result[10],
                 "updated_at": result[11],
                 "updated_by": result[12]
             }
-            
+
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error updating menu defaults: {str(e)}")
-        conn.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to update menu defaults"
+            detail=f"Failed to update menu defaults: {str(e)}"
         )
-    finally:
-        conn.close()
 
 # Recipe Approval Workflow
 
