@@ -5,6 +5,7 @@ from fastapi import HTTPException
 import logging
 import time
 import threading
+import random
 from contextlib import contextmanager
 from app.config import RECAPTCHA_SECRET_KEY, DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, DB_PORT
 
@@ -49,10 +50,18 @@ def log_connection_stats(pool_type='general'):
                 # Get pool info if available
                 # Note: psycopg2 doesn't expose direct pool stats, so we track our own
                 stats = _connection_stats.get(pool_type, _connection_stats['general'])
-                logger.info(f"{pool_type.upper()} Pool Stats - Active: {stats['active_connections']}, "
+
+                # Log detailed stats with timestamp for better debugging
+                logger.info(f"[{time.strftime('%H:%M:%S')}] {pool_type.upper()} Pool Stats - "
+                           f"Active: {stats['active_connections']}, "
                            f"Peak: {stats['peak_connections']}, "
                            f"Total Requests: {stats['total_connections']}, "
                            f"Errors: {stats['connection_errors']}")
+
+                # Log warning if active connections are high
+                if stats['active_connections'] > 0.8 * (pool_obj._maxconn):
+                    logger.warning(f"⚠️ {pool_type.upper()} pool nearing capacity: "
+                                 f"{stats['active_connections']}/{pool_obj._maxconn} connections")
         except Exception as e:
             logger.warning(f"Error logging connection stats for {pool_type}: {e}")
 
@@ -148,13 +157,33 @@ def get_db_connection(pool_type='general', autocommit=False):
     """
     connection_pool = get_pool_by_type(pool_type)
 
+    # Check if pool might need reset (randomly, to avoid doing this too often)
+    if random.random() < 0.01:  # 1% chance to check
+        reset_pool_if_needed(pool_type)
+
     try:
         if connection_pool:
-            # Get a connection from the pool
+            # Get a connection from the pool with retry logic
             logger.debug(f"Getting connection from {pool_type} pool")
-            conn = connection_pool.getconn()
-            logger.debug(f"Connection obtained from {pool_type} pool")
-            update_connection_stats('acquire', pool_type, True)
+            retry_count = 0
+            max_retries = 3
+
+            while retry_count < max_retries:
+                try:
+                    conn = connection_pool.getconn()
+                    logger.debug(f"Connection obtained from {pool_type} pool on attempt {retry_count+1}")
+                    update_connection_stats('acquire', pool_type, True)
+                    break
+                except Exception as e:
+                    retry_count += 1
+                    if retry_count >= max_retries:
+                        logger.error(f"Failed to get connection after {max_retries} attempts: {str(e)}")
+                        # Force pool reset on repeated failures
+                        reset_pool_if_needed(pool_type)
+                        raise
+                    else:
+                        logger.warning(f"Failed to get connection (attempt {retry_count}): {str(e)}, retrying...")
+                        time.sleep(0.1 * retry_count)  # Increasing backoff
 
             # Make sure we're not in a transaction before setting autocommit
             # Rollback any active transaction to start with a clean state
@@ -169,11 +198,14 @@ def get_db_connection(pool_type='general', autocommit=False):
                 conn.autocommit = True
                 logger.debug(f"Set autocommit=True for {pool_type} connection")
 
-            # Set statement timeout on the connection to prevent long-running queries
-            # This timeout is in milliseconds (30 seconds)
-            cursor = conn.cursor()
-            cursor.execute("SET statement_timeout = 30000;")
-            cursor.close()
+            # Set timeout on the connection to prevent long-running queries or hangs
+            # This timeout is in milliseconds (10 seconds for faster timeout detection)
+            try:
+                cursor = conn.cursor()
+                cursor.execute("SET statement_timeout = 10000;")
+                cursor.close()
+            except Exception as e:
+                logger.warning(f"Error setting statement timeout: {str(e)}")
 
             return conn
         else:
@@ -306,6 +338,30 @@ def close_all_connections():
                 logger.info(f"All database connections in the {pool_name} pool have been closed")
             except Exception as e:
                 logger.error(f"Error closing {pool_name} connection pool: {str(e)}")
+
+def reset_pool_if_needed(pool_type='general'):
+    """Reset a connection pool if it seems to be having issues"""
+    pool_obj = get_pool_by_type(pool_type)
+    stats = _connection_stats.get(pool_type, _connection_stats['general'])
+
+    # Check if pool needs reset (high active connections but few actual queries)
+    if pool_obj and stats['active_connections'] > 0.7 * pool_obj._maxconn:
+        logger.warning(f"⚠️ {pool_type.upper()} pool may have connection leaks. Attempting reset.")
+        try:
+            # Close all connections
+            pool_obj.closeall()
+
+            # Reset stats
+            with _stats_lock:
+                stats['active_connections'] = 0
+                stats['last_reset'] = time.time()
+
+            logger.info(f"✅ Successfully reset {pool_type.upper()} connection pool")
+            return True
+        except Exception as e:
+            logger.error(f"❌ Failed to reset {pool_type.upper()} connection pool: {str(e)}")
+            return False
+    return False
 
 def save_recipe(user_id, menu_id=None, recipe_id=None, recipe_name=None, day_number=None, 
                meal_time=None, notes=None, macros=None, ingredients=None, 
