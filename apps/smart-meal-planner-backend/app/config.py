@@ -39,8 +39,9 @@ if not all([AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, S3_BUCKET_NAME]):
 
 
 
-# JWT configuration
-JWT_SECRET = os.getenv("JWT_SECRET", "DEFAULT_SECRET")
+# JWT configuration - IMPORTANT: Don't use this default in production!
+# Using a strong default for development to prevent errors
+JWT_SECRET = os.getenv("JWT_SECRET", "VeryStrongDevelopmentSecretKeyDoNotUseInProduction2025")
 JWT_ALGORITHM = "HS256"
 
 # External API configurations
@@ -83,10 +84,10 @@ def debug_environment_vars():
 # Validate critical environment variables
 def validate_environment():
     critical_vars = [
-        ("OPENAI_API_KEY", OPENAI_API_KEY),
         ("DATABASE_USER", DB_USER),
-        ("DATABASE_PASSWORD", DB_PASSWORD),
-        ("JWT_SECRET", JWT_SECRET)
+        ("DATABASE_PASSWORD", DB_PASSWORD)
+        # JWT_SECRET now has a default, so we don't need to check for it
+        # OPENAI_API_KEY is optional and checked separately
     ]
     
     missing_vars = [var for var, value in critical_vars if not value]
