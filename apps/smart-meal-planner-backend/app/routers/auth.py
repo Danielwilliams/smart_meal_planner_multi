@@ -54,9 +54,8 @@ async def send_verification_email(email: str, verification_token: str):
 @router.post("/signup")
 async def sign_up(user_data: UserSignUp, background_tasks: BackgroundTasks):
     try:
-        with get_db_cursor(dict_cursor=False) as (cursor, conn):
-            # Enable autocommit to prevent transaction blocking during menu generation
-            conn.autocommit = True
+        with get_db_cursor(dict_cursor=False, autocommit=True) as (cursor, conn):
+            # Autocommit is enabled at connection creation time
             
             # Check if email already exists
             cursor.execute("SELECT id FROM user_profiles WHERE email = %s", (user_data.email,))
@@ -124,10 +123,9 @@ async def verify_email(token: str):
         
         print(f"🔍 Token decoded successfully for email: {email}")
         
-        with get_db_cursor(dict_cursor=False) as (cursor, conn):
-            # Enable autocommit to prevent transaction blocking during menu generation
-            conn.autocommit = True
-            
+        with get_db_cursor(dict_cursor=False, autocommit=True) as (cursor, conn):
+            # Autocommit is enabled at connection creation time
+
             # First, check if user exists and current verification status
             cursor.execute("""
                 SELECT id, verified, verification_token
@@ -184,10 +182,9 @@ async def resend_verification_email(request: ResendVerificationRequest, backgrou
     try:
         email = request.email
         
-        with get_db_cursor(dict_cursor=False) as (cursor, conn):
-            # Enable autocommit to prevent transaction blocking during menu generation
-            conn.autocommit = True
-            
+        with get_db_cursor(dict_cursor=False, autocommit=True) as (cursor, conn):
+            # Autocommit is enabled at connection creation time
+
             # Check if user exists and is not verified
             cursor.execute("""
                 SELECT id, verified, verification_token 
@@ -234,9 +231,8 @@ async def resend_verification_email(request: ResendVerificationRequest, backgrou
 @router.post("/login")
 async def login(user_data: UserLogin):
     try:
-        with get_db_cursor(dict_cursor=False) as (cursor, conn):
-            # Enable autocommit to prevent transaction blocking during menu generation
-            conn.autocommit = True
+        with get_db_cursor(dict_cursor=False, autocommit=True) as (cursor, conn):
+            # Autocommit is enabled at connection creation time
             
             logger.info("DB connection established")
             logger.info("Cursor created")
@@ -349,9 +345,8 @@ async def get_account_info(current_user: Dict[str, Any] = Depends(get_user_from_
         raise HTTPException(status_code=401, detail="Authentication required")
     
     try:
-        with get_db_cursor(dict_cursor=True) as (cursor, conn):
-            # Enable autocommit to prevent transaction blocking during menu generation
-            conn.autocommit = True
+        with get_db_cursor(dict_cursor=True, autocommit=True) as (cursor, conn):
+            # Autocommit is enabled at connection creation time
             
             # Get user details from database
             cursor.execute("""

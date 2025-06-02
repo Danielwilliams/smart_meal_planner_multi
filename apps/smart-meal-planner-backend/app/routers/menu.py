@@ -961,9 +961,8 @@ def generate_meal_plan_legacy(req: GenerateMealPlanRequest, job_id: str = None):
         preference_user_id = req.for_client_id if req.for_client_id else req.user_id
 
         # Use the read pool for user preferences retrieval to avoid blocking other operations
-        with get_db_cursor(dict_cursor=True, pool_type='read') as (cursor, conn):
-            # Enable autocommit for faster read operations
-            conn.autocommit = True
+        with get_db_cursor(dict_cursor=True, pool_type='read', autocommit=True) as (cursor, conn):
+            # Autocommit is enabled at connection creation time
 
             # Fetch user preferences (use client's preferences if for_client_id is provided)
             cursor.execute("""
@@ -2084,9 +2083,8 @@ def get_latest_menu(user_id: int):
     """Fetch the most recent menu for a user with minimal connection time"""
     try:
         # Use the read pool for quick menu retrieval
-        with get_db_cursor(dict_cursor=True, pool_type='read') as (cursor, conn):
-            # Enable autocommit for faster read operations
-            conn.autocommit = True
+        with get_db_cursor(dict_cursor=True, pool_type='read', autocommit=True) as (cursor, conn):
+            # Autocommit is enabled at connection creation time
             
             cursor.execute("""
                 SELECT id, meal_plan_json, created_at::TEXT AS created_at
@@ -2117,9 +2115,8 @@ def get_latest_menu(user_id: int):
 def get_menu_history(user_id: int):
     """Get menu history for a user"""
     # Use the read pool for menu history retrieval
-    with get_db_cursor(dict_cursor=True, pool_type='read') as (cursor, conn):
-        # Enable autocommit for faster read operations
-        conn.autocommit = True
+    with get_db_cursor(dict_cursor=True, pool_type='read', autocommit=True) as (cursor, conn):
+        # Autocommit is enabled at connection creation time
         try:
             cursor.execute("""
                 SELECT
@@ -2181,9 +2178,8 @@ async def update_menu_nickname(menu_id: int, nickname: str = Body(..., embed=Tru
 def get_grocery_list(menu_id: int):
     """Get grocery list for a specific menu"""
     # Use the read pool for grocery list operations
-    with get_db_cursor(dict_cursor=True, pool_type='read') as (cursor, conn):
-        # Enable autocommit for faster read operations
-        conn.autocommit = True
+    with get_db_cursor(dict_cursor=True, pool_type='read', autocommit=True) as (cursor, conn):
+        # Autocommit is enabled at connection creation time
         try:
             cursor.execute("""
                 SELECT meal_plan_json

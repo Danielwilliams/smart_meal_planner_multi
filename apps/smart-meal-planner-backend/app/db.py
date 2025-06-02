@@ -191,20 +191,27 @@ def get_db_connection(pool_type='general'):
         )
 
 @contextmanager
-def get_db_cursor(dict_cursor=True, pool_type='general'):
+def get_db_cursor(dict_cursor=True, pool_type='general', autocommit=False):
     """
     Context manager for safely handling database connections and cursors.
 
     Args:
         dict_cursor: If True, uses RealDictCursor, otherwise uses regular cursor
         pool_type: The type of pool to use ('general', 'ai', or 'read')
+        autocommit: If True, sets the connection to autocommit mode before any operations
 
     Usage:
     ```
-    with get_db_cursor(pool_type='read') as (cursor, conn):
+    # For read operations (autocommit=True):
+    with get_db_cursor(pool_type='read', autocommit=True) as (cursor, conn):
         cursor.execute("SELECT * FROM table")
         results = cursor.fetchall()
-        conn.commit()  # if needed
+        # No need for conn.commit()
+
+    # For transaction operations (autocommit=False, default):
+    with get_db_cursor(pool_type='general') as (cursor, conn):
+        cursor.execute("INSERT INTO table VALUES (...)")
+        conn.commit()  # Explicitly commit when needed
     ```
     """
     conn = None
@@ -216,6 +223,12 @@ def get_db_cursor(dict_cursor=True, pool_type='general'):
         conn = get_db_connection(pool_type=pool_type)
         pool_obj = get_pool_by_type(pool_type)
         pooled = pool_obj is not None
+
+        # Set autocommit mode BEFORE creating cursor if requested
+        # This prevents "set_session cannot be used inside a transaction" errors
+        if autocommit:
+            conn.autocommit = True
+            logger.debug(f"Set autocommit=True for {pool_type} connection")
 
         # Create cursor
         if dict_cursor:
