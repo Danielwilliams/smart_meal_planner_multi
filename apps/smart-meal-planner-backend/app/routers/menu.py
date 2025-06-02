@@ -13,7 +13,7 @@ import openai
 USE_OPTIMIZED_GENERATION = False  # TEMPORARY: Disabled due to token limit issues - single request too large
 from psycopg2.extras import RealDictCursor
 # Use the enhanced DB with specialized connection pools
-from ..db_super_simple import get_db_connection, get_db_cursor
+from ..db import get_db_connection, get_db_cursor
 from ..config import OPENAI_API_KEY
 from ..models.user import GenerateMealPlanRequest
 from ..models.menus import SaveMenuRequest
