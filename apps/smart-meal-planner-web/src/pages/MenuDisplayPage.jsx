@@ -1430,22 +1430,56 @@ function MenuDisplayPage() {
             }}
           />
 
-          <Button 
-            variant="contained" 
-            color="primary"
-            onClick={handleGenerateMenu}
-            disabled={loading}
-            sx={{ 
-              flex: { xs: '1 1 100%', sm: 1 },
-              height: { xs: '48px', sm: 'auto' },
-              fontSize: { xs: '1rem', sm: 'inherit' },
-              mb: { xs: 1, sm: 0 }
-            }}
-          >
-            {clientMode && selectedClient 
-              ? `Generate Menu for ${selectedClient.name}` 
-              : 'Generate New Menu'}
-          </Button>
+          {/* Show button for accounts that are not 'free' or 'client' */}
+          {(!user?.account_type || (user.account_type !== 'free' && user.account_type !== 'client')) ? (
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={handleGenerateMenu}
+              disabled={loading}
+              sx={{
+                flex: { xs: '1 1 100%', sm: 1 },
+                height: { xs: '48px', sm: 'auto' },
+                fontSize: { xs: '1rem', sm: 'inherit' },
+                mb: { xs: 1, sm: 0 }
+              }}
+            >
+              {clientMode && selectedClient
+                ? `Generate Menu for ${selectedClient.name}`
+                : 'Generate New Menu'}
+            </Button>
+          ) : (
+            <Box
+              sx={{
+                flex: { xs: '1 1 100%', sm: 1 },
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                border: '1px dashed',
+                borderColor: 'divider',
+                borderRadius: 1,
+                p: 2,
+                mb: { xs: 1, sm: 0 }
+              }}
+            >
+              <Typography variant="body2" align="center" color="text.secondary">
+                {user.account_type === 'client'
+                  ? "Menu generation is handled by your organization"
+                  : "Upgrade your subscription to generate new meal plans"}
+              </Typography>
+              {user.account_type !== 'client' && (
+                <Button
+                  variant="outlined"
+                  size="small"
+                  sx={{ mt: 1 }}
+                  onClick={() => navigate('/subscription')}
+                >
+                  View Plans
+                </Button>
+              )}
+            </Box>
+          )}
 
           {menu && (
             <>
