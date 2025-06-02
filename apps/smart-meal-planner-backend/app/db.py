@@ -73,8 +73,27 @@ def get_db_connection():
     try:
         # Check if thread already has a connection assigned
         if hasattr(thread_local, 'connection') and thread_local.connection is not None:
-            logger.debug("Reusing existing thread-local connection")
-            return thread_local.connection
+            # Verify the connection is still valid before using it
+            try:
+                # Test if the connection is still alive
+                if thread_local.connection.closed:
+                    logger.warning("Thread-local connection was marked as closed - creating a new one")
+                    thread_local.connection = None
+                else:
+                    # Do a simple test query to verify the connection is still good
+                    with thread_local.connection.cursor() as test_cursor:
+                        test_cursor.execute("SELECT 1")
+                        test_cursor.fetchone()
+                        logger.debug("Reusing existing thread-local connection - verified active")
+                        return thread_local.connection
+            except Exception as e:
+                # Connection is not usable - clean it up and get a new one
+                logger.warning(f"Thread-local connection test failed: {str(e)} - creating a new one")
+                try:
+                    thread_local.connection.close()
+                except:
+                    pass
+                thread_local.connection = None
 
         # Get connection from pool if available
         if connection_pool:
@@ -156,16 +175,11 @@ def get_db_cursor(dict_cursor=True, autocommit=False, pool_type=None):
     connection_owner = False
 
     try:
-        # Check if thread has a persistent connection
-        if hasattr(thread_local, 'connection') and thread_local.connection is not None:
-            conn = thread_local.connection
-            connection_owner = False
-            logger.debug("Using existing thread-local connection")
-        else:
-            # Get a new connection
-            conn = get_db_connection()
-            connection_owner = True
-            pooled = connection_pool is not None
+        # Always get a fresh connection for the cursor operation
+        # This is safer than reusing thread-local connections at this level
+        conn = get_db_connection()
+        connection_owner = True
+        pooled = connection_pool is not None
 
         # Set autocommit if requested
         if autocommit:
@@ -274,10 +288,32 @@ def close_all_connections():
     if hasattr(thread_local, 'connection'):
         try:
             if thread_local.connection:
-                thread_local.connection.close()
+                try:
+                    if not thread_local.connection.closed:
+                        thread_local.connection.close()
+                        logger.info("Closed thread-local connection")
+                except Exception as e:
+                    logger.warning(f"Error closing thread-local connection: {str(e)}")
             thread_local.connection = None
-        except:
-            pass
+        except Exception as e:
+            logger.error(f"Error handling thread-local connection during closeall: {str(e)}")
+
+    # Try to clear thread-local storage for all active threads
+    try:
+        active_threads = threading.enumerate()
+        logger.info(f"Attempting to clear connections for {len(active_threads)} active threads")
+        for thread in active_threads:
+            thread_id = id(thread)
+            if hasattr(thread, 'connection'):
+                try:
+                    if thread.connection and not thread.connection.closed:
+                        thread.connection.close()
+                        logger.info(f"Closed connection for thread {thread_id}")
+                    thread.connection = None
+                except:
+                    pass
+    except Exception as e:
+        logger.warning(f"Error clearing thread connections: {str(e)}")
 
     # Close the pool
     if connection_pool:

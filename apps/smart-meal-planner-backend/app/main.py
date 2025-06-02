@@ -456,9 +456,33 @@ async def extend_timeout_for_menu_routes(request, call_next):
     if "/menu/generate" in request.url.path:
         # Log extended timeout for menu generation routes
         logger.info(f"Processing menu generation route with extended timeout: {request.url.path}")
-    
+
     # Continue with the request
     response = await call_next(request)
+    return response
+
+@app.middleware("http")
+async def clear_thread_local_storage(request, call_next):
+    """Clear thread-local storage at the end of each request to prevent connection leaks"""
+    # Process the request
+    response = await call_next(request)
+
+    # Clean up thread-local storage
+    try:
+        import threading
+        thread_local = threading.local()
+        if hasattr(thread_local, 'connection') and thread_local.connection is not None:
+            try:
+                from app.db import logger as db_logger
+                if not thread_local.connection.closed:
+                    thread_local.connection.close()
+                    db_logger.info("Auto-closed thread-local connection at request end")
+                thread_local.connection = None
+            except Exception as e:
+                logger.warning(f"Error clearing thread-local connection: {str(e)}")
+    except Exception as e:
+        logger.warning(f"Error in thread-local cleanup middleware: {str(e)}")
+
     return response
 
 # Now we can use @app.on_event
