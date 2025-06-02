@@ -18,10 +18,10 @@ We've created an emergency fix for the database connection issues that are causi
    - `/app/routers/meal_grocery_list.py` - Updated to use simplified database
    - `/app/routers/subscriptions.py` - Updated to use simplified database
 
-3. **Files to Disable (IMPORTANT):**
-   - Rename `/app/db.py` to `/app/db.py.disabled`
-   - Rename `/app/db_enhanced_actual.py` to `/app/db_enhanced_actual.py.disabled`
-   - Rename `/app/db_simplified.py` to `/app/db_simplified.py.disabled`
+3. **Compatibility Files:**
+   - `/app/db.py` - Compatibility layer redirecting to db_super_simple.py
+   - `/app/db_enhanced_actual.py` - Compatibility layer redirecting to db_super_simple.py
+   - `/app/db_simplified.py` - Compatibility layer redirecting to db_super_simple.py
 
 ## Deployment Steps
 
@@ -32,11 +32,11 @@ We've created an emergency fix for the database connection issues that are causi
    cp app/db_simplified.py app/db_simplified.py.bak
    ```
 
-2. **Disable Old DB Modules:**
+2. **Create Compatibility Layers:**
    ```bash
-   mv app/db.py app/db.py.disabled
-   mv app/db_enhanced_actual.py app/db_enhanced_actual.py.disabled
-   mv app/db_simplified.py app/db_simplified.py.disabled
+   # Instead of disabling old modules, we've created compatibility layers
+   # that redirect all imports to the simplified module
+   # This prevents import errors from existing code
    ```
 
 3. **Deploy New and Updated Files**

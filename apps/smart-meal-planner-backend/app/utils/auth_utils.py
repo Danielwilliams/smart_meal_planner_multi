@@ -5,7 +5,7 @@ import jwt
 import logging
 from psycopg2.extras import RealDictCursor
 from app.config import JWT_SECRET, JWT_ALGORITHM
-from app.db import get_db_connection, get_db_cursor
+from app.db_super_simple import get_db_connection, get_db_cursor
 
 logger = logging.getLogger(__name__)
 

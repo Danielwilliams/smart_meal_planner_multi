@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 from app.utils.s3.s3_utils import s3_helper
 
 # Import database helpers for initialization
-from app.db_super_simple import connection_pool, close_all_connections
+from app.db_super_simple import connection_pool, close_all_connections  # Using the super simple DB module
 
 # Import enhanced CORS middleware
 from app.middleware.cors_middleware import setup_cors_middleware
