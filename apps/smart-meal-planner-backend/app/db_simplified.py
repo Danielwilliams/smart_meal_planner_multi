@@ -249,10 +249,19 @@ def close_all_connections():
 
 def check_pool_health():
     """Check if the connection pool is healthy and reset if needed"""
+    if not connection_pool:
+        return False
+
     with _stats_lock:
+        # Get pool max connections safely
+        try:
+            max_conn = getattr(connection_pool, 'maxconn', 30)
+        except:
+            max_conn = 30
+
         # Check if we have too many active connections
-        if _connection_stats['active_connections'] > connection_pool._maxconn * 0.9:
-            logger.warning(f"Connection pool approaching capacity: {_connection_stats['active_connections']}/{connection_pool._maxconn}")
+        if _connection_stats['active_connections'] > max_conn * 0.9:
+            logger.warning(f"Connection pool approaching capacity: {_connection_stats['active_connections']}/{max_conn}")
             return False
 
         # Check if we have a large number of errors
@@ -262,7 +271,7 @@ def check_pool_health():
 
         # Check if connections have been stuck for too long
         time_since_reset = time.time() - _connection_stats['last_reset']
-        if time_since_reset > 3600 and _connection_stats['active_connections'] > connection_pool._maxconn * 0.5:
+        if time_since_reset > 3600 and _connection_stats['active_connections'] > max_conn * 0.5:
             logger.warning(f"Connection pool may have leaks: {_connection_stats['active_connections']} connections active for {time_since_reset/60:.1f} minutes")
             return False
 

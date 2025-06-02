@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 from app.utils.s3.s3_utils import s3_helper
 
 # Import database helpers for initialization
-from app.db_simplified import connection_pool, close_all_connections
+from app.db_super_simple import connection_pool, close_all_connections
 
 # Import enhanced CORS middleware
 from app.middleware.cors_middleware import setup_cors_middleware
@@ -172,42 +172,52 @@ def create_app() -> FastAPI:
     async def health_check():
         # Check if client notes tables exist
         try:
-            from app.db_simplified import get_db_cursor, _connection_stats, log_connection_stats
-            with get_db_cursor(autocommit=True) as (cur, conn):
-                cur.execute("SELECT 1 FROM client_notes LIMIT 1")
-                client_notes_exists = True
+            from app.db_super_simple import get_db_cursor
 
-            # Log connection stats for monitoring
-            log_connection_stats()
+            # Try to access the database
+            try:
+                with get_db_cursor(autocommit=True) as (cur, conn):
+                    cur.execute("SELECT 1 FROM client_notes LIMIT 1")
+                    client_notes_exists = True
+                    db_status = "connected"
+            except Exception as e:
+                logger.error(f"Client notes check failed: {str(e)}")
+                client_notes_exists = False
+                db_status = f"error: {str(e)}"
         except Exception as e:
             logger.error(f"Health check failed: {str(e)}")
             client_notes_exists = False
+            db_status = f"error: {str(e)}"
 
         return {
             "status": "healthy",
             "client_notes_migration": "completed" if client_notes_exists else "pending",
-            "connection_stats": _connection_stats
+            "database": db_status
         }
 
     @app.post("/admin/reset-connections")
     async def reset_connections():
         """Admin endpoint to force reset the connection pool"""
         try:
-            from app.db_simplified import reset_connection_pool, _connection_stats
+            from app.db_super_simple import close_all_connections, connection_pool
 
-            # Log before stats
-            logger.info(f"Connection stats before reset: {_connection_stats}")
+            # Log the reset attempt
+            logger.info("Attempting to close all database connections")
 
-            # Reset the pool
-            result = reset_connection_pool()
+            # Close all connections
+            try:
+                close_all_connections()
+                result = True
+                logger.info("Successfully closed all database connections")
+            except Exception as e:
+                result = False
+                logger.error(f"Failed to close connections: {str(e)}")
 
-            # Log after stats
-            logger.info(f"Connection stats after reset: {_connection_stats}")
-
+            # Return simple status
             return {
                 "status": "success" if result else "failed",
                 "message": "Connection pool reset" if result else "Failed to reset connection pool",
-                "connection_stats": _connection_stats
+                "pool_exists": connection_pool is not None
             }
         except Exception as e:
             logger.error(f"Error resetting connection pool: {str(e)}")
