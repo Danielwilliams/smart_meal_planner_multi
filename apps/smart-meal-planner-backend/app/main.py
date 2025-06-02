@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 from app.utils.s3.s3_utils import s3_helper
 
 # Import database helpers for initialization
-from app.db import connection_pool, close_all_connections  # Using the ultra-simplified DB module
+from app.db import connection_pool, close_all_connections, get_connection_stats  # Using the ultra-simplified DB module
 
 # Import enhanced CORS middleware
 from app.middleware.cors_middleware import setup_cors_middleware
@@ -331,7 +331,7 @@ def create_app() -> FastAPI:
     async def verify_password_hashing():
         """Verify that Kroger password hashing is working correctly"""
         try:
-            from app.db_simplified import get_db_cursor
+            from app.db import get_db_cursor
             from app.utils.password_utils import hash_kroger_password, verify_kroger_password
             from psycopg2.extras import RealDictCursor
 
@@ -414,7 +414,7 @@ def create_app() -> FastAPI:
     async def clear_plaintext_passwords():
         """Clear plain text Kroger passwords (only if verification passes)"""
         try:
-            from app.db_simplified import get_db_cursor
+            from app.db import get_db_cursor
             from psycopg2.extras import RealDictCursor
 
             # First verify the system is working

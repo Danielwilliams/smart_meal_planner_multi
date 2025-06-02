@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, Body, JSONResponse
+from fastapi import APIRouter, Depends, HTTPException, Request, Body
+from fastapi.responses import JSONResponse
 from typing import Optional, List, Dict, Any
 import logging
 import json

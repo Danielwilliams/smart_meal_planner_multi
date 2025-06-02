@@ -26,6 +26,9 @@ _last_reset_time = time.time()
 # Thread-local storage for tracking connections in each thread
 thread_local = threading.local()
 
+# Initialize thread-local storage
+thread_local.connection = None
+
 # Connection pool creation with retry logic
 def create_connection_pool():
     """Create or recreate the connection pool with retries"""
@@ -88,7 +91,7 @@ def get_db_connection():
                 thread_local.connection = conn
 
                 # Log connection stats periodically
-                if _total_connections % 10 == 0 or _active_connections > 25:
+                if _total_connections % 100 == 0 or _active_connections > 50:
                     logger.warning(f"Connection stats: active={_active_connections}, peak={_peak_connections}, total={_total_connections}")
 
                 # Make sure connection is in a clean state
