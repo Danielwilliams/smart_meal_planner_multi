@@ -180,31 +180,83 @@ def enhance_snack_with_instructions(snack):
 def enhance_meal_plan_snacks(meal_plan):
     """
     Process a meal plan and enhance all snacks with instructions
-    
+
     Args:
         meal_plan: The meal plan object/dictionary
-        
+
     Returns:
         The enhanced meal plan with snack instructions
     """
-    if not meal_plan or 'days' not in meal_plan:
-        logger.warning("Unable to enhance snacks: invalid meal plan structure")
+    if not meal_plan:
+        logger.warning("Unable to enhance snacks: meal plan is None")
         return meal_plan
-    
+
+    # Handle various meal plan formats
+    if isinstance(meal_plan, str):
+        try:
+            import json
+            meal_plan = json.loads(meal_plan)
+        except Exception as e:
+            logger.error(f"Failed to parse meal plan JSON: {str(e)}")
+            return meal_plan
+
+    # Handle nested structure where meal_plan might be inside another object
+    if isinstance(meal_plan, dict) and 'meal_plan' in meal_plan and 'days' not in meal_plan:
+        inner_plan = meal_plan['meal_plan']
+        if isinstance(inner_plan, str):
+            try:
+                import json
+                meal_plan['meal_plan'] = json.loads(inner_plan)
+                return enhance_meal_plan_snacks(meal_plan)
+            except Exception as e:
+                logger.error(f"Failed to parse nested meal plan JSON: {str(e)}")
+                return meal_plan
+        elif isinstance(inner_plan, dict):
+            meal_plan['meal_plan'] = enhance_meal_plan_snacks(inner_plan)
+            return meal_plan
+
+    # Now process the actual meal plan
+    if not isinstance(meal_plan, dict) or 'days' not in meal_plan:
+        logger.warning(f"Unable to enhance snacks: invalid meal plan structure (type: {type(meal_plan)})")
+        return meal_plan
+
     try:
         enhanced_count = 0
+
+        # First, build a map of meal titles to instructions from the meals array
+        meal_instructions = {}
+        for day in meal_plan['days']:
+            if 'meals' in day and isinstance(day['meals'], list):
+                for meal in day['meals']:
+                    if isinstance(meal, dict) and 'title' in meal and 'instructions' in meal and meal['instructions']:
+                        # Store instructions by title for later lookup
+                        meal_instructions[meal['title']] = meal['instructions']
+
+                        # Also check if meal_time is a snack type
+                        if meal.get('meal_time', '').startswith('snack'):
+                            meal_instructions[meal['title']] = meal['instructions']
+
+        # Now process snacks, first checking if there's a matching meal with instructions
         for day in meal_plan['days']:
             if 'snacks' in day and isinstance(day['snacks'], list):
                 for i, snack in enumerate(day['snacks']):
                     if isinstance(snack, dict):
                         # Check if snack needs instructions
                         if not snack.get('instructions') or len(snack.get('instructions', [])) == 0:
-                            day['snacks'][i] = enhance_snack_with_instructions(snack)
-                            enhanced_count += 1
-        
+                            # First try to find matching instructions from a meal with the same title
+                            if snack.get('title') in meal_instructions:
+                                logger.info(f"Copying instructions from meal to snack: {snack.get('title')}")
+                                snack['instructions'] = meal_instructions[snack.get('title')]
+                                day['snacks'][i] = snack
+                                enhanced_count += 1
+                            else:
+                                # If no matching meal found, generate new instructions
+                                day['snacks'][i] = enhance_snack_with_instructions(snack)
+                                enhanced_count += 1
+
         if enhanced_count > 0:
             logger.info(f"Enhanced {enhanced_count} snacks with instructions")
-        
+
         return meal_plan
     except Exception as e:
         logger.error(f"Error enhancing snacks: {str(e)}")
