@@ -37,7 +37,8 @@ def get_user_preferences(id: int):
                     recipe_type_preferences,
                     meal_time_preferences,
                     time_constraints,
-                    prep_preferences
+                    prep_preferences,
+                    preferred_proteins
                 FROM user_profiles
                 WHERE id = %s
             """, (id,))
@@ -120,6 +121,40 @@ def get_user_preferences(id: int):
                         "quick-assembly": False,
                         "one-pot": False,
                         "minimal-dishes": False
+                    },
+                    "preferred_proteins": {
+                        "meat": {
+                            "chicken": False,
+                            "beef": False,
+                            "pork": False,
+                            "turkey": False,
+                            "lamb": False,
+                            "bison": False
+                        },
+                        "seafood": {
+                            "salmon": False,
+                            "tuna": False,
+                            "cod": False,
+                            "shrimp": False,
+                            "crab": False,
+                            "mussels": False
+                        },
+                        "vegetarian_vegan": {
+                            "tofu": False,
+                            "tempeh": False,
+                            "seitan": False,
+                            "lentils": False,
+                            "chickpeas": False,
+                            "black_beans": False
+                        },
+                        "other": {
+                            "eggs": False,
+                            "dairy_milk": False,
+                            "dairy_yogurt": False,
+                            "protein_powder_whey": False,
+                            "protein_powder_pea": False,
+                            "quinoa": False
+                        }
                     }
                 }
 
@@ -207,6 +242,42 @@ def get_user_preferences(id: int):
                     "quick-assembly": False,
                     "one-pot": False,
                     "minimal-dishes": False
+                }
+
+            if preferences['preferred_proteins'] is None:
+                preferences['preferred_proteins'] = {
+                    "meat": {
+                        "chicken": False,
+                        "beef": False,
+                        "pork": False,
+                        "turkey": False,
+                        "lamb": False,
+                        "bison": False
+                    },
+                    "seafood": {
+                        "salmon": False,
+                        "tuna": False,
+                        "cod": False,
+                        "shrimp": False,
+                        "crab": False,
+                        "mussels": False
+                    },
+                    "vegetarian_vegan": {
+                        "tofu": False,
+                        "tempeh": False,
+                        "seitan": False,
+                        "lentils": False,
+                        "chickpeas": False,
+                        "black_beans": False
+                    },
+                    "other": {
+                        "eggs": False,
+                        "dairy_milk": False,
+                        "dairy_yogurt": False,
+                        "protein_powder_whey": False,
+                        "protein_powder_pea": False,
+                        "quinoa": False
+                    }
                 }
 
             return preferences
@@ -315,6 +386,17 @@ async def update_preferences(id: int, preferences: PreferencesUpdate):
             if preferences.prep_preferences is not None:
                 update_fields.append("prep_preferences = %s::jsonb")
                 params.append(json.dumps(preferences.prep_preferences))
+
+            # Handle both camelCase and snake_case for preferred proteins
+            preferred_proteins_data = None
+            if hasattr(preferences, 'preferredProteins') and preferences.preferredProteins is not None:
+                preferred_proteins_data = preferences.preferredProteins
+            elif hasattr(preferences, 'preferred_proteins') and preferences.preferred_proteins is not None:
+                preferred_proteins_data = preferences.preferred_proteins
+            
+            if preferred_proteins_data is not None:
+                update_fields.append("preferred_proteins = %s::jsonb")
+                params.append(json.dumps(preferred_proteins_data))
 
             # Add id to params
             params.append(id)

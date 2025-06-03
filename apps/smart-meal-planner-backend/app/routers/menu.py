@@ -550,6 +550,29 @@ def process_disliked_ingredients(user_row, req_dislikes):
         dislikes.extend(req_dislikes)
     return list(set(filter(bool, dislikes)))
 
+def process_preferred_proteins(user_row):
+    """Helper function to process preferred proteins"""
+    preferred_proteins = []
+    if user_row and user_row.get("preferred_proteins"):
+        protein_data = user_row["preferred_proteins"]
+        
+        # Extract selected proteins from each category
+        for category, proteins in protein_data.items():
+            if isinstance(proteins, dict):
+                for protein_key, is_selected in proteins.items():
+                    if is_selected:
+                        # Convert protein key to readable name
+                        readable_name = protein_key.replace('_', ' ').title()
+                        # Handle special cases for better readability
+                        readable_name = readable_name.replace('Dairy Milk', 'Milk')
+                        readable_name = readable_name.replace('Dairy Yogurt', 'Yogurt')
+                        readable_name = readable_name.replace('Protein Powder Whey', 'Whey Protein')
+                        readable_name = readable_name.replace('Protein Powder Pea', 'Pea Protein')
+                        readable_name = readable_name.replace('Black Beans', 'Black Beans')
+                        preferred_proteins.append(readable_name)
+    
+    return preferred_proteins
+
 def format_appliances_string(appliances_dict):
     """Helper function to format appliances string"""
     if not appliances_dict:
@@ -599,7 +622,8 @@ def generate_meal_plan_single_request(req: GenerateMealPlanRequest, job_id: str 
                        appliances, prep_complexity, servings_per_meal, meal_times,
                        dietary_restrictions, disliked_ingredients, snacks_per_day,
                        flavor_preferences, spice_level, recipe_type_preferences,
-                       meal_time_preferences, time_constraints, prep_preferences
+                       meal_time_preferences, time_constraints, prep_preferences,
+                       preferred_proteins
                 FROM user_profiles WHERE id = %s
             """, (preference_user_id,))
             
@@ -621,6 +645,7 @@ def generate_meal_plan_single_request(req: GenerateMealPlanRequest, job_id: str 
         # Extract user preferences (same logic as before)
         dietary_restrictions = user_row.get('dietary_restrictions', []) or []
         disliked_ingredients = user_row.get('disliked_ingredients', []) or []
+        preferred_proteins = process_preferred_proteins(user_row)
         time_constraints = user_row.get('time_constraints', {}) or {}
 
         # Extract meal titles from recent menus to avoid repeats
@@ -683,7 +708,8 @@ CRITICAL SELF-VALIDATION REQUIREMENTS - CHECK BEFORE RESPONDING:
 5. AVOID reusing primary ingredients from recent menus: {', '.join(sorted(used_primary_ingredients)[:15]) if used_primary_ingredients else 'None'}{'...' if len(used_primary_ingredients) > 15 else ''}
 6. Respect time constraints with 25% flexibility buffer
 7. Follow all dietary restrictions: {', '.join(dietary_restrictions) if dietary_restrictions else 'None'}
-8. If any issues found, automatically correct them before responding
+8. PRIORITIZE preferred proteins when possible: {', '.join(preferred_proteins) if preferred_proteins else 'No specific protein preferences'}
+9. If any issues found, automatically correct them before responding
 
 VARIETY IS CRITICAL: Create completely new and different meals from the user's previous menus. Be creative and avoid repetition.
 
@@ -696,6 +722,7 @@ ONLY return a meal plan that passes ALL validation checks. Self-correct any issu
 - Servings per meal: {req.servings_per_meal}
 - Dietary restrictions: {', '.join(dietary_restrictions) if dietary_restrictions else 'None'}
 - Disliked ingredients: {', '.join(disliked_ingredients) if disliked_ingredients else 'None'} (NEVER use these)
+- Preferred proteins: {', '.join(preferred_proteins) if preferred_proteins else 'No specific protein preferences'} (PRIORITIZE these when possible)
 - Time constraints: {time_constraints if time_constraints else 'No specific constraints'}
 - Required meal times each day: {req.meal_times if hasattr(req, 'meal_times') else 'breakfast, lunch, dinner'}
 - Snacks per day: {req.snacks_per_day}
@@ -984,7 +1011,8 @@ def generate_meal_plan_legacy(req: GenerateMealPlanRequest, job_id: str = None):
                     recipe_type_preferences,
                     meal_time_preferences,
                     time_constraints,
-                    prep_preferences
+                    prep_preferences,
+                    preferred_proteins
                 FROM user_profiles
                 WHERE id = %s
                 LIMIT 1
@@ -1032,6 +1060,7 @@ def generate_meal_plan_legacy(req: GenerateMealPlanRequest, job_id: str = None):
         selected_meal_times = extract_meal_times(user_row, req.meal_times)
         dietary_restrictions = process_dietary_restrictions(user_row, req.dietary_preferences)
         disliked_ingredients = process_disliked_ingredients(user_row, req.disliked_foods)
+        preferred_proteins = process_preferred_proteins(user_row)
         
         # Determine snacks per day based on detailed meal time preferences
         snack_count_from_prefs = 0
@@ -1310,6 +1339,8 @@ def generate_meal_plan_legacy(req: GenerateMealPlanRequest, job_id: str = None):
             
             🚨 FORBIDDEN INGREDIENTS (NEVER USE): {', '.join(disliked_ingredients) if disliked_ingredients else 'None'}
             
+            ⭐ PREFERRED PROTEINS (PRIORITIZE THESE): {', '.join(preferred_proteins) if preferred_proteins else 'No specific protein preferences'}
+            
             - Preferred cuisines: {recipe_type}
             - Diet type: {diet_type}
             - Available appliances: {appliances_str}
@@ -1345,11 +1376,13 @@ def generate_meal_plan_legacy(req: GenerateMealPlanRequest, job_id: str = None):
 
             ### 🚨 CRITICAL CONSTRAINTS - ABSOLUTE RULES:
             1. 🚫 ABSOLUTELY NO DISLIKED INGREDIENTS: {', '.join(disliked_ingredients) if disliked_ingredients else 'None'} 
-            2. DO NOT repeat meal titles from this list: {', '.join(used_meal_titles) if used_meal_titles else 'None'}
-            3. DO NOT use primary ingredients that appeared in the last 3 days: {recent_ingredients_str}
-            4. DO NOT use the same protein source more than once per day
-            5. Include at least 3 distinct cuisines each day
-            6. Use standardized units (grams, ounces, tablespoons)
+            2. ⭐ PRIORITIZE PREFERRED PROTEINS: {', '.join(preferred_proteins) if preferred_proteins else 'No specific protein preferences'}
+            3. FOLLOW ALL DIETARY RESTRICTIONS: {', '.join(dietary_restrictions) if dietary_restrictions else 'None'}
+            4. DO NOT repeat meal titles from this list: {', '.join(used_meal_titles) if used_meal_titles else 'None'}
+            5. DO NOT use primary ingredients that appeared in the last 3 days: {recent_ingredients_str}
+            6. DO NOT use the same protein source more than once per day
+            7. Include at least 3 distinct cuisines each day
+            8. Use standardized units (grams, ounces, tablespoons)
 
             ### Structure Requirements
             - Scale all recipes to exactly {servings_per_meal} servings

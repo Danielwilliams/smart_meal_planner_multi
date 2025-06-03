@@ -77,6 +77,9 @@ class PreferencesUpdate(BaseModel):
     timeConstraints: Optional[Dict[str, int]] = None
     prepPreferences: Optional[Dict[str, bool]] = None
     
+    # Preferred proteins (nested object with categories)
+    preferredProteins: Optional[Dict[str, Dict[str, bool]]] = None
+    
     # Legacy field mapping for backward compatibility
     diet_type: Optional[str] = None  # Will be converted from dietTypes
     recipe_type: Optional[str] = None  # Will be converted from recipeTypes
@@ -96,6 +99,7 @@ class PreferencesUpdate(BaseModel):
     meal_time_preferences: Optional[Dict[str, bool]] = None  # Alias for mealTimePreferences
     time_constraints: Optional[Dict[str, int]] = None  # Alias for timeConstraints
     prep_preferences: Optional[Dict[str, bool]] = None  # Alias for prepPreferences
+    preferred_proteins: Optional[Dict[str, Dict[str, bool]]] = None  # Alias for preferredProteins
 
 
 class GenerateMenuRequest(BaseModel):
