@@ -679,7 +679,7 @@ useEffect(() => {
                 fullWidth
                 margin="normal"
                 label="Other Meat Proteins"
-                value={otherProteins.meat}
+                value={otherProteins?.meat || ''}
                 onChange={(e) => {
                   setOtherProteins(prev => ({
                     ...prev,
@@ -725,7 +725,7 @@ useEffect(() => {
                 fullWidth
                 margin="normal"
                 label="Other Seafood Proteins"
-                value={otherProteins.seafood}
+                value={otherProteins?.seafood || ''}
                 onChange={(e) => {
                   setOtherProteins(prev => ({
                     ...prev,
@@ -771,7 +771,7 @@ useEffect(() => {
                 fullWidth
                 margin="normal"
                 label="Other Vegetarian/Vegan Proteins"
-                value={otherProteins.vegetarian_vegan}
+                value={otherProteins?.vegetarian_vegan || ''}
                 onChange={(e) => {
                   setOtherProteins(prev => ({
                     ...prev,
@@ -817,7 +817,7 @@ useEffect(() => {
                 fullWidth
                 margin="normal"
                 label="Other Protein Sources"
-                value={otherProteins.other}
+                value={otherProteins?.other || ''}
                 onChange={(e) => {
                   setOtherProteins(prev => ({
                     ...prev,

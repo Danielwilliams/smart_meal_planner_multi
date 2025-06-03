@@ -38,7 +38,8 @@ def get_user_preferences(id: int):
                     meal_time_preferences,
                     time_constraints,
                     prep_preferences,
-                    preferred_proteins
+                    preferred_proteins,
+                    other_proteins
                 FROM user_profiles
                 WHERE id = %s
             """, (id,))
@@ -129,7 +130,8 @@ def get_user_preferences(id: int):
                             "pork": False,
                             "turkey": False,
                             "lamb": False,
-                            "bison": False
+                            "bison": False,
+                            "other": False
                         },
                         "seafood": {
                             "salmon": False,
@@ -137,7 +139,8 @@ def get_user_preferences(id: int):
                             "cod": False,
                             "shrimp": False,
                             "crab": False,
-                            "mussels": False
+                            "mussels": False,
+                            "other": False
                         },
                         "vegetarian_vegan": {
                             "tofu": False,
@@ -145,7 +148,8 @@ def get_user_preferences(id: int):
                             "seitan": False,
                             "lentils": False,
                             "chickpeas": False,
-                            "black_beans": False
+                            "black_beans": False,
+                            "other": False
                         },
                         "other": {
                             "eggs": False,
@@ -153,8 +157,15 @@ def get_user_preferences(id: int):
                             "dairy_yogurt": False,
                             "protein_powder_whey": False,
                             "protein_powder_pea": False,
-                            "quinoa": False
+                            "quinoa": False,
+                            "other": False
                         }
+                    },
+                    "other_proteins": {
+                        "meat": "",
+                        "seafood": "",
+                        "vegetarian_vegan": "",
+                        "other": ""
                     }
                 }
 
@@ -280,6 +291,14 @@ def get_user_preferences(id: int):
                     }
                 }
 
+            if preferences['other_proteins'] is None:
+                preferences['other_proteins'] = {
+                    "meat": "",
+                    "seafood": "",
+                    "vegetarian_vegan": "",
+                    "other": ""
+                }
+
             return preferences
 
     except Exception as e:
@@ -397,6 +416,17 @@ async def update_preferences(id: int, preferences: PreferencesUpdate):
             if preferred_proteins_data is not None:
                 update_fields.append("preferred_proteins = %s::jsonb")
                 params.append(json.dumps(preferred_proteins_data))
+
+            # Handle both camelCase and snake_case for other proteins
+            other_proteins_data = None
+            if hasattr(preferences, 'otherProteins') and preferences.otherProteins is not None:
+                other_proteins_data = preferences.otherProteins
+            elif hasattr(preferences, 'other_proteins') and preferences.other_proteins is not None:
+                other_proteins_data = preferences.other_proteins
+            
+            if other_proteins_data is not None:
+                update_fields.append("other_proteins = %s::jsonb")
+                params.append(json.dumps(other_proteins_data))
 
             # Add id to params
             params.append(id)

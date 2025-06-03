@@ -41,7 +41,7 @@ const PreferencesForm = ({
   setPrepPreferences,
   preferredProteins,
   setPreferredProteins,
-  otherProteins,
+  otherProteins = { meat: '', seafood: '', vegetarian_vegan: '', other: '' },
   setOtherProteins,
   loading,
   message,
@@ -212,12 +212,14 @@ const PreferencesForm = ({
               fullWidth
               margin="normal"
               label="Other Meat Proteins"
-              value={otherProteins.meat || ''}
+              value={otherProteins?.meat || ''}
               onChange={(e) => {
-                setOtherProteins(prev => ({
-                  ...prev,
-                  meat: e.target.value
-                }));
+                if (setOtherProteins) {
+                  setOtherProteins(prev => ({
+                    ...prev,
+                    meat: e.target.value
+                  }));
+                }
               }}
               placeholder="e.g., venison, duck, rabbit"
               helperText="Specify other meat proteins, separated by commas"
@@ -258,12 +260,14 @@ const PreferencesForm = ({
               fullWidth
               margin="normal"
               label="Other Seafood Proteins"
-              value={otherProteins.seafood || ''}
+              value={otherProteins?.seafood || ''}
               onChange={(e) => {
-                setOtherProteins(prev => ({
-                  ...prev,
-                  seafood: e.target.value
-                }));
+                if (setOtherProteins) {
+                  setOtherProteins(prev => ({
+                    ...prev,
+                    seafood: e.target.value
+                  }));
+                }
               }}
               placeholder="e.g., lobster, scallops, mackerel"
               helperText="Specify other seafood proteins, separated by commas"
@@ -304,12 +308,14 @@ const PreferencesForm = ({
               fullWidth
               margin="normal"
               label="Other Vegetarian/Vegan Proteins"
-              value={otherProteins.vegetarian_vegan || ''}
+              value={otherProteins?.vegetarian_vegan || ''}
               onChange={(e) => {
-                setOtherProteins(prev => ({
-                  ...prev,
-                  vegetarian_vegan: e.target.value
-                }));
+                if (setOtherProteins) {
+                  setOtherProteins(prev => ({
+                    ...prev,
+                    vegetarian_vegan: e.target.value
+                  }));
+                }
               }}
               placeholder="e.g., hemp seeds, spirulina, nutritional yeast"
               helperText="Specify other vegetarian/vegan proteins, separated by commas"
@@ -350,12 +356,14 @@ const PreferencesForm = ({
               fullWidth
               margin="normal"
               label="Other Protein Sources"
-              value={otherProteins.other || ''}
+              value={otherProteins?.other || ''}
               onChange={(e) => {
-                setOtherProteins(prev => ({
-                  ...prev,
-                  other: e.target.value
-                }));
+                if (setOtherProteins) {
+                  setOtherProteins(prev => ({
+                    ...prev,
+                    other: e.target.value
+                  }));
+                }
               }}
               placeholder="e.g., cricket flour, algae, bone broth"
               helperText="Specify other protein sources, separated by commas"

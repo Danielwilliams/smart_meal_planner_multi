@@ -100,6 +100,10 @@ class PreferencesUpdate(BaseModel):
     time_constraints: Optional[Dict[str, int]] = None  # Alias for timeConstraints
     prep_preferences: Optional[Dict[str, bool]] = None  # Alias for prepPreferences
     preferred_proteins: Optional[Dict[str, Dict[str, bool]]] = None  # Alias for preferredProteins
+    
+    # Other proteins (custom text for each category)
+    otherProteins: Optional[Dict[str, str]] = None
+    other_proteins: Optional[Dict[str, str]] = None  # Alias for otherProteins
 
 
 class GenerateMenuRequest(BaseModel):
