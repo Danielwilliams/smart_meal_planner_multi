@@ -652,7 +652,9 @@ useEffect(() => {
               Meat
             </Typography>
             <Grid container spacing={2}>
-              {Object.entries(preferredProteins?.meat || {}).map(([protein, selected]) => (
+              {Object.entries(preferredProteins?.meat || {})
+                .sort(([a], [b]) => a === 'other' ? 1 : b === 'other' ? -1 : a.localeCompare(b))
+                .map(([protein, selected]) => (
                 <Grid item xs={6} sm={4} key={protein}>
                   <FormControlLabel
                     control={
@@ -698,7 +700,9 @@ useEffect(() => {
               Seafood
             </Typography>
             <Grid container spacing={2}>
-              {Object.entries(preferredProteins?.seafood || {}).map(([protein, selected]) => (
+              {Object.entries(preferredProteins?.seafood || {})
+                .sort(([a], [b]) => a === 'other' ? 1 : b === 'other' ? -1 : a.localeCompare(b))
+                .map(([protein, selected]) => (
                 <Grid item xs={6} sm={4} key={protein}>
                   <FormControlLabel
                     control={
@@ -744,7 +748,9 @@ useEffect(() => {
               Vegetarian/Vegan
             </Typography>
             <Grid container spacing={2}>
-              {Object.entries(preferredProteins?.vegetarian_vegan || {}).map(([protein, selected]) => (
+              {Object.entries(preferredProteins?.vegetarian_vegan || {})
+                .sort(([a], [b]) => a === 'other' ? 1 : b === 'other' ? -1 : a.localeCompare(b))
+                .map(([protein, selected]) => (
                 <Grid item xs={6} sm={4} key={protein}>
                   <FormControlLabel
                     control={
@@ -790,7 +796,9 @@ useEffect(() => {
               Other
             </Typography>
             <Grid container spacing={2}>
-              {Object.entries(preferredProteins?.other || {}).map(([protein, selected]) => (
+              {Object.entries(preferredProteins?.other || {})
+                .sort(([a], [b]) => a === 'other' ? 1 : b === 'other' ? -1 : a.localeCompare(b))
+                .map(([protein, selected]) => (
                 <Grid item xs={6} sm={4} key={protein}>
                   <FormControlLabel
                     control={
