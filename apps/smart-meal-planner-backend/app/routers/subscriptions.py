@@ -404,10 +404,7 @@ else:
 
 @router.post("/create-checkout")
 async def create_checkout_session(
-    subscription_type: SubscriptionType,
-    payment_provider: Optional[PaymentProvider] = Body(PaymentProvider.stripe),
-    success_url: Optional[str] = Body(None),
-    cancel_url: Optional[str] = Body(None),
+    request: Request,
     user = Depends(get_user_from_token)
 ):
     """
@@ -415,24 +412,111 @@ async def create_checkout_session(
 
     Returns a URL that the user can be redirected to for payment
     """
-    check_subscriptions_enabled()
+    # First, check if subscriptions are enabled at all
+    if not ENABLE_SUBSCRIPTION_FEATURES:
+        logger.error("Subscription features are disabled")
+        return await subscription_disabled()
 
-    if payment_provider == PaymentProvider.stripe:
-        # Check if Stripe is configured
-        if not stripe or not stripe.api_key:
+    # Verify the stripe module is imported correctly
+    if 'stripe' not in globals() or stripe is None:
+        logger.error("Stripe module is not properly imported")
+        raise HTTPException(
+            status_code=503,
+            detail="Stripe integration is not available - module not loaded"
+        )
+
+    # Check if Stripe API key is configured
+    if not hasattr(stripe, 'api_key') or not stripe.api_key:
+        logger.error("Stripe API key is not configured")
+        raise HTTPException(
+            status_code=503,
+            detail="Stripe integration is not available - API key not configured"
+        )
+
+    # Log environment variables for debugging
+    logger.info(f"Environment config: ENABLE_SUBSCRIPTION_FEATURES={ENABLE_SUBSCRIPTION_FEATURES}, "
+                f"Stripe API key exists: {bool(stripe.api_key)}, "
+                f"Individual price ID exists: {bool(STRIPE_INDIVIDUAL_PRICE_ID)}, "
+                f"Organization price ID exists: {bool(STRIPE_ORGANIZATION_PRICE_ID)}")
+
+    try:
+        # Parse request body manually for better debugging
+        try:
+            body = await request.json()
+            logger.info(f"Raw request body: {body}")
+        except Exception as e:
+            logger.error(f"Failed to parse JSON body: {str(e)}")
+            raise HTTPException(status_code=422, detail=f"Invalid JSON in request body: {str(e)}")
+        
+        # Validate that required fields exist
+        if 'subscription_type' not in body:
+            logger.error("Missing required field: subscription_type")
+            raise HTTPException(status_code=422, detail="Missing required field: subscription_type")
+        
+        # Extract and validate subscription_type
+        try:
+            subscription_type_value = body.get('subscription_type', '')
+            logger.info(f"Subscription type from request: '{subscription_type_value}'")
+            
+            # Check if value is valid for the enum
+            valid_types = [t.value for t in SubscriptionType]
+            if subscription_type_value not in valid_types:
+                logger.error(f"Invalid subscription_type: '{subscription_type_value}', valid options are: {valid_types}")
+                raise HTTPException(
+                    status_code=422, 
+                    detail=f"Invalid subscription_type: '{subscription_type_value}'. Valid options are: {valid_types}"
+                )
+            
+            subscription_type = SubscriptionType(subscription_type_value)
+        except ValueError as e:
+            logger.error(f"Invalid subscription_type: '{body.get('subscription_type')}', valid options are: {[t.value for t in SubscriptionType]}")
             raise HTTPException(
-                status_code=503,
-                detail="Stripe integration is not available"
+                status_code=422, 
+                detail=f"Invalid subscription_type: '{body.get('subscription_type')}'. Valid options are: {[t.value for t in SubscriptionType]}"
             )
+
+        # Extract and validate payment_provider
+        try:
+            payment_provider_value = body.get('payment_provider', 'stripe')
+            logger.info(f"Payment provider from request: '{payment_provider_value}'")
+            
+            # Check if value is valid for the enum
+            valid_providers = [p.value for p in PaymentProvider]
+            if payment_provider_value not in valid_providers:
+                logger.error(f"Invalid payment_provider: '{payment_provider_value}', valid options are: {valid_providers}")
+                raise HTTPException(
+                    status_code=422, 
+                    detail=f"Invalid payment_provider: '{payment_provider_value}'. Valid options are: {valid_providers}"
+                )
+                
+            payment_provider = PaymentProvider(payment_provider_value)
+        except ValueError as e:
+            logger.error(f"Invalid payment_provider: '{body.get('payment_provider')}', valid options are: {[p.value for p in PaymentProvider]}")
+            raise HTTPException(
+                status_code=422, 
+                detail=f"Invalid payment_provider: '{body.get('payment_provider')}'. Valid options are: {[p.value for p in PaymentProvider]}"
+            )
+
+        # Get optional URL parameters
+        success_url = body.get('success_url')
+        cancel_url = body.get('cancel_url')
+        
+        # Log the received parameters for debugging
+        logger.info(f"Creating checkout session with params: subscription_type={subscription_type}, "
+                    f"payment_provider={payment_provider}, success_url={success_url}, cancel_url={cancel_url}")
 
         # Validate that we have the price IDs
         if subscription_type == SubscriptionType.individual and not STRIPE_INDIVIDUAL_PRICE_ID:
+            logger.error(f"Individual subscription price not configured - "
+                         f"subscription_type={subscription_type}, STRIPE_INDIVIDUAL_PRICE_ID is empty")
             raise HTTPException(
                 status_code=503,
                 detail="Individual subscription price not configured"
             )
 
         if subscription_type == SubscriptionType.organization and not STRIPE_ORGANIZATION_PRICE_ID:
+            logger.error(f"Organization subscription price not configured - "
+                         f"subscription_type={subscription_type}, STRIPE_ORGANIZATION_PRICE_ID is empty")
             raise HTTPException(
                 status_code=503,
                 detail="Organization subscription price not configured"
@@ -440,41 +524,74 @@ async def create_checkout_session(
 
         # Determine which user or organization is subscribing
         user_id = user.get('user_id')
+        if not user_id:
+            logger.error("No user_id found in token")
+            raise HTTPException(
+                status_code=401,
+                detail="Authentication required"
+            )
+            
         organization_id = None
 
         # If this is an organization admin, they might be subscribing for the organization
         if subscription_type == SubscriptionType.organization:
             # Check if the user is an organization admin
-            with get_db_cursor(dict_cursor=False, autocommit=True) as (cur, conn):
-                cur.execute("""
-                    SELECT id FROM organizations
-                    WHERE owner_id = %s
-                """, (user_id,))
+            try:
+                with get_db_cursor(dict_cursor=False, autocommit=True) as (cur, conn):
+                    cur.execute("""
+                        SELECT id FROM organizations
+                        WHERE owner_id = %s
+                    """, (user_id,))
 
-                org_result = cur.fetchone()
-                if org_result:
-                    organization_id = org_result[0]
-                else:
-                    raise HTTPException(
-                        status_code=403,
-                        detail="You must be an organization owner to purchase an organization subscription"
-                    )
+                    org_result = cur.fetchone()
+                    if org_result:
+                        organization_id = org_result[0]
+                        logger.info(f"User {user_id} is owner of organization {organization_id}")
+                    else:
+                        logger.error(f"User {user_id} is not an organization owner")
+                        raise HTTPException(
+                            status_code=403,
+                            detail="You must be an organization owner to purchase an organization subscription"
+                        )
+            except Exception as db_err:
+                logger.error(f"Database error checking organization: {str(db_err)}", exc_info=True)
+                raise HTTPException(
+                    status_code=500,
+                    detail="Error checking organization status"
+                )
 
         # Get or create Stripe customer
-        customer_id = await get_or_create_stripe_customer(user_id, organization_id)
+        try:
+            customer_id = await get_or_create_stripe_customer(user_id, organization_id)
+            logger.info(f"Got Stripe customer ID: {customer_id}")
+            
+            if not customer_id:
+                logger.error("Failed to get or create Stripe customer")
+                raise HTTPException(
+                    status_code=500,
+                    detail="Failed to create customer record"
+                )
+        except Exception as customer_err:
+            logger.error(f"Error getting/creating Stripe customer: {str(customer_err)}", exc_info=True)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error creating customer: {str(customer_err)}"
+            )
 
         # Determine the price ID based on subscription type
         price_id = STRIPE_INDIVIDUAL_PRICE_ID if subscription_type == SubscriptionType.individual else STRIPE_ORGANIZATION_PRICE_ID
+        logger.info(f"Using price ID: {price_id}")
 
         # Set default URLs if not provided
         frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
         success_url = success_url or f"{frontend_url}/subscription/success?session_id={{CHECKOUT_SESSION_ID}}"
         cancel_url = cancel_url or f"{frontend_url}/subscription/cancel"
+        logger.info(f"Using success_url: {success_url}, cancel_url: {cancel_url}")
 
         # Create metadata to track the subscription
         metadata = {
             "user_id": str(user_id),
-            "subscription_type": subscription_type,
+            "subscription_type": subscription_type.value,
             "created_at": datetime.now().isoformat()
         }
 
@@ -483,6 +600,7 @@ async def create_checkout_session(
 
         try:
             # Create checkout session
+            logger.info("Calling stripe.checkout.Session.create...")
             checkout_session = stripe.checkout.Session.create(
                 customer=customer_id,
                 payment_method_types=["card"],
@@ -504,14 +622,60 @@ async def create_checkout_session(
                 "checkout_url": checkout_session.url,
                 "session_id": checkout_session.id
             }
+        except stripe.error.StripeError as stripe_err:
+            # Handle Stripe-specific errors
+            logger.error(f"Stripe error creating checkout session: {str(stripe_err)}", exc_info=True)
+            error_msg = str(stripe_err)
+            
+            # Provide more specific error messages based on the type of Stripe error
+            if isinstance(stripe_err, stripe.error.CardError):
+                # Card errors are the most common and customer-facing
+                status_code = 400
+                detail = f"Card error: {error_msg}"
+            elif isinstance(stripe_err, stripe.error.InvalidRequestError):
+                # Invalid parameters were supplied to Stripe's API
+                status_code = 400
+                detail = f"Invalid request to payment processor: {error_msg}"
+            elif isinstance(stripe_err, stripe.error.AuthenticationError):
+                # Authentication failed (e.g. invalid API key)
+                status_code = 503
+                detail = "Payment processor authentication failed"
+            elif isinstance(stripe_err, stripe.error.APIConnectionError):
+                # Network communication with Stripe failed
+                status_code = 503
+                detail = "Could not connect to payment processor"
+            elif isinstance(stripe_err, stripe.error.RateLimitError):
+                # Too many requests hit the Stripe API too quickly
+                status_code = 429
+                detail = "Payment processor rate limit exceeded, please try again later"
+            else:
+                # Handle all other Stripe errors generically
+                status_code = 500
+                detail = f"Payment processor error: {error_msg}"
+                
+            raise HTTPException(
+                status_code=status_code,
+                detail=detail
+            )
         except Exception as e:
-            logger.error(f"Error creating Stripe checkout session: {str(e)}", exc_info=True)
+            logger.error(f"Unexpected error creating checkout session: {str(e)}", exc_info=True)
             raise HTTPException(
                 status_code=500,
                 detail=f"Failed to create checkout session: {str(e)}"
             )
-    else:
+    except HTTPException:
+        # Re-raise HTTPExceptions to preserve their status code and detail
+        raise
+    except Exception as e:
+        logger.error(f"Unhandled error in checkout endpoint: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Server error: {str(e)}"
+        )
+        
+    if payment_provider != PaymentProvider.stripe:
         # PayPal implementation will go here
+        logger.error(f"Payment provider {payment_provider} not implemented")
         raise HTTPException(
             status_code=501,
             detail=f"Payment provider {payment_provider} not implemented yet"
