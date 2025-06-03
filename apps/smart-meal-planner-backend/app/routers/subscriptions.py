@@ -50,6 +50,7 @@ def check_subscriptions_enabled():
         )
 
 @router.get("/status")
+@router.post("/status")  # Also accept POST for backward compatibility with frontend
 async def subscription_status(user = Depends(get_user_from_token)):
     """
     Get the current user's subscription status
@@ -581,6 +582,14 @@ async def create_checkout_session(
         # Determine the price ID based on subscription type
         price_id = STRIPE_INDIVIDUAL_PRICE_ID if subscription_type == SubscriptionType.individual else STRIPE_ORGANIZATION_PRICE_ID
         logger.info(f"Using price ID: {price_id}")
+
+        # Validate that the price ID is in the correct format (should start with 'price_')
+        if not price_id.startswith('price_'):
+            logger.error(f"Invalid price ID format: {price_id}. Price IDs should start with 'price_', not 'prod_'")
+            raise HTTPException(
+                status_code=500,
+                detail="Invalid price ID configuration. Please contact support."
+            )
 
         # Set default URLs if not provided
         frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
