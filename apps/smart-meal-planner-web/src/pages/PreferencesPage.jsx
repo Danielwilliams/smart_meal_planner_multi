@@ -163,7 +163,8 @@ function PreferencesPage() {
       pork: false,
       turkey: false,
       lamb: false,
-      bison: false
+      bison: false,
+      other: false
     },
     seafood: {
       salmon: false,
@@ -171,7 +172,8 @@ function PreferencesPage() {
       cod: false,
       shrimp: false,
       crab: false,
-      mussels: false
+      mussels: false,
+      other: false
     },
     vegetarian_vegan: {
       tofu: false,
@@ -179,7 +181,8 @@ function PreferencesPage() {
       seitan: false,
       lentils: false,
       chickpeas: false,
-      black_beans: false
+      black_beans: false,
+      other: false
     },
     other: {
       eggs: false,
@@ -187,8 +190,16 @@ function PreferencesPage() {
       dairy_yogurt: false,
       protein_powder_whey: false,
       protein_powder_pea: false,
-      quinoa: false
+      quinoa: false,
+      other: false
     }
+  });
+
+  const [otherProteins, setOtherProteins] = useState({
+    meat: '',
+    seafood: '',
+    vegetarian_vegan: '',
+    other: ''
   });
 
   const [loading, setLoading] = useState(true);
@@ -310,6 +321,10 @@ function PreferencesPage() {
       
       if (existingPreferences.preferred_proteins) {
         setPreferredProteins(existingPreferences.preferred_proteins);
+      }
+      
+      if (existingPreferences.other_proteins) {
+        setOtherProteins(existingPreferences.other_proteins);
       }
       
       // Log the loaded preferences for debugging
@@ -483,7 +498,8 @@ useEffect(() => {
         meal_time_preferences: mealTimePreferences,
         time_constraints: timeConstraints,
         prep_preferences: prepPreferences,
-        preferred_proteins: preferredProteins
+        preferred_proteins: preferredProteins,
+        other_proteins: otherProteins
       };
 
       await apiService.savePreferences(prefsToSave);
@@ -653,11 +669,27 @@ useEffect(() => {
                         }}
                       />
                     }
-                    label={protein.charAt(0).toUpperCase() + protein.slice(1)}
+                    label={protein === 'other' ? 'Other' : protein.charAt(0).toUpperCase() + protein.slice(1)}
                   />
                 </Grid>
               ))}
             </Grid>
+            {preferredProteins?.meat?.other && (
+              <TextField
+                fullWidth
+                margin="normal"
+                label="Other Meat Proteins"
+                value={otherProteins.meat}
+                onChange={(e) => {
+                  setOtherProteins(prev => ({
+                    ...prev,
+                    meat: e.target.value
+                  }));
+                }}
+                placeholder="e.g., venison, duck, rabbit"
+                helperText="Specify other meat proteins, separated by commas"
+              />
+            )}
           </Box>
 
           {/* Seafood Proteins */}
@@ -683,11 +715,27 @@ useEffect(() => {
                         }}
                       />
                     }
-                    label={protein.charAt(0).toUpperCase() + protein.slice(1)}
+                    label={protein === 'other' ? 'Other' : protein.charAt(0).toUpperCase() + protein.slice(1)}
                   />
                 </Grid>
               ))}
             </Grid>
+            {preferredProteins?.seafood?.other && (
+              <TextField
+                fullWidth
+                margin="normal"
+                label="Other Seafood Proteins"
+                value={otherProteins.seafood}
+                onChange={(e) => {
+                  setOtherProteins(prev => ({
+                    ...prev,
+                    seafood: e.target.value
+                  }));
+                }}
+                placeholder="e.g., lobster, scallops, mackerel"
+                helperText="Specify other seafood proteins, separated by commas"
+              />
+            )}
           </Box>
 
           {/* Vegetarian/Vegan Proteins */}
@@ -713,11 +761,27 @@ useEffect(() => {
                         }}
                       />
                     }
-                    label={protein.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                    label={protein === 'other' ? 'Other' : protein.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
                   />
                 </Grid>
               ))}
             </Grid>
+            {preferredProteins?.vegetarian_vegan?.other && (
+              <TextField
+                fullWidth
+                margin="normal"
+                label="Other Vegetarian/Vegan Proteins"
+                value={otherProteins.vegetarian_vegan}
+                onChange={(e) => {
+                  setOtherProteins(prev => ({
+                    ...prev,
+                    vegetarian_vegan: e.target.value
+                  }));
+                }}
+                placeholder="e.g., hemp seeds, spirulina, nutritional yeast"
+                helperText="Specify other vegetarian/vegan proteins, separated by commas"
+              />
+            )}
           </Box>
 
           {/* Other Proteins */}
@@ -743,11 +807,27 @@ useEffect(() => {
                         }}
                       />
                     }
-                    label={protein.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                    label={protein === 'other' ? 'Other' : protein.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
                   />
                 </Grid>
               ))}
             </Grid>
+            {preferredProteins?.other?.other && (
+              <TextField
+                fullWidth
+                margin="normal"
+                label="Other Protein Sources"
+                value={otherProteins.other}
+                onChange={(e) => {
+                  setOtherProteins(prev => ({
+                    ...prev,
+                    other: e.target.value
+                  }));
+                }}
+                placeholder="e.g., cricket flour, algae, bone broth"
+                helperText="Specify other protein sources, separated by commas"
+              />
+            )}
           </Box>
         </Box>
 

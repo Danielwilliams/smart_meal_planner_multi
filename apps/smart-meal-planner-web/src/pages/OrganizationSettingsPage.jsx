@@ -186,7 +186,8 @@ export default function OrganizationSettingsPage() {
       pork: false,
       turkey: false,
       lamb: false,
-      bison: false
+      bison: false,
+      other: false
     },
     seafood: {
       salmon: false,
@@ -194,7 +195,8 @@ export default function OrganizationSettingsPage() {
       cod: false,
       shrimp: false,
       crab: false,
-      mussels: false
+      mussels: false,
+      other: false
     },
     vegetarian_vegan: {
       tofu: false,
@@ -202,7 +204,8 @@ export default function OrganizationSettingsPage() {
       seitan: false,
       lentils: false,
       chickpeas: false,
-      black_beans: false
+      black_beans: false,
+      other: false
     },
     other: {
       eggs: false,
@@ -210,8 +213,16 @@ export default function OrganizationSettingsPage() {
       dairy_yogurt: false,
       protein_powder_whey: false,
       protein_powder_pea: false,
-      quinoa: false
+      quinoa: false,
+      other: false
     }
+  });
+
+  const [otherProteins, setOtherProteins] = useState({
+    meat: '',
+    seafood: '',
+    vegetarian_vegan: '',
+    other: ''
   });
 
   useEffect(() => {
@@ -244,6 +255,7 @@ export default function OrganizationSettingsPage() {
         if (defaults.timeConstraints) setTimeConstraints(defaults.timeConstraints);
         if (defaults.prepPreferences) setPrepPreferences(defaults.prepPreferences);
         if (defaults.preferredProteins) setPreferredProteins(defaults.preferredProteins);
+        if (defaults.otherProteins) setOtherProteins(defaults.otherProteins);
       }
       
     } catch (err) {
@@ -274,7 +286,8 @@ export default function OrganizationSettingsPage() {
           mealTimePreferences,
           timeConstraints,
           prepPreferences,
-          preferredProteins
+          preferredProteins,
+          otherProteins
         }
       };
 
@@ -387,6 +400,8 @@ export default function OrganizationSettingsPage() {
             setPrepPreferences={setPrepPreferences}
             preferredProteins={preferredProteins}
             setPreferredProteins={setPreferredProteins}
+            otherProteins={otherProteins}
+            setOtherProteins={setOtherProteins}
             loading={saving}
             message=""
             error=""

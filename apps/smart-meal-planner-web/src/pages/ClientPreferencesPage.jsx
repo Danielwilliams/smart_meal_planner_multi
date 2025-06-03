@@ -171,7 +171,8 @@ function ClientPreferencesPage() {
       pork: false,
       turkey: false,
       lamb: false,
-      bison: false
+      bison: false,
+      other: false
     },
     seafood: {
       salmon: false,
@@ -179,7 +180,8 @@ function ClientPreferencesPage() {
       cod: false,
       shrimp: false,
       crab: false,
-      mussels: false
+      mussels: false,
+      other: false
     },
     vegetarian_vegan: {
       tofu: false,
@@ -187,7 +189,8 @@ function ClientPreferencesPage() {
       seitan: false,
       lentils: false,
       chickpeas: false,
-      black_beans: false
+      black_beans: false,
+      other: false
     },
     other: {
       eggs: false,
@@ -195,8 +198,16 @@ function ClientPreferencesPage() {
       dairy_yogurt: false,
       protein_powder_whey: false,
       protein_powder_pea: false,
-      quinoa: false
+      quinoa: false,
+      other: false
     }
+  });
+
+  const [otherProteins, setOtherProteins] = useState({
+    meat: '',
+    seafood: '',
+    vegetarian_vegan: '',
+    other: ''
   });
 
   // Fetch client data and preferences
@@ -302,6 +313,10 @@ function ClientPreferencesPage() {
           if (clientPrefs.preferredProteins || clientPrefs.preferred_proteins) {
             setPreferredProteins(clientPrefs.preferredProteins || clientPrefs.preferred_proteins);
           }
+          
+          if (clientPrefs.otherProteins || clientPrefs.other_proteins) {
+            setOtherProteins(clientPrefs.otherProteins || clientPrefs.other_proteins);
+          }
         } else {
           // Client has no existing preferences - load organization defaults
           try {
@@ -394,6 +409,10 @@ function ClientPreferencesPage() {
                 
                 if (orgDefaults.preferredProteins) {
                   setPreferredProteins(orgDefaults.preferredProteins);
+                }
+                
+                if (orgDefaults.otherProteins) {
+                  setOtherProteins(orgDefaults.otherProteins);
                 }
                 
                 console.log('Organization defaults applied successfully');
@@ -545,6 +564,7 @@ function ClientPreferencesPage() {
         timeConstraints: timeConstraints,
         prepPreferences: prepPreferences,
         preferredProteins: preferredProteins,
+        otherProteins: otherProteins,
         
         // Legacy snake_case for backward compatibility
         diet_type: selectedDietTypes,
@@ -565,6 +585,7 @@ function ClientPreferencesPage() {
         time_constraints: timeConstraints,
         prep_preferences: prepPreferences,
         preferred_proteins: preferredProteins,
+        other_proteins: otherProteins,
         kroger_username: preferences.krogerUsername,
         kroger_password: preferences.krogerPassword
       };
@@ -614,6 +635,8 @@ function ClientPreferencesPage() {
           setPrepPreferences={setPrepPreferences}
           preferredProteins={preferredProteins}
           setPreferredProteins={setPreferredProteins}
+          otherProteins={otherProteins}
+          setOtherProteins={setOtherProteins}
           loading={saving}
           message={success}
           error={error}

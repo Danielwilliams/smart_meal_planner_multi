@@ -41,6 +41,8 @@ const PreferencesForm = ({
   setPrepPreferences,
   preferredProteins,
   setPreferredProteins,
+  otherProteins,
+  setOtherProteins,
   loading,
   message,
   error,
@@ -200,11 +202,27 @@ const PreferencesForm = ({
                       }}
                     />
                   }
-                  label={protein.charAt(0).toUpperCase() + protein.slice(1)}
+                  label={protein === 'other' ? 'Other' : protein.charAt(0).toUpperCase() + protein.slice(1)}
                 />
               </Grid>
             ))}
           </Grid>
+          {preferredProteins?.meat?.other && otherProteins && (
+            <TextField
+              fullWidth
+              margin="normal"
+              label="Other Meat Proteins"
+              value={otherProteins.meat || ''}
+              onChange={(e) => {
+                setOtherProteins(prev => ({
+                  ...prev,
+                  meat: e.target.value
+                }));
+              }}
+              placeholder="e.g., venison, duck, rabbit"
+              helperText="Specify other meat proteins, separated by commas"
+            />
+          )}
         </Box>
 
         {/* Seafood Proteins */}
@@ -230,11 +248,27 @@ const PreferencesForm = ({
                       }}
                     />
                   }
-                  label={protein.charAt(0).toUpperCase() + protein.slice(1)}
+                  label={protein === 'other' ? 'Other' : protein.charAt(0).toUpperCase() + protein.slice(1)}
                 />
               </Grid>
             ))}
           </Grid>
+          {preferredProteins?.seafood?.other && otherProteins && (
+            <TextField
+              fullWidth
+              margin="normal"
+              label="Other Seafood Proteins"
+              value={otherProteins.seafood || ''}
+              onChange={(e) => {
+                setOtherProteins(prev => ({
+                  ...prev,
+                  seafood: e.target.value
+                }));
+              }}
+              placeholder="e.g., lobster, scallops, mackerel"
+              helperText="Specify other seafood proteins, separated by commas"
+            />
+          )}
         </Box>
 
         {/* Vegetarian/Vegan Proteins */}
@@ -260,11 +294,27 @@ const PreferencesForm = ({
                       }}
                     />
                   }
-                  label={protein.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                  label={protein === 'other' ? 'Other' : protein.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
                 />
               </Grid>
             ))}
           </Grid>
+          {preferredProteins?.vegetarian_vegan?.other && otherProteins && (
+            <TextField
+              fullWidth
+              margin="normal"
+              label="Other Vegetarian/Vegan Proteins"
+              value={otherProteins.vegetarian_vegan || ''}
+              onChange={(e) => {
+                setOtherProteins(prev => ({
+                  ...prev,
+                  vegetarian_vegan: e.target.value
+                }));
+              }}
+              placeholder="e.g., hemp seeds, spirulina, nutritional yeast"
+              helperText="Specify other vegetarian/vegan proteins, separated by commas"
+            />
+          )}
         </Box>
 
         {/* Other Proteins */}
@@ -290,11 +340,27 @@ const PreferencesForm = ({
                       }}
                     />
                   }
-                  label={protein.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                  label={protein === 'other' ? 'Other' : protein.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
                 />
               </Grid>
             ))}
           </Grid>
+          {preferredProteins?.other?.other && otherProteins && (
+            <TextField
+              fullWidth
+              margin="normal"
+              label="Other Protein Sources"
+              value={otherProteins.other || ''}
+              onChange={(e) => {
+                setOtherProteins(prev => ({
+                  ...prev,
+                  other: e.target.value
+                }));
+              }}
+              placeholder="e.g., cricket flour, algae, bone broth"
+              helperText="Specify other protein sources, separated by commas"
+            />
+          )}
         </Box>
       </Box>
 
