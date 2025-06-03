@@ -311,9 +311,35 @@ if ENABLE_SUBSCRIPTION_FEATURES:
                     result = cur.fetchone()
 
                     if result and result[0]:
-                        # Customer exists, return the ID
-                        logger.info(f"Found existing Stripe customer: {result[0]}")
-                        return result[0]
+                        # Customer exists in our database, but verify it still exists in Stripe
+                        existing_customer_id = result[0]
+                        logger.info(f"Found existing Stripe customer in database: {existing_customer_id}")
+                        
+                        # Verify the customer still exists in Stripe
+                        try:
+                            stripe.Customer.retrieve(existing_customer_id)
+                            logger.info(f"Verified customer exists in Stripe: {existing_customer_id}")
+                            return existing_customer_id
+                        except stripe.error.InvalidRequestError as e:
+                            if "No such customer" in str(e):
+                                logger.warning(f"Customer {existing_customer_id} no longer exists in Stripe, will create new one")
+                                # Clear the old customer ID from database and continue to create new one
+                                if organization_id:
+                                    cur.execute("""
+                                        UPDATE subscriptions
+                                        SET stripe_customer_id = NULL
+                                        WHERE organization_id = %s
+                                    """, (organization_id,))
+                                else:
+                                    cur.execute("""
+                                        UPDATE subscriptions
+                                        SET stripe_customer_id = NULL
+                                        WHERE user_id = %s
+                                    """, (user_id,))
+                                # Continue to create new customer below
+                            else:
+                                # Other Stripe error, re-raise it
+                                raise
 
                     # No customer found, get user details to create one
                     if organization_id:
@@ -574,6 +600,9 @@ async def create_checkout_session(
                     status_code=500,
                     detail="Failed to create customer record"
                 )
+        except HTTPException:
+            # Re-raise HTTPExceptions (they already have proper status codes)
+            raise
         except Exception as customer_err:
             logger.error(f"Error getting/creating Stripe customer: {str(customer_err)}", exc_info=True)
             raise HTTPException(
