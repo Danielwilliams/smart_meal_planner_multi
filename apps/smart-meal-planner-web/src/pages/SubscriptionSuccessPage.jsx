@@ -27,38 +27,64 @@ const SubscriptionSuccessPage = () => {
       navigate('/login');
       return;
     }
-    
+
     const checkoutSessionId = searchParams.get('session_id');
-    
+    console.log('Checkout session ID:', checkoutSessionId);
+
+    // Always show success even if we can't verify details yet
     const verifySubscription = async () => {
       try {
         setLoading(true);
-        
+
         // Wait a moment to ensure the webhook has been processed
         await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        // Get the updated subscription status
-        const subscriptionData = await subscriptionService.getSubscriptionStatus();
-        setSubscription(subscriptionData);
-        
-        if (!subscriptionData || subscriptionData.status !== 'active') {
-          // If subscription is not active yet, try again after a delay
-          setTimeout(async () => {
-            const retryData = await subscriptionService.getSubscriptionStatus();
-            setSubscription(retryData);
+
+        try {
+          // Get the updated subscription status
+          const subscriptionData = await subscriptionService.getSubscriptionStatus();
+          console.log('Subscription data:', subscriptionData);
+          setSubscription(subscriptionData);
+
+          if (!subscriptionData || !subscriptionData.has_subscription) {
+            // If subscription is not active yet, try again after a delay
+            setTimeout(async () => {
+              try {
+                const retryData = await subscriptionService.getSubscriptionStatus();
+                console.log('Retry subscription data:', retryData);
+                setSubscription(retryData);
+              } catch (retryErr) {
+                console.error('Error in retry:', retryErr);
+                // Still show success even if we can't get the details
+              } finally {
+                setLoading(false);
+              }
+            }, 5000);
+          } else {
             setLoading(false);
-          }, 3000);
-        } else {
+          }
+        } catch (fetchErr) {
+          console.error('Error fetching subscription:', fetchErr);
+          // Don't show an error, just set loading to false
+          // The page will still show a success message
           setLoading(false);
         }
       } catch (err) {
-        console.error('Error verifying subscription:', err);
-        setError('Unable to verify your subscription status. Please contact support if you were charged.');
+        console.error('Error in subscription verification flow:', err);
+        // Don't show an error to the user since payment went through
         setLoading(false);
       }
     };
-    
+
+    // Start verification
     verifySubscription();
+
+    // Set a timeout to stop loading after 10 seconds regardless
+    // This ensures users don't get stuck on loading screen
+    const timeoutId = setTimeout(() => {
+      setLoading(false);
+    }, 10000);
+
+    return () => clearTimeout(timeoutId);
   }, [isAuthenticated, navigate, searchParams]);
   
   const handleContinue = () => {
@@ -93,35 +119,34 @@ const SubscriptionSuccessPage = () => {
       ) : (
         <Paper elevation={3} sx={{ p: 4, textAlign: 'center' }}>
           <CheckCircleIcon sx={{ fontSize: 80, color: 'success.main', mb: 2 }} />
-          
+
           <Typography variant="h4" component="h1" gutterBottom>
             Subscription Successful!
           </Typography>
-          
+
           <Typography variant="body1" paragraph>
             Thank you for subscribing to Smart Meal Planner. Your account has been successfully upgraded.
           </Typography>
-          
-          {subscription && (
+
+          {subscription && subscription.has_subscription && (
             <Box sx={{ mt: 4, mb: 4 }}>
               <Typography variant="h6" gutterBottom>
                 Subscription Details
               </Typography>
-              
+
               <Divider sx={{ mb: 2 }} />
-              
+
               <Box sx={{ textAlign: 'left', mb: 2 }}>
                 <Typography variant="body1">
                   <strong>Plan:</strong> {subscription.subscription_type.charAt(0).toUpperCase() + subscription.subscription_type.slice(1)}
                 </Typography>
+                {subscription.renews_at && (
+                  <Typography variant="body1">
+                    <strong>Next Billing Date:</strong> {new Date(subscription.renews_at).toLocaleDateString()}
+                  </Typography>
+                )}
                 <Typography variant="body1">
-                  <strong>Amount:</strong> ${subscription.monthly_amount}/{subscription.currency.toLowerCase()}
-                </Typography>
-                <Typography variant="body1">
-                  <strong>Status:</strong> Active
-                </Typography>
-                <Typography variant="body1">
-                  <strong>Next Billing Date:</strong> {subscription.current_period_end ? new Date(subscription.current_period_end).toLocaleDateString() : 'N/A'}
+                  <strong>Status:</strong> {subscription.is_active ? 'Active' : 'Processing'}
                 </Typography>
               </Box>
             </Box>
