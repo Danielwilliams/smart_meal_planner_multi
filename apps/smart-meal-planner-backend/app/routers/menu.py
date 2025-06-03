@@ -555,21 +555,30 @@ def process_preferred_proteins(user_row):
     preferred_proteins = []
     if user_row and user_row.get("preferred_proteins"):
         protein_data = user_row["preferred_proteins"]
+        other_proteins_data = user_row.get("other_proteins", {})
         
         # Extract selected proteins from each category
         for category, proteins in protein_data.items():
             if isinstance(proteins, dict):
                 for protein_key, is_selected in proteins.items():
                     if is_selected:
-                        # Convert protein key to readable name
-                        readable_name = protein_key.replace('_', ' ').title()
-                        # Handle special cases for better readability
-                        readable_name = readable_name.replace('Dairy Milk', 'Milk')
-                        readable_name = readable_name.replace('Dairy Yogurt', 'Yogurt')
-                        readable_name = readable_name.replace('Protein Powder Whey', 'Whey Protein')
-                        readable_name = readable_name.replace('Protein Powder Pea', 'Pea Protein')
-                        readable_name = readable_name.replace('Black Beans', 'Black Beans')
-                        preferred_proteins.append(readable_name)
+                        if protein_key == 'other':
+                            # Handle custom "Other" proteins
+                            custom_proteins = other_proteins_data.get(category, "")
+                            if custom_proteins and custom_proteins.strip():
+                                # Split by comma and add each custom protein
+                                custom_list = [p.strip() for p in custom_proteins.split(',') if p.strip()]
+                                preferred_proteins.extend(custom_list)
+                        else:
+                            # Convert protein key to readable name
+                            readable_name = protein_key.replace('_', ' ').title()
+                            # Handle special cases for better readability
+                            readable_name = readable_name.replace('Dairy Milk', 'Milk')
+                            readable_name = readable_name.replace('Dairy Yogurt', 'Yogurt')
+                            readable_name = readable_name.replace('Protein Powder Whey', 'Whey Protein')
+                            readable_name = readable_name.replace('Protein Powder Pea', 'Pea Protein')
+                            readable_name = readable_name.replace('Black Beans', 'Black Beans')
+                            preferred_proteins.append(readable_name)
     
     return preferred_proteins
 
@@ -623,7 +632,7 @@ def generate_meal_plan_single_request(req: GenerateMealPlanRequest, job_id: str 
                        dietary_restrictions, disliked_ingredients, snacks_per_day,
                        flavor_preferences, spice_level, recipe_type_preferences,
                        meal_time_preferences, time_constraints, prep_preferences,
-                       preferred_proteins
+                       preferred_proteins, other_proteins
                 FROM user_profiles WHERE id = %s
             """, (preference_user_id,))
             
@@ -1012,7 +1021,8 @@ def generate_meal_plan_legacy(req: GenerateMealPlanRequest, job_id: str = None):
                     meal_time_preferences,
                     time_constraints,
                     prep_preferences,
-                    preferred_proteins
+                    preferred_proteins,
+                    other_proteins
                 FROM user_profiles
                 WHERE id = %s
                 LIMIT 1
