@@ -1692,7 +1692,7 @@ async def handle_invoice_payment_failed(event_data):
 
 @router.post("/cancel")
 async def cancel_user_subscription(
-    cancel_at_period_end: bool = Body(True),
+    request: Request,
     user = Depends(get_user_from_token)
 ):
     """
@@ -1707,6 +1707,15 @@ async def cancel_user_subscription(
         )
 
     user_id = user.get('user_id')
+
+    # Parse the request body to get cancel_at_period_end
+    try:
+        body = await request.json()
+        cancel_at_period_end = body.get('cancel_at_period_end', True)
+        logger.info(f"Cancel subscription request: cancel_at_period_end={cancel_at_period_end}")
+    except Exception as e:
+        logger.error(f"Error parsing request body: {str(e)}")
+        cancel_at_period_end = True  # Default to canceling at period end
 
     try:
         # Find the user's subscription
