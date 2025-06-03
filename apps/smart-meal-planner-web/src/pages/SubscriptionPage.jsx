@@ -346,46 +346,60 @@ const SubscriptionPage = () => {
           Billing History
         </Typography>
         
-        {invoices.length === 0 ? (
+        {!invoices || invoices.length === 0 ? (
           <Typography variant="body1" color="textSecondary">
             No billing history available.
           </Typography>
         ) : (
           <List>
-            {invoices.map((invoice) => (
-              <ListItem key={invoice.id} divider>
-                <Grid container spacing={2}>
-                  <Grid item xs={12} sm={3}>
-                    <Typography variant="body2" color="textSecondary">
-                      {new Date(invoice.created).toLocaleDateString()}
-                    </Typography>
+            {invoices.map((invoice) => {
+              // Safely handle potential null/undefined values
+              const invoiceDate = invoice.created 
+                ? new Date(invoice.created * 1000).toLocaleDateString() // Stripe timestamps are in seconds
+                : 'Unknown';
+              
+              const amount = invoice.amount_paid 
+                ? (invoice.amount_paid / 100).toFixed(2) // Stripe amounts are in cents
+                : '0.00';
+              
+              const status = invoice.status || 'unknown';
+              const statusColor = status === 'paid' ? 'success.main' : 'error.main';
+              
+              return (
+                <ListItem key={invoice.id || Math.random()} divider>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} sm={3}>
+                      <Typography variant="body2" color="textSecondary">
+                        {invoiceDate}
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={12} sm={3}>
+                      <Typography variant="body2">
+                        ${amount}
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={12} sm={3}>
+                      <Typography variant="body2" color={statusColor}>
+                        {status.charAt(0).toUpperCase() + status.slice(1)}
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={12} sm={3}>
+                      {invoice.hosted_invoice_url && (
+                        <Button 
+                          variant="outlined" 
+                          size="small"
+                          href={invoice.hosted_invoice_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          View Invoice
+                        </Button>
+                      )}
+                    </Grid>
                   </Grid>
-                  <Grid item xs={12} sm={3}>
-                    <Typography variant="body2">
-                      ${invoice.amount_paid / 100}
-                    </Typography>
-                  </Grid>
-                  <Grid item xs={12} sm={3}>
-                    <Typography variant="body2" color={invoice.status === 'paid' ? 'success.main' : 'error.main'}>
-                      {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}
-                    </Typography>
-                  </Grid>
-                  <Grid item xs={12} sm={3}>
-                    {invoice.hosted_invoice_url && (
-                      <Button 
-                        variant="outlined" 
-                        size="small"
-                        href={invoice.hosted_invoice_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        View Invoice
-                      </Button>
-                    )}
-                  </Grid>
-                </Grid>
-              </ListItem>
-            ))}
+                </ListItem>
+              );
+            })}
           </List>
         )}
       </Paper>

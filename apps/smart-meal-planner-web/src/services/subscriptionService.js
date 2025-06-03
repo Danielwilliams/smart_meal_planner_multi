@@ -171,10 +171,19 @@ const subscriptionService = {
   async getInvoices() {
     try {
       const response = await makeApiRequest('/api/subscriptions/invoices');
-      return response;
+      
+      // Backend now returns a direct array of invoice objects
+      if (Array.isArray(response)) {
+        return response;
+      }
+      
+      // Fallback for unexpected response format
+      console.warn('Unexpected invoice response format:', response);
+      return [];
     } catch (error) {
       console.error('Error fetching invoices:', error);
-      throw error;
+      // Return empty array instead of throwing to prevent UI crashes
+      return [];
     }
   },
 

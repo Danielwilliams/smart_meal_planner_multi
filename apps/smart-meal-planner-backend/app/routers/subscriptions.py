@@ -1852,105 +1852,107 @@ async def test_invoice_status_cases(user = Depends(get_user_from_token)):
 @router.post("/invoices")  # Support both GET and POST for backward compatibility
 async def get_user_invoices(user = Depends(get_user_from_token)):
     """
-    Get the current user's invoices
+    Get the current user's invoices from Stripe
 
     This endpoint supports both GET and POST methods for backward compatibility
     """
     if not ENABLE_SUBSCRIPTION_FEATURES:
         return await subscription_disabled()
 
+    if not stripe:
+        raise HTTPException(
+            status_code=503,
+            detail="Stripe integration is not available"
+        )
+
     user_id = user.get('user_id')
+    organization_id = user.get('organization_id')
+    
     if not user_id:
         raise HTTPException(status_code=401, detail="Authentication required")
 
-    # Default/placeholder response if no invoices found or error
-    default_response = {
-        "success": True,
-        "message": "No invoices found for your account",
-        "invoices": []
-    }
+    # Default response if no invoices found or error
+    default_response = []
 
     try:
-        # Get the user's subscription ID first in a separate connection
+        # Get the user's stripe customer ID
         with get_db_cursor(dict_cursor=True, autocommit=True) as (cur, conn):
-            # Check if invoices table exists
-            cur.execute("""
-                SELECT EXISTS (
-                    SELECT FROM information_schema.tables
-                    WHERE table_schema = 'public'
-                    AND table_name = 'invoices'
-                )
-            """)
+            # Check if user is part of an organization as a client
+            if user.get('account_type') == 'client':
+                cur.execute("""
+                    SELECT organization_id FROM organization_clients
+                    WHERE client_id = %s
+                """, (user_id,))
+                org_result = cur.fetchone()
+                if org_result:
+                    organization_id = org_result['organization_id']
 
-            table_exists = cur.fetchone()['exists']
-            if not table_exists:
-                return default_response
-
-            # Get the user's subscription ID
-            cur.execute("""
-                SELECT subscription_id FROM user_profiles
-                WHERE id = %s
-            """, (user_id,))
+            # Get stripe customer ID based on subscription
+            if organization_id:
+                # For organization members or clients
+                cur.execute("""
+                    SELECT stripe_customer_id, stripe_subscription_id FROM subscriptions
+                    WHERE organization_id = %s AND status = 'active'
+                    ORDER BY created_at DESC LIMIT 1
+                """, (organization_id,))
+            else:
+                # For individual users
+                cur.execute("""
+                    SELECT stripe_customer_id, stripe_subscription_id FROM subscriptions
+                    WHERE user_id = %s AND status = 'active'
+                    ORDER BY created_at DESC LIMIT 1
+                """, (user_id,))
 
             result = cur.fetchone()
-            if not result or not result['subscription_id']:
+            if not result:
                 return default_response
 
-            subscription_id = result['subscription_id']
+            stripe_customer_id = result['stripe_customer_id']
+            stripe_subscription_id = result['stripe_subscription_id']
 
-        # Use a new connection to get the invoices
-        with get_db_cursor(dict_cursor=True, autocommit=True) as (cur, conn):
-            # Now get invoices for this subscription
-            cur.execute("""
-                SELECT * FROM invoices
-                WHERE subscription_id = %s
-                ORDER BY created_at DESC
-            """, (subscription_id,))
+        if not stripe_customer_id:
+            return default_response
 
-            invoices = cur.fetchall()
-
-            if invoices:
-                # Create a function to sanitize invoice objects
-                def sanitize_invoice(invoice):
-                    # Start with a copy of the invoice
-                    safe_invoice = dict(invoice)
-
-                    # Add default values for all required fields that might be null
-                    field_defaults = {
-                        'status': 'unknown',
-                        'currency': 'usd',
-                        'amount_due': 0.0,
-                        'amount_paid': 0.0,
-                        'invoice_number': 'UNKNOWN',
-                        'payment_provider': 'unknown'
-                    }
-
-                    # Apply defaults for any missing or null fields
-                    for field, default_value in field_defaults.items():
-                        if field not in safe_invoice or safe_invoice[field] is None:
-                            safe_invoice[field] = default_value
-
-                    # Ensure numeric fields are proper types
-                    if not isinstance(safe_invoice['amount_due'], (int, float)):
-                        safe_invoice['amount_due'] = 0.0
-                    if not isinstance(safe_invoice['amount_paid'], (int, float)):
-                        safe_invoice['amount_paid'] = 0.0
-
-                    return safe_invoice
-
-                # Sanitize all invoices
-                sanitized_invoices = [sanitize_invoice(invoice) for invoice in invoices]
-
-                return {
-                    "success": True,
-                    "invoices": sanitized_invoices
+        # Fetch invoices from Stripe
+        try:
+            # Get all invoices for this customer
+            invoices_response = stripe.Invoice.list(
+                customer=stripe_customer_id,
+                limit=50  # Limit to most recent 50 invoices
+            )
+            
+            # Convert Stripe invoice objects to our expected format
+            formatted_invoices = []
+            for stripe_invoice in invoices_response.data:
+                # Extract the invoice data we need
+                invoice_data = {
+                    'id': stripe_invoice.id,
+                    'amount_due': stripe_invoice.amount_due,
+                    'amount_paid': stripe_invoice.amount_paid,
+                    'currency': stripe_invoice.currency,
+                    'status': stripe_invoice.status,
+                    'created': stripe_invoice.created,
+                    'period_start': stripe_invoice.period_start if hasattr(stripe_invoice, 'period_start') else None,
+                    'period_end': stripe_invoice.period_end if hasattr(stripe_invoice, 'period_end') else None,
+                    'hosted_invoice_url': stripe_invoice.hosted_invoice_url,
+                    'invoice_pdf': stripe_invoice.invoice_pdf,
+                    'number': stripe_invoice.number,
+                    'subscription': stripe_invoice.subscription
                 }
-            else:
-                return default_response
+                
+                # Only include invoices that belong to the current subscription if we have one
+                if not stripe_subscription_id or stripe_invoice.subscription == stripe_subscription_id:
+                    formatted_invoices.append(invoice_data)
+
+            logger.info(f"Successfully fetched {len(formatted_invoices)} invoices from Stripe")
+            return formatted_invoices
+
+        except stripe.error.StripeError as stripe_err:
+            logger.error(f"Stripe error fetching invoices: {str(stripe_err)}")
+            return default_response
 
     except Exception as e:
         logger.error(f"Error fetching invoices: {str(e)}", exc_info=True)
-        # Return default response if there's an error
         return default_response
 
 @router.post("/update-payment-method")
