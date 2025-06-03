@@ -72,3 +72,5 @@ trigger-test-events.sh
 standalone_stripe_test.py
 OPENAI_SERVER_OPTIMIZATION.md
 apps/smart-meal-planner-backend/SNACK_INSTRUCTIONS_ENHANCEMENT.md
+apps/smart-meal-planner-backend/STRIPE_SETUP_INSTRUCTIONS.md
+apps/smart-meal-planner-backend/.env.example

@@ -102,7 +102,9 @@ const subscriptionService = {
    */
   async getSubscriptionStatus() {
     try {
-      const response = await makeApiRequest('/api/subscriptions/status');
+      const response = await makeApiRequest('/api/subscriptions/status', {
+        method: 'GET'  // Explicitly specify GET method
+      });
       return response;
     } catch (error) {
       console.error('Error fetching subscription status:', error);
