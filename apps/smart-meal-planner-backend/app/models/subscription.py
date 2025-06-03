@@ -575,28 +575,56 @@ def log_subscription_event(subscription_id, event_type, event_data, payment_prov
 
         conn = get_db_connection()
         with conn.cursor() as cur:
-            cur.execute("""
-                INSERT INTO subscription_events (
-                    subscription_id, event_type, event_data, payment_provider, provider_event_id, processed, processed_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-                RETURNING id
-            """, (
-                subscription_id, event_type, event_data_json, payment_provider, provider_event_id, processed, processed_at
-            ))
+            # Try to insert with processed_at column
+            try:
+                cur.execute("""
+                    INSERT INTO subscription_events (
+                        subscription_id, event_type, event_data, payment_provider, provider_event_id, processed, processed_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                """, (
+                    subscription_id, event_type, event_data_json, payment_provider, provider_event_id, processed, processed_at
+                ))
 
-            event_id = cur.fetchone()[0]
-            conn.commit()
+                event_id = cur.fetchone()[0]
+                conn.commit()
 
-            logger.info(f"Successfully logged subscription event with ID: {event_id}")
-            return event_id
+                logger.info(f"Successfully logged subscription event with ID: {event_id}")
+                return event_id
+            except Exception as column_error:
+                # If it fails due to missing processed_at column, try without it
+                logger.warning(f"Failed to insert with processed_at: {str(column_error)}. Trying without it.")
+                conn.rollback()  # Need to rollback before trying again
+
+                cur.execute("""
+                    INSERT INTO subscription_events (
+                        subscription_id, event_type, event_data, payment_provider, provider_event_id, processed
+                    ) VALUES (%s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                """, (
+                    subscription_id, event_type, event_data_json, payment_provider, provider_event_id, processed
+                ))
+
+                event_id = cur.fetchone()[0]
+                conn.commit()
+
+                logger.info(f"Successfully logged subscription event with ID: {event_id} (without processed_at)")
+                return event_id
     except Exception as e:
         logger.error(f"Error logging subscription event: {str(e)}", exc_info=True)
         if conn:
-            conn.rollback()
+            try:
+                conn.rollback()
+            except Exception as rollback_error:
+                logger.error(f"Error during rollback: {str(rollback_error)}")
         return None
     finally:
         if conn:
-            conn.close()
+            try:
+                conn.close()
+            except Exception as close_error:
+                logger.error(f"Error closing connection: {str(close_error)}")
+                # Still need to proceed with the function
 
 def create_invoice(subscription_id, payment_provider, status, amount_due, amount_paid=None,
                  currency="USD", period_start=None, period_end=None, due_date=None,
@@ -820,11 +848,21 @@ def migrate_to_free_tier(user_id=None, organization_id=None, set_beta_expiration
                 "migration_date": current_date.isoformat()
             }
 
-            cur.execute("""
-                INSERT INTO subscription_events (
-                    subscription_id, event_type, event_data, payment_provider, processed, processed_at
-                ) VALUES (%s, 'migrated_to_free_tier', %s, 'none', TRUE, CURRENT_TIMESTAMP)
-            """, (subscription_id, json.dumps(event_data)))
+            # Log the event in a way that's safe even if processed_at column doesn't exist yet
+            try:
+                cur.execute("""
+                    INSERT INTO subscription_events (
+                        subscription_id, event_type, event_data, payment_provider, processed, processed_at
+                    ) VALUES (%s, 'migrated_to_free_tier', %s, 'none', TRUE, CURRENT_TIMESTAMP)
+                """, (subscription_id, json.dumps(event_data)))
+            except Exception as e:
+                logger.warning(f"Could not insert event with processed_at, trying fallback: {str(e)}")
+                # Fallback if processed_at column doesn't exist
+                cur.execute("""
+                    INSERT INTO subscription_events (
+                        subscription_id, event_type, event_data, payment_provider, processed
+                    ) VALUES (%s, 'migrated_to_free_tier', %s, 'none', TRUE)
+                """, (subscription_id, json.dumps(event_data)))
 
             conn.commit()
             return subscription_id

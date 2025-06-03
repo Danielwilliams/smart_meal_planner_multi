@@ -854,20 +854,34 @@ async def stripe_webhook_handler(request: Request):
 
                 # Update the event as processed if we recorded it earlier
                 if 'webhook_event_id' in locals():
-                    if has_processed_at:
-                        cur.execute("""
-                            UPDATE subscription_events
-                            SET processed = TRUE, processed_at = CURRENT_TIMESTAMP
-                            WHERE id = %s
-                        """, (webhook_event_id,))
-                    else:
-                        # Fallback if processed_at column doesn't exist
-                        cur.execute("""
-                            UPDATE subscription_events
-                            SET processed = TRUE
-                            WHERE id = %s
-                        """, (webhook_event_id,))
-                    logger.info(f"✅ Marked webhook event {webhook_event_id} as processed")
+                    try:
+                        if has_processed_at:
+                            cur.execute("""
+                                UPDATE subscription_events
+                                SET processed = TRUE, processed_at = CURRENT_TIMESTAMP
+                                WHERE id = %s
+                            """, (webhook_event_id,))
+                        else:
+                            # Fallback if processed_at column doesn't exist
+                            cur.execute("""
+                                UPDATE subscription_events
+                                SET processed = TRUE
+                                WHERE id = %s
+                            """, (webhook_event_id,))
+                        logger.info(f"✅ Marked webhook event {webhook_event_id} as processed")
+                    except Exception as update_error:
+                        # Don't let update errors prevent processing
+                        logger.error(f"❌ Error marking webhook as processed: {str(update_error)}")
+                        # Try simpler update as last resort
+                        try:
+                            cur.execute("""
+                                UPDATE subscription_events
+                                SET processed = TRUE
+                                WHERE id = %s
+                            """, (webhook_event_id,))
+                            logger.info(f"✅ Marked webhook event {webhook_event_id} as processed (simple update)")
+                        except Exception as final_error:
+                            logger.error(f"❌ Final error marking webhook as processed: {str(final_error)}")
         except Exception as e:
             logger.error(f"❌ Failed to mark webhook as processed: {str(e)}")
 
@@ -1773,8 +1787,15 @@ async def get_user_invoices(user = Depends(get_user_from_token)):
     if not user_id:
         raise HTTPException(status_code=401, detail="Authentication required")
 
+    # Default/placeholder response if no invoices found or error
+    default_response = {
+        "success": True,
+        "message": "No invoices found for your account",
+        "invoices": []
+    }
+
     try:
-        # Try to get actual invoices if they exist
+        # Get the user's subscription ID first in a separate connection
         with get_db_cursor(dict_cursor=True, autocommit=True) as (cur, conn):
             # Check if invoices table exists
             cur.execute("""
@@ -1785,39 +1806,45 @@ async def get_user_invoices(user = Depends(get_user_from_token)):
                 )
             """)
 
-            if cur.fetchone()['exists']:
-                # Get the user's subscription ID first
-                cur.execute("""
-                    SELECT subscription_id FROM user_profiles
-                    WHERE id = %s
-                """, (user_id,))
+            table_exists = cur.fetchone()['exists']
+            if not table_exists:
+                return default_response
 
-                result = cur.fetchone()
-                if result and result['subscription_id']:
-                    # Now get invoices for this subscription
-                    cur.execute("""
-                        SELECT * FROM invoices
-                        WHERE subscription_id = %s
-                        ORDER BY created_at DESC
-                    """, (result['subscription_id'],))
+            # Get the user's subscription ID
+            cur.execute("""
+                SELECT subscription_id FROM user_profiles
+                WHERE id = %s
+            """, (user_id,))
 
-                    invoices = cur.fetchall()
+            result = cur.fetchone()
+            if not result or not result['subscription_id']:
+                return default_response
 
-                    if invoices:
-                        return {
-                            "success": True,
-                            "invoices": invoices
-                        }
+            subscription_id = result['subscription_id']
+
+        # Use a new connection to get the invoices
+        with get_db_cursor(dict_cursor=True, autocommit=True) as (cur, conn):
+            # Now get invoices for this subscription
+            cur.execute("""
+                SELECT * FROM invoices
+                WHERE subscription_id = %s
+                ORDER BY created_at DESC
+            """, (subscription_id,))
+
+            invoices = cur.fetchall()
+
+            if invoices:
+                return {
+                    "success": True,
+                    "invoices": invoices
+                }
+            else:
+                return default_response
+
     except Exception as e:
-        logger.error(f"Error fetching invoices: {str(e)}")
-        # Fall through to default response
-
-    # Default/placeholder response if no invoices found or error
-    return {
-        "success": True,
-        "message": "No invoices found for your account",
-        "invoices": []
-    }
+        logger.error(f"Error fetching invoices: {str(e)}", exc_info=True)
+        # Return default response if there's an error
+        return default_response
 
 @router.post("/update-payment-method")
 async def update_user_payment_method(
