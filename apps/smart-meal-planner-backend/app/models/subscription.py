@@ -563,30 +563,30 @@ def delete_payment_method(payment_method_id):
         if conn:
             conn.close()
 
-def log_subscription_event(subscription_id, event_type, event_data, payment_provider, provider_event_id=None):
+def log_subscription_event(subscription_id, event_type, event_data, payment_provider, provider_event_id=None, processed=False, processed_at=None):
     """Log a subscription event"""
     conn = None
     try:
         logger.info(f"Logging subscription event: subscription={subscription_id}, type={event_type}")
-        
+
         # Convert event_data to JSON if it's a dict
         import json
         event_data_json = json.dumps(event_data) if isinstance(event_data, dict) else event_data
-        
+
         conn = get_db_connection()
         with conn.cursor() as cur:
             cur.execute("""
                 INSERT INTO subscription_events (
-                    subscription_id, event_type, event_data, payment_provider, provider_event_id
-                ) VALUES (%s, %s, %s, %s, %s)
+                    subscription_id, event_type, event_data, payment_provider, provider_event_id, processed, processed_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """, (
-                subscription_id, event_type, event_data_json, payment_provider, provider_event_id
+                subscription_id, event_type, event_data_json, payment_provider, provider_event_id, processed, processed_at
             ))
-            
+
             event_id = cur.fetchone()[0]
             conn.commit()
-            
+
             logger.info(f"Successfully logged subscription event with ID: {event_id}")
             return event_id
     except Exception as e:
@@ -822,8 +822,8 @@ def migrate_to_free_tier(user_id=None, organization_id=None, set_beta_expiration
 
             cur.execute("""
                 INSERT INTO subscription_events (
-                    subscription_id, event_type, event_data, payment_provider, processed
-                ) VALUES (%s, 'migrated_to_free_tier', %s, 'none', TRUE)
+                    subscription_id, event_type, event_data, payment_provider, processed, processed_at
+                ) VALUES (%s, 'migrated_to_free_tier', %s, 'none', TRUE, CURRENT_TIMESTAMP)
             """, (subscription_id, json.dumps(event_data)))
 
             conn.commit()

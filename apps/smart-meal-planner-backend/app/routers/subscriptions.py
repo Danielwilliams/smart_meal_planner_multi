@@ -794,8 +794,8 @@ async def stripe_webhook_handler(request: Request):
                 cur.execute("""
                     INSERT INTO subscription_events (
                         subscription_id, event_type, event_data, payment_provider,
-                        provider_event_id, processed
-                    ) VALUES (%s, %s, %s, %s, %s, %s)
+                        provider_event_id, processed, processed_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s)
                     RETURNING id
                 """, (
                     sub_id or -1,  # Use -1 as placeholder if no subscription yet
@@ -803,7 +803,8 @@ async def stripe_webhook_handler(request: Request):
                     str(event_data),
                     'stripe',
                     event_id,
-                    False  # Mark as unprocessed initially
+                    False,  # Mark as unprocessed initially
+                    None    # Initially no processed time
                 ))
                 webhook_event_id = cur.fetchone()[0]
                 logger.info(f"📝 Recorded webhook event in database with ID: {webhook_event_id}")
@@ -838,13 +839,34 @@ async def stripe_webhook_handler(request: Request):
         # This prevents Stripe from retrying and potentially creating duplicate records
         try:
             with get_db_cursor(dict_cursor=False, autocommit=True) as (cur, conn):
+                # Check if processed_at column exists
+                try:
+                    cur.execute("""
+                        SELECT EXISTS (
+                            SELECT FROM information_schema.columns
+                            WHERE table_name = 'subscription_events'
+                            AND column_name = 'processed_at'
+                        )
+                    """)
+                    has_processed_at = cur.fetchone()[0]
+                except Exception:
+                    has_processed_at = False
+
                 # Update the event as processed if we recorded it earlier
                 if 'webhook_event_id' in locals():
-                    cur.execute("""
-                        UPDATE subscription_events
-                        SET processed = TRUE, processed_at = CURRENT_TIMESTAMP
-                        WHERE id = %s
-                    """, (webhook_event_id,))
+                    if has_processed_at:
+                        cur.execute("""
+                            UPDATE subscription_events
+                            SET processed = TRUE, processed_at = CURRENT_TIMESTAMP
+                            WHERE id = %s
+                        """, (webhook_event_id,))
+                    else:
+                        # Fallback if processed_at column doesn't exist
+                        cur.execute("""
+                            UPDATE subscription_events
+                            SET processed = TRUE
+                            WHERE id = %s
+                        """, (webhook_event_id,))
                     logger.info(f"✅ Marked webhook event {webhook_event_id} as processed")
         except Exception as e:
             logger.error(f"❌ Failed to mark webhook as processed: {str(e)}")
@@ -864,14 +886,15 @@ async def stripe_webhook_handler(request: Request):
                 cur.execute("""
                     INSERT INTO subscription_events (
                         subscription_id, event_type, event_data, payment_provider,
-                        processed
-                    ) VALUES (%s, %s, %s, %s, %s)
+                        processed, processed_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s)
                 """, (
                     -1,  # Unknown subscription
                     "webhook_error",
                     str(e),
                     'stripe',
-                    False
+                    False,
+                    None  # Initially no processed time
                 ))
         except Exception as log_error:
             logger.error(f"❌ Failed to log webhook error: {str(log_error)}")
@@ -1109,7 +1132,9 @@ async def handle_checkout_completed(event_data):
                     event_type="checkout_completed",
                     event_data=event_data,
                     payment_provider="stripe",
-                    provider_event_id=event_data.id
+                    provider_event_id=event_data.id,
+                    processed=True,
+                    processed_at=datetime.now()
                 )
 
     except Exception as e:
@@ -1310,15 +1335,16 @@ async def handle_subscription_created(event_data):
                 if subscription_db_id:
                     cur.execute("""
                         INSERT INTO subscription_events (
-                            subscription_id, event_type, event_data, payment_provider, provider_event_id, processed
-                        ) VALUES (%s, %s, %s, %s, %s, %s)
+                            subscription_id, event_type, event_data, payment_provider, provider_event_id, processed, processed_at
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s)
                     """, (
                         subscription_db_id,
                         "subscription_created",
                         str(event_data),
                         "stripe",
                         event_data.id,
-                        True
+                        True,
+                        datetime.now()  # Mark as processed immediately
                     ))
                     logger.info(f"📝 Logged subscription_created event for subscription {subscription_db_id}")
         except Exception as db_err:
@@ -1330,10 +1356,22 @@ async def handle_subscription_created(event_data):
 async def handle_subscription_updated(event_data):
     """Handle customer.subscription.updated event"""
     try:
-        logger.info(f"Processing subscription.updated: {event_data.id}")
+        logger.info(f"🔄 Processing subscription.updated: {event_data.id}")
 
         # Find the subscription in our database
         with get_db_cursor(dict_cursor=False, autocommit=True) as (cur, conn):
+            # Check if table exists first
+            cur.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables
+                    WHERE table_schema = 'public'
+                    AND table_name = 'subscriptions'
+                )
+            """)
+            if not cur.fetchone()[0]:
+                logger.error("❌ Subscriptions table does not exist for subscription update!")
+                return
+
             cur.execute("""
                 SELECT id FROM subscriptions
                 WHERE stripe_subscription_id = %s
@@ -1342,44 +1380,105 @@ async def handle_subscription_updated(event_data):
             result = cur.fetchone()
 
             if not result:
-                logger.error(f"Subscription {event_data.id} not found in database")
+                logger.error(f"❌ Subscription {event_data.id} not found in database for update")
                 return
 
             subscription_id = result[0]
+            logger.info(f"✅ Found subscription in database: {subscription_id}")
 
-            # Extract updated subscription data
-            stripe_status = event_data.status
-            current_period_start = datetime.fromtimestamp(event_data.current_period_start)
-            current_period_end = datetime.fromtimestamp(event_data.current_period_end)
-            cancel_at_period_end = event_data.cancel_at_period_end
+            # Default values in case we can't extract from event data
+            update_fields = []
+            params = []
+
+            # Extract updated subscription data - safely check if attributes exist
+            if hasattr(event_data, 'status'):
+                update_fields.append("status = %s, stripe_status = %s")
+                params.extend([event_data.status, event_data.status])
+                logger.info(f"📊 Status: {event_data.status}")
+
+            # Safely check for period details
+            try:
+                if hasattr(event_data, 'current_period_start'):
+                    update_fields.append("current_period_start = %s")
+                    current_period_start = datetime.fromtimestamp(event_data.current_period_start)
+                    params.append(current_period_start)
+                    logger.info(f"📊 Period start: {current_period_start}")
+            except (AttributeError, TypeError) as e:
+                logger.warning(f"⚠️ Could not extract current_period_start: {e}")
+
+            try:
+                if hasattr(event_data, 'current_period_end'):
+                    update_fields.append("current_period_end = %s")
+                    current_period_end = datetime.fromtimestamp(event_data.current_period_end)
+                    params.append(current_period_end)
+                    logger.info(f"📊 Period end: {current_period_end}")
+            except (AttributeError, TypeError) as e:
+                logger.warning(f"⚠️ Could not extract current_period_end: {e}")
+
+            try:
+                if hasattr(event_data, 'cancel_at_period_end'):
+                    update_fields.append("cancel_at_period_end = %s")
+                    params.append(event_data.cancel_at_period_end)
+                    logger.info(f"📊 Cancel at period end: {event_data.cancel_at_period_end}")
+            except (AttributeError, TypeError) as e:
+                logger.warning(f"⚠️ Could not extract cancel_at_period_end: {e}")
 
             # Check for cancellation
-            canceled_at = None
-            if event_data.canceled_at:
-                canceled_at = datetime.fromtimestamp(event_data.canceled_at)
+            try:
+                if hasattr(event_data, 'canceled_at') and event_data.canceled_at:
+                    update_fields.append("canceled_at = %s")
+                    canceled_at = datetime.fromtimestamp(event_data.canceled_at)
+                    params.append(canceled_at)
+                    logger.info(f"📊 Canceled at: {canceled_at}")
+            except (AttributeError, TypeError) as e:
+                logger.warning(f"⚠️ Could not extract canceled_at: {e}")
 
-            # Update subscription in our database
-            from app.models.subscription import update_subscription
-            update_subscription(
-                subscription_id=subscription_id,
-                status=stripe_status,
-                current_period_start=current_period_start,
-                current_period_end=current_period_end,
-                cancel_at_period_end=cancel_at_period_end,
-                canceled_at=canceled_at,
-                stripe_status=stripe_status
-            )
-            logger.info(f"Updated subscription {subscription_id} with new status: {stripe_status}")
+            # Update subscription in our database directly
+            if update_fields:
+                # Add the updated_at timestamp
+                update_fields.append("updated_at = CURRENT_TIMESTAMP")
 
-            # Log the event
-            from app.models.subscription import log_subscription_event
-            log_subscription_event(
-                subscription_id=subscription_id,
-                event_type="subscription_updated",
-                event_data=event_data,
-                payment_provider="stripe",
-                provider_event_id=event_data.id
-            )
+                # Add the subscription_id parameter at the end
+                params.append(subscription_id)
+
+                # Build the SQL query
+                query = f"""
+                    UPDATE subscriptions
+                    SET {', '.join(update_fields)}
+                    WHERE id = %s
+                    RETURNING id
+                """
+
+                # Execute the update
+                cur.execute(query, params)
+
+                # Check if the update was successful
+                updated_id = cur.fetchone()
+                if updated_id:
+                    logger.info(f"✅ Updated subscription {subscription_id} successfully")
+                else:
+                    logger.error(f"❌ Failed to update subscription {subscription_id}")
+            else:
+                logger.info(f"ℹ️ No fields to update for subscription {subscription_id}")
+
+            # Log the event in our database
+            cur.execute("""
+                INSERT INTO subscription_events (
+                    subscription_id, event_type, event_data, payment_provider, provider_event_id, processed, processed_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+            """, (
+                subscription_id,
+                "subscription_updated",
+                str(event_data),
+                "stripe",
+                event_data.id,
+                True,
+                datetime.now()  # Mark as processed immediately
+            ))
+
+            event_id = cur.fetchone()[0]
+            logger.info(f"📝 Logged subscription_updated event with ID: {event_id}")
 
     except Exception as e:
         logger.error(f"Error handling subscription updated: {str(e)}", exc_info=True)
@@ -1421,7 +1520,9 @@ async def handle_subscription_deleted(event_data):
                 event_type="subscription_deleted",
                 event_data=event_data,
                 payment_provider="stripe",
-                provider_event_id=event_data.id
+                provider_event_id=event_data.id,
+                processed=True,
+                processed_at=datetime.now()
             )
 
     except Exception as e:
@@ -1488,7 +1589,9 @@ async def handle_invoice_paid(event_data):
                 event_type="invoice_paid",
                 event_data=event_data,
                 payment_provider="stripe",
-                provider_event_id=event_data.id
+                provider_event_id=event_data.id,
+                processed=True,
+                processed_at=datetime.now()
             )
 
     except Exception as e:
@@ -1563,7 +1666,9 @@ async def handle_invoice_payment_failed(event_data):
                 event_type="invoice_payment_failed",
                 event_data=event_data,
                 payment_provider="stripe",
-                provider_event_id=event_data.id
+                provider_event_id=event_data.id,
+                processed=True,
+                processed_at=datetime.now()
             )
 
     except Exception as e:
@@ -1654,17 +1759,63 @@ async def cancel_user_subscription(
         )
 
 @router.get("/invoices")
+@router.post("/invoices")  # Support both GET and POST for backward compatibility
 async def get_user_invoices(user = Depends(get_user_from_token)):
     """
     Get the current user's invoices
-    
-    This is a placeholder endpoint that will be implemented with actual payment integration
+
+    This endpoint supports both GET and POST methods for backward compatibility
     """
-    check_subscriptions_enabled()
-    
+    if not ENABLE_SUBSCRIPTION_FEATURES:
+        return await subscription_disabled()
+
+    user_id = user.get('user_id')
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    try:
+        # Try to get actual invoices if they exist
+        with get_db_cursor(dict_cursor=True, autocommit=True) as (cur, conn):
+            # Check if invoices table exists
+            cur.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables
+                    WHERE table_schema = 'public'
+                    AND table_name = 'invoices'
+                )
+            """)
+
+            if cur.fetchone()['exists']:
+                # Get the user's subscription ID first
+                cur.execute("""
+                    SELECT subscription_id FROM user_profiles
+                    WHERE id = %s
+                """, (user_id,))
+
+                result = cur.fetchone()
+                if result and result['subscription_id']:
+                    # Now get invoices for this subscription
+                    cur.execute("""
+                        SELECT * FROM invoices
+                        WHERE subscription_id = %s
+                        ORDER BY created_at DESC
+                    """, (result['subscription_id'],))
+
+                    invoices = cur.fetchall()
+
+                    if invoices:
+                        return {
+                            "success": True,
+                            "invoices": invoices
+                        }
+    except Exception as e:
+        logger.error(f"Error fetching invoices: {str(e)}")
+        # Fall through to default response
+
+    # Default/placeholder response if no invoices found or error
     return {
         "success": True,
-        "message": "This is a placeholder for retrieving invoices",
+        "message": "No invoices found for your account",
         "invoices": []
     }
 
