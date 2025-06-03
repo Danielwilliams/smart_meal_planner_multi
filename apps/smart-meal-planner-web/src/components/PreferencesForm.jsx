@@ -39,6 +39,8 @@ const PreferencesForm = ({
   setTimeConstraints,
   prepPreferences,
   setPrepPreferences,
+  preferredProteins,
+  setPreferredProteins,
   loading,
   message,
   error,
@@ -166,6 +168,138 @@ const PreferencesForm = ({
 
       <Divider sx={{ my: 3 }} />
 
+      {/* Preferred Proteins */}
+      <Box sx={{ mt: 3, mb: 2 }}>
+        <Typography variant="subtitle1" gutterBottom>
+          Preferred Proteins
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Select the protein sources you prefer to see in your meals
+        </Typography>
+        
+        {/* Meat Proteins */}
+        <Box sx={{ mb: 3 }}>
+          <Typography variant="subtitle2" gutterBottom sx={{ color: 'primary.main' }}>
+            Meat
+          </Typography>
+          <Grid container spacing={2}>
+            {Object.entries(preferredProteins?.meat || {}).map(([protein, selected]) => (
+              <Grid item xs={6} sm={4} key={protein}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={selected}
+                      onChange={(e) => {
+                        setPreferredProteins(prev => ({
+                          ...prev,
+                          meat: {
+                            ...prev.meat,
+                            [protein]: e.target.checked
+                          }
+                        }));
+                      }}
+                    />
+                  }
+                  label={protein.charAt(0).toUpperCase() + protein.slice(1)}
+                />
+              </Grid>
+            ))}
+          </Grid>
+        </Box>
+
+        {/* Seafood Proteins */}
+        <Box sx={{ mb: 3 }}>
+          <Typography variant="subtitle2" gutterBottom sx={{ color: 'primary.main' }}>
+            Seafood
+          </Typography>
+          <Grid container spacing={2}>
+            {Object.entries(preferredProteins?.seafood || {}).map(([protein, selected]) => (
+              <Grid item xs={6} sm={4} key={protein}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={selected}
+                      onChange={(e) => {
+                        setPreferredProteins(prev => ({
+                          ...prev,
+                          seafood: {
+                            ...prev.seafood,
+                            [protein]: e.target.checked
+                          }
+                        }));
+                      }}
+                    />
+                  }
+                  label={protein.charAt(0).toUpperCase() + protein.slice(1)}
+                />
+              </Grid>
+            ))}
+          </Grid>
+        </Box>
+
+        {/* Vegetarian/Vegan Proteins */}
+        <Box sx={{ mb: 3 }}>
+          <Typography variant="subtitle2" gutterBottom sx={{ color: 'primary.main' }}>
+            Vegetarian/Vegan
+          </Typography>
+          <Grid container spacing={2}>
+            {Object.entries(preferredProteins?.vegetarian_vegan || {}).map(([protein, selected]) => (
+              <Grid item xs={6} sm={4} key={protein}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={selected}
+                      onChange={(e) => {
+                        setPreferredProteins(prev => ({
+                          ...prev,
+                          vegetarian_vegan: {
+                            ...prev.vegetarian_vegan,
+                            [protein]: e.target.checked
+                          }
+                        }));
+                      }}
+                    />
+                  }
+                  label={protein.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                />
+              </Grid>
+            ))}
+          </Grid>
+        </Box>
+
+        {/* Other Proteins */}
+        <Box sx={{ mb: 3 }}>
+          <Typography variant="subtitle2" gutterBottom sx={{ color: 'primary.main' }}>
+            Other
+          </Typography>
+          <Grid container spacing={2}>
+            {Object.entries(preferredProteins?.other || {}).map(([protein, selected]) => (
+              <Grid item xs={6} sm={4} key={protein}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={selected}
+                      onChange={(e) => {
+                        setPreferredProteins(prev => ({
+                          ...prev,
+                          other: {
+                            ...prev.other,
+                            [protein]: e.target.checked
+                          }
+                        }));
+                      }}
+                    />
+                  }
+                  label={protein.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                />
+              </Grid>
+            ))}
+          </Grid>
+        </Box>
+      </Box>
+
+      <Divider sx={{ my: 3 }} />
+
       {/* Dietary Restrictions */}
       <TextField
         fullWidth
@@ -180,8 +314,8 @@ const PreferencesForm = ({
             dietaryRestrictions: e.target.value
           }));
         }}
-        placeholder="e.g., No nuts, shellfish allergy, etc."
-        helperText="Please list any allergies or dietary restrictions"
+        placeholder="e.g., No nuts, shellfish allergy, Low Sodium, etc."
+        helperText="Please list any allergies or dietary restrictions (include Low Sodium if needed)"
       />
 
       {/* Disliked Ingredients */}

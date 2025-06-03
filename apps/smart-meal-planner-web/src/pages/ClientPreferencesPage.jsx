@@ -163,6 +163,41 @@ function ClientPreferencesPage() {
     'minimal-dishes': false
   });
 
+  const [preferredProteins, setPreferredProteins] = useState({
+    meat: {
+      chicken: false,
+      beef: false,
+      pork: false,
+      turkey: false,
+      lamb: false,
+      bison: false
+    },
+    seafood: {
+      salmon: false,
+      tuna: false,
+      cod: false,
+      shrimp: false,
+      crab: false,
+      mussels: false
+    },
+    vegetarian_vegan: {
+      tofu: false,
+      tempeh: false,
+      seitan: false,
+      lentils: false,
+      chickpeas: false,
+      black_beans: false
+    },
+    other: {
+      eggs: false,
+      dairy_milk: false,
+      dairy_yogurt: false,
+      protein_powder_whey: false,
+      protein_powder_pea: false,
+      quinoa: false
+    }
+  });
+
   // Fetch client data and preferences
   useEffect(() => {
     const fetchClientData = async () => {
@@ -262,6 +297,10 @@ function ClientPreferencesPage() {
           if (clientPrefs.prepPreferences || clientPrefs.prep_preferences) {
             setPrepPreferences(clientPrefs.prepPreferences || clientPrefs.prep_preferences);
           }
+          
+          if (clientPrefs.preferredProteins || clientPrefs.preferred_proteins) {
+            setPreferredProteins(clientPrefs.preferredProteins || clientPrefs.preferred_proteins);
+          }
         } else {
           // Client has no existing preferences - load organization defaults
           try {
@@ -350,6 +389,10 @@ function ClientPreferencesPage() {
                 
                 if (orgDefaults.prepPreferences) {
                   setPrepPreferences(orgDefaults.prepPreferences);
+                }
+                
+                if (orgDefaults.preferredProteins) {
+                  setPreferredProteins(orgDefaults.preferredProteins);
                 }
                 
                 console.log('Organization defaults applied successfully');
@@ -500,6 +543,7 @@ function ClientPreferencesPage() {
         mealTimePreferences: mealTimePreferences,
         timeConstraints: timeConstraints,
         prepPreferences: prepPreferences,
+        preferredProteins: preferredProteins,
         
         // Legacy snake_case for backward compatibility
         diet_type: selectedDietTypes,
@@ -519,6 +563,7 @@ function ClientPreferencesPage() {
         meal_time_preferences: mealTimePreferences,
         time_constraints: timeConstraints,
         prep_preferences: prepPreferences,
+        preferred_proteins: preferredProteins,
         kroger_username: preferences.krogerUsername,
         kroger_password: preferences.krogerPassword
       };
@@ -566,6 +611,8 @@ function ClientPreferencesPage() {
           setTimeConstraints={setTimeConstraints}
           prepPreferences={prepPreferences}
           setPrepPreferences={setPrepPreferences}
+          preferredProteins={preferredProteins}
+          setPreferredProteins={setPreferredProteins}
           loading={saving}
           message={success}
           error={error}

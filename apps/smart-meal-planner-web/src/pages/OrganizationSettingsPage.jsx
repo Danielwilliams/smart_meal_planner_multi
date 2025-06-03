@@ -178,6 +178,41 @@ export default function OrganizationSettingsPage() {
     'minimal-dishes': false
   });
 
+  const [preferredProteins, setPreferredProteins] = useState({
+    meat: {
+      chicken: false,
+      beef: false,
+      pork: false,
+      turkey: false,
+      lamb: false,
+      bison: false
+    },
+    seafood: {
+      salmon: false,
+      tuna: false,
+      cod: false,
+      shrimp: false,
+      crab: false,
+      mussels: false
+    },
+    vegetarian_vegan: {
+      tofu: false,
+      tempeh: false,
+      seitan: false,
+      lentils: false,
+      chickpeas: false,
+      black_beans: false
+    },
+    other: {
+      eggs: false,
+      dairy_milk: false,
+      dairy_yogurt: false,
+      protein_powder_whey: false,
+      protein_powder_pea: false,
+      quinoa: false
+    }
+  });
+
   useEffect(() => {
     if (organization?.id) {
       loadOrganizationSettings();
@@ -207,6 +242,7 @@ export default function OrganizationSettingsPage() {
         if (defaults.mealTimePreferences) setMealTimePreferences(defaults.mealTimePreferences);
         if (defaults.timeConstraints) setTimeConstraints(defaults.timeConstraints);
         if (defaults.prepPreferences) setPrepPreferences(defaults.prepPreferences);
+        if (defaults.preferredProteins) setPreferredProteins(defaults.preferredProteins);
       }
       
     } catch (err) {
@@ -236,7 +272,8 @@ export default function OrganizationSettingsPage() {
           recipeTypePreferences,
           mealTimePreferences,
           timeConstraints,
-          prepPreferences
+          prepPreferences,
+          preferredProteins
         }
       };
 
@@ -347,6 +384,8 @@ export default function OrganizationSettingsPage() {
             setTimeConstraints={setTimeConstraints}
             prepPreferences={prepPreferences}
             setPrepPreferences={setPrepPreferences}
+            preferredProteins={preferredProteins}
+            setPreferredProteins={setPreferredProteins}
             loading={saving}
             message=""
             error=""
