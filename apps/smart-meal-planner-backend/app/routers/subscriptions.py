@@ -695,7 +695,11 @@ async def stripe_webhook_handler(request: Request):
     """
     Handle Stripe webhook events for subscription lifecycle
     """
+    logger.info("🔔 Received Stripe webhook - processing...")
+    logger.info(f"Request headers: {dict(request.headers)}")
+
     if not ENABLE_SUBSCRIPTION_FEATURES or not stripe:
+        logger.error("❌ Stripe integration is not available - check ENABLE_SUBSCRIPTION_FEATURES and stripe module")
         return JSONResponse(
             status_code=503,
             content={"detail": "Stripe integration is not available"}
@@ -704,6 +708,7 @@ async def stripe_webhook_handler(request: Request):
     # Get the webhook signature from the request headers
     signature = request.headers.get("stripe-signature")
     if not signature:
+        logger.error("❌ Missing Stripe signature in webhook request")
         return JSONResponse(
             status_code=400,
             content={"detail": "Missing Stripe signature"}
@@ -711,8 +716,9 @@ async def stripe_webhook_handler(request: Request):
 
     # Get the webhook secret
     webhook_secret = STRIPE_WEBHOOK_SECRET
+    logger.info(f"🔑 Webhook secret exists: {bool(webhook_secret)}")
     if not webhook_secret:
-        logger.error("Stripe webhook secret not configured")
+        logger.error("❌ Stripe webhook secret not configured - check STRIPE_WEBHOOK_SECRET env variable")
         return JSONResponse(
             status_code=500,
             content={"detail": "Webhook not configured"}
@@ -721,22 +727,29 @@ async def stripe_webhook_handler(request: Request):
     # Get the request body
     try:
         payload = await request.body()
+        logger.info(f"📦 Webhook payload received (first 100 chars): {payload[:100]}")
 
         # Verify the event using the signature and secret
         try:
+            logger.info(f"🔒 Attempting to verify webhook signature...")
             event = stripe.Webhook.construct_event(
                 payload, signature, webhook_secret
             )
+            logger.info(f"✅ Webhook signature verified successfully!")
         except ValueError as e:
             # Invalid payload
-            logger.error(f"Invalid webhook payload: {str(e)}")
+            logger.error(f"❌ Invalid webhook payload: {str(e)}")
+            # Log the full payload for debugging
+            logger.error(f"Full payload: {payload}")
             return JSONResponse(
                 status_code=400,
                 content={"detail": "Invalid payload"}
             )
         except stripe.error.SignatureVerificationError as e:
             # Invalid signature
-            logger.error(f"Invalid webhook signature: {str(e)}")
+            logger.error(f"❌ Invalid webhook signature: {str(e)}")
+            logger.error(f"Provided signature: {signature}")
+            logger.error(f"Used webhook secret (first 4 chars): {webhook_secret[:4]}***")
             return JSONResponse(
                 status_code=400,
                 content={"detail": "Invalid signature"}
@@ -747,7 +760,56 @@ async def stripe_webhook_handler(request: Request):
         event_type = event.type
         event_data = event.data.object
 
-        logger.info(f"Received Stripe webhook event: {event_type} ({event_id})")
+        logger.info(f"🎯 Received Stripe webhook event: {event_type} ({event_id})")
+        logger.info(f"📅 Event timestamp: {datetime.now().isoformat()}")
+
+        # First log event to database regardless of type
+        try:
+            # Record the event in our database for audit/debugging
+            with get_db_cursor(dict_cursor=False, autocommit=True) as (cur, conn):
+                # Try to find associated subscription
+                sub_id = None
+                if hasattr(event_data, 'subscription'):
+                    # Try to look up by stripe_subscription_id
+                    cur.execute("""
+                        SELECT id FROM subscriptions
+                        WHERE stripe_subscription_id = %s
+                    """, (event_data.subscription,))
+                    result = cur.fetchone()
+                    if result:
+                        sub_id = result[0]
+
+                # If no subscription found but customer exists, try by customer
+                if not sub_id and hasattr(event_data, 'customer'):
+                    cur.execute("""
+                        SELECT id FROM subscriptions
+                        WHERE stripe_customer_id = %s
+                    """, (event_data.customer,))
+                    result = cur.fetchone()
+                    if result:
+                        sub_id = result[0]
+
+                # Log the event regardless of whether we have a subscription ID
+                # Use a placeholder ID of -1 if we don't have a real one yet
+                cur.execute("""
+                    INSERT INTO subscription_events (
+                        subscription_id, event_type, event_data, payment_provider,
+                        provider_event_id, processed
+                    ) VALUES (%s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                """, (
+                    sub_id or -1,  # Use -1 as placeholder if no subscription yet
+                    event_type,
+                    str(event_data),
+                    'stripe',
+                    event_id,
+                    False  # Mark as unprocessed initially
+                ))
+                webhook_event_id = cur.fetchone()[0]
+                logger.info(f"📝 Recorded webhook event in database with ID: {webhook_event_id}")
+        except Exception as e:
+            logger.error(f"❌ Failed to log webhook event to database: {str(e)}", exc_info=True)
+            # Continue processing even if logging fails
 
         # Handle different event types
         if event_type == "checkout.session.completed":
@@ -772,13 +834,48 @@ async def stripe_webhook_handler(request: Request):
             # Other events - just log them
             logger.info(f"Unhandled Stripe event type: {event_type}")
 
+        # Always mark the webhook as processed and return success, even if we didn't handle it
+        # This prevents Stripe from retrying and potentially creating duplicate records
+        try:
+            with get_db_cursor(dict_cursor=False, autocommit=True) as (cur, conn):
+                # Update the event as processed if we recorded it earlier
+                if 'webhook_event_id' in locals():
+                    cur.execute("""
+                        UPDATE subscription_events
+                        SET processed = TRUE, processed_at = CURRENT_TIMESTAMP
+                        WHERE id = %s
+                    """, (webhook_event_id,))
+                    logger.info(f"✅ Marked webhook event {webhook_event_id} as processed")
+        except Exception as e:
+            logger.error(f"❌ Failed to mark webhook as processed: {str(e)}")
+
         # Return a success response
+        logger.info("🎉 Webhook processing completed successfully")
         return JSONResponse(
             status_code=200,
             content={"detail": "Webhook processed successfully"}
         )
     except Exception as e:
-        logger.error(f"Error processing Stripe webhook: {str(e)}", exc_info=True)
+        logger.error(f"❌ Error processing Stripe webhook: {str(e)}", exc_info=True)
+
+        # Try to log the error to the database for debugging
+        try:
+            with get_db_cursor(dict_cursor=False, autocommit=True) as (cur, conn):
+                cur.execute("""
+                    INSERT INTO subscription_events (
+                        subscription_id, event_type, event_data, payment_provider,
+                        processed
+                    ) VALUES (%s, %s, %s, %s, %s)
+                """, (
+                    -1,  # Unknown subscription
+                    "webhook_error",
+                    str(e),
+                    'stripe',
+                    False
+                ))
+        except Exception as log_error:
+            logger.error(f"❌ Failed to log webhook error: {str(log_error)}")
+
         return JSONResponse(
             status_code=500,
             content={"detail": f"Error processing webhook: {str(e)}"}
@@ -788,7 +885,132 @@ async def stripe_webhook_handler(request: Request):
 async def handle_checkout_completed(event_data):
     """Handle checkout.session.completed event"""
     try:
-        logger.info(f"Processing checkout.session.completed: {event_data.id}")
+        logger.info(f"🛒 Processing checkout.session.completed: {event_data.id}")
+        logger.info(f"⚠️ First, check if subscription tables exist...")
+
+        # Check if subscription tables exist
+        with get_db_cursor(dict_cursor=False, autocommit=True) as (cur, conn):
+            try:
+                # Check if subscriptions table exists
+                cur.execute("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables
+                        WHERE table_schema = 'public'
+                        AND table_name = 'subscriptions'
+                    )
+                """)
+                subscriptions_table_exists = cur.fetchone()[0]
+
+                # Check if subscription_events table exists
+                cur.execute("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables
+                        WHERE table_schema = 'public'
+                        AND table_name = 'subscription_events'
+                    )
+                """)
+                events_table_exists = cur.fetchone()[0]
+
+                logger.info(f"📊 Database tables check - subscriptions: {subscriptions_table_exists}, events: {events_table_exists}")
+
+                # If tables don't exist, create them
+                if not subscriptions_table_exists:
+                    logger.warning("⚠️ Subscriptions table does not exist - creating it now")
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS subscriptions (
+                            id SERIAL PRIMARY KEY,
+                            user_id INTEGER,
+                            organization_id INTEGER,
+                            subscription_type VARCHAR(50) NOT NULL,
+                            payment_provider VARCHAR(50) NOT NULL,
+                            status VARCHAR(50) NOT NULL DEFAULT 'active',
+                            monthly_amount DECIMAL(10, 2) NOT NULL,
+                            currency VARCHAR(10) NOT NULL DEFAULT 'USD',
+                            current_period_start TIMESTAMP WITH TIME ZONE,
+                            current_period_end TIMESTAMP WITH TIME ZONE,
+                            trial_start TIMESTAMP WITH TIME ZONE,
+                            trial_end TIMESTAMP WITH TIME ZONE,
+                            canceled_at TIMESTAMP WITH TIME ZONE,
+                            cancel_at_period_end BOOLEAN DEFAULT FALSE,
+                            stripe_customer_id VARCHAR(255),
+                            stripe_subscription_id VARCHAR(255),
+                            stripe_price_id VARCHAR(255),
+                            stripe_status VARCHAR(50),
+                            paypal_subscription_id VARCHAR(255),
+                            paypal_plan_id VARCHAR(255),
+                            paypal_status VARCHAR(50),
+                            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                            updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                            CONSTRAINT subscriptions_user_or_org CHECK (
+                                (user_id IS NOT NULL AND organization_id IS NULL) OR
+                                (user_id IS NULL AND organization_id IS NOT NULL)
+                            )
+                        )
+                    """)
+                    logger.info("✅ Created subscriptions table")
+
+                if not events_table_exists:
+                    logger.warning("⚠️ Subscription_events table does not exist - creating it now")
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS subscription_events (
+                            id SERIAL PRIMARY KEY,
+                            subscription_id INTEGER,
+                            event_type VARCHAR(100) NOT NULL,
+                            event_data TEXT NOT NULL,
+                            payment_provider VARCHAR(50) NOT NULL,
+                            provider_event_id VARCHAR(255),
+                            processed BOOLEAN DEFAULT FALSE,
+                            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                            processed_at TIMESTAMP WITH TIME ZONE
+                        )
+                    """)
+                    logger.info("✅ Created subscription_events table")
+
+                # Also ensure invoices table exists
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS invoices (
+                        id SERIAL PRIMARY KEY,
+                        subscription_id INTEGER,
+                        payment_provider VARCHAR(50) NOT NULL,
+                        invoice_number VARCHAR(100) NOT NULL,
+                        status VARCHAR(50) NOT NULL,
+                        amount_due DECIMAL(10, 2) NOT NULL,
+                        amount_paid DECIMAL(10, 2),
+                        currency VARCHAR(10) NOT NULL DEFAULT 'USD',
+                        period_start TIMESTAMP WITH TIME ZONE,
+                        period_end TIMESTAMP WITH TIME ZONE,
+                        due_date TIMESTAMP WITH TIME ZONE,
+                        paid_at TIMESTAMP WITH TIME ZONE,
+                        stripe_invoice_id VARCHAR(255),
+                        paypal_invoice_id VARCHAR(255),
+                        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+
+                # Add subscription_id column to user_profiles if it doesn't exist
+                try:
+                    cur.execute("""
+                        ALTER TABLE user_profiles
+                        ADD COLUMN IF NOT EXISTS subscription_id INTEGER
+                    """)
+                except Exception as e:
+                    logger.warning(f"⚠️ Could not add subscription_id to user_profiles: {str(e)}")
+
+                # Add subscription_id column to organizations if it doesn't exist
+                try:
+                    cur.execute("""
+                        ALTER TABLE organizations
+                        ADD COLUMN IF NOT EXISTS subscription_id INTEGER
+                    """)
+                except Exception as e:
+                    logger.warning(f"⚠️ Could not add subscription_id to organizations: {str(e)}")
+
+            except Exception as e:
+                logger.error(f"❌ Error checking/creating subscription tables: {str(e)}")
+                # Continue anyway - we'll attempt to process the event
+
+        logger.info(f"🔄 Now processing checkout.session.completed: {event_data.id}")
 
         # Extract metadata
         metadata = event_data.get("metadata", {})
