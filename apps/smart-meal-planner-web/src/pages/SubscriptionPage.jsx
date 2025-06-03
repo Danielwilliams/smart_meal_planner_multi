@@ -36,6 +36,7 @@ const SubscriptionPage = () => {
   const [subscription, setSubscription] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [successMessage, setSuccessMessage] = useState(null);
   const [activeTab, setActiveTab] = useState(0);
   const [invoices, setInvoices] = useState([]);
   const [openCancelDialog, setOpenCancelDialog] = useState(false);
@@ -68,8 +69,22 @@ const SubscriptionPage = () => {
     fetchSubscriptionData();
   }, [isAuthenticated, navigate]);
   
+  // Auto-clear success message after 5 seconds
+  useEffect(() => {
+    if (successMessage) {
+      const timer = setTimeout(() => {
+        setSuccessMessage(null);
+      }, 5000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [successMessage]);
+  
   const handleTabChange = (event, newValue) => {
     setActiveTab(newValue);
+    // Clear messages when switching tabs
+    setError(null);
+    setSuccessMessage(null);
   };
   
   const handleSubscribe = async (subscriptionType) => {
@@ -104,7 +119,17 @@ const SubscriptionPage = () => {
   const handleCancelSubscription = async () => {
     try {
       setLoading(true);
-      await subscriptionService.cancelSubscription(true); // Cancel at period end
+      setError(null); // Clear any previous errors
+      setSuccessMessage(null); // Clear any previous success messages
+      
+      const response = await subscriptionService.cancelSubscription(true); // Cancel at period end
+      
+      // Display the success message from the backend
+      if (response && response.message) {
+        setSuccessMessage(response.message);
+      } else {
+        setSuccessMessage('Your subscription has been successfully canceled.');
+      }
       
       // Refresh subscription data
       const subscriptionData = await subscriptionService.getSubscriptionStatus();
@@ -114,6 +139,7 @@ const SubscriptionPage = () => {
     } catch (err) {
       console.error('Cancel subscription error:', err);
       setError('Failed to cancel subscription. Please try again later.');
+      setSuccessMessage(null); // Clear success message on error
     } finally {
       setLoading(false);
     }
@@ -415,6 +441,12 @@ const SubscriptionPage = () => {
       {error && (
         <Alert severity="error" sx={{ mb: 3 }}>
           {error}
+        </Alert>
+      )}
+      
+      {successMessage && (
+        <Alert severity="success" sx={{ mb: 3 }}>
+          {successMessage}
         </Alert>
       )}
       
