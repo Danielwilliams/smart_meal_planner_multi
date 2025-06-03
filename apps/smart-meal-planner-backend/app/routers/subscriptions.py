@@ -1750,25 +1750,54 @@ async def cancel_user_subscription(
                 )
 
             # Cancel the subscription in Stripe
-            stripe_subscription = stripe.Subscription.modify(
-                stripe_subscription_id,
-                cancel_at_period_end=cancel_at_period_end
-            )
+            try:
+                stripe_subscription = stripe.Subscription.modify(
+                    stripe_subscription_id,
+                    cancel_at_period_end=cancel_at_period_end
+                )
 
-            # Update our database
-            from app.models.subscription import cancel_subscription
-            cancel_subscription(subscription_id, cancel_at_period_end=cancel_at_period_end)
+                # Update our database
+                from app.models.subscription import cancel_subscription
+                cancel_subscription(subscription_id, cancel_at_period_end=cancel_at_period_end)
 
-            if cancel_at_period_end:
-                message = "Your subscription will be canceled at the end of the billing period"
-            else:
-                message = "Your subscription has been canceled immediately"
+                if cancel_at_period_end:
+                    message = "Your subscription will be canceled at the end of the billing period"
+                else:
+                    message = "Your subscription has been canceled immediately"
 
-            return {
-                "success": True,
-                "message": message,
-                "cancel_at_period_end": cancel_at_period_end
-            }
+                return {
+                    "success": True,
+                    "message": message,
+                    "cancel_at_period_end": cancel_at_period_end
+                }
+            
+            except stripe.error.InvalidRequestError as invalid_err:
+                # Handle case where customer or subscription no longer exists in Stripe
+                if "No such customer" in str(invalid_err) or "No such subscription" in str(invalid_err):
+                    logger.warning(f"Stripe resource no longer exists, updating database status: {str(invalid_err)}")
+                    
+                    # Update our database to reflect that the subscription is already canceled
+                    from app.models.subscription import cancel_subscription
+                    cancel_subscription(subscription_id, cancel_at_period_end=False)
+                    
+                    # Also clear the stripe references
+                    cur.execute("""
+                        UPDATE subscriptions 
+                        SET stripe_customer_id = NULL, stripe_subscription_id = NULL, status = 'canceled'
+                        WHERE id = %s
+                    """, (subscription_id,))
+                    
+                    return {
+                        "success": True,
+                        "message": "Your subscription has been canceled (was already canceled in Stripe)",
+                        "cancel_at_period_end": False
+                    }
+                else:
+                    logger.error(f"Stripe invalid request error: {str(invalid_err)}")
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Invalid request to payment processor: {str(invalid_err)}"
+                    )
 
     except stripe.error.StripeError as e:
         logger.error(f"Stripe error canceling subscription: {str(e)}")
@@ -1956,6 +1985,28 @@ async def get_user_invoices(user = Depends(get_user_from_token)):
             logger.info(f"Successfully fetched {len(formatted_invoices)} invoices from Stripe")
             return formatted_invoices
 
+        except stripe.error.InvalidRequestError as invalid_err:
+            # Handle case where customer no longer exists in Stripe
+            if "No such customer" in str(invalid_err):
+                logger.warning(f"Customer {stripe_customer_id} no longer exists in Stripe, clearing database reference")
+                # Clear the stripe_customer_id in our database
+                with get_db_cursor(dict_cursor=True, autocommit=True) as (cur, conn):
+                    if organization_id:
+                        cur.execute("""
+                            UPDATE subscriptions 
+                            SET stripe_customer_id = NULL, status = 'inactive'
+                            WHERE organization_id = %s
+                        """, (organization_id,))
+                    else:
+                        cur.execute("""
+                            UPDATE subscriptions 
+                            SET stripe_customer_id = NULL, status = 'inactive'
+                            WHERE user_id = %s
+                        """, (user_id,))
+                return default_response
+            else:
+                logger.error(f"Stripe invalid request error: {str(invalid_err)}")
+                return default_response
         except stripe.error.StripeError as stripe_err:
             logger.error(f"Stripe error fetching invoices: {str(stripe_err)}")
             return default_response
