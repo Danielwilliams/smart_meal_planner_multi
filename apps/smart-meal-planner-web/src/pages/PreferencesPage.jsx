@@ -52,6 +52,7 @@ function PreferencesPage() {
       Paleo: false,
       'Low-Carb': false,
       'Low-Fat': false,
+      'Low-Sodium': false,
       'Gluten-Free': false,
       'Dairy-Free': false,
       Other: false
