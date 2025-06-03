@@ -54,16 +54,16 @@ def check_subscriptions_enabled():
 async def subscription_status(user = Depends(get_user_from_token)):
     """
     Get the current user's subscription status
-    
+
     Returns subscription details if active, or info about available plans if not
     """
     if not ENABLE_SUBSCRIPTION_FEATURES:
         return await subscription_disabled()
-        
+
     try:
         user_id = user.get('user_id')
         organization_id = user.get('organization_id')
-        
+
         # Check if the user is part of an organization as a client
         # (in this case, they're covered by the organization's subscription)
         is_client = False
@@ -73,37 +73,39 @@ async def subscription_status(user = Depends(get_user_from_token)):
             with get_db_cursor() as (cur, conn):
                 # Enable autocommit to prevent transaction blocking during menu generation
                 conn.autocommit = True
-                
+
                 cur.execute("""
                     SELECT organization_id FROM organization_clients
                     WHERE client_id = %s
                 """, (user_id,))
-                
+
                 org_result = cur.fetchone()
                 if org_result:
                     organization_id = org_result[0]
                     is_client = True
-        
+
         # Get subscription details
         subscription = None
-        
+
         if organization_id:
             # For organization members or clients, check the organization's subscription
             subscription = get_subscription_details(organization_id=organization_id)
         elif user_id:
             # For individual users, check their personal subscription
             subscription = get_subscription_details(user_id=user_id)
-        
+
         if subscription:
-            # Format the response
+            # Create a DTO with default values for all required fields
             result = {
                 "has_subscription": True,
-                "subscription_type": subscription['subscription_type'],
-                "status": subscription['status'],
-                "is_active": subscription['is_active'],
-                "is_free_tier": subscription['subscription_type'] == 'free'
+                "subscription_type": subscription.get('subscription_type', 'free'),
+                "status": subscription.get('status', 'unknown'),
+                "is_active": subscription.get('is_active', False),
+                "is_free_tier": subscription.get('subscription_type', 'free') == 'free',
+                "currency": subscription.get('currency', 'usd'),
+                "monthly_amount": float(subscription.get('monthly_amount', 0))
             }
-            
+
             # Add expiration details if available
             if subscription.get('trial_end'):
                 result["expires_at"] = subscription['trial_end'].isoformat()
@@ -111,15 +113,15 @@ async def subscription_status(user = Depends(get_user_from_token)):
             elif subscription.get('current_period_end'):
                 result["renews_at"] = subscription['current_period_end'].isoformat()
                 result["days_remaining"] = subscription.get('days_remaining', 0)
-            
+
             # Add payment details if available
             if subscription.get('payment_display'):
                 result["payment_method"] = subscription['payment_display']
-            
+
             # Add organization context for clients
             if is_client:
                 result["provided_by_organization"] = True
-            
+
             return result
         else:
             # No subscription found
@@ -1772,6 +1774,80 @@ async def cancel_user_subscription(
             detail=f"Error canceling subscription: {str(e)}"
         )
 
+@router.get("/test-status-cases")
+async def test_invoice_status_cases(user = Depends(get_user_from_token)):
+    """
+    Test endpoint that returns invoices with various status values to test frontend handling
+    """
+    if not ENABLE_SUBSCRIPTION_FEATURES:
+        return await subscription_disabled()
+
+    # Create test invoices with various status values
+    test_invoices = [
+        {
+            "id": 1,
+            "subscription_id": 1,
+            "payment_provider": "stripe",
+            "invoice_number": "INV-TEST-001",
+            "status": "paid",
+            "amount_due": 7.99,
+            "amount_paid": 7.99,
+            "currency": "usd",
+            "period_start": datetime.now() - timedelta(days=30),
+            "period_end": datetime.now(),
+            "due_date": datetime.now() - timedelta(days=15),
+            "paid_at": datetime.now() - timedelta(days=15),
+            "stripe_invoice_id": "in_test_001",
+            "created_at": datetime.now() - timedelta(days=30),
+            "updated_at": datetime.now() - timedelta(days=15)
+        },
+        {
+            "id": 2,
+            "subscription_id": 1,
+            "payment_provider": "stripe",
+            "invoice_number": "INV-TEST-002",
+            "status": None,  # Test null status
+            "amount_due": 7.99,
+            "amount_paid": 0,
+            "currency": "usd",
+            "period_start": datetime.now() - timedelta(days=60),
+            "period_end": datetime.now() - timedelta(days=30),
+            "due_date": datetime.now() - timedelta(days=45),
+            "paid_at": None,
+            "stripe_invoice_id": "in_test_002",
+            "created_at": datetime.now() - timedelta(days=60),
+            "updated_at": datetime.now() - timedelta(days=60)
+        },
+        {
+            "id": 3,
+            "subscription_id": 1,
+            "payment_provider": "stripe",
+            "invoice_number": "INV-TEST-003",
+            "status": "unpaid",
+            "amount_due": 7.99,
+            "amount_paid": 0,
+            "currency": None,  # Test null currency
+            "period_start": datetime.now() - timedelta(days=90),
+            "period_end": datetime.now() - timedelta(days=60),
+            "due_date": datetime.now() - timedelta(days=75),
+            "paid_at": None,
+            "stripe_invoice_id": "in_test_003",
+            "created_at": datetime.now() - timedelta(days=90),
+            "updated_at": datetime.now() - timedelta(days=90)
+        }
+    ]
+
+    # Convert datetime objects to ISO format strings for JSON serialization
+    for invoice in test_invoices:
+        for key, value in invoice.items():
+            if isinstance(value, datetime):
+                invoice[key] = value.isoformat()
+
+    return {
+        "success": True,
+        "invoices": test_invoices
+    }
+
 @router.get("/invoices")
 @router.post("/invoices")  # Support both GET and POST for backward compatibility
 async def get_user_invoices(user = Depends(get_user_from_token)):
@@ -1834,9 +1910,40 @@ async def get_user_invoices(user = Depends(get_user_from_token)):
             invoices = cur.fetchall()
 
             if invoices:
+                # Create a function to sanitize invoice objects
+                def sanitize_invoice(invoice):
+                    # Start with a copy of the invoice
+                    safe_invoice = dict(invoice)
+
+                    # Add default values for all required fields that might be null
+                    field_defaults = {
+                        'status': 'unknown',
+                        'currency': 'usd',
+                        'amount_due': 0.0,
+                        'amount_paid': 0.0,
+                        'invoice_number': 'UNKNOWN',
+                        'payment_provider': 'unknown'
+                    }
+
+                    # Apply defaults for any missing or null fields
+                    for field, default_value in field_defaults.items():
+                        if field not in safe_invoice or safe_invoice[field] is None:
+                            safe_invoice[field] = default_value
+
+                    # Ensure numeric fields are proper types
+                    if not isinstance(safe_invoice['amount_due'], (int, float)):
+                        safe_invoice['amount_due'] = 0.0
+                    if not isinstance(safe_invoice['amount_paid'], (int, float)):
+                        safe_invoice['amount_paid'] = 0.0
+
+                    return safe_invoice
+
+                # Sanitize all invoices
+                sanitized_invoices = [sanitize_invoice(invoice) for invoice in invoices]
+
                 return {
                     "success": True,
-                    "invoices": invoices
+                    "invoices": sanitized_invoices
                 }
             else:
                 return default_response

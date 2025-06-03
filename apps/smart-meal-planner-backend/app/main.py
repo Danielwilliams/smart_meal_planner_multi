@@ -5,6 +5,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 
 # Import S3 helper for initialization
@@ -130,8 +131,10 @@ def create_app() -> FastAPI:
     app.include_router(instacart_cart.router)
     app.include_router(instacart_status.router)
 
-    # Only include debug router in development environment
+    # Mount static files directory
+    app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
+    # Only include debug router in development environment
     app.include_router(instacart_debug.router)
     app.include_router(kroger_auth.router)
     app.include_router(grocery_list.router)
