@@ -1116,7 +1116,38 @@ function MenuDisplayPage() {
                               </Typography>
                             </li>
                           ))}
-                        </ul>               
+                        </ul>
+
+                        {/* Add instructions section for snacks */}
+                        {snack.instructions && snack.instructions.length > 0 && (
+                          <>
+                            <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                              <strong>Instructions:</strong>
+                            </Typography>
+                            {Array.isArray(snack.instructions) ? (
+                              <ol style={{
+                                margin: '8px 0',
+                                paddingLeft: '20px',
+                                wordBreak: 'break-word'
+                              }}>
+                                {snack.instructions.map((step, idx) => {
+                                  // Remove any leading numbers and dots from the step
+                                  const cleanStep = step.replace(/^\d+\.\s*/, '');
+                                  return (
+                                    <li key={idx}>
+                                      <Typography variant="body2">{cleanStep}</Typography>
+                                    </li>
+                                  );
+                                })}
+                              </ol>
+                            ) : (
+                              <Typography variant="body2" sx={{ mt: 1 }}>
+                                {snack.instructions}
+                              </Typography>
+                            )}
+                          </>
+                        )}
+
                         {snack.macros && (
                           <Box sx={{ 
                         mt: 2, 
