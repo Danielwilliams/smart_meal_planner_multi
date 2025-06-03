@@ -71,3 +71,4 @@ test-stripe-webhook.sh
 trigger-test-events.sh
 standalone_stripe_test.py
 OPENAI_SERVER_OPTIMIZATION.md
+apps/smart-meal-planner-backend/SNACK_INSTRUCTIONS_ENHANCEMENT.md

@@ -1,5 +1,13 @@
 # Smart Meal Planner Changelog
 
+## Recent Enhancements
+
+### Snack Instructions Enhancement (June 3, 2025)
+- Added automatic instruction generation for complex snacks
+- Improved user experience by providing clear preparation steps for all snacks
+- Tailored instructions based on ingredient type and snack complexity
+- See [SNACK_INSTRUCTIONS_ENHANCEMENT.md](/apps/smart-meal-planner-backend/SNACK_INSTRUCTIONS_ENHANCEMENT.md) for details
+
 ## Major Fixes and Improvements
 
 ### Database Connection Handling

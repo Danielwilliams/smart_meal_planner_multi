@@ -950,13 +950,20 @@ IMPORTANT: Self-validate your response before finalizing. Ensure no disliked ing
 @router.post("/generate")
 def generate_meal_plan_variety(req: GenerateMealPlanRequest, job_id: str = None):
     """Generate a meal plan - tries optimized method first, falls back to legacy if needed"""
-    
+
     if USE_OPTIMIZED_GENERATION:
         try:
             logger.info(f"🚀 OPTIMIZATION: Attempting optimized single-request generation for user {req.user_id}")
             result = generate_meal_plan_single_request(req, job_id)
             logger.info(f"✅ OPTIMIZATION: Single-request generation successful for user {req.user_id}")
-            return result
+
+            # Import here to avoid circular imports
+            from ..utils.snack_enhancer import enhance_meal_plan_snacks
+
+            # Enhance snacks with instructions
+            logger.info(f"🍎 Enhancing snacks with instructions for user {req.user_id}")
+            enhanced_result = enhance_meal_plan_snacks(result)
+            return enhanced_result
         except Exception as e:
             logger.error(f"❌ OPTIMIZATION: Single-request generation failed: {str(e)}")
             logger.error(f"❌ OPTIMIZATION: Exception type: {type(e).__name__}")
@@ -971,10 +978,26 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest, job_id: str = None)
                     "message": "Optimized method failed, retrying with legacy method..."
                 }, force_db_update=False)
             
-            return generate_meal_plan_legacy(req, job_id)
+            legacy_result = generate_meal_plan_legacy(req, job_id)
+            # Also enhance snacks in the legacy method result
+            try:
+                from ..utils.snack_enhancer import enhance_meal_plan_snacks
+                logger.info(f"🍎 Enhancing snacks with instructions (legacy fallback) for user {req.user_id}")
+                return enhance_meal_plan_snacks(legacy_result)
+            except Exception as snack_error:
+                logger.error(f"❌ Error enhancing snacks: {str(snack_error)}. Returning unenhanced meal plan.")
+                return legacy_result
     else:
         logger.info(f"Using legacy multi-request generation for user {req.user_id}")
-        return generate_meal_plan_legacy(req, job_id)
+        legacy_result = generate_meal_plan_legacy(req, job_id)
+        # Enhance snacks in the legacy method result
+        try:
+            from ..utils.snack_enhancer import enhance_meal_plan_snacks
+            logger.info(f"🍎 Enhancing snacks with instructions (legacy path) for user {req.user_id}")
+            return enhance_meal_plan_snacks(legacy_result)
+        except Exception as snack_error:
+            logger.error(f"❌ Error enhancing snacks: {str(snack_error)}. Returning unenhanced meal plan.")
+            return legacy_result
 
 @router.post("/generate-legacy")  
 def generate_meal_plan_legacy(req: GenerateMealPlanRequest, job_id: str = None):
