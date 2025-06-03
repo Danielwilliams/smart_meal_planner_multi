@@ -1041,10 +1041,17 @@ async def handle_checkout_completed(event_data):
         price_id = None
         monthly_amount = 0.0
 
-        if stripe_subscription.items.data:
-            price = stripe_subscription.items.data[0].price
-            price_id = price.id
-            monthly_amount = price.unit_amount / 100.0  # Convert from cents to dollars
+        # Handle different structures of stripe_subscription
+        if hasattr(stripe_subscription, 'items') and hasattr(stripe_subscription.items, 'data'):
+            # Normal structure
+            if stripe_subscription.items.data:
+                price = stripe_subscription.items.data[0].price
+                price_id = price.id
+                monthly_amount = price.unit_amount / 100.0  # Convert from cents to dollars
+        elif hasattr(stripe_subscription, 'plan'):
+            # Simplified structure or different API version
+            price_id = stripe_subscription.plan.id
+            monthly_amount = stripe_subscription.plan.amount / 100.0
 
         # Get the customer ID
         customer_id = stripe_subscription.customer
@@ -1111,7 +1118,8 @@ async def handle_checkout_completed(event_data):
 async def handle_subscription_created(event_data):
     """Handle customer.subscription.created event"""
     try:
-        logger.info(f"Processing subscription.created: {event_data.id}")
+        logger.info(f"🔔 Processing subscription.created: {event_data.id}")
+        subscription_db_id = None
 
         # This event is usually handled by checkout.session.completed,
         # but we can use it as a backup in case the checkout event is missed
@@ -1119,98 +1127,202 @@ async def handle_subscription_created(event_data):
         # Get customer ID and find the associated user/organization
         customer_id = event_data.get("customer")
         if not customer_id:
-            logger.error("No customer ID in subscription event")
+            logger.error("❌ No customer ID in subscription event")
             return
 
         # Try to find the subscription in our database by stripe_subscription_id
-        with get_db_cursor(dict_cursor=False, autocommit=True) as (cur, conn):
-            cur.execute("""
-                SELECT id, user_id, organization_id FROM subscriptions
-                WHERE stripe_subscription_id = %s
-            """, (event_data.id,))
+        try:
+            with get_db_cursor(dict_cursor=False, autocommit=True) as (cur, conn):
+                # Check if tables exist first
+                cur.execute("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables
+                        WHERE table_schema = 'public'
+                        AND table_name = 'subscriptions'
+                    )
+                """)
+                if not cur.fetchone()[0]:
+                    logger.error("❌ Subscriptions table does not exist! Creating it now.")
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS subscriptions (
+                            id SERIAL PRIMARY KEY,
+                            user_id INTEGER,
+                            organization_id INTEGER,
+                            subscription_type VARCHAR(50) NOT NULL,
+                            payment_provider VARCHAR(50) NOT NULL,
+                            status VARCHAR(50) NOT NULL DEFAULT 'active',
+                            monthly_amount DECIMAL(10, 2) NOT NULL,
+                            currency VARCHAR(10) NOT NULL DEFAULT 'USD',
+                            current_period_start TIMESTAMP WITH TIME ZONE,
+                            current_period_end TIMESTAMP WITH TIME ZONE,
+                            trial_start TIMESTAMP WITH TIME ZONE,
+                            trial_end TIMESTAMP WITH TIME ZONE,
+                            canceled_at TIMESTAMP WITH TIME ZONE,
+                            cancel_at_period_end BOOLEAN DEFAULT FALSE,
+                            stripe_customer_id VARCHAR(255),
+                            stripe_subscription_id VARCHAR(255),
+                            stripe_price_id VARCHAR(255),
+                            stripe_status VARCHAR(50),
+                            paypal_subscription_id VARCHAR(255),
+                            paypal_plan_id VARCHAR(255),
+                            paypal_status VARCHAR(50),
+                            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                            updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                        )
+                    """)
 
-            result = cur.fetchone()
-
-            if result:
-                # Subscription already exists, just log the event
-                subscription_id, user_id, organization_id = result
-                logger.info(f"Subscription {event_data.id} already exists: {subscription_id}")
-            else:
-                # Try to find the user or organization by customer ID
+                # Now try to find the subscription
                 cur.execute("""
                     SELECT id, user_id, organization_id FROM subscriptions
-                    WHERE stripe_customer_id = %s
-                """, (customer_id,))
+                    WHERE stripe_subscription_id = %s
+                """, (event_data.id,))
 
                 result = cur.fetchone()
 
                 if result:
-                    # Found a subscription with this customer ID
-                    subscription_id, user_id, organization_id = result
-
-                    # Update the subscription with the new subscription ID
-                    from app.models.subscription import update_subscription
-                    update_subscription(
-                        subscription_id=subscription_id,
-                        stripe_subscription_id=event_data.id
-                    )
-                    logger.info(f"Updated subscription {subscription_id} with new subscription ID: {event_data.id}")
+                    # Subscription already exists, just log the event
+                    subscription_db_id = result[0]
+                    user_id = result[1]
+                    organization_id = result[2]
+                    logger.info(f"✅ Subscription {event_data.id} already exists: {subscription_db_id}")
                 else:
-                    # We couldn't find a subscription, try to find the customer in Stripe
-                    try:
-                        stripe_customer = stripe.Customer.retrieve(customer_id)
-                        customer_metadata = stripe_customer.get("metadata", {})
+                    # Try to find the user or organization by customer ID
+                    cur.execute("""
+                        SELECT id, user_id, organization_id FROM subscriptions
+                        WHERE stripe_customer_id = %s
+                    """, (customer_id,))
 
-                        user_id = int(customer_metadata.get("user_id")) if customer_metadata.get("user_id") else None
-                        organization_id = int(customer_metadata.get("organization_id")) if customer_metadata.get("organization_id") else None
+                    result = cur.fetchone()
 
-                        if user_id or organization_id:
-                            # We found the user/organization, create a new subscription
-                            logger.info(f"Creating new subscription from metadata: user_id={user_id}, org_id={organization_id}")
+                    if result:
+                        # Found a subscription with this customer ID
+                        subscription_db_id = result[0]
+                        user_id = result[1]
+                        organization_id = result[2]
 
-                            # Extract subscription data
-                            stripe_status = event_data.status
-                            current_period_start = datetime.fromtimestamp(event_data.current_period_start)
-                            current_period_end = datetime.fromtimestamp(event_data.current_period_end)
-                            cancel_at_period_end = event_data.cancel_at_period_end
+                        # Update the subscription with the new subscription ID
+                        cur.execute("""
+                            UPDATE subscriptions
+                            SET stripe_subscription_id = %s,
+                                updated_at = CURRENT_TIMESTAMP
+                            WHERE id = %s
+                            RETURNING id
+                        """, (event_data.id, subscription_db_id))
 
-                            # Get the price ID and amount
-                            price_id = None
-                            monthly_amount = 0.0
+                        logger.info(f"✅ Updated subscription {subscription_db_id} with new subscription ID: {event_data.id}")
+                    else:
+                        # We couldn't find a subscription, try to find the customer in Stripe
+                        try:
+                            stripe_customer = stripe.Customer.retrieve(customer_id)
+                            customer_metadata = stripe_customer.get("metadata", {})
 
-                            if event_data.items.data:
-                                price = event_data.items.data[0].price
-                                price_id = price.id
-                                monthly_amount = price.unit_amount / 100.0  # Convert from cents to dollars
+                            user_id = int(customer_metadata.get("user_id")) if customer_metadata.get("user_id") else None
+                            organization_id = int(customer_metadata.get("organization_id")) if customer_metadata.get("organization_id") else None
 
-                            # Create subscription
-                            from app.models.subscription import create_subscription
-                            subscription_id = create_subscription(
-                                user_id=user_id,
-                                organization_id=organization_id,
-                                subscription_type=("individual" if user_id else "organization"),
-                                payment_provider="stripe",
-                                monthly_amount=monthly_amount,
-                                stripe_customer_id=customer_id,
-                                stripe_subscription_id=event_data.id,
-                                stripe_price_id=price_id
-                            )
-                            logger.info(f"Created new subscription from event: {subscription_id}")
-                        else:
-                            logger.error(f"Could not find user/organization for customer: {customer_id}")
-                    except Exception as customer_err:
-                        logger.error(f"Error retrieving customer {customer_id}: {str(customer_err)}")
+                            if user_id or organization_id:
+                                # We found the user/organization, create a new subscription
+                                logger.info(f"🆕 Creating new subscription from metadata: user_id={user_id}, org_id={organization_id}")
 
-        # Log the event in our database
-        if subscription_id:
-            from app.models.subscription import log_subscription_event
-            log_subscription_event(
-                subscription_id=subscription_id,
-                event_type="subscription_created",
-                event_data=event_data,
-                payment_provider="stripe",
-                provider_event_id=event_data.id
-            )
+                                # Default values in case we can't extract them
+                                stripe_status = 'active'
+                                current_period_start = datetime.now()
+                                current_period_end = current_period_start + timedelta(days=30)
+                                cancel_at_period_end = False
+                                monthly_amount = 7.99
+                                price_id = None
+
+                                # Try to extract subscription data if attributes exist
+                                try:
+                                    if hasattr(event_data, 'status'):
+                                        stripe_status = event_data.status
+
+                                    if hasattr(event_data, 'current_period_start'):
+                                        current_period_start = datetime.fromtimestamp(event_data.current_period_start)
+
+                                    if hasattr(event_data, 'current_period_end'):
+                                        current_period_end = datetime.fromtimestamp(event_data.current_period_end)
+
+                                    if hasattr(event_data, 'cancel_at_period_end'):
+                                        cancel_at_period_end = event_data.cancel_at_period_end
+
+                                    # Get the price ID and amount - check for different structures
+                                    if hasattr(event_data, 'items') and hasattr(event_data.items, 'data') and event_data.items.data:
+                                        price = event_data.items.data[0].price
+                                        price_id = price.id
+                                        monthly_amount = price.unit_amount / 100.0  # Convert from cents to dollars
+                                    elif hasattr(event_data, 'plan'):
+                                        price_id = event_data.plan.id
+                                        monthly_amount = event_data.plan.amount / 100.0
+                                except Exception as attr_err:
+                                    logger.warning(f"⚠️ Error extracting subscription attributes: {str(attr_err)}")
+                                    # Continue with default values
+
+                                # Create subscription directly with SQL
+                                cur.execute("""
+                                    INSERT INTO subscriptions (
+                                        user_id, organization_id, subscription_type, payment_provider,
+                                        monthly_amount, currency, status, stripe_customer_id,
+                                        stripe_subscription_id, stripe_price_id, current_period_start,
+                                        current_period_end, cancel_at_period_end, stripe_status
+                                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                    RETURNING id
+                                """, (
+                                    user_id,
+                                    organization_id,
+                                    "individual" if user_id else "organization",
+                                    "stripe",
+                                    monthly_amount,
+                                    "usd",
+                                    "active",
+                                    customer_id,
+                                    event_data.id,
+                                    price_id,
+                                    current_period_start,
+                                    current_period_end,
+                                    cancel_at_period_end,
+                                    stripe_status
+                                ))
+
+                                subscription_db_id = cur.fetchone()[0]
+                                logger.info(f"✅ Created new subscription: {subscription_db_id}")
+
+                                # Update user_profiles or organizations table with subscription_id
+                                if user_id:
+                                    cur.execute("""
+                                        UPDATE user_profiles
+                                        SET subscription_id = %s
+                                        WHERE id = %s
+                                    """, (subscription_db_id, user_id))
+                                    logger.info(f"✅ Updated user {user_id} with subscription {subscription_db_id}")
+                                elif organization_id:
+                                    cur.execute("""
+                                        UPDATE organizations
+                                        SET subscription_id = %s
+                                        WHERE id = %s
+                                    """, (subscription_db_id, organization_id))
+                                    logger.info(f"✅ Updated organization {organization_id} with subscription {subscription_db_id}")
+                            else:
+                                logger.error(f"❌ Could not find user/organization for customer: {customer_id}")
+                        except Exception as customer_err:
+                            logger.error(f"❌ Error retrieving customer {customer_id}: {str(customer_err)}")
+
+                # Log the event in our database
+                if subscription_db_id:
+                    cur.execute("""
+                        INSERT INTO subscription_events (
+                            subscription_id, event_type, event_data, payment_provider, provider_event_id, processed
+                        ) VALUES (%s, %s, %s, %s, %s, %s)
+                    """, (
+                        subscription_db_id,
+                        "subscription_created",
+                        str(event_data),
+                        "stripe",
+                        event_data.id,
+                        True
+                    ))
+                    logger.info(f"📝 Logged subscription_created event for subscription {subscription_db_id}")
+        except Exception as db_err:
+            logger.error(f"❌ Database error in subscription_created handler: {str(db_err)}", exc_info=True)
 
     except Exception as e:
         logger.error(f"Error handling subscription created: {str(e)}", exc_info=True)

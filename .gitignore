@@ -76,3 +76,4 @@ apps/smart-meal-planner-backend/STRIPE_SETUP_INSTRUCTIONS.md
 apps/smart-meal-planner-backend/.env.example
 apps/smart-meal-planner-backend/scripts/create_subscription_record.py
 apps/smart-meal-planner-backend/SUBSCRIPTION_DEBUG_INSTRUCTIONS.md
+apps/smart-meal-planner-backend/scripts/test_db_tables.py
