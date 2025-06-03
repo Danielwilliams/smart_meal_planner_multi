@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import subscriptionService from '../services/subscriptionService';
+import PaymentProviderSelector from '../components/PaymentProviderSelector';
 import {
   Container,
   Typography,
@@ -40,6 +41,7 @@ const SubscriptionPage = () => {
   const [activeTab, setActiveTab] = useState(0);
   const [invoices, setInvoices] = useState([]);
   const [openCancelDialog, setOpenCancelDialog] = useState(false);
+  const [selectedPaymentProvider, setSelectedPaymentProvider] = useState('stripe');
   
   useEffect(() => {
     if (!isAuthenticated) {
@@ -97,12 +99,12 @@ const SubscriptionPage = () => {
       
       const response = await subscriptionService.createCheckoutSession(
         subscriptionType,
-        'stripe', // Default to Stripe for now
+        selectedPaymentProvider,
         successUrl,
         cancelUrl
       );
       
-      // Redirect to Stripe checkout
+      // Redirect to checkout (works for both Stripe and PayPal)
       if (response && response.checkout_url) {
         window.location.href = response.checkout_url;
       } else {
@@ -161,6 +163,14 @@ const SubscriptionPage = () => {
       <Typography variant="h5" component="h2" gutterBottom>
         Choose a Subscription Plan
       </Typography>
+      
+      {/* Payment Provider Selector */}
+      <PaymentProviderSelector
+        selectedProvider={selectedPaymentProvider}
+        onProviderChange={setSelectedPaymentProvider}
+        disabled={loading}
+      />
+      
       <Grid container spacing={3} sx={{ mt: 2 }}>
         {/* Individual Plan */}
         <Grid item xs={12} md={6}>
@@ -200,7 +210,7 @@ const SubscriptionPage = () => {
                 onClick={() => handleSubscribe('individual')}
                 disabled={loading}
               >
-                {loading ? <CircularProgress size={24} /> : 'Subscribe Now'}
+                {loading ? <CircularProgress size={24} /> : `Subscribe with ${selectedPaymentProvider === 'stripe' ? 'Credit Card' : 'PayPal'}`}
               </Button>
             </CardActions>
           </Card>
@@ -249,7 +259,7 @@ const SubscriptionPage = () => {
                 onClick={() => handleSubscribe('organization')}
                 disabled={loading}
               >
-                {loading ? <CircularProgress size={24} /> : 'Subscribe Now'}
+                {loading ? <CircularProgress size={24} /> : `Subscribe with ${selectedPaymentProvider === 'stripe' ? 'Credit Card' : 'PayPal'}`}
               </Button>
             </CardActions>
           </Card>

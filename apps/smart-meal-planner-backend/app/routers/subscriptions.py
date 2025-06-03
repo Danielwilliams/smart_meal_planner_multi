@@ -266,8 +266,9 @@ async def migrate_all_users(
             detail=f"Error migrating all users: {str(e)}"
         )
 
-# Configure Stripe if enabled
+# Configure payment providers if enabled
 if ENABLE_SUBSCRIPTION_FEATURES:
+    # Configure Stripe
     try:
         import stripe
         stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
@@ -279,9 +280,42 @@ if ENABLE_SUBSCRIPTION_FEATURES:
         logger.info(f"Stripe configured: API Key present: {bool(stripe.api_key)}")
         logger.info(f"Stripe Individual Price ID: {STRIPE_INDIVIDUAL_PRICE_ID}")
         logger.info(f"Stripe Organization Price ID: {STRIPE_ORGANIZATION_PRICE_ID}")
+    except ImportError:
+        logger.warning("Stripe module not installed. Stripe integration will be disabled.")
+        stripe = None
+    
+    # Configure PayPal
+    try:
+        import paypalrestsdk
+        
+        PAYPAL_CLIENT_ID = os.getenv("PAYPAL_CLIENT_ID", "")
+        PAYPAL_CLIENT_SECRET = os.getenv("PAYPAL_CLIENT_SECRET", "")
+        PAYPAL_MODE = os.getenv("PAYPAL_MODE", "sandbox")  # sandbox or live
+        PAYPAL_WEBHOOK_ENDPOINT = os.getenv("PAYPAL_WEBHOOK_ENDPOINT", "")
+        PAYPAL_WEBHOOK_ID = os.getenv("PAYPAL_WEBHOOK_ID", "")
+        
+        # Configure PayPal SDK
+        paypalrestsdk.configure({
+            "mode": PAYPAL_MODE,
+            "client_id": PAYPAL_CLIENT_ID,
+            "client_secret": PAYPAL_CLIENT_SECRET
+        })
+        
+        # Log configuration
+        logger.info(f"PayPal configured: Client ID present: {bool(PAYPAL_CLIENT_ID)}")
+        logger.info(f"PayPal Mode: {PAYPAL_MODE}")
+        logger.info(f"PayPal Webhook ID present: {bool(PAYPAL_WEBHOOK_ID)}")
+        
+    except ImportError:
+        logger.warning("PayPal SDK not installed. PayPal integration will be disabled.")
+        paypalrestsdk = None
+else:
+    stripe = None
+    paypalrestsdk = None
 
-        # Helper functions for Stripe
-        async def get_or_create_stripe_customer(user_id, organization_id=None):
+# Helper functions for payment providers
+if ENABLE_SUBSCRIPTION_FEATURES and stripe:
+    async def get_or_create_stripe_customer(user_id, organization_id=None):
             """
             Get or create a Stripe customer for a user or organization
 
@@ -425,11 +459,128 @@ if ENABLE_SUBSCRIPTION_FEATURES:
                     status_code=500,
                     detail=f"Failed to create customer: {str(e)}"
                 )
-    except ImportError:
-        logger.warning("Stripe module not installed. Stripe integration will be disabled.")
-        stripe = None
 else:
     stripe = None
+
+# Helper functions for PayPal
+if ENABLE_SUBSCRIPTION_FEATURES and paypalrestsdk:
+    async def create_paypal_subscription_plan(subscription_type, monthly_amount):
+        """Create a PayPal subscription plan"""
+        try:
+            plan_name = f"{subscription_type.title()} Plan"
+            plan_description = f"Monthly subscription for {subscription_type} users"
+            
+            billing_plan = paypalrestsdk.BillingPlan({
+                "name": plan_name,
+                "description": plan_description,
+                "type": "INFINITE",
+                "payment_definitions": [{
+                    "name": "Regular payment definition",
+                    "type": "REGULAR",
+                    "frequency": "MONTH",
+                    "frequency_interval": "1",
+                    "amount": {
+                        "value": str(monthly_amount),
+                        "currency": "USD"
+                    },
+                    "cycles": "0"  # 0 means infinite
+                }],
+                "merchant_preferences": {
+                    "setup_fee": {
+                        "value": "0",
+                        "currency": "USD"
+                    },
+                    "return_url": os.getenv("FRONTEND_URL", "http://localhost:3000") + "/subscription/success",
+                    "cancel_url": os.getenv("FRONTEND_URL", "http://localhost:3000") + "/subscription/cancel",
+                    "auto_bill_amount": "YES",
+                    "initial_fail_amount_action": "CONTINUE",
+                    "max_fail_attempts": "3"
+                }
+            })
+            
+            if billing_plan.create():
+                logger.info(f"Created PayPal billing plan: {billing_plan.id}")
+                
+                # Activate the plan
+                if billing_plan.activate():
+                    logger.info(f"Activated PayPal billing plan: {billing_plan.id}")
+                    return billing_plan.id
+                else:
+                    logger.error(f"Failed to activate PayPal billing plan: {billing_plan.error}")
+                    return None
+            else:
+                logger.error(f"Failed to create PayPal billing plan: {billing_plan.error}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error creating PayPal subscription plan: {str(e)}", exc_info=True)
+            return None
+    
+    async def create_paypal_subscription(plan_id, user_id, organization_id=None):
+        """Create a PayPal subscription"""
+        try:
+            # Get user details for PayPal subscription
+            with get_db_cursor(dict_cursor=False, autocommit=True) as (cur, conn):
+                if organization_id:
+                    cur.execute("""
+                        SELECT o.name, u.email, u.name as user_name
+                        FROM organizations o
+                        JOIN user_profiles u ON o.owner_id = u.id
+                        WHERE o.id = %s
+                    """, (organization_id,))
+                    org_data = cur.fetchone()
+                    if not org_data:
+                        raise HTTPException(status_code=404, detail="Organization not found")
+                    name, email, user_name = org_data
+                else:
+                    cur.execute("""
+                        SELECT name, email FROM user_profiles
+                        WHERE id = %s
+                    """, (user_id,))
+                    user_data = cur.fetchone()
+                    if not user_data:
+                        raise HTTPException(status_code=404, detail="User not found")
+                    name, email = user_data
+            
+            # Create billing agreement
+            billing_agreement = paypalrestsdk.BillingAgreement({
+                "name": f"Subscription Agreement - {name}",
+                "description": "Monthly subscription agreement",
+                "start_date": (datetime.now() + timedelta(minutes=1)).strftime('%Y-%m-%dT%H:%M:%SZ'),
+                "plan": {
+                    "id": plan_id
+                },
+                "payer": {
+                    "payment_method": "paypal"
+                }
+            })
+            
+            if billing_agreement.create():
+                # Find approval URL
+                approval_url = None
+                for link in billing_agreement.links:
+                    if link.rel == "approval_url":
+                        approval_url = link.href
+                        break
+                
+                if approval_url:
+                    logger.info(f"Created PayPal billing agreement: {billing_agreement.id}")
+                    return {
+                        "agreement_id": billing_agreement.id,
+                        "approval_url": approval_url
+                    }
+                else:
+                    logger.error("No approval URL found in PayPal billing agreement")
+                    return None
+            else:
+                logger.error(f"Failed to create PayPal billing agreement: {billing_agreement.error}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error creating PayPal subscription: {str(e)}", exc_info=True)
+            return None
+else:
+    paypalrestsdk = None
 
 @router.post("/create-checkout")
 async def create_checkout_session(
@@ -713,12 +864,95 @@ async def create_checkout_session(
             detail=f"Server error: {str(e)}"
         )
         
-    if payment_provider != PaymentProvider.stripe:
-        # PayPal implementation will go here
-        logger.error(f"Payment provider {payment_provider} not implemented")
+    elif payment_provider == PaymentProvider.paypal:
+        # PayPal implementation
+        if not paypalrestsdk:
+            logger.error("PayPal SDK is not available")
+            raise HTTPException(
+                status_code=503,
+                detail="PayPal integration is not available"
+            )
+        
+        if not PAYPAL_CLIENT_ID or not PAYPAL_CLIENT_SECRET:
+            logger.error("PayPal credentials not configured")
+            raise HTTPException(
+                status_code=503,
+                detail="PayPal integration is not configured"
+            )
+        
+        try:
+            # Determine monthly amount based on subscription type
+            monthly_amount = 7.99 if subscription_type == SubscriptionType.individual else 49.99
+            
+            # Create or get PayPal subscription plan
+            plan_id = await create_paypal_subscription_plan(subscription_type.value, monthly_amount)
+            if not plan_id:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Failed to create PayPal subscription plan"
+                )
+            
+            # Create PayPal subscription
+            subscription_result = await create_paypal_subscription(plan_id, user_id, organization_id)
+            if not subscription_result:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Failed to create PayPal subscription"
+                )
+            
+            # Store the PayPal plan ID and agreement ID in our database for future reference
+            with get_db_cursor(dict_cursor=False, autocommit=True) as (cur, conn):
+                # Check if subscription already exists
+                if organization_id:
+                    cur.execute("""
+                        SELECT id FROM subscriptions WHERE organization_id = %s
+                    """, (organization_id,))
+                else:
+                    cur.execute("""
+                        SELECT id FROM subscriptions WHERE user_id = %s
+                    """, (user_id,))
+                
+                existing = cur.fetchone()
+                
+                if existing:
+                    # Update existing subscription with PayPal details
+                    cur.execute("""
+                        UPDATE subscriptions
+                        SET paypal_plan_id = %s, updated_at = CURRENT_TIMESTAMP
+                        WHERE id = %s
+                    """, (plan_id, existing[0]))
+                else:
+                    # Create new subscription record (will be completed when PayPal webhook confirms)
+                    from app.models.subscription import create_subscription
+                    create_subscription(
+                        user_id=user_id,
+                        organization_id=organization_id,
+                        subscription_type=subscription_type.value,
+                        payment_provider="paypal",
+                        monthly_amount=monthly_amount,
+                        paypal_plan_id=plan_id
+                    )
+            
+            return {
+                "success": True,
+                "checkout_url": subscription_result["approval_url"],
+                "agreement_id": subscription_result["agreement_id"],
+                "plan_id": plan_id
+            }
+            
+        except Exception as paypal_err:
+            logger.error(f"PayPal error creating subscription: {str(paypal_err)}", exc_info=True)
+            raise HTTPException(
+                status_code=500,
+                detail=f"PayPal error: {str(paypal_err)}"
+            )
+    
+    else:
+        # Unsupported payment provider
+        logger.error(f"Unsupported payment provider: {payment_provider}")
         raise HTTPException(
-            status_code=501,
-            detail=f"Payment provider {payment_provider} not implemented yet"
+            status_code=400,
+            detail=f"Unsupported payment provider: {payment_provider}"
         )
 
 @router.post("/webhooks/stripe")
@@ -1719,6 +1953,246 @@ async def handle_invoice_payment_failed(event_data):
     except Exception as e:
         logger.error(f"Error handling invoice payment failed: {str(e)}", exc_info=True)
 
+@router.post("/webhooks/paypal")
+async def paypal_webhook_handler(request: Request):
+    """
+    Handle PayPal webhook events for subscription lifecycle
+    """
+    logger.info("🔔 Received PayPal webhook - processing...")
+    
+    if not ENABLE_SUBSCRIPTION_FEATURES or not paypalrestsdk:
+        logger.error("❌ PayPal integration is not available")
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "PayPal integration is not available"}
+        )
+    
+    try:
+        # Get the webhook data
+        payload = await request.body()
+        headers = dict(request.headers)
+        
+        logger.info(f"📦 PayPal webhook payload received")
+        logger.info(f"📋 Headers: {headers}")
+        
+        # Parse the JSON payload
+        import json
+        webhook_data = json.loads(payload.decode('utf-8'))
+        
+        event_type = webhook_data.get('event_type')
+        resource = webhook_data.get('resource', {})
+        
+        logger.info(f"🎯 Received PayPal webhook event: {event_type}")
+        
+        # Handle different PayPal event types
+        if event_type == "BILLING.SUBSCRIPTION.ACTIVATED":
+            await handle_paypal_subscription_activated(resource)
+        elif event_type == "BILLING.SUBSCRIPTION.CANCELLED":
+            await handle_paypal_subscription_cancelled(resource)
+        elif event_type == "BILLING.SUBSCRIPTION.SUSPENDED":
+            await handle_paypal_subscription_suspended(resource)
+        elif event_type == "BILLING.SUBSCRIPTION.PAYMENT.COMPLETED":
+            await handle_paypal_payment_completed(resource)
+        elif event_type == "BILLING.SUBSCRIPTION.PAYMENT.FAILED":
+            await handle_paypal_payment_failed(resource)
+        else:
+            logger.info(f"Unhandled PayPal event type: {event_type}")
+        
+        # Log the event to database
+        try:
+            with get_db_cursor(dict_cursor=False, autocommit=True) as (cur, conn):
+                cur.execute("""
+                    INSERT INTO subscription_events (
+                        subscription_id, event_type, event_data, payment_provider,
+                        provider_event_id, processed, processed_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    -1,  # We'll update this when we process the event
+                    event_type,
+                    json.dumps(webhook_data),
+                    'paypal',
+                    webhook_data.get('id', ''),
+                    True,
+                    datetime.now()
+                ))
+        except Exception as log_err:
+            logger.error(f"❌ Failed to log PayPal webhook event: {str(log_err)}")
+        
+        logger.info("🎉 PayPal webhook processing completed successfully")
+        return JSONResponse(
+            status_code=200,
+            content={"detail": "PayPal webhook processed successfully"}
+        )
+        
+    except Exception as e:
+        logger.error(f"❌ Error processing PayPal webhook: {str(e)}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={"detail": f"Error processing PayPal webhook: {str(e)}"}
+        )
+
+# PayPal webhook event handlers
+async def handle_paypal_subscription_activated(resource):
+    """Handle PayPal subscription activation"""
+    try:
+        subscription_id = resource.get('id')
+        plan_id = resource.get('plan_id')
+        
+        logger.info(f"🟢 PayPal subscription activated: {subscription_id}")
+        
+        # Find the subscription in our database by plan_id
+        with get_db_cursor(dict_cursor=False, autocommit=True) as (cur, conn):
+            cur.execute("""
+                SELECT id FROM subscriptions
+                WHERE paypal_plan_id = %s AND paypal_subscription_id IS NULL
+                ORDER BY created_at DESC LIMIT 1
+            """, (plan_id,))
+            
+            result = cur.fetchone()
+            if result:
+                db_subscription_id = result[0]
+                
+                # Update subscription with PayPal subscription ID and activate it
+                cur.execute("""
+                    UPDATE subscriptions
+                    SET paypal_subscription_id = %s,
+                        status = 'active',
+                        paypal_status = 'ACTIVE',
+                        current_period_start = CURRENT_TIMESTAMP,
+                        current_period_end = CURRENT_TIMESTAMP + INTERVAL '1 month',
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s
+                """, (subscription_id, db_subscription_id))
+                
+                logger.info(f"✅ Updated subscription {db_subscription_id} with PayPal subscription {subscription_id}")
+            else:
+                logger.warning(f"⚠️ Could not find subscription for PayPal plan {plan_id}")
+                
+    except Exception as e:
+        logger.error(f"❌ Error handling PayPal subscription activation: {str(e)}", exc_info=True)
+
+async def handle_paypal_subscription_cancelled(resource):
+    """Handle PayPal subscription cancellation"""
+    try:
+        subscription_id = resource.get('id')
+        
+        logger.info(f"🔴 PayPal subscription cancelled: {subscription_id}")
+        
+        # Find and cancel the subscription in our database
+        with get_db_cursor(dict_cursor=False, autocommit=True) as (cur, conn):
+            cur.execute("""
+                UPDATE subscriptions
+                SET status = 'canceled',
+                    paypal_status = 'CANCELLED',
+                    canceled_at = CURRENT_TIMESTAMP,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE paypal_subscription_id = %s
+                RETURNING id
+            """, (subscription_id,))
+            
+            result = cur.fetchone()
+            if result:
+                logger.info(f"✅ Cancelled subscription {result[0]}")
+            else:
+                logger.warning(f"⚠️ Could not find subscription for PayPal subscription {subscription_id}")
+                
+    except Exception as e:
+        logger.error(f"❌ Error handling PayPal subscription cancellation: {str(e)}", exc_info=True)
+
+async def handle_paypal_subscription_suspended(resource):
+    """Handle PayPal subscription suspension"""
+    try:
+        subscription_id = resource.get('id')
+        
+        logger.info(f"⏸️ PayPal subscription suspended: {subscription_id}")
+        
+        # Update subscription status in our database
+        with get_db_cursor(dict_cursor=False, autocommit=True) as (cur, conn):
+            cur.execute("""
+                UPDATE subscriptions
+                SET status = 'past_due',
+                    paypal_status = 'SUSPENDED',
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE paypal_subscription_id = %s
+                RETURNING id
+            """, (subscription_id,))
+            
+            result = cur.fetchone()
+            if result:
+                logger.info(f"✅ Suspended subscription {result[0]}")
+            else:
+                logger.warning(f"⚠️ Could not find subscription for PayPal subscription {subscription_id}")
+                
+    except Exception as e:
+        logger.error(f"❌ Error handling PayPal subscription suspension: {str(e)}", exc_info=True)
+
+async def handle_paypal_payment_completed(resource):
+    """Handle PayPal subscription payment completion"""
+    try:
+        subscription_id = resource.get('billing_agreement_id') or resource.get('subscription_id')
+        amount = resource.get('amount', {})
+        
+        logger.info(f"💰 PayPal payment completed for subscription: {subscription_id}")
+        
+        # Record payment in our database
+        with get_db_cursor(dict_cursor=False, autocommit=True) as (cur, conn):
+            # Find the subscription
+            cur.execute("""
+                SELECT id FROM subscriptions
+                WHERE paypal_subscription_id = %s
+            """, (subscription_id,))
+            
+            result = cur.fetchone()
+            if result:
+                db_subscription_id = result[0]
+                
+                # Create invoice record for the payment
+                from app.models.subscription import create_invoice
+                create_invoice(
+                    subscription_id=db_subscription_id,
+                    payment_provider="paypal",
+                    status="paid",
+                    amount_due=float(amount.get('value', 0)),
+                    amount_paid=float(amount.get('value', 0)),
+                    currency=amount.get('currency', 'USD'),
+                    paid_at=datetime.now(),
+                    paypal_invoice_id=resource.get('id')
+                )
+                
+                logger.info(f"✅ Recorded payment for subscription {db_subscription_id}")
+            else:
+                logger.warning(f"⚠️ Could not find subscription for PayPal subscription {subscription_id}")
+                
+    except Exception as e:
+        logger.error(f"❌ Error handling PayPal payment completion: {str(e)}", exc_info=True)
+
+async def handle_paypal_payment_failed(resource):
+    """Handle PayPal subscription payment failure"""
+    try:
+        subscription_id = resource.get('billing_agreement_id') or resource.get('subscription_id')
+        
+        logger.info(f"❌ PayPal payment failed for subscription: {subscription_id}")
+        
+        # Update subscription status
+        with get_db_cursor(dict_cursor=False, autocommit=True) as (cur, conn):
+            cur.execute("""
+                UPDATE subscriptions
+                SET status = 'past_due',
+                    paypal_status = 'PAST_DUE',
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE paypal_subscription_id = %s
+                RETURNING id
+            """, (subscription_id,))
+            
+            result = cur.fetchone()
+            if result:
+                logger.info(f"✅ Marked subscription {result[0]} as past due")
+            else:
+                logger.warning(f"⚠️ Could not find subscription for PayPal subscription {subscription_id}")
+                
+    except Exception as e:
+        logger.error(f"❌ Error handling PayPal payment failure: {str(e)}", exc_info=True)
+
 @router.post("/cancel")
 async def cancel_user_subscription(
     request: Request,
@@ -1728,12 +2202,6 @@ async def cancel_user_subscription(
     Cancel the current user's subscription
     """
     check_subscriptions_enabled()
-
-    if not stripe:
-        raise HTTPException(
-            status_code=503,
-            detail="Stripe integration is not available"
-        )
 
     user_id = user.get('user_id')
 
@@ -1750,7 +2218,7 @@ async def cancel_user_subscription(
         # Find the user's subscription
         with get_db_cursor(dict_cursor=False, autocommit=True) as (cur, conn):
             cur.execute("""
-                SELECT id, stripe_subscription_id, payment_provider
+                SELECT id, stripe_subscription_id, paypal_subscription_id, payment_provider
                 FROM subscriptions
                 WHERE user_id = %s AND status = 'active'
             """, (user_id,))
@@ -1763,77 +2231,143 @@ async def cancel_user_subscription(
                     detail="No active subscription found"
                 )
 
-            subscription_id, stripe_subscription_id, payment_provider = result
+            subscription_id, stripe_subscription_id, paypal_subscription_id, payment_provider = result
 
-            # Check if this is a Stripe subscription
-            if payment_provider != 'stripe':
+            # Handle cancellation based on payment provider
+            if payment_provider == 'stripe':
+                if not stripe:
+                    raise HTTPException(
+                        status_code=503,
+                        detail="Stripe integration is not available"
+                    )
+
+                if not stripe_subscription_id:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Missing Stripe subscription ID"
+                    )
+
+                # Cancel the subscription in Stripe
+                try:
+                    stripe_subscription = stripe.Subscription.modify(
+                        stripe_subscription_id,
+                        cancel_at_period_end=cancel_at_period_end
+                    )
+
+                    # Update our database
+                    from app.models.subscription import cancel_subscription
+                    cancel_subscription(subscription_id, cancel_at_period_end=cancel_at_period_end)
+
+                    if cancel_at_period_end:
+                        message = "Your subscription will be canceled at the end of the billing period"
+                    else:
+                        message = "Your subscription has been canceled immediately"
+
+                    return {
+                        "success": True,
+                        "message": message,
+                        "cancel_at_period_end": cancel_at_period_end
+                    }
+                
+                except stripe.error.InvalidRequestError as invalid_err:
+                    # Handle case where customer or subscription no longer exists in Stripe
+                    if "No such customer" in str(invalid_err) or "No such subscription" in str(invalid_err):
+                        logger.warning(f"Stripe resource no longer exists, updating database status: {str(invalid_err)}")
+                        
+                        # Update our database to reflect that the subscription is already canceled
+                        from app.models.subscription import cancel_subscription
+                        cancel_subscription(subscription_id, cancel_at_period_end=False)
+                        
+                        # Also clear the stripe references
+                        cur.execute("""
+                            UPDATE subscriptions 
+                            SET stripe_customer_id = NULL, stripe_subscription_id = NULL, status = 'canceled'
+                            WHERE id = %s
+                        """, (subscription_id,))
+                        
+                        return {
+                            "success": True,
+                            "message": "Your subscription has been canceled (was already canceled in Stripe)",
+                            "cancel_at_period_end": False
+                        }
+                    else:
+                        logger.error(f"Stripe invalid request error: {str(invalid_err)}")
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Invalid request to payment processor: {str(invalid_err)}"
+                        )
+                except stripe.error.StripeError as stripe_err:
+                    logger.error(f"Stripe error canceling subscription: {str(stripe_err)}")
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Error canceling subscription: {str(stripe_err)}"
+                    )
+
+            elif payment_provider == 'paypal':
+                if not paypalrestsdk:
+                    raise HTTPException(
+                        status_code=503,
+                        detail="PayPal integration is not available"
+                    )
+
+                if not paypal_subscription_id:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Missing PayPal subscription ID"
+                    )
+
+                # Cancel the subscription in PayPal
+                try:
+                    # PayPal uses billing agreements for subscriptions
+                    billing_agreement = paypalrestsdk.BillingAgreement.find(paypal_subscription_id)
+                    
+                    if billing_agreement:
+                        # Cancel the billing agreement
+                        cancel_note = {
+                            "note": "Subscription canceled by user request"
+                        }
+                        
+                        if billing_agreement.cancel(cancel_note):
+                            # Update our database
+                            from app.models.subscription import cancel_subscription
+                            cancel_subscription(subscription_id, cancel_at_period_end=False)  # PayPal cancels immediately
+                            
+                            return {
+                                "success": True,
+                                "message": "Your PayPal subscription has been canceled immediately",
+                                "cancel_at_period_end": False
+                            }
+                        else:
+                            logger.error(f"Failed to cancel PayPal billing agreement: {billing_agreement.error}")
+                            raise HTTPException(
+                                status_code=500,
+                                detail="Failed to cancel PayPal subscription"
+                            )
+                    else:
+                        logger.warning(f"PayPal billing agreement not found: {paypal_subscription_id}")
+                        # Update our database anyway since it's not found in PayPal
+                        from app.models.subscription import cancel_subscription
+                        cancel_subscription(subscription_id, cancel_at_period_end=False)
+                        
+                        return {
+                            "success": True,
+                            "message": "Your subscription has been canceled (was already canceled in PayPal)",
+                            "cancel_at_period_end": False
+                        }
+                        
+                except Exception as paypal_err:
+                    logger.error(f"PayPal error canceling subscription: {str(paypal_err)}")
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Error canceling PayPal subscription: {str(paypal_err)}"
+                    )
+            
+            else:
                 raise HTTPException(
                     status_code=400,
                     detail=f"Cancellation not supported for {payment_provider} subscriptions"
                 )
 
-            if not stripe_subscription_id:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Missing Stripe subscription ID"
-                )
-
-            # Cancel the subscription in Stripe
-            try:
-                stripe_subscription = stripe.Subscription.modify(
-                    stripe_subscription_id,
-                    cancel_at_period_end=cancel_at_period_end
-                )
-
-                # Update our database
-                from app.models.subscription import cancel_subscription
-                cancel_subscription(subscription_id, cancel_at_period_end=cancel_at_period_end)
-
-                if cancel_at_period_end:
-                    message = "Your subscription will be canceled at the end of the billing period"
-                else:
-                    message = "Your subscription has been canceled immediately"
-
-                return {
-                    "success": True,
-                    "message": message,
-                    "cancel_at_period_end": cancel_at_period_end
-                }
-            
-            except stripe.error.InvalidRequestError as invalid_err:
-                # Handle case where customer or subscription no longer exists in Stripe
-                if "No such customer" in str(invalid_err) or "No such subscription" in str(invalid_err):
-                    logger.warning(f"Stripe resource no longer exists, updating database status: {str(invalid_err)}")
-                    
-                    # Update our database to reflect that the subscription is already canceled
-                    from app.models.subscription import cancel_subscription
-                    cancel_subscription(subscription_id, cancel_at_period_end=False)
-                    
-                    # Also clear the stripe references
-                    cur.execute("""
-                        UPDATE subscriptions 
-                        SET stripe_customer_id = NULL, stripe_subscription_id = NULL, status = 'canceled'
-                        WHERE id = %s
-                    """, (subscription_id,))
-                    
-                    return {
-                        "success": True,
-                        "message": "Your subscription has been canceled (was already canceled in Stripe)",
-                        "cancel_at_period_end": False
-                    }
-                else:
-                    logger.error(f"Stripe invalid request error: {str(invalid_err)}")
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Invalid request to payment processor: {str(invalid_err)}"
-                    )
-
-    except stripe.error.StripeError as e:
-        logger.error(f"Stripe error canceling subscription: {str(e)}")
-        raise HTTPException(
-            status_code=400,
-            detail=f"Error canceling subscription: {str(e)}"
-        )
     except Exception as e:
         logger.error(f"Error canceling subscription: {str(e)}", exc_info=True)
         raise HTTPException(
