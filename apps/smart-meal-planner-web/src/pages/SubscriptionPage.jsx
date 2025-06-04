@@ -45,7 +45,8 @@ const SubscriptionPage = () => {
   
   useEffect(() => {
     if (!isAuthenticated) {
-      navigate('/login');
+      // Don't redirect - allow viewing subscription plans without login
+      setLoading(false);
       return;
     }
     
@@ -90,6 +91,12 @@ const SubscriptionPage = () => {
   };
   
   const handleSubscribe = async (subscriptionType) => {
+    if (!isAuthenticated) {
+      // For non-authenticated users, redirect to login with a message to create an account
+      navigate('/login?message=create-account&plan=' + subscriptionType);
+      return;
+    }
+    
     try {
       setLoading(true);
       
@@ -164,6 +171,14 @@ const SubscriptionPage = () => {
         Choose a Subscription Plan
       </Typography>
       
+      {!isAuthenticated && (
+        <Alert severity="info" sx={{ mb: 3 }}>
+          <Typography variant="body2">
+            <strong>New to Smart Meal Planner?</strong> Select a plan below to create your account and start your subscription.
+          </Typography>
+        </Alert>
+      )}
+      
       {/* Payment Provider Selector */}
       <PaymentProviderSelector
         selectedProvider={selectedPaymentProvider}
@@ -210,7 +225,11 @@ const SubscriptionPage = () => {
                 onClick={() => handleSubscribe('individual')}
                 disabled={loading}
               >
-                {loading ? <CircularProgress size={24} /> : `Subscribe with ${selectedPaymentProvider === 'stripe' ? 'Credit Card' : 'PayPal'}`}
+                {loading ? <CircularProgress size={24} /> : 
+                  isAuthenticated 
+                    ? `Subscribe with ${selectedPaymentProvider === 'stripe' ? 'Credit Card' : 'PayPal'}`
+                    : 'Sign Up & Subscribe'
+                }
               </Button>
             </CardActions>
           </Card>
@@ -259,7 +278,11 @@ const SubscriptionPage = () => {
                 onClick={() => handleSubscribe('organization')}
                 disabled={loading}
               >
-                {loading ? <CircularProgress size={24} /> : `Subscribe with ${selectedPaymentProvider === 'stripe' ? 'Credit Card' : 'PayPal'}`}
+                {loading ? <CircularProgress size={24} /> : 
+                  isAuthenticated 
+                    ? `Subscribe with ${selectedPaymentProvider === 'stripe' ? 'Credit Card' : 'PayPal'}`
+                    : 'Sign Up & Subscribe'
+                }
               </Button>
             </CardActions>
           </Card>
@@ -460,23 +483,25 @@ const SubscriptionPage = () => {
         </Alert>
       )}
       
-      <Paper sx={{ mb: 4 }}>
-        <Tabs
-          value={activeTab}
-          onChange={handleTabChange}
-          indicatorColor="primary"
-          textColor="primary"
-          variant="fullWidth"
-        >
-          <Tab label="Plans" />
-          <Tab label="Current Subscription" />
-          <Tab label="Billing History" />
-        </Tabs>
-      </Paper>
+      {isAuthenticated && (
+        <Paper sx={{ mb: 4 }}>
+          <Tabs
+            value={activeTab}
+            onChange={handleTabChange}
+            indicatorColor="primary"
+            textColor="primary"
+            variant="fullWidth"
+          >
+            <Tab label="Plans" />
+            <Tab label="Current Subscription" />
+            <Tab label="Billing History" />
+          </Tabs>
+        </Paper>
+      )}
       
-      {activeTab === 0 && renderSubscriptionPlans()}
-      {activeTab === 1 && renderCurrentSubscription()}
-      {activeTab === 2 && renderBillingHistory()}
+      {(!isAuthenticated || activeTab === 0) && renderSubscriptionPlans()}
+      {isAuthenticated && activeTab === 1 && renderCurrentSubscription()}
+      {isAuthenticated && activeTab === 2 && renderBillingHistory()}
       
       {/* Cancel Subscription Dialog */}
       <Dialog

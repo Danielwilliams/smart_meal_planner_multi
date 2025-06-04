@@ -52,7 +52,7 @@ function LandingPage() {
               to="/subscription"
               sx={{ backgroundColor: '#2e7d32' }}
             >
-              Start Your Subscription
+              Sign Up Now
             </Button>
             <Button
               variant="outlined"

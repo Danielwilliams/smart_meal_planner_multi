@@ -279,11 +279,7 @@ function App() {
               {/* Subscription Routes */}
               <Route
                 path="/subscription"
-                element={
-                  <PrivateRoute>
-                    <SubscriptionPage />
-                  </PrivateRoute>
-                }
+                element={<SubscriptionPage />}
               />
               <Route
                 path="/subscription/success"

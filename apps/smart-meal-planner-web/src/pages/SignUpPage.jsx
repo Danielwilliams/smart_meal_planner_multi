@@ -11,7 +11,7 @@ import { useNavigate, Link as RouterLink } from 'react-router-dom';
 function SignUpPage() {
   const navigate = useNavigate();
   
-  // Redirect to subscription page immediately
+  // Redirect to subscription page immediately  
   React.useEffect(() => {
     navigate('/subscription');
   }, [navigate]);
