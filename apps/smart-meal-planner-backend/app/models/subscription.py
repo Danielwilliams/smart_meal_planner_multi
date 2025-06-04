@@ -81,7 +81,7 @@ logger = logging.getLogger(__name__)
 def create_subscription(user_id=None, organization_id=None, subscription_type=None,
                        payment_provider=None, monthly_amount=None, currency="USD",
                        stripe_customer_id=None, stripe_subscription_id=None, stripe_price_id=None,
-                       paypal_subscription_id=None, paypal_plan_id=None, is_beta_tester=False):
+                       paypal_subscription_id=None, paypal_plan_id=None, is_beta_tester=False, status='active'):
     """Create a new subscription for a user or organization"""
     conn = None
     try:
@@ -143,12 +143,12 @@ def create_subscription(user_id=None, organization_id=None, subscription_type=No
                     user_id, organization_id, subscription_type, payment_provider, 
                     monthly_amount, currency, stripe_customer_id, stripe_subscription_id, 
                     stripe_price_id, paypal_subscription_id, paypal_plan_id, status
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'active')
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """, (
                 user_id, organization_id, subscription_type, payment_provider, 
                 monthly_amount, currency, stripe_customer_id, stripe_subscription_id, 
-                stripe_price_id, paypal_subscription_id, paypal_plan_id
+                stripe_price_id, paypal_subscription_id, paypal_plan_id, status
             ))
             
             subscription_id = cur.fetchone()['id']

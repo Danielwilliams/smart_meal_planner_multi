@@ -304,9 +304,11 @@ if ENABLE_SUBSCRIPTION_FEATURES:
                     "client_secret": PAYPAL_CLIENT_SECRET
                 })
                 
-                # Log configuration
+                # Log configuration (with debug info)
                 logger.info(f"PayPal configured: Client ID present: {bool(PAYPAL_CLIENT_ID)}")
-                logger.info(f"PayPal Mode: {PAYPAL_MODE}")
+                logger.info(f"PayPal Mode: '{PAYPAL_MODE}' (length: {len(PAYPAL_MODE)})")
+                logger.info(f"PayPal Client ID starts with: {PAYPAL_CLIENT_ID[:10]}...")
+                logger.info(f"PayPal Client Secret present: {bool(PAYPAL_CLIENT_SECRET)} (length: {len(PAYPAL_CLIENT_SECRET)})")
                 logger.info(f"PayPal Webhook ID present: {bool(PAYPAL_WEBHOOK_ID)}")
             except Exception as config_error:
                 logger.error(f"Error configuring PayPal SDK: {str(config_error)}")
@@ -940,7 +942,7 @@ async def create_checkout_session(
                             WHERE id = %s
                         """, (plan_id, existing[0]))
                     else:
-                        # Create new subscription record (will be completed when PayPal webhook confirms)
+                        # Create new subscription record with pending status (will be activated when PayPal webhook confirms)
                         from app.models.subscription import create_subscription
                         create_subscription(
                             user_id=user_id,
@@ -948,7 +950,8 @@ async def create_checkout_session(
                             subscription_type=subscription_type.value,
                             payment_provider="paypal",
                             monthly_amount=monthly_amount,
-                            paypal_plan_id=plan_id
+                            paypal_plan_id=plan_id,
+                            status='pending'  # Don't activate until PayPal confirms payment
                         )
                 
                 return {
@@ -2061,14 +2064,15 @@ async def paypal_webhook_handler(request: Request):
 
 # PayPal webhook event handlers
 async def handle_paypal_subscription_activated(resource):
-    """Handle PayPal subscription activation"""
+    """Handle PayPal subscription activation - ONLY store the subscription ID, don't activate yet"""
     try:
         subscription_id = resource.get('id')
         plan_id = resource.get('plan_id')
         
-        logger.info(f"🟢 PayPal subscription activated: {subscription_id}")
+        logger.info(f"🟡 PayPal billing agreement created (not yet paid): {subscription_id}")
         
-        # Find the subscription in our database by plan_id
+        # Find the subscription in our database by plan_id and store the PayPal subscription ID
+        # BUT DO NOT ACTIVATE - wait for first payment confirmation
         with get_db_cursor(dict_cursor=False, autocommit=True) as (cur, conn):
             cur.execute("""
                 SELECT id FROM subscriptions
@@ -2080,19 +2084,16 @@ async def handle_paypal_subscription_activated(resource):
             if result:
                 db_subscription_id = result[0]
                 
-                # Update subscription with PayPal subscription ID and activate it
+                # Only store the PayPal subscription ID, keep status as 'pending'
                 cur.execute("""
                     UPDATE subscriptions
                     SET paypal_subscription_id = %s,
-                        status = 'active',
-                        paypal_status = 'ACTIVE',
-                        current_period_start = CURRENT_TIMESTAMP,
-                        current_period_end = CURRENT_TIMESTAMP + INTERVAL '1 month',
+                        paypal_status = 'CREATED',
                         updated_at = CURRENT_TIMESTAMP
                     WHERE id = %s
                 """, (subscription_id, db_subscription_id))
                 
-                logger.info(f"✅ Updated subscription {db_subscription_id} with PayPal subscription {subscription_id}")
+                logger.info(f"📝 Stored PayPal subscription ID {subscription_id} for subscription {db_subscription_id} (still pending payment)")
             else:
                 logger.warning(f"⚠️ Could not find subscription for PayPal plan {plan_id}")
                 
@@ -2166,13 +2167,27 @@ async def handle_paypal_payment_completed(resource):
         with get_db_cursor(dict_cursor=False, autocommit=True) as (cur, conn):
             # Find the subscription
             cur.execute("""
-                SELECT id FROM subscriptions
+                SELECT id, status FROM subscriptions
                 WHERE paypal_subscription_id = %s
             """, (subscription_id,))
             
             result = cur.fetchone()
             if result:
-                db_subscription_id = result[0]
+                db_subscription_id, current_status = result
+                
+                # If this is the first payment (subscription is still pending), activate it
+                if current_status == 'pending':
+                    cur.execute("""
+                        UPDATE subscriptions
+                        SET status = 'active',
+                            paypal_status = 'ACTIVE',
+                            current_period_start = CURRENT_TIMESTAMP,
+                            current_period_end = CURRENT_TIMESTAMP + INTERVAL '1 month',
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE id = %s
+                    """, (db_subscription_id,))
+                    
+                    logger.info(f"🎉 ACTIVATED PayPal subscription {db_subscription_id} after first payment confirmation!")
                 
                 # Create invoice record for the payment
                 from app.models.subscription import create_invoice
@@ -2419,6 +2434,58 @@ async def cancel_user_subscription(
         raise HTTPException(
             status_code=500,
             detail=f"Error canceling subscription: {str(e)}"
+        )
+
+@router.post("/admin/fix-paypal-subscriptions")
+async def fix_paypal_subscriptions(user = Depends(get_user_from_token)):
+    """
+    Admin endpoint to fix PayPal subscriptions that were incorrectly activated
+    This should be called once after deploying the fix
+    """
+    check_subscriptions_enabled()
+    
+    try:
+        with get_db_cursor(dict_cursor=False, autocommit=True) as (cur, conn):
+            # Find PayPal subscriptions that are active but have no payment confirmation
+            cur.execute("""
+                SELECT s.id, s.paypal_subscription_id 
+                FROM subscriptions s
+                LEFT JOIN invoices i ON s.id = i.subscription_id AND i.payment_provider = 'paypal'
+                WHERE s.payment_provider = 'paypal' 
+                AND s.status = 'active'
+                AND i.id IS NULL  -- No invoices means no payments confirmed
+            """)
+            
+            problematic_subscriptions = cur.fetchall()
+            
+            if problematic_subscriptions:
+                # Mark them as pending
+                subscription_ids = [row[0] for row in problematic_subscriptions]
+                cur.execute("""
+                    UPDATE subscriptions 
+                    SET status = 'pending', paypal_status = 'CREATED'
+                    WHERE id = ANY(%s)
+                """, (subscription_ids,))
+                
+                logger.info(f"Fixed {len(problematic_subscriptions)} PayPal subscriptions that were incorrectly activated")
+                
+                return {
+                    "success": True,
+                    "message": f"Fixed {len(problematic_subscriptions)} PayPal subscriptions",
+                    "fixed_subscriptions": subscription_ids
+                }
+            else:
+                return {
+                    "success": True,
+                    "message": "No PayPal subscriptions needed fixing",
+                    "fixed_subscriptions": []
+                }
+                
+    except Exception as e:
+        logger.error(f"Error fixing PayPal subscriptions: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fixing PayPal subscriptions: {str(e)}"
         )
 
 @router.get("/test-status-cases")
