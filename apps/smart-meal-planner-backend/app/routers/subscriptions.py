@@ -685,23 +685,6 @@ async def create_checkout_session(
         logger.info(f"Creating checkout session with params: subscription_type={subscription_type}, "
                     f"payment_provider={payment_provider}, success_url={success_url}, cancel_url={cancel_url}")
 
-        # Validate that we have the price IDs
-        if subscription_type == SubscriptionType.individual and not STRIPE_INDIVIDUAL_PRICE_ID:
-            logger.error(f"Individual subscription price not configured - "
-                         f"subscription_type={subscription_type}, STRIPE_INDIVIDUAL_PRICE_ID is empty")
-            raise HTTPException(
-                status_code=503,
-                detail="Individual subscription price not configured"
-            )
-
-        if subscription_type == SubscriptionType.organization and not STRIPE_ORGANIZATION_PRICE_ID:
-            logger.error(f"Organization subscription price not configured - "
-                         f"subscription_type={subscription_type}, STRIPE_ORGANIZATION_PRICE_ID is empty")
-            raise HTTPException(
-                status_code=503,
-                detail="Organization subscription price not configured"
-            )
-
         # Determine which user or organization is subscribing
         user_id = user.get('user_id')
         if not user_id:
@@ -740,120 +723,236 @@ async def create_checkout_session(
                     detail="Error checking organization status"
                 )
 
-        # Get or create Stripe customer
-        try:
-            customer_id = await get_or_create_stripe_customer(user_id, organization_id)
-            logger.info(f"Got Stripe customer ID: {customer_id}")
+        # Handle different payment providers
+        if payment_provider == PaymentProvider.stripe:
+            # ========== STRIPE PAYMENT PROCESSING ==========
+            logger.info("Processing Stripe payment")
             
-            if not customer_id:
-                logger.error("Failed to get or create Stripe customer")
+            # Validate that we have the price IDs
+            if subscription_type == SubscriptionType.individual and not STRIPE_INDIVIDUAL_PRICE_ID:
+                logger.error(f"Individual subscription price not configured - "
+                             f"subscription_type={subscription_type}, STRIPE_INDIVIDUAL_PRICE_ID is empty")
+                raise HTTPException(
+                    status_code=503,
+                    detail="Individual subscription price not configured"
+                )
+
+            if subscription_type == SubscriptionType.organization and not STRIPE_ORGANIZATION_PRICE_ID:
+                logger.error(f"Organization subscription price not configured - "
+                             f"subscription_type={subscription_type}, STRIPE_ORGANIZATION_PRICE_ID is empty")
+                raise HTTPException(
+                    status_code=503,
+                    detail="Organization subscription price not configured"
+                )
+
+            # Get or create Stripe customer
+            try:
+                customer_id = await get_or_create_stripe_customer(user_id, organization_id)
+                logger.info(f"Got Stripe customer ID: {customer_id}")
+                
+                if not customer_id:
+                    logger.error("Failed to get or create Stripe customer")
+                    raise HTTPException(
+                        status_code=500,
+                        detail="Failed to create customer record"
+                    )
+            except HTTPException:
+                # Re-raise HTTPExceptions (they already have proper status codes)
+                raise
+            except Exception as customer_err:
+                logger.error(f"Error getting/creating Stripe customer: {str(customer_err)}", exc_info=True)
                 raise HTTPException(
                     status_code=500,
-                    detail="Failed to create customer record"
+                    detail=f"Error creating customer: {str(customer_err)}"
                 )
-        except HTTPException:
-            # Re-raise HTTPExceptions (they already have proper status codes)
-            raise
-        except Exception as customer_err:
-            logger.error(f"Error getting/creating Stripe customer: {str(customer_err)}", exc_info=True)
-            raise HTTPException(
-                status_code=500,
-                detail=f"Error creating customer: {str(customer_err)}"
-            )
 
-        # Determine the price ID based on subscription type
-        price_id = STRIPE_INDIVIDUAL_PRICE_ID if subscription_type == SubscriptionType.individual else STRIPE_ORGANIZATION_PRICE_ID
-        logger.info(f"Using price ID: {price_id}")
+            # Determine the price ID based on subscription type
+            price_id = STRIPE_INDIVIDUAL_PRICE_ID if subscription_type == SubscriptionType.individual else STRIPE_ORGANIZATION_PRICE_ID
+            logger.info(f"Using price ID: {price_id}")
 
-        # Validate that the price ID is in the correct format (should start with 'price_')
-        if not price_id.startswith('price_'):
-            logger.error(f"Invalid price ID format: {price_id}. Price IDs should start with 'price_', not 'prod_'")
-            raise HTTPException(
-                status_code=500,
-                detail="Invalid price ID configuration. Please contact support."
-            )
+            # Validate that the price ID is in the correct format (should start with 'price_')
+            if not price_id.startswith('price_'):
+                logger.error(f"Invalid price ID format: {price_id}. Price IDs should start with 'price_', not 'prod_'")
+                raise HTTPException(
+                    status_code=500,
+                    detail="Invalid price ID configuration. Please contact support."
+                )
 
-        # Set default URLs if not provided
-        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
-        success_url = success_url or f"{frontend_url}/subscription/success?session_id={{CHECKOUT_SESSION_ID}}"
-        cancel_url = cancel_url or f"{frontend_url}/subscription/cancel"
-        logger.info(f"Using success_url: {success_url}, cancel_url: {cancel_url}")
+            # Set default URLs if not provided
+            frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+            success_url = success_url or f"{frontend_url}/subscription/success?session_id={{CHECKOUT_SESSION_ID}}"
+            cancel_url = cancel_url or f"{frontend_url}/subscription/cancel"
+            logger.info(f"Using success_url: {success_url}, cancel_url: {cancel_url}")
 
-        # Create metadata to track the subscription
-        metadata = {
-            "user_id": str(user_id),
-            "subscription_type": subscription_type.value,
-            "created_at": datetime.now().isoformat()
-        }
-
-        if organization_id:
-            metadata["organization_id"] = str(organization_id)
-
-        try:
-            # Create checkout session
-            logger.info("Calling stripe.checkout.Session.create...")
-            checkout_session = stripe.checkout.Session.create(
-                customer=customer_id,
-                payment_method_types=["card"],
-                line_items=[{
-                    "price": price_id,
-                    "quantity": 1
-                }],
-                mode="subscription",
-                success_url=success_url,
-                cancel_url=cancel_url,
-                metadata=metadata
-            )
-
-            # Log the checkout session creation
-            logger.info(f"Created Stripe checkout session: {checkout_session.id}")
-
-            return {
-                "success": True,
-                "checkout_url": checkout_session.url,
-                "session_id": checkout_session.id
+            # Create metadata to track the subscription
+            metadata = {
+                "user_id": str(user_id),
+                "subscription_type": subscription_type.value,
+                "created_at": datetime.now().isoformat()
             }
-        except stripe.error.StripeError as stripe_err:
-            # Handle Stripe-specific errors
-            logger.error(f"Stripe error creating checkout session: {str(stripe_err)}", exc_info=True)
-            error_msg = str(stripe_err)
-            
-            # Provide more specific error messages based on the type of Stripe error
-            if isinstance(stripe_err, stripe.error.CardError):
-                # Card errors are the most common and customer-facing
-                status_code = 400
-                detail = f"Card error: {error_msg}"
-            elif isinstance(stripe_err, stripe.error.InvalidRequestError):
-                # Invalid parameters were supplied to Stripe's API
-                status_code = 400
-                detail = f"Invalid request to payment processor: {error_msg}"
-            elif isinstance(stripe_err, stripe.error.AuthenticationError):
-                # Authentication failed (e.g. invalid API key)
-                status_code = 503
-                detail = "Payment processor authentication failed"
-            elif isinstance(stripe_err, stripe.error.APIConnectionError):
-                # Network communication with Stripe failed
-                status_code = 503
-                detail = "Could not connect to payment processor"
-            elif isinstance(stripe_err, stripe.error.RateLimitError):
-                # Too many requests hit the Stripe API too quickly
-                status_code = 429
-                detail = "Payment processor rate limit exceeded, please try again later"
-            else:
-                # Handle all other Stripe errors generically
-                status_code = 500
-                detail = f"Payment processor error: {error_msg}"
+
+            if organization_id:
+                metadata["organization_id"] = str(organization_id)
+
+            try:
+                # Create checkout session
+                logger.info("Calling stripe.checkout.Session.create...")
+                checkout_session = stripe.checkout.Session.create(
+                    customer=customer_id,
+                    payment_method_types=["card"],
+                    line_items=[{
+                        "price": price_id,
+                        "quantity": 1
+                    }],
+                    mode="subscription",
+                    success_url=success_url,
+                    cancel_url=cancel_url,
+                    metadata=metadata
+                )
+
+                # Log the checkout session creation
+                logger.info(f"Created Stripe checkout session: {checkout_session.id}")
+
+                return {
+                    "success": True,
+                    "checkout_url": checkout_session.url,
+                    "session_id": checkout_session.id
+                }
+            except stripe.error.StripeError as stripe_err:
+                # Handle Stripe-specific errors
+                logger.error(f"Stripe error creating checkout session: {str(stripe_err)}", exc_info=True)
+                error_msg = str(stripe_err)
                 
+                # Provide more specific error messages based on the type of Stripe error
+                if isinstance(stripe_err, stripe.error.CardError):
+                    # Card errors are the most common and customer-facing
+                    status_code = 400
+                    detail = f"Card error: {error_msg}"
+                elif isinstance(stripe_err, stripe.error.InvalidRequestError):
+                    # Invalid parameters were supplied to Stripe's API
+                    status_code = 400
+                    detail = f"Invalid request to payment processor: {error_msg}"
+                elif isinstance(stripe_err, stripe.error.AuthenticationError):
+                    # Authentication failed (e.g. invalid API key)
+                    status_code = 503
+                    detail = "Payment processor authentication failed"
+                elif isinstance(stripe_err, stripe.error.APIConnectionError):
+                    # Network communication with Stripe failed
+                    status_code = 503
+                    detail = "Could not connect to payment processor"
+                elif isinstance(stripe_err, stripe.error.RateLimitError):
+                    # Too many requests hit the Stripe API too quickly
+                    status_code = 429
+                    detail = "Payment processor rate limit exceeded, please try again later"
+                else:
+                    # Handle all other Stripe errors generically
+                    status_code = 500
+                    detail = f"Payment processor error: {error_msg}"
+                    
+                raise HTTPException(
+                    status_code=status_code,
+                    detail=detail
+                )
+            except Exception as e:
+                logger.error(f"Unexpected error creating checkout session: {str(e)}", exc_info=True)
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to create checkout session: {str(e)}"
+                )
+        
+        elif payment_provider == PaymentProvider.paypal:
+            # ========== PAYPAL PAYMENT PROCESSING ==========
+            logger.info("Processing PayPal payment")
+            
+            if not paypalrestsdk:
+                logger.error("PayPal SDK is not available")
+                raise HTTPException(
+                    status_code=503,
+                    detail="PayPal integration is not available"
+                )
+            
+            if not PAYPAL_CLIENT_ID or not PAYPAL_CLIENT_SECRET:
+                logger.error("PayPal credentials not configured")
+                raise HTTPException(
+                    status_code=503,
+                    detail="PayPal integration is not configured"
+                )
+            
+            try:
+                # Determine monthly amount based on subscription type
+                monthly_amount = 7.99 if subscription_type == SubscriptionType.individual else 49.99
+                
+                # Create or get PayPal subscription plan
+                plan_id = await create_paypal_subscription_plan(subscription_type.value, monthly_amount)
+                if not plan_id:
+                    raise HTTPException(
+                        status_code=500,
+                        detail="Failed to create PayPal subscription plan"
+                    )
+                
+                # Create PayPal subscription
+                subscription_result = await create_paypal_subscription(plan_id, user_id, organization_id)
+                if not subscription_result:
+                    raise HTTPException(
+                        status_code=500,
+                        detail="Failed to create PayPal subscription"
+                    )
+                
+                # Store the PayPal plan ID and agreement ID in our database for future reference
+                with get_db_cursor(dict_cursor=False, autocommit=True) as (cur, conn):
+                    # Check if subscription already exists
+                    if organization_id:
+                        cur.execute("""
+                            SELECT id FROM subscriptions WHERE organization_id = %s
+                        """, (organization_id,))
+                    else:
+                        cur.execute("""
+                            SELECT id FROM subscriptions WHERE user_id = %s
+                        """, (user_id,))
+                    
+                    existing = cur.fetchone()
+                    
+                    if existing:
+                        # Update existing subscription with PayPal details
+                        cur.execute("""
+                            UPDATE subscriptions
+                            SET paypal_plan_id = %s, updated_at = CURRENT_TIMESTAMP
+                            WHERE id = %s
+                        """, (plan_id, existing[0]))
+                    else:
+                        # Create new subscription record (will be completed when PayPal webhook confirms)
+                        from app.models.subscription import create_subscription
+                        create_subscription(
+                            user_id=user_id,
+                            organization_id=organization_id,
+                            subscription_type=subscription_type.value,
+                            payment_provider="paypal",
+                            monthly_amount=monthly_amount,
+                            paypal_plan_id=plan_id
+                        )
+                
+                return {
+                    "success": True,
+                    "checkout_url": subscription_result["approval_url"],
+                    "agreement_id": subscription_result["agreement_id"],
+                    "plan_id": plan_id
+                }
+                
+            except Exception as paypal_err:
+                logger.error(f"PayPal error creating subscription: {str(paypal_err)}", exc_info=True)
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"PayPal error: {str(paypal_err)}"
+                )
+        
+        else:
+            # Unsupported payment provider
+            logger.error(f"Unsupported payment provider: {payment_provider}")
             raise HTTPException(
-                status_code=status_code,
-                detail=detail
+                status_code=400,
+                detail=f"Unsupported payment provider: {payment_provider}"
             )
-        except Exception as e:
-            logger.error(f"Unexpected error creating checkout session: {str(e)}", exc_info=True)
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to create checkout session: {str(e)}"
-            )
+
     except HTTPException:
         # Re-raise HTTPExceptions to preserve their status code and detail
         raise
@@ -862,97 +961,6 @@ async def create_checkout_session(
         raise HTTPException(
             status_code=500,
             detail=f"Server error: {str(e)}"
-        )
-        
-    elif payment_provider == PaymentProvider.paypal:
-        # PayPal implementation
-        if not paypalrestsdk:
-            logger.error("PayPal SDK is not available")
-            raise HTTPException(
-                status_code=503,
-                detail="PayPal integration is not available"
-            )
-        
-        if not PAYPAL_CLIENT_ID or not PAYPAL_CLIENT_SECRET:
-            logger.error("PayPal credentials not configured")
-            raise HTTPException(
-                status_code=503,
-                detail="PayPal integration is not configured"
-            )
-        
-        try:
-            # Determine monthly amount based on subscription type
-            monthly_amount = 7.99 if subscription_type == SubscriptionType.individual else 49.99
-            
-            # Create or get PayPal subscription plan
-            plan_id = await create_paypal_subscription_plan(subscription_type.value, monthly_amount)
-            if not plan_id:
-                raise HTTPException(
-                    status_code=500,
-                    detail="Failed to create PayPal subscription plan"
-                )
-            
-            # Create PayPal subscription
-            subscription_result = await create_paypal_subscription(plan_id, user_id, organization_id)
-            if not subscription_result:
-                raise HTTPException(
-                    status_code=500,
-                    detail="Failed to create PayPal subscription"
-                )
-            
-            # Store the PayPal plan ID and agreement ID in our database for future reference
-            with get_db_cursor(dict_cursor=False, autocommit=True) as (cur, conn):
-                # Check if subscription already exists
-                if organization_id:
-                    cur.execute("""
-                        SELECT id FROM subscriptions WHERE organization_id = %s
-                    """, (organization_id,))
-                else:
-                    cur.execute("""
-                        SELECT id FROM subscriptions WHERE user_id = %s
-                    """, (user_id,))
-                
-                existing = cur.fetchone()
-                
-                if existing:
-                    # Update existing subscription with PayPal details
-                    cur.execute("""
-                        UPDATE subscriptions
-                        SET paypal_plan_id = %s, updated_at = CURRENT_TIMESTAMP
-                        WHERE id = %s
-                    """, (plan_id, existing[0]))
-                else:
-                    # Create new subscription record (will be completed when PayPal webhook confirms)
-                    from app.models.subscription import create_subscription
-                    create_subscription(
-                        user_id=user_id,
-                        organization_id=organization_id,
-                        subscription_type=subscription_type.value,
-                        payment_provider="paypal",
-                        monthly_amount=monthly_amount,
-                        paypal_plan_id=plan_id
-                    )
-            
-            return {
-                "success": True,
-                "checkout_url": subscription_result["approval_url"],
-                "agreement_id": subscription_result["agreement_id"],
-                "plan_id": plan_id
-            }
-            
-        except Exception as paypal_err:
-            logger.error(f"PayPal error creating subscription: {str(paypal_err)}", exc_info=True)
-            raise HTTPException(
-                status_code=500,
-                detail=f"PayPal error: {str(paypal_err)}"
-            )
-    
-    else:
-        # Unsupported payment provider
-        logger.error(f"Unsupported payment provider: {payment_provider}")
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported payment provider: {payment_provider}"
         )
 
 @router.post("/webhooks/stripe")
