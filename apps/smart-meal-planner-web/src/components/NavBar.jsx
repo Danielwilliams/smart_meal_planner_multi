@@ -131,7 +131,7 @@ function NavBar() {
       return [
         { text: 'Home', icon: <HomeIcon />, path: '/' },
         { text: 'Login', icon: <PersonIcon />, path: '/login' },
-        { text: 'Sign Up', icon: <PersonIcon />, path: '/signup' }
+        { text: 'Get Subscription', icon: <PaymentIcon />, path: '/subscription' }
       ];
     }
     
@@ -328,8 +328,8 @@ function NavBar() {
                   <Button color="inherit" component={Link} to="/login">
                     Login
                   </Button>
-                  <Button color="inherit" component={Link} to="/signup">
-                    Sign Up
+                  <Button color="inherit" component={Link} to="/subscription">
+                    Get Subscription
                   </Button>
                 </>
               )}

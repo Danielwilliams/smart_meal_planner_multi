@@ -49,7 +49,7 @@ function LandingPage() {
               variant="contained"
               size="large"
               component={Link}
-              to="/signup"
+              to="/subscription"
               sx={{ backgroundColor: '#2e7d32' }}
             >
               Start Your Subscription
