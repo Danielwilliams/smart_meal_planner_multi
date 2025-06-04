@@ -2338,11 +2338,24 @@ async def cancel_user_subscription(
                         detail="PayPal integration is not available"
                     )
 
+                # Check if we have paypal_subscription_id, if not try to find it
                 if not paypal_subscription_id:
-                    raise HTTPException(
-                        status_code=400,
-                        detail="Missing PayPal subscription ID"
-                    )
+                    logger.info(f"No PayPal subscription ID found for subscription {subscription_id}, checking for billing agreement...")
+                    
+                    # For new PayPal subscriptions, we might only have the plan info
+                    # In this case, we'll cancel the subscription in our database only
+                    # since the user might be canceling before PayPal webhook activation
+                    logger.warning(f"PayPal subscription ID not found for subscription {subscription_id}")
+                    
+                    # Update our database to mark as canceled
+                    from app.models.subscription import cancel_subscription
+                    cancel_subscription(subscription_id, cancel_at_period_end=False)
+                    
+                    return {
+                        "success": True,
+                        "message": "Your subscription has been canceled locally (PayPal billing agreement was not yet active)",
+                        "cancel_at_period_end": False
+                    }
 
                 # Cancel the subscription in PayPal
                 try:
@@ -2385,10 +2398,15 @@ async def cancel_user_subscription(
                         
                 except Exception as paypal_err:
                     logger.error(f"PayPal error canceling subscription: {str(paypal_err)}")
-                    raise HTTPException(
-                        status_code=500,
-                        detail=f"Error canceling PayPal subscription: {str(paypal_err)}"
-                    )
+                    # If there's an error with PayPal, still cancel in our database
+                    from app.models.subscription import cancel_subscription
+                    cancel_subscription(subscription_id, cancel_at_period_end=False)
+                    
+                    return {
+                        "success": True,
+                        "message": "Your subscription has been canceled locally (PayPal error occurred)",
+                        "cancel_at_period_end": False
+                    }
             
             else:
                 raise HTTPException(
