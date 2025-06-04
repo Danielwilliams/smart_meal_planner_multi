@@ -296,26 +296,42 @@ if ENABLE_SUBSCRIPTION_FEATURES:
         
         # Only configure if credentials are present
         if PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET:
-            # Configure PayPal SDK
-            paypalrestsdk.configure({
-                "mode": PAYPAL_MODE,
-                "client_id": PAYPAL_CLIENT_ID,
-                "client_secret": PAYPAL_CLIENT_SECRET
-            })
-            
-            # Log configuration
-            logger.info(f"PayPal configured: Client ID present: {bool(PAYPAL_CLIENT_ID)}")
-            logger.info(f"PayPal Mode: {PAYPAL_MODE}")
-            logger.info(f"PayPal Webhook ID present: {bool(PAYPAL_WEBHOOK_ID)}")
+            try:
+                # Configure PayPal SDK
+                paypalrestsdk.configure({
+                    "mode": PAYPAL_MODE,
+                    "client_id": PAYPAL_CLIENT_ID,
+                    "client_secret": PAYPAL_CLIENT_SECRET
+                })
+                
+                # Log configuration
+                logger.info(f"PayPal configured: Client ID present: {bool(PAYPAL_CLIENT_ID)}")
+                logger.info(f"PayPal Mode: {PAYPAL_MODE}")
+                logger.info(f"PayPal Webhook ID present: {bool(PAYPAL_WEBHOOK_ID)}")
+            except Exception as config_error:
+                logger.error(f"Error configuring PayPal SDK: {str(config_error)}")
+                paypalrestsdk = None
         else:
             logger.warning("PayPal credentials not found. PayPal integration will be limited.")
         
     except ImportError:
         logger.warning("PayPal SDK not installed. PayPal integration will be disabled.")
         paypalrestsdk = None
+        # Define PayPal variables as None when SDK is not available
+        PAYPAL_CLIENT_ID = None
+        PAYPAL_CLIENT_SECRET = None
+        PAYPAL_MODE = None
+        PAYPAL_WEBHOOK_ENDPOINT = None
+        PAYPAL_WEBHOOK_ID = None
 else:
     stripe = None
     paypalrestsdk = None
+    # Define PayPal variables as None when subscriptions are disabled
+    PAYPAL_CLIENT_ID = None
+    PAYPAL_CLIENT_SECRET = None
+    PAYPAL_MODE = None
+    PAYPAL_WEBHOOK_ENDPOINT = None
+    PAYPAL_WEBHOOK_ID = None
 
 # Helper functions for payment providers
 if ENABLE_SUBSCRIPTION_FEATURES and stripe:
