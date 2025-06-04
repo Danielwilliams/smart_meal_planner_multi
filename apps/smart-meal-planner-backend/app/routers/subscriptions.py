@@ -294,17 +294,21 @@ if ENABLE_SUBSCRIPTION_FEATURES:
         PAYPAL_WEBHOOK_ENDPOINT = os.getenv("PAYPAL_WEBHOOK_ENDPOINT", "")
         PAYPAL_WEBHOOK_ID = os.getenv("PAYPAL_WEBHOOK_ID", "")
         
-        # Configure PayPal SDK
-        paypalrestsdk.configure({
-            "mode": PAYPAL_MODE,
-            "client_id": PAYPAL_CLIENT_ID,
-            "client_secret": PAYPAL_CLIENT_SECRET
-        })
-        
-        # Log configuration
-        logger.info(f"PayPal configured: Client ID present: {bool(PAYPAL_CLIENT_ID)}")
-        logger.info(f"PayPal Mode: {PAYPAL_MODE}")
-        logger.info(f"PayPal Webhook ID present: {bool(PAYPAL_WEBHOOK_ID)}")
+        # Only configure if credentials are present
+        if PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET:
+            # Configure PayPal SDK
+            paypalrestsdk.configure({
+                "mode": PAYPAL_MODE,
+                "client_id": PAYPAL_CLIENT_ID,
+                "client_secret": PAYPAL_CLIENT_SECRET
+            })
+            
+            # Log configuration
+            logger.info(f"PayPal configured: Client ID present: {bool(PAYPAL_CLIENT_ID)}")
+            logger.info(f"PayPal Mode: {PAYPAL_MODE}")
+            logger.info(f"PayPal Webhook ID present: {bool(PAYPAL_WEBHOOK_ID)}")
+        else:
+            logger.warning("PayPal credentials not found. PayPal integration will be limited.")
         
     except ImportError:
         logger.warning("PayPal SDK not installed. PayPal integration will be disabled.")
