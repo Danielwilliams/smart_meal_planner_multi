@@ -20,8 +20,9 @@ import TestDebugPage from './pages/TestDebugPage';
 import CartPage from './pages/CartPage';  // Add this import
 import Home from './pages/Home';
 import LandingPage from './pages/LandingPage';
-// Import PrivateRoute component
+// Import PrivateRoute and SubscriptionRoute components
 import PrivateRoute from './components/PrivateRoute';
+import SubscriptionRoute from './components/SubscriptionRoute';
 import ExampleMealPlansPage from './pages/ExampleMealPlansPage';
 import VerifyEmailPage from './pages/VerifyEmailPage';
 import SavedRecipesPage from './pages/SavedRecipesPage';
@@ -101,9 +102,9 @@ function App() {
               <Route 
                 path="/home" 
                 element={
-                  <PrivateRoute>
+                  <SubscriptionRoute>
                     <Home />
-                  </PrivateRoute>
+                  </SubscriptionRoute>
                 } 
               />
               <Route 
@@ -117,65 +118,65 @@ function App() {
               <Route 
                 path="/preferences-page" 
                 element={
-                  <PrivateRoute>
+                  <SubscriptionRoute>
                     <PreferencesPage />
-                  </PrivateRoute>
+                  </SubscriptionRoute>
                 } 
               />
               <Route 
                 path="/menu" 
                 element={
-                  <PrivateRoute>
+                  <SubscriptionRoute>
                     <MenuDisplayPage />
-                  </PrivateRoute>
+                  </SubscriptionRoute>
                 } 
               />
               <Route 
                 path="/menu/:menuId" 
                 element={
-                  <PrivateRoute>
+                  <SubscriptionRoute>
                     <MenuDisplayPage />
-                  </PrivateRoute>
+                  </SubscriptionRoute>
                 } 
               />
               <Route 
                 path="/menu-display" 
                 element={
-                  <PrivateRoute>
+                  <SubscriptionRoute>
                     <MenuDisplayPage />
-                  </PrivateRoute>
+                  </SubscriptionRoute>
                 } 
               />
               <Route 
                 path="/menu-display/:menuId" 
                 element={
-                  <PrivateRoute>
+                  <SubscriptionRoute>
                     <MenuDisplayPage />
-                  </PrivateRoute>
+                  </SubscriptionRoute>
                 } 
               />
               <Route 
                 path="/shopping-list" 
                 element={
-                  <PrivateRoute>
+                  <SubscriptionRoute>
                     <ShoppingListPage />
-                  </PrivateRoute>
+                  </SubscriptionRoute>
                 } 
               />
               <Route
                 path="/shopping-list/:menuId"
                 element={
-                  <PrivateRoute>
+                  <SubscriptionRoute>
                     <ShoppingListPage />
-                  </PrivateRoute>
+                  </SubscriptionRoute>
                 }
               />
               <Route
                 path="/grocery-list/:menuId"
                 element={
-                  <PrivateRoute>
+                  <SubscriptionRoute>
                     <ShoppingListPage />
-                  </PrivateRoute>
+                  </SubscriptionRoute>
                 }
               />
               {/* Debug Routes - Public for easy access */}
@@ -188,33 +189,33 @@ function App() {
               <Route 
                 path="/cart" 
                 element={
-                  <PrivateRoute>
+                  <SubscriptionRoute>
                     <CartPage />
-                  </PrivateRoute>
+                  </SubscriptionRoute>
                 } 
               />
               <Route 
                 path="/saved-recipes" 
                 element={
-                  <PrivateRoute>
+                  <SubscriptionRoute>
                     <SavedRecipesPage />
-                  </PrivateRoute>
+                  </SubscriptionRoute>
                 } 
               />
               <Route 
                 path="/organization/dashboard" 
                 element={
-                  <PrivateRoute>
+                  <SubscriptionRoute>
                     <OrganizationDashboard />
-                  </PrivateRoute>
+                  </SubscriptionRoute>
                 } 
               />
               <Route 
                 path="/organization/settings" 
                 element={
-                  <PrivateRoute>
+                  <SubscriptionRoute>
                     <OrganizationSettingsPage />
-                  </PrivateRoute>
+                  </SubscriptionRoute>
                 } 
               />
               <Route 

@@ -2436,6 +2436,86 @@ async def cancel_user_subscription(
             detail=f"Error canceling subscription: {str(e)}"
         )
 
+@router.post("/admin/migrate-existing-free-users")
+async def migrate_existing_free_users(user = Depends(get_user_from_token)):
+    """
+    Admin endpoint to migrate existing users without subscriptions to permanent free tier
+    This gives them grandfathered access while new users get trials
+    """
+    check_subscriptions_enabled()
+    
+    try:
+        with get_db_cursor(dict_cursor=False, autocommit=True) as (cur, conn):
+            # Find users created before today who don't have subscriptions
+            cur.execute("""
+                SELECT id, account_type, email, created_at 
+                FROM user_profiles 
+                WHERE subscription_id IS NULL 
+                AND verified = TRUE
+                AND created_at < CURRENT_DATE  -- Only users created before today
+            """)
+            
+            users_without_subscriptions = cur.fetchall()
+            
+            # Find organizations without subscriptions
+            cur.execute("""
+                SELECT o.id, o.name, u.email, o.created_at
+                FROM organizations o
+                JOIN user_profiles u ON o.owner_id = u.id
+                WHERE o.subscription_id IS NULL
+                AND o.created_at < CURRENT_DATE  -- Only orgs created before today
+            """)
+            
+            orgs_without_subscriptions = cur.fetchall()
+            
+            migrated_count = 0
+            
+            # Migrate users to permanent free tier (no expiration)
+            for user in users_without_subscriptions:
+                user_id, account_type, email, created_at = user
+                
+                # Don't migrate organization account holders (they'll be handled via org migration)
+                if account_type == 'organization':
+                    continue
+                    
+                # Create permanent free tier subscription
+                from app.models.subscription import migrate_to_free_tier
+                result = migrate_to_free_tier(
+                    user_id=user_id, 
+                    set_beta_expiration=False  # No expiration = permanent free
+                )
+                if result:
+                    migrated_count += 1
+                    logger.info(f"Migrated user {email} (ID: {user_id}) to permanent free tier")
+            
+            # Migrate organizations to permanent free tier
+            for org in orgs_without_subscriptions:
+                org_id, org_name, owner_email, created_at = org
+                
+                from app.models.subscription import migrate_to_free_tier
+                result = migrate_to_free_tier(
+                    organization_id=org_id,
+                    set_beta_expiration=False  # No expiration = permanent free
+                )
+                if result:
+                    migrated_count += 1
+                    logger.info(f"Migrated organization {org_name} (ID: {org_id}) to permanent free tier")
+            
+            return {
+                "success": True,
+                "message": f"Migrated {migrated_count} users/organizations to permanent free tier",
+                "migrated_users": len(users_without_subscriptions),
+                "migrated_organizations": len(orgs_without_subscriptions),
+                "total_migrated": migrated_count
+            }
+                
+    except Exception as e:
+        logger.error(f"Error migrating existing free users: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error migrating existing free users: {str(e)}"
+        )
+
 @router.post("/admin/fix-paypal-subscriptions")
 async def fix_paypal_subscriptions(user = Depends(get_user_from_token)):
     """

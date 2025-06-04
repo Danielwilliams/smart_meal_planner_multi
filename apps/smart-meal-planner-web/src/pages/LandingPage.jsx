@@ -44,15 +44,26 @@ function LandingPage() {
             Unique, nutritious, and flavorful meal plans <br />
             with seamless shopping integration via Instacart and Kroger
           </Typography>
-          <Button
-            variant="contained"
-            size="large"
-            component={Link}
-            to="/signup"
-            sx={{ alignSelf: 'flex-start' }}
-          >
-            Get Started
-          </Button>
+          <Box sx={{ display: 'flex', gap: 2, alignSelf: 'flex-start' }}>
+            <Button
+              variant="contained"
+              size="large"
+              component={Link}
+              to="/signup"
+              sx={{ backgroundColor: '#2e7d32' }}
+            >
+              Start Your Subscription
+            </Button>
+            <Button
+              variant="outlined"
+              size="large"
+              component={Link}
+              to="/example-meal-plans"
+              sx={{ color: 'white', borderColor: 'white' }}
+            >
+              View Examples
+            </Button>
+          </Box>
         </Box>
       </Box>
 

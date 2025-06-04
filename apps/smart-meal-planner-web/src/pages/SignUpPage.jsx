@@ -157,7 +157,7 @@ function SignUpPage() {
               fullWidth
               onClick={() => navigate('/login')}
             >
-              Proceed to Login
+              Proceed to Login (Subscribe After Verification)
             </Button>
           </>
         ) : (

@@ -93,7 +93,17 @@ async def sign_up(user_data: UserSignUp, background_tasks: BackgroundTasks):
                 cursor.execute("""
                     INSERT INTO organizations (name, owner_id)
                     VALUES (%s, %s)
+                    RETURNING id
                 """, (user_data.organization_name, user_id))
+                organization_id = cursor.fetchone()[0]
+                
+                # Create a trial subscription for the organization
+                from app.models.subscription import migrate_to_free_tier
+                migrate_to_free_tier(organization_id=organization_id, days_until_expiration=7)  # 7-day trial
+            else:
+                # Create a trial subscription for individual user
+                from app.models.subscription import migrate_to_free_tier
+                migrate_to_free_tier(user_id=user_id, days_until_expiration=7)  # 7-day trial
         
         # Send verification email in background
         background_tasks.add_task(send_verification_email, user_data.email, verification_token)
