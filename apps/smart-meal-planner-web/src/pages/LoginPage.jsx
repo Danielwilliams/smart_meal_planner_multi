@@ -82,63 +82,92 @@ function LoginPage() {
     setError('');
     setLoading(true);
 
-    try {
-      if (!executeRecaptcha) {
-        throw new Error('reCAPTCHA not initialized');
-      }
+    let retryCount = 0;
+    const maxRetries = 1;
 
-      const captchaToken = await executeRecaptcha('login');
-      
-      // Use the AuthContext login function that handles the API call
-      const response = await login({
-        email,
-        password,
-        captchaToken
-      });
-
-      console.log('Login Response:', response);
-
-      // If this is an invitation login flow, redirect to the connect-to-organization page
-      if (isInvitation && invitationToken && organizationId) {
-        // Instead of accepting invitation here, redirect to the dedicated connection page
-        navigate(`/connect-to-organization?token=${invitationToken}&org=${organizationId}`);
-        return; // Exit early since we've already navigated
-      }
-
-      // Standard redirect flow (if not handling invitation)
-      if (response.account_type === 'organization') {
-        navigate('/organization/dashboard');
-      } else if (response.account_type === 'client') {
-        // Client account flow - send to client dashboard
-        console.log('Navigating to client dashboard');
-        navigate('/client-dashboard');
-      } else {
-        // Regular user flow
-        if (response.progress?.has_preferences) {
-          console.log('Navigating to /home');
-          navigate('/home');
-        } else {
-          console.log('Navigating to /preferences-page');
-          navigate('/preferences-page');
+    while (retryCount <= maxRetries) {
+      try {
+        if (!executeRecaptcha) {
+          throw new Error('reCAPTCHA not initialized');
         }
+
+        const captchaToken = await executeRecaptcha('login');
+        
+        // Use the AuthContext login function that handles the API call
+        const response = await login({
+          email,
+          password,
+          captchaToken
+        });
+
+        console.log('Login Response:', response);
+        
+        // If we get here, login was successful, proceed with redirects
+        
+        // If this is an invitation login flow, redirect to the connect-to-organization page
+        if (isInvitation && invitationToken && organizationId) {
+          // Instead of accepting invitation here, redirect to the dedicated connection page
+          navigate(`/connect-to-organization?token=${invitationToken}&org=${organizationId}`);
+          return; // Exit early since we've already navigated
+        }
+
+        // Standard redirect flow (if not handling invitation)
+        if (response.account_type === 'organization') {
+          navigate('/organization/dashboard');
+        } else if (response.account_type === 'client') {
+          // Client account flow - send to client dashboard
+          console.log('Navigating to client dashboard');
+          navigate('/client-dashboard');
+        } else {
+          // Regular user flow
+          if (response.progress?.has_preferences) {
+            console.log('Navigating to /home');
+            navigate('/home');
+          } else {
+            console.log('Navigating to /preferences-page');
+            navigate('/preferences-page');
+          }
+        }
+        
+        // Success - break out of retry loop
+        return;
+        
+      } catch (err) {
+        console.error('Login attempt error:', {
+          attempt: retryCount + 1,
+          error: err,
+          response: err.response,
+          message: err.message
+        });
+        
+        const errorDetail = err.response?.data?.detail || err.message || 'An unexpected error occurred during login';
+        
+        // Check if this is a connection error and we haven't retried yet
+        if (retryCount < maxRetries && 
+            (errorDetail.toLowerCase().includes('connection') || 
+             errorDetail.toLowerCase().includes('closed') ||
+             err.code === 'ERR_NETWORK')) {
+          retryCount++;
+          console.log(`Connection error detected, retrying (attempt ${retryCount + 1})...`);
+          // Small delay before retry
+          await new Promise(resolve => setTimeout(resolve, 500));
+          continue; // Try again
+        }
+        
+        // Not a connection error or max retries reached
+        setError(errorDetail);
+        
+        // Check if this is a verification error
+        if (errorDetail.includes('verify') || errorDetail.includes('verification')) {
+          setShowResendVerification(true);
+        }
+        
+        // Exit the retry loop
+        break;
       }
-    } catch (err) {
-      console.error('Full Login Error:', {
-        error: err,
-        response: err.response,
-        message: err.message
-      });
-      
-      const errorDetail = err.response?.data?.detail || err.message || 'An unexpected error occurred during login';
-      setError(errorDetail);
-      
-      // Check if this is a verification error
-      if (errorDetail.includes('verify') || errorDetail.includes('verification')) {
-        setShowResendVerification(true);
-      }
-    } finally {
-      setLoading(false);
     }
+    
+    setLoading(false);
   }, [email, password, executeRecaptcha, navigate, login, isInvitation, invitationToken, organizationId]);
 
   const handleResendVerification = async () => {

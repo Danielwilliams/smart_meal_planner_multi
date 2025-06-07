@@ -29,6 +29,16 @@ thread_local = threading.local()
 # Initialize thread-local storage
 thread_local.connection = None
 
+# Add connection age tracking
+_connection_creation_times = {}
+
+def is_connection_stale(conn_id, max_age_seconds=300):
+    """Check if a connection is older than max_age_seconds (default 5 minutes)"""
+    if conn_id not in _connection_creation_times:
+        return True
+    age = time.time() - _connection_creation_times[conn_id]
+    return age > max_age_seconds
+
 # Connection pool creation with retry logic
 def create_connection_pool():
     """Create or recreate the connection pool with retries"""
