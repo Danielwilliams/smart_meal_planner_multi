@@ -1,15 +1,51 @@
 # app/routers/recipe_ratings.py - Fixed version with isolated rating connections
-from fastapi import APIRouter, HTTPException, Depends, Body
+from fastapi import APIRouter, HTTPException, Depends, Body, Request
 from pydantic import BaseModel, Field, validator
 from typing import Optional, Dict, List
 from datetime import datetime
 import logging
 from psycopg2.extras import RealDictCursor
 from ..utils.auth_utils import get_user_from_token
+import jwt
+from ..config import JWT_SECRET, JWT_ALGORITHM
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/ratings", tags=["Ratings"])
+
+# Simplified auth function for ratings that doesn't hit the problematic database pool
+async def get_rating_user_from_token(request):
+    """Simplified authentication for rating endpoints that bypasses DB organization lookup"""
+    auth_header = request.headers.get('Authorization')
+    if not auth_header:
+        logger.error("No Authorization header found for rating request")
+        return None
+    
+    try:
+        if auth_header.startswith('Bearer '):
+            token = auth_header.split(' ')[1]
+        else:
+            token = auth_header
+            
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        
+        if not payload.get('user_id'):
+            logger.error("Token payload missing user_id for rating request")
+            return None
+        
+        # Return just the basic payload without organization data to avoid DB calls
+        logger.info(f"Rating auth successful for user {payload.get('user_id')}")
+        return payload
+        
+    except jwt.ExpiredSignatureError:
+        logger.error("Token has expired for rating request")
+        return None
+    except jwt.PyJWTError as e:
+        logger.error(f"JWT validation error for rating request: {str(e)}")
+        return None
+    except Exception as e:
+        logger.error(f"Unexpected error in rating token validation: {str(e)}")
+        return None
 
 @router.get("/test")
 async def test_endpoint():
@@ -17,8 +53,10 @@ async def test_endpoint():
     return {"status": "ratings route working"}
 
 @router.get("/auth-test")
-async def auth_test_endpoint(user = Depends(get_user_from_token)):
+async def auth_test_endpoint(request: Request):
     """Test endpoint to verify authentication works"""
+    user = await get_rating_user_from_token(request)
+    
     # Check if user is authenticated
     if not user:
         logger.error("Authentication required for rating auth test")
@@ -33,7 +71,8 @@ async def auth_test_endpoint(user = Depends(get_user_from_token)):
     return {
         "status": "authentication working",
         "user_id": user_id,
-        "user_type": type(user).__name__
+        "user_type": type(user).__name__,
+        "auth_method": "simplified_rating_auth"
     }
 
 # Pydantic models for ratings
@@ -121,12 +160,15 @@ def execute_rating_query(query, params=None, fetch_one=False, fetch_all=False):
 async def rate_recipe(
     recipe_id: int,
     rating: RecipeRating,
-    user = Depends(get_user_from_token)
+    request: Request
 ):
     """Submit a rating for a recipe"""
     logger.info(f"Rate recipe endpoint called for recipe_id: {recipe_id}")
     
-    # Check if user is authenticated - exactly like saved_recipes.py
+    # Use simplified auth that doesn't hit the problematic database pool
+    user = await get_rating_user_from_token(request)
+    
+    # Check if user is authenticated
     if not user:
         logger.error("Authentication required to submit rating")
         raise HTTPException(
@@ -242,9 +284,12 @@ async def get_recipe_ratings(recipe_id: int):
 @router.get("/recipes/{recipe_id}/my-rating")
 async def get_my_recipe_rating(
     recipe_id: int,
-    user = Depends(get_user_from_token)
+    request: Request
 ):
     """Get current user's rating for a recipe"""
+    # Use simplified auth
+    user = await get_rating_user_from_token(request)
+    
     # Check if user is authenticated
     if not user:
         logger.error("Authentication required to get rating")
@@ -280,9 +325,12 @@ async def get_my_recipe_rating(
 async def rate_menu(
     menu_id: int,
     rating: MenuRating,
-    user = Depends(get_user_from_token)
+    request: Request
 ):
     """Submit a rating for an entire menu"""
+    # Use simplified auth
+    user = await get_rating_user_from_token(request)
+    
     # Check if user is authenticated
     if not user:
         logger.error("Authentication required to rate menu")
@@ -334,9 +382,12 @@ async def rate_menu(
 @router.get("/users/{user_id}/preferences")
 async def get_user_preferences(
     user_id: int,
-    user = Depends(get_user_from_token)
+    request: Request
 ):
     """Get user's rating-based preferences"""
+    # Use simplified auth
+    user = await get_rating_user_from_token(request)
+    
     # Check if user is authenticated
     if not user:
         logger.error("Authentication required to get preferences")
@@ -372,9 +423,12 @@ async def get_user_preferences(
 @router.get("/recipes/recommended")
 async def get_recommended_recipes(
     limit: int = 10,
-    user = Depends(get_user_from_token)
+    request: Request
 ):
     """Get recipe recommendations based on user's ratings"""
+    # Use simplified auth
+    user = await get_rating_user_from_token(request)
+    
     # Check if user is authenticated
     if not user:
         logger.error("Authentication required to get recommendations")
