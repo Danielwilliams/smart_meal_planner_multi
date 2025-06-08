@@ -37,6 +37,7 @@ import RecipeSaveDialog from '../components/RecipeSaveDialog';
 import MenuSharingModal from '../components/MenuSharingModal';
 import ModelSelectionDialog from '../components/ModelSelectionDialog';
 import MenuGenerationProgress from '../components/MenuGenerationProgress';
+import RateRecipeButton from '../components/RateRecipeButton';
 
 // Utility Functions
 function formatIngredient(ing) {
@@ -962,6 +963,14 @@ function MenuDisplayPage() {
                               );
                             }
                           }}
+                        />
+
+                        {/* Rate Recipe Button */}
+                        <RateRecipeButton
+                          recipeId={`${menu.menu_id}-${day.dayNumber}-${meal.meal_time}`}
+                          recipeTitle={meal.title}
+                          variant="icon"
+                          size="small"
                         />
 
                         {meal.appliance_used && (

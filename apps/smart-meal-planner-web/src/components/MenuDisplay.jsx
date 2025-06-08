@@ -120,28 +120,16 @@ function MenuDisplay({ data }) {
         >
           Meal Plan (Menu ID: {data.menu_id})
         </Typography>
-        <Box sx={{ display: 'flex', gap: 1, flexDirection: { xs: 'column', sm: 'row' } }}>
-          <Button 
-            variant="outlined" 
-            onClick={() => setMenuRatingOpen(true)}
-            sx={{
-              height: { xs: '48px', sm: 'auto' },
-              fontSize: { xs: '1rem', sm: 'inherit' }
-            }}
-          >
-            Rate Menu
-          </Button>
-          <Button 
-            variant="contained" 
-            onClick={handlePrint}
-            sx={{
-              height: { xs: '48px', sm: 'auto' },
-              fontSize: { xs: '1rem', sm: 'inherit' }
-            }}
-          >
-            Print Full Menu
-          </Button>
-        </Box>
+        <Button 
+          variant="contained" 
+          onClick={handlePrint}
+          sx={{
+            height: { xs: '48px', sm: 'auto' },
+            fontSize: { xs: '1rem', sm: 'inherit' }
+          }}
+        >
+          Print Full Menu
+        </Button>
       </Box>
 
       {days.map((day, dayIdx) => {
@@ -436,17 +424,6 @@ function MenuDisplay({ data }) {
         );
       })}
 
-      {/* Menu Rating Modal */}
-      <MenuRatingModal
-        open={menuRatingOpen}
-        onClose={() => setMenuRatingOpen(false)}
-        menuId={data.menu_id}
-        menuTitle={`Meal Plan (${days.length} days)`}
-        onRatingSubmitted={(rating) => {
-          console.log('Menu rated:', rating);
-          setMenuRatingOpen(false);
-        }}
-      />
     </Box>
   );
 }

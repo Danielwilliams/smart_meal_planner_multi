@@ -13,6 +13,8 @@ import { useAuth } from '../context/AuthContext';
 import MacroDisplay from '../components/MacroDisplay';
 import RecipeSaveButton from '../components/RecipeSaveButton';
 import RecipeTagsDisplay from '../components/RecipeTagsDisplay';
+import RateRecipeButton from '../components/RateRecipeButton';
+import RecipeRatingDisplay from '../components/RecipeRatingDisplay';
 
 const RecipeDetailPage = () => {
   const [recipe, setRecipe] = useState(null);
@@ -174,23 +176,33 @@ const RecipeDetailPage = () => {
                 {recipe.title}
               </Typography>
               
-              {/* Replace IconButton with RecipeSaveButton */}
-              <RecipeSaveButton
-                scraped={true}
-                scrapedRecipeId={recipe.id}
-                recipeTitle={recipe.title}
-                isSaved={recipe.is_saved}
-                savedId={recipe.saved_id}
-                onSaveSuccess={handleSaveSuccess}
-                recipeData={{
-                  ingredients: recipe.ingredients,
-                  instructions: recipe.instructions,
-                  macros: nutritionData,
-                  complexity_level: recipe.complexity || recipe.complexity_level,
-                  servings: recipe.servings || 1,
-                  recipe_source: 'scraped'
-                }}
-              />
+              <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                {/* Rate Recipe Button */}
+                <RateRecipeButton
+                  recipeId={recipe.id}
+                  recipeTitle={recipe.title}
+                  variant="button"
+                  showText={true}
+                />
+                
+                {/* Save Recipe Button */}
+                <RecipeSaveButton
+                  scraped={true}
+                  scrapedRecipeId={recipe.id}
+                  recipeTitle={recipe.title}
+                  isSaved={recipe.is_saved}
+                  savedId={recipe.saved_id}
+                  onSaveSuccess={handleSaveSuccess}
+                  recipeData={{
+                    ingredients: recipe.ingredients,
+                    instructions: recipe.instructions,
+                    macros: nutritionData,
+                    complexity_level: recipe.complexity || recipe.complexity_level,
+                    servings: recipe.servings || 1,
+                    recipe_source: 'scraped'
+                  }}
+                />
+              </Box>
             </Box>
             
             <Box sx={{ mb: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
@@ -244,6 +256,12 @@ const RecipeDetailPage = () => {
             
             {/* Enhanced Tags Display */}
             <RecipeTagsDisplay recipe={recipe} />
+
+            {/* Recipe Ratings Display */}
+            <RecipeRatingDisplay 
+              recipeId={recipe.id} 
+              compact={false}
+            />
 
             {/* Display nutrition summary if available */}
             {nutritionData && (

@@ -13,6 +13,8 @@ import { useAuth } from '../context/AuthContext';
 import Snackbar from '@mui/material/Snackbar';
 import Alert from '@mui/material/Alert';
 import RecipeTagsDisplay from '../components/RecipeTagsDisplay';
+import RateRecipeButton from '../components/RateRecipeButton';
+import RecipeRatingDisplay from '../components/RecipeRatingDisplay';
 
 const RecipeBrowserPage = () => {
   const [recipes, setRecipes] = useState([]);
@@ -479,6 +481,12 @@ const RecipeBrowserPage = () => {
                         {recipe.cook_time && `Cook: ${recipe.cook_time} mins`}
                       </Typography>
                     </CardContent>
+                    <Box sx={{ px: 2, pb: 1 }}>
+                      <RecipeRatingDisplay 
+                        recipeId={recipe.id} 
+                        compact={true}
+                      />
+                    </Box>
                     <CardActions sx={{ justifyContent: 'space-between' }}>
                       <Button 
                         component={Link}
@@ -487,13 +495,21 @@ const RecipeBrowserPage = () => {
                       >
                         View Details
                       </Button>
-                      <IconButton
-                        color="primary"
-                        onClick={(e) => handleSaveRecipe(recipe, e)}
-                        aria-label={recipe.is_saved ? "Unsave recipe" : "Save recipe"}
-                      >
-                        {recipe.is_saved ? <BookmarkIcon /> : <BookmarkBorderIcon />}
-                      </IconButton>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <RateRecipeButton
+                          recipeId={recipe.id}
+                          recipeTitle={recipe.title}
+                          variant="icon"
+                          size="small"
+                        />
+                        <IconButton
+                          color="primary"
+                          onClick={(e) => handleSaveRecipe(recipe, e)}
+                          aria-label={recipe.is_saved ? "Unsave recipe" : "Save recipe"}
+                        >
+                          {recipe.is_saved ? <BookmarkIcon /> : <BookmarkBorderIcon />}
+                        </IconButton>
+                      </Box>
                     </CardActions>
                   </Card>
                 </Grid>
