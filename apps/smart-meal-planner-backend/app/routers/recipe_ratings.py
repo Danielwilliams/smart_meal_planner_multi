@@ -422,8 +422,8 @@ async def get_user_preferences(
 
 @router.get("/recipes/recommended")
 async def get_recommended_recipes(
-    limit: int = 10,
-    request: Request
+    request: Request,
+    limit: int = 10
 ):
     """Get recipe recommendations based on user's ratings"""
     # Use simplified auth
