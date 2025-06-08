@@ -118,8 +118,9 @@ const RecipeRatingModal = ({
       };
 
       const response = await apiService.post(`/ratings/recipes/${recipeId}/rate`, submitData);
+      console.log('Rating submission response:', response);
 
-      if (response.data.success) {
+      if (response && response.data && response.data.success) {
         onRatingSubmitted?.(rating);
         onClose();
         

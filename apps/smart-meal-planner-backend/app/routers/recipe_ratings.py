@@ -289,12 +289,14 @@ async def rate_recipe(
             interaction_id
         ), fetch_one=True)
         
-        return {
+        result = {
             "success": True,
             "message": "Rating saved successfully",
-            "rating_id": updated_rating['id'],
+            "rating_id": updated_rating['id'] if updated_rating else None,
             "recipe_id": recipe_id
         }
+        logger.info(f"Returning success response: {result}")
+        return result
         
     except Exception as e:
         logger.error(f"Error saving rating: {str(e)}")
@@ -303,6 +305,7 @@ async def rate_recipe(
 @router.get("/recipes/{recipe_id}/ratings")
 async def get_recipe_ratings(recipe_id: int):
     """Get aggregated ratings for a recipe"""
+    logger.info(f"Getting ratings for recipe {recipe_id}")
     try:
         # Get rating summary from view
         summary = execute_rating_query(
@@ -310,6 +313,7 @@ async def get_recipe_ratings(recipe_id: int):
             (recipe_id,),
             fetch_one=True
         )
+        logger.info(f"Summary query completed: {bool(summary)}")
         
         if not summary:
             return {
