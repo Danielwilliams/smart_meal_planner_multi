@@ -73,6 +73,31 @@ async def test_endpoint():
     """Test endpoint to verify routing works"""
     return {"status": "ratings route working"}
 
+@router.post("/test-auth")
+async def test_auth_post(request: Request):
+    """Test POST endpoint to debug authentication"""
+    logger.info("=== TEST AUTH POST ===")
+    
+    # Check if we can get the auth header
+    auth_header = request.headers.get('Authorization')
+    logger.info(f"Auth header present: {bool(auth_header)}")
+    
+    # Try our simplified auth
+    user = await get_rating_user_from_token(request)
+    logger.info(f"Auth result: {bool(user)}")
+    
+    if user:
+        return {
+            "status": "auth working",
+            "user_id": user.get('user_id'),
+            "method": "POST"
+        }
+    else:
+        return {
+            "status": "auth failed",
+            "method": "POST"
+        }
+
 @router.get("/auth-test")
 async def auth_test_endpoint(request: Request):
     """Test endpoint to verify authentication works"""
@@ -186,16 +211,30 @@ async def rate_recipe(
     """Submit a rating for a recipe"""
     logger.info(f"=== RATE RECIPE ENDPOINT ===")
     logger.info(f"Recipe ID: {recipe_id}")
-    logger.info(f"Rating data: {rating}")
+    logger.info(f"Request method: {request.method}")
+    logger.info(f"Request URL: {request.url}")
+    
+    # Log headers
+    auth_header = request.headers.get('Authorization')
+    logger.info(f"Authorization header exists: {bool(auth_header)}")
+    if auth_header:
+        logger.info(f"Auth header starts with Bearer: {auth_header.startswith('Bearer ')}")
     
     # Use simplified auth that doesn't hit the problematic database pool
     logger.info("Calling get_rating_user_from_token...")
-    user = await get_rating_user_from_token(request)
-    logger.info(f"Auth result: {user}")
+    try:
+        user = await get_rating_user_from_token(request)
+        logger.info(f"Auth function completed. User returned: {bool(user)}")
+        if user:
+            logger.info(f"User ID from auth: {user.get('user_id')}")
+    except Exception as e:
+        logger.error(f"Exception in auth function: {str(e)}")
+        user = None
     
     # Check if user is authenticated
     if not user:
         logger.error("Authentication failed - user object is None")
+        logger.error("Returning 401 Unauthorized")
         raise HTTPException(
             status_code=401,
             detail="Authentication required"
