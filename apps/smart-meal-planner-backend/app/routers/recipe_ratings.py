@@ -4,10 +4,8 @@ from pydantic import BaseModel, Field, validator
 from typing import Optional, Dict, List
 from datetime import datetime
 import logging
-import psycopg2
-from psycopg2.extras import RealDictCursor
-# Note: Using direct connections to avoid pool issues
 from ..utils.auth_utils import get_user_from_token
+from ..db import get_db_connection, get_db_cursor
 
 logger = logging.getLogger(__name__)
 
@@ -44,30 +42,11 @@ class MenuRating(BaseModel):
     practicality: Optional[int] = Field(None, ge=1, le=5)
     feedback_text: Optional[str] = Field(None, max_length=1000)
 
-# Direct database connection function (bypasses the problematic pool)
-def get_direct_db_connection():
-    """Get a direct database connection bypassing the connection pool"""
-    from app.config import DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, DB_PORT
-    
-    return psycopg2.connect(
-        dbname=DB_NAME,
-        user=DB_USER,
-        password=DB_PASSWORD,
-        host=DB_HOST,
-        port=DB_PORT,
-        connect_timeout=10
-    )
-
-# Helper function for safe database operations
+# Helper function for safe database operations using standard db connection
 def execute_with_retry(query, params=None, fetch_one=False, fetch_all=False):
-    """Execute a database query with simple error handling"""
-    conn = None
+    """Execute a database query with standard connection handling"""
     try:
-        # Use direct connection instead of pool
-        conn = get_direct_db_connection()
-        conn.autocommit = True
-        
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        with get_db_cursor(dict_cursor=True, autocommit=True) as (cur, conn):
             # Set statement timeout
             cur.execute("SET statement_timeout = 30000")
             cur.execute(query, params)
@@ -82,12 +61,6 @@ def execute_with_retry(query, params=None, fetch_one=False, fetch_all=False):
     except Exception as e:
         logger.error(f"Database operation failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-    finally:
-        if conn:
-            try:
-                conn.close()
-            except Exception as e:
-                logger.warning(f"Error closing connection: {str(e)}")
 
 # Recipe Rating Endpoints
 @router.post("/recipes/{recipe_id}/rate")
@@ -97,6 +70,11 @@ async def rate_recipe(
     user = Depends(get_user_from_token)
 ):
     """Submit a rating for a recipe"""
+    # Debug authentication
+    logger.info(f"Rate recipe called for recipe_id: {recipe_id}")
+    logger.info(f"User object received: {user}")
+    logger.info(f"User type: {type(user)}")
+    
     # Check if user is authenticated
     if not user:
         logger.error("Authentication required to submit rating")
@@ -107,6 +85,14 @@ async def rate_recipe(
     
     try:
         user_id = user.get('user_id')
+        logger.info(f"Extracted user_id: {user_id}")
+        
+        if not user_id:
+            logger.error(f"User object missing user_id. Full user object: {user}")
+            raise HTTPException(
+                status_code=401,
+                detail="User ID not found in authentication token"
+            )
         
         # Get or create recipe interaction
         interaction_result = execute_with_retry(
