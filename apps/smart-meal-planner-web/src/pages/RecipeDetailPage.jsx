@@ -20,6 +20,7 @@ const RecipeDetailPage = () => {
   const [recipe, setRecipe] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [ratingsRefreshKey, setRatingsRefreshKey] = useState(0);
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -32,6 +33,11 @@ const RecipeDetailPage = () => {
       fetchRecipeDetails();
     }
   }, [id]);
+
+  const handleRatingUpdate = () => {
+    // Trigger a refresh of the ratings display
+    setRatingsRefreshKey(prev => prev + 1);
+  };
 
   // Add the useMemo hook right here, after your useEffect but before your other functions
   const nutritionData = useMemo(() => {
@@ -183,6 +189,7 @@ const RecipeDetailPage = () => {
                   recipeTitle={recipe.title}
                   variant="button"
                   showText={true}
+                  onRatingUpdate={handleRatingUpdate}
                 />
                 
                 {/* Save Recipe Button */}
@@ -259,6 +266,7 @@ const RecipeDetailPage = () => {
 
             {/* Recipe Ratings Display */}
             <RecipeRatingDisplay 
+              key={ratingsRefreshKey}
               recipeId={recipe.id} 
               compact={false}
             />

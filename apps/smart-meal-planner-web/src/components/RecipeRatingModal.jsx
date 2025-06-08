@@ -120,28 +120,47 @@ const RecipeRatingModal = ({
       const response = await apiService.post(`/ratings/recipes/${recipeId}/rate`, submitData);
       console.log('Rating submission response:', response);
 
-      if (response && response.data && response.data.success) {
-        onRatingSubmitted?.(rating);
-        onClose();
+      // Check if response.data exists and has success property
+      const responseData = response?.data || response;
+      
+      if (responseData && responseData.success) {
+        // Show success for 2 seconds before closing
+        setError('');
+        setLoading(false);
         
-        // Reset form
-        setRating({
-          rating_score: 0,
-          rating_aspects: {
-            taste: 0,
-            ease_of_preparation: 0,
-            ingredient_availability: 0,
-            portion_size: 0,
-            nutritional_value: 0,
-            presentation: 0,
-            family_approval: 0
-          },
-          feedback_text: '',
-          made_recipe: false,
-          would_make_again: null,
-          difficulty_rating: 0,
-          time_accuracy: 0
-        });
+        // Show success message
+        const successMessage = responseData.message || 'Rating saved successfully!';
+        setError(successMessage); // Temporarily use error state for success
+        
+        // Notify parent component
+        onRatingSubmitted?.(rating);
+        
+        // Close modal after short delay to show success
+        setTimeout(() => {
+          onClose();
+          
+          // Reset form after closing
+          setRating({
+            rating_score: 0,
+            rating_aspects: {
+              taste: 0,
+              ease_of_preparation: 0,
+              ingredient_availability: 0,
+              portion_size: 0,
+              nutritional_value: 0,
+              presentation: 0,
+              family_approval: 0
+            },
+            feedback_text: '',
+            made_recipe: false,
+            would_make_again: null,
+            difficulty_rating: 0,
+            time_accuracy: 0
+          });
+          setError('');
+        }, 1500);
+      } else {
+        setError('Failed to save rating. Please try again.');
       }
     } catch (err) {
       console.error('Error submitting rating:', err);
@@ -366,7 +385,10 @@ const RecipeRatingModal = ({
           />
 
           {error && (
-            <Alert severity="error" sx={{ mt: 2 }}>
+            <Alert 
+              severity={error.includes('successfully') ? "success" : "error"} 
+              sx={{ mt: 2 }}
+            >
               {error}
             </Alert>
           )}
