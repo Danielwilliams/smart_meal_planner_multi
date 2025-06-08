@@ -16,25 +16,43 @@ router = APIRouter(prefix="/ratings", tags=["Ratings"])
 # Simplified auth function for ratings that doesn't hit the problematic database pool
 async def get_rating_user_from_token(request):
     """Simplified authentication for rating endpoints that bypasses DB organization lookup"""
+    logger.info(f"=== RATING AUTH DEBUG ===")
+    logger.info(f"Request path: {request.url.path}")
+    logger.info(f"Request method: {request.method}")
+    
+    # Log all headers for debugging
+    logger.info("Request headers:")
+    for header_name, header_value in request.headers.items():
+        if header_name.lower() == 'authorization':
+            logger.info(f"  {header_name}: Bearer ***")
+        else:
+            logger.info(f"  {header_name}: {header_value}")
+    
     auth_header = request.headers.get('Authorization')
     if not auth_header:
         logger.error("No Authorization header found for rating request")
         return None
     
+    logger.info(f"Auth header present, length: {len(auth_header)}")
+    
     try:
         if auth_header.startswith('Bearer '):
             token = auth_header.split(' ')[1]
+            logger.info(f"Extracted token, length: {len(token)}")
         else:
             token = auth_header
+            logger.info("Using auth header as token directly")
             
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        logger.info(f"JWT decoded successfully. Payload keys: {list(payload.keys())}")
         
-        if not payload.get('user_id'):
-            logger.error("Token payload missing user_id for rating request")
+        user_id = payload.get('user_id')
+        if not user_id:
+            logger.error(f"Token payload missing user_id. Full payload: {payload}")
             return None
         
         # Return just the basic payload without organization data to avoid DB calls
-        logger.info(f"Rating auth successful for user {payload.get('user_id')}")
+        logger.info(f"Rating auth successful for user {user_id}")
         return payload
         
     except jwt.ExpiredSignatureError:
@@ -45,6 +63,9 @@ async def get_rating_user_from_token(request):
         return None
     except Exception as e:
         logger.error(f"Unexpected error in rating token validation: {str(e)}")
+        logger.error(f"Exception type: {type(e).__name__}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return None
 
 @router.get("/test")
@@ -163,21 +184,25 @@ async def rate_recipe(
     request: Request
 ):
     """Submit a rating for a recipe"""
-    logger.info(f"Rate recipe endpoint called for recipe_id: {recipe_id}")
+    logger.info(f"=== RATE RECIPE ENDPOINT ===")
+    logger.info(f"Recipe ID: {recipe_id}")
+    logger.info(f"Rating data: {rating}")
     
     # Use simplified auth that doesn't hit the problematic database pool
+    logger.info("Calling get_rating_user_from_token...")
     user = await get_rating_user_from_token(request)
+    logger.info(f"Auth result: {user}")
     
     # Check if user is authenticated
     if not user:
-        logger.error("Authentication required to submit rating")
+        logger.error("Authentication failed - user object is None")
         raise HTTPException(
             status_code=401,
             detail="Authentication required"
         )
 
     user_id = user.get('user_id')
-    logger.info(f"Rating submission for user {user_id}, recipe {recipe_id}")
+    logger.info(f"Rating submission authenticated for user {user_id}, recipe {recipe_id}")
     
     if not user_id:
         logger.error("User ID not found in token")
