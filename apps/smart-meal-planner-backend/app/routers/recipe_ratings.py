@@ -6,7 +6,7 @@ from datetime import datetime
 import logging
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from ..db import get_db_connection
+# Note: Using direct connections to avoid pool issues
 from ..utils.auth_utils import get_user_from_token
 
 logger = logging.getLogger(__name__)
@@ -44,15 +44,32 @@ class MenuRating(BaseModel):
     practicality: Optional[int] = Field(None, ge=1, le=5)
     feedback_text: Optional[str] = Field(None, max_length=1000)
 
+# Direct database connection function (bypasses the problematic pool)
+def get_direct_db_connection():
+    """Get a direct database connection bypassing the connection pool"""
+    from app.config import DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, DB_PORT
+    
+    return psycopg2.connect(
+        dbname=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD,
+        host=DB_HOST,
+        port=DB_PORT,
+        connect_timeout=10
+    )
+
 # Helper function for safe database operations
 def execute_with_retry(query, params=None, fetch_one=False, fetch_all=False):
     """Execute a database query with simple error handling"""
     conn = None
     try:
-        conn = get_db_connection()
+        # Use direct connection instead of pool
+        conn = get_direct_db_connection()
         conn.autocommit = True
         
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Set statement timeout
+            cur.execute("SET statement_timeout = 30000")
             cur.execute(query, params)
             
             if fetch_one:
@@ -69,8 +86,8 @@ def execute_with_retry(query, params=None, fetch_one=False, fetch_all=False):
         if conn:
             try:
                 conn.close()
-            except:
-                pass
+            except Exception as e:
+                logger.warning(f"Error closing connection: {str(e)}")
 
 # Recipe Rating Endpoints
 @router.post("/recipes/{recipe_id}/rate")
