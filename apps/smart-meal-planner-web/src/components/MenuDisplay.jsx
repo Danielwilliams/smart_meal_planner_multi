@@ -11,6 +11,8 @@ import {
   Button
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import RateRecipeButton from './RateRecipeButton';
+import MenuRatingModal from './MenuRatingModal';
 
 /** Helper: Map meal_time -> label string */
 function getMealLabel(mealTime) {
@@ -50,6 +52,7 @@ function MenuDisplay({ data }) {
   const [dayExpanded, setDayExpanded] = useState(defaultDayExp);
   const [mealExpanded, setMealExpanded] = useState(defaultMealExp);
   const [snackExpanded, setSnackExpanded] = useState(defaultSnackExp);
+  const [menuRatingOpen, setMenuRatingOpen] = useState(false);
 
   // 4) If no days, return "no data" but we've already called our Hooks
   if (!days.length) {
@@ -117,16 +120,28 @@ function MenuDisplay({ data }) {
         >
           Meal Plan (Menu ID: {data.menu_id})
         </Typography>
-        <Button 
-          variant="contained" 
-          onClick={handlePrint}
-          sx={{
-            height: { xs: '48px', sm: 'auto' },
-            fontSize: { xs: '1rem', sm: 'inherit' }
-          }}
-        >
-          Print Full Menu
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1, flexDirection: { xs: 'column', sm: 'row' } }}>
+          <Button 
+            variant="outlined" 
+            onClick={() => setMenuRatingOpen(true)}
+            sx={{
+              height: { xs: '48px', sm: 'auto' },
+              fontSize: { xs: '1rem', sm: 'inherit' }
+            }}
+          >
+            Rate Menu
+          </Button>
+          <Button 
+            variant="contained" 
+            onClick={handlePrint}
+            sx={{
+              height: { xs: '48px', sm: 'auto' },
+              fontSize: { xs: '1rem', sm: 'inherit' }
+            }}
+          >
+            Print Full Menu
+          </Button>
+        </Box>
       </Box>
 
       {days.map((day, dayIdx) => {
@@ -208,9 +223,19 @@ function MenuDisplay({ data }) {
                       onChange={(event, newVal) => handleMealToggle(dayIdx, mIdx, newVal)}
                     >
                       <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                        <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>
-                          {getMealLabel(meal.meal_time)}: {meal.title}
-                        </Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                          <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>
+                            {getMealLabel(meal.meal_time)}: {meal.title}
+                          </Typography>
+                          <Box sx={{ ml: 1 }}>
+                            <RateRecipeButton
+                              recipeId={`${data.menu_id}-${dayIdx}-${mIdx}`}
+                              recipeTitle={meal.title}
+                              variant="icon"
+                              size="small"
+                            />
+                          </Box>
+                        </Box>
                       </AccordionSummary>
                       <AccordionDetails>
                         <Typography variant="body2" sx={{ mt: 1, fontWeight: 'bold' }}>
@@ -410,6 +435,18 @@ function MenuDisplay({ data }) {
           </Accordion>
         );
       })}
+
+      {/* Menu Rating Modal */}
+      <MenuRatingModal
+        open={menuRatingOpen}
+        onClose={() => setMenuRatingOpen(false)}
+        menuId={data.menu_id}
+        menuTitle={`Meal Plan (${days.length} days)`}
+        onRatingSubmitted={(rating) => {
+          console.log('Menu rated:', rating);
+          setMenuRatingOpen(false);
+        }}
+      />
     </Box>
   );
 }

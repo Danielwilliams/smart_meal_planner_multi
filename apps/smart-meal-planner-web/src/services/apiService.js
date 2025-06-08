@@ -3713,6 +3713,119 @@ const apiService = {
       console.error('PATCH request error:', error);
       throw error;
     }
+  },
+
+  // Rating API methods
+  async rateRecipe(recipeId, ratingData) {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axiosInstance.post(`/ratings/recipes/${recipeId}/rate`, ratingData, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Rate recipe error:', error);
+      throw error;
+    }
+  },
+
+  async getRecipeRatings(recipeId) {
+    try {
+      const response = await axiosInstance.get(`/ratings/recipes/${recipeId}/ratings`);
+      return response.data;
+    } catch (error) {
+      console.error('Get recipe ratings error:', error);
+      throw error;
+    }
+  },
+
+  async getMyRecipeRating(recipeId) {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axiosInstance.get(`/ratings/recipes/${recipeId}/my-rating`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Get my recipe rating error:', error);
+      throw error;
+    }
+  },
+
+  async rateMenu(menuId, ratingData) {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axiosInstance.post(`/ratings/menus/${menuId}/rate`, ratingData, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Rate menu error:', error);
+      throw error;
+    }
+  },
+
+  async getMenuRatings(menuId) {
+    try {
+      const response = await axiosInstance.get(`/ratings/menus/${menuId}/ratings`);
+      return response.data;
+    } catch (error) {
+      console.error('Get menu ratings error:', error);
+      throw error;
+    }
+  },
+
+  async quickRateSavedRecipe(savedRecipeId, rating) {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axiosInstance.post(`/ratings/saved-recipes/${savedRecipeId}/quick-rate`, {
+        quick_rating: rating
+      }, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Quick rate saved recipe error:', error);
+      throw error;
+    }
+  },
+
+  async getRatingPreferences() {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axiosInstance.get('/ratings/users/me/rating-preferences', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Get rating preferences error:', error);
+      throw error;
+    }
+  },
+
+  async getRecommendedRecipes(limit = 10) {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axiosInstance.get(`/ratings/recipes/recommended?limit=${limit}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Get recommended recipes error:', error);
+      throw error;
+    }
   }
 }; // Close the apiService object here
 

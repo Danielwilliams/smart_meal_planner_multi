@@ -60,6 +60,7 @@ from app.routers import saved_recipes_debug
 from app.routers import client_resources  # Add client resources router
 from app.routers import test_invitation # Test invitation router for debugging
 from app.routers import organization_branding  # Add organization branding router
+from app.routers import recipe_ratings  # Add recipe ratings router
 
 
 # Load environment variables
@@ -164,6 +165,7 @@ def create_app() -> FastAPI:
     app.include_router(ai_status.router)
     app.include_router(custom_menu.router)
     app.include_router(organization_branding.router)  # Add branding endpoints
+    app.include_router(recipe_ratings.router)  # Add rating endpoints
     app.include_router(subscriptions.router)  # Add subscription endpoints
 
     @app.exception_handler(HTTPException)
