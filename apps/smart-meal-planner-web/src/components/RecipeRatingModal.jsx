@@ -38,9 +38,8 @@ const RecipeRatingModal = ({
       ease_of_preparation: 0,
       ingredient_availability: 0,
       portion_size: 0,
-      nutritional_value: 0,
-      presentation: 0,
-      family_approval: 0
+      nutrition_balance: 0,
+      presentation: 0
     },
     feedback_text: '',
     made_recipe: false,
@@ -58,7 +57,7 @@ const RecipeRatingModal = ({
 
   const loadExistingRating = async () => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('access_token');
       if (!token) return;
 
       const response = await apiService.get(`/ratings/recipes/${recipeId}/my-rating`);
@@ -75,9 +74,8 @@ const RecipeRatingModal = ({
             ease_of_preparation: 0,
             ingredient_availability: 0,
             portion_size: 0,
-            nutritional_value: 0,
-            presentation: 0,
-            family_approval: 0
+            nutrition_balance: 0,
+            presentation: 0
           },
           feedback_text: existingData.feedback_text || '',
           made_recipe: existingData.made_recipe || false,
@@ -109,14 +107,31 @@ const RecipeRatingModal = ({
 
       // Clean up the rating data
       const submitData = {
-        ...rating,
-        rating_aspects: Object.keys(rating.rating_aspects).some(key => 
-          rating.rating_aspects[key] > 0
-        ) ? rating.rating_aspects : null,
+        rating_score: rating.rating_score,
+        feedback_text: rating.feedback_text || null,
+        made_recipe: rating.made_recipe || false,
+        would_make_again: rating.would_make_again,
         difficulty_rating: rating.difficulty_rating > 0 ? rating.difficulty_rating : null,
         time_accuracy: rating.time_accuracy > 0 ? rating.time_accuracy : null
       };
+      
+      // Only include rating_aspects if at least one aspect has a value
+      const hasAspects = Object.keys(rating.rating_aspects).some(key => 
+        rating.rating_aspects[key] > 0
+      );
+      
+      if (hasAspects) {
+        // Filter out aspects with 0 values
+        const filteredAspects = {};
+        Object.keys(rating.rating_aspects).forEach(key => {
+          if (rating.rating_aspects[key] > 0) {
+            filteredAspects[key] = rating.rating_aspects[key];
+          }
+        });
+        submitData.rating_aspects = filteredAspects;
+      }
 
+      console.log('Submitting rating data:', submitData);
       const response = await apiService.post(`/ratings/recipes/${recipeId}/rate`, submitData);
       console.log('Rating submission response:', response);
 
@@ -147,9 +162,8 @@ const RecipeRatingModal = ({
               ease_of_preparation: 0,
               ingredient_availability: 0,
               portion_size: 0,
-              nutritional_value: 0,
-              presentation: 0,
-              family_approval: 0
+              nutrition_balance: 0,
+              presentation: 0
             },
             feedback_text: '',
             made_recipe: false,
@@ -164,7 +178,23 @@ const RecipeRatingModal = ({
       }
     } catch (err) {
       console.error('Error submitting rating:', err);
-      setError(err.response?.data?.detail || 'Failed to submit rating');
+      console.error('Error response data:', err.response?.data);
+      
+      // Handle validation errors from FastAPI
+      let errorMessage = 'Failed to submit rating';
+      if (err.response?.data?.detail) {
+        // Check if detail is an array of validation errors
+        if (Array.isArray(err.response.data.detail)) {
+          errorMessage = err.response.data.detail.map(e => e.msg || e.message).join(', ');
+        } else if (typeof err.response.data.detail === 'string') {
+          errorMessage = err.response.data.detail;
+        } else if (typeof err.response.data.detail === 'object') {
+          // If it's an object, try to extract a message
+          errorMessage = err.response.data.detail.msg || err.response.data.detail.message || JSON.stringify(err.response.data.detail);
+        }
+      }
+      
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -302,9 +332,9 @@ const RecipeRatingModal = ({
             </Grid>
             <Grid item xs={12} sm={6}>
               <StarRating
-                label="Nutritional Value"
-                value={rating.rating_aspects.nutritional_value}
-                onChange={(value) => updateRatingAspect('nutritional_value', value)}
+                label="Nutrition Balance"
+                value={rating.rating_aspects.nutrition_balance}
+                onChange={(value) => updateRatingAspect('nutrition_balance', value)}
                 size="small"
               />
             </Grid>
@@ -313,14 +343,6 @@ const RecipeRatingModal = ({
                 label="Presentation"
                 value={rating.rating_aspects.presentation}
                 onChange={(value) => updateRatingAspect('presentation', value)}
-                size="small"
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <StarRating
-                label="Family Approval"
-                value={rating.rating_aspects.family_approval}
-                onChange={(value) => updateRatingAspect('family_approval', value)}
                 size="small"
               />
             </Grid>
