@@ -62,7 +62,8 @@ const RecipeRatingModal = ({
 
       const response = await apiService.get(`/ratings/recipes/${recipeId}/my-rating`);
       
-      if (response.data.has_rating) {
+      // Backend returns {"rating": {...}} if rating exists, or {"message": "No rating found"} if not
+      if (response.data.rating) {
         const existingData = response.data.rating;
         setExistingRating(existingData);
         
