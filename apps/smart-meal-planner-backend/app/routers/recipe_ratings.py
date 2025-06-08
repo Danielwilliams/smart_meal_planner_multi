@@ -64,14 +64,14 @@ async def rate_recipe(
     logger.info(f"User {user_id} rating recipe {recipe_id} with score {rating.rating_score}")
     
     try:
-        with get_db_cursor(dict_cursor=True) as (cur, conn):
+        with get_db_cursor(dict_cursor=True, autocommit=True) as (cur, conn):
             # Get or create recipe interaction
             cur.execute("SELECT get_or_create_recipe_interaction(%s, %s, %s)", 
                        (user_id, recipe_id, 'rating'))
             interaction_id = cur.fetchone()['get_or_create_recipe_interaction']
             
             # Convert rating_aspects to dict if it exists
-            rating_aspects_dict = rating.rating_aspects.dict() if rating.rating_aspects else {}
+            rating_aspects_dict = rating.rating_aspects.model_dump() if rating.rating_aspects else {}
             
             # Update the rating
             cur.execute("""
@@ -127,7 +127,7 @@ async def rate_recipe(
 async def get_recipe_ratings(recipe_id: int):
     """Get aggregated ratings for a recipe"""
     try:
-        with get_db_cursor(dict_cursor=True) as (cur, conn):
+        with get_db_cursor(dict_cursor=True, autocommit=True) as (cur, conn):
             # Get rating summary from view
             cur.execute("""
                 SELECT * FROM recipe_ratings_summary
@@ -186,7 +186,7 @@ async def get_my_recipe_rating(
     user_id = user.get('user_id')
     
     try:
-        with get_db_cursor(dict_cursor=True) as (cur, conn):
+        with get_db_cursor(dict_cursor=True, autocommit=True) as (cur, conn):
             cur.execute("""
                 SELECT * FROM recipe_interactions
                 WHERE user_id = %s AND recipe_id = %s
@@ -222,7 +222,7 @@ async def rate_menu(
     logger.info(f"User {user_id} rating menu {menu_id} with score {rating.rating_score}")
     
     try:
-        with get_db_cursor(dict_cursor=True) as (cur, conn):
+        with get_db_cursor(dict_cursor=True, autocommit=True) as (cur, conn):
             # Check if menu exists and user has access
             cur.execute("""
                 SELECT id FROM menus 
@@ -233,7 +233,7 @@ async def rate_menu(
                 raise HTTPException(status_code=403, detail="Menu not found or access denied")
             
             # Convert rating_aspects to dict if it exists
-            rating_aspects_dict = rating.rating_aspects.dict() if rating.rating_aspects else {}
+            rating_aspects_dict = rating.rating_aspects.model_dump() if rating.rating_aspects else {}
             
             # Insert or update menu rating
             cur.execute("""
@@ -278,7 +278,7 @@ async def rate_menu(
 async def get_menu_ratings(menu_id: int):
     """Get aggregated ratings for a menu"""
     try:
-        with get_db_cursor(dict_cursor=True) as (cur, conn):
+        with get_db_cursor(dict_cursor=True, autocommit=True) as (cur, conn):
             # Get rating summary from view
             cur.execute("""
                 SELECT * FROM menu_ratings_summary
@@ -318,7 +318,7 @@ async def quick_rate_saved_recipe(
     user_id = user.get('user_id')
     
     try:
-        with get_db_cursor(dict_cursor=True) as (cur, conn):
+        with get_db_cursor(dict_cursor=True, autocommit=True) as (cur, conn):
             # Verify ownership and get recipe details
             cur.execute("""
                 SELECT id, scraped_recipe_id, recipe_id, notes
@@ -386,7 +386,7 @@ async def get_my_rating_preferences(user = Depends(get_user_from_token)):
     user_id = user.get('user_id')
     
     try:
-        with get_db_cursor(dict_cursor=True) as (cur, conn):
+        with get_db_cursor(dict_cursor=True, autocommit=True) as (cur, conn):
             # Get cuisine preferences from view
             cur.execute("""
                 SELECT * FROM user_rating_preferences
@@ -450,7 +450,7 @@ async def get_recommended_recipes(
     user_id = user.get('user_id')
     
     try:
-        with get_db_cursor(dict_cursor=True) as (cur, conn):
+        with get_db_cursor(dict_cursor=True, autocommit=True) as (cur, conn):
             # Get user's preferred cuisines
             cur.execute("""
                 SELECT cuisine 
