@@ -260,14 +260,15 @@ async def rate_recipe(
         )
         interaction_id = interaction_result['get_or_create_recipe_interaction']
         
-        # Convert rating_aspects to dict if it exists
-        rating_aspects_dict = rating.rating_aspects.model_dump() if rating.rating_aspects else {}
+        # Convert rating_aspects to JSON string if it exists
+        import json
+        rating_aspects_json = json.dumps(rating.rating_aspects.model_dump()) if rating.rating_aspects else None
         
         # Update the rating
         updated_rating = execute_rating_query("""
             UPDATE recipe_interactions 
             SET rating_score = %s,
-                rating_aspects = %s,
+                rating_aspects = %s::jsonb,
                 feedback_text = %s,
                 made_recipe = %s,
                 would_make_again = %s,
@@ -279,7 +280,7 @@ async def rate_recipe(
             RETURNING *
         """, (
             rating.rating_score,
-            rating_aspects_dict,
+            rating_aspects_json,
             rating.feedback_text,
             rating.made_recipe,
             rating.would_make_again,
@@ -407,11 +408,18 @@ async def rate_menu(
         user_id = user.get('user_id')
         
         # Store menu rating in recipe_interactions with special recipe_id
+        import json
+        menu_aspects_json = json.dumps({
+            "variety_score": rating.variety_score,
+            "nutrition_balance": rating.nutrition_balance,
+            "practicality": rating.practicality
+        })
+        
         menu_rating = execute_rating_query("""
             INSERT INTO recipe_interactions 
             (user_id, recipe_id, interaction_type, rating_score, 
              rating_aspects, feedback_text, timestamp, updated_at)
-            VALUES (%s, %s, 'menu_rating', %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            VALUES (%s, %s, 'menu_rating', %s, %s::jsonb, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             ON CONFLICT (user_id, recipe_id) 
             DO UPDATE SET 
                 rating_score = EXCLUDED.rating_score,
@@ -423,11 +431,7 @@ async def rate_menu(
             user_id,
             -menu_id,  # Negative ID to distinguish from recipe ratings
             rating.overall_rating,
-            {
-                "variety_score": rating.variety_score,
-                "nutrition_balance": rating.nutrition_balance,
-                "practicality": rating.practicality
-            },
+            menu_aspects_json,
             rating.feedback_text
         ), fetch_one=True)
         
