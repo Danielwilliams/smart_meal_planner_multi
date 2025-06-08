@@ -101,7 +101,7 @@ const RecipeRatingModal = ({
       setLoading(true);
       setError('');
 
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('access_token');
       if (!token) {
         setError('Please log in to submit a rating');
         return;
