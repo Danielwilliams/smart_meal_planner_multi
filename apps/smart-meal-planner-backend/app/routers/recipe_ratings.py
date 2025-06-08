@@ -1,15 +1,40 @@
-# app/routers/recipe_ratings.py - Fixed version with simple connection handling
+# app/routers/recipe_ratings.py - Fixed version with isolated rating connections
 from fastapi import APIRouter, HTTPException, Depends, Body
 from pydantic import BaseModel, Field, validator
 from typing import Optional, Dict, List
 from datetime import datetime
 import logging
+from psycopg2.extras import RealDictCursor
 from ..utils.auth_utils import get_user_from_token
-from ..db import get_db_connection, get_db_cursor
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/ratings", tags=["Ratings"])
+
+@router.get("/test")
+async def test_endpoint():
+    """Test endpoint to verify routing works"""
+    return {"status": "ratings route working"}
+
+@router.get("/auth-test")
+async def auth_test_endpoint(user = Depends(get_user_from_token)):
+    """Test endpoint to verify authentication works"""
+    # Check if user is authenticated
+    if not user:
+        logger.error("Authentication required for rating auth test")
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required"
+        )
+
+    user_id = user.get('user_id')
+    logger.info(f"AUTH TEST: Rating auth working for user {user_id}")
+    
+    return {
+        "status": "authentication working",
+        "user_id": user_id,
+        "user_type": type(user).__name__
+    }
 
 # Pydantic models for ratings
 class RatingAspects(BaseModel):
@@ -42,13 +67,36 @@ class MenuRating(BaseModel):
     practicality: Optional[int] = Field(None, ge=1, le=5)
     feedback_text: Optional[str] = Field(None, max_length=1000)
 
-# Helper function for safe database operations using standard db connection
-def execute_with_retry(query, params=None, fetch_one=False, fetch_all=False):
-    """Execute a database query with standard connection handling"""
+# Create isolated database connection for ratings to avoid pool conflicts
+def get_rating_db_connection():
+    """Get a direct database connection for rating operations only"""
     try:
-        with get_db_cursor(dict_cursor=True, autocommit=True) as (cur, conn):
-            # Set statement timeout
-            cur.execute("SET statement_timeout = 30000")
+        from ..config import DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, DB_PORT
+        import psycopg2
+        
+        conn = psycopg2.connect(
+            dbname=DB_NAME,
+            user=DB_USER,
+            password=DB_PASSWORD,
+            host=DB_HOST,
+            port=DB_PORT,
+            connect_timeout=10
+        )
+        return conn
+    except Exception as e:
+        logger.error(f"Failed to create rating database connection: {str(e)}")
+        raise HTTPException(status_code=500, detail="Database connection failed")
+
+# Simplified database execution for ratings only
+def execute_rating_query(query, params=None, fetch_one=False, fetch_all=False):
+    """Execute a database query specifically for rating operations"""
+    conn = None
+    try:
+        conn = get_rating_db_connection()
+        conn.autocommit = True
+        
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SET statement_timeout = 15000")  # 15 second timeout
             cur.execute(query, params)
             
             if fetch_one:
@@ -59,8 +107,14 @@ def execute_with_retry(query, params=None, fetch_one=False, fetch_all=False):
                 return None
                 
     except Exception as e:
-        logger.error(f"Database operation failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        logger.error(f"Rating database operation failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Rating operation failed: {str(e)}")
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except:
+                pass
 
 # Recipe Rating Endpoints
 @router.post("/recipes/{recipe_id}/rate")
@@ -70,32 +124,30 @@ async def rate_recipe(
     user = Depends(get_user_from_token)
 ):
     """Submit a rating for a recipe"""
-    # Debug authentication
-    logger.info(f"Rate recipe called for recipe_id: {recipe_id}")
-    logger.info(f"User object received: {user}")
-    logger.info(f"User type: {type(user)}")
+    logger.info(f"Rate recipe endpoint called for recipe_id: {recipe_id}")
     
-    # Check if user is authenticated
+    # Check if user is authenticated - exactly like saved_recipes.py
     if not user:
         logger.error("Authentication required to submit rating")
         raise HTTPException(
             status_code=401,
             detail="Authentication required"
         )
+
+    user_id = user.get('user_id')
+    logger.info(f"Rating submission for user {user_id}, recipe {recipe_id}")
+    
+    if not user_id:
+        logger.error("User ID not found in token")
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required"
+        )
     
     try:
-        user_id = user.get('user_id')
-        logger.info(f"Extracted user_id: {user_id}")
-        
-        if not user_id:
-            logger.error(f"User object missing user_id. Full user object: {user}")
-            raise HTTPException(
-                status_code=401,
-                detail="User ID not found in authentication token"
-            )
         
         # Get or create recipe interaction
-        interaction_result = execute_with_retry(
+        interaction_result = execute_rating_query(
             "SELECT get_or_create_recipe_interaction(%s, %s, %s)", 
             (user_id, recipe_id, 'rating'),
             fetch_one=True
@@ -106,7 +158,7 @@ async def rate_recipe(
         rating_aspects_dict = rating.rating_aspects.model_dump() if rating.rating_aspects else {}
         
         # Update the rating
-        updated_rating = execute_with_retry("""
+        updated_rating = execute_rating_query("""
             UPDATE recipe_interactions 
             SET rating_score = %s,
                 rating_aspects = %s,
@@ -146,7 +198,7 @@ async def get_recipe_ratings(recipe_id: int):
     """Get aggregated ratings for a recipe"""
     try:
         # Get rating summary from view
-        summary = execute_with_retry(
+        summary = execute_rating_query(
             "SELECT * FROM recipe_ratings_summary WHERE recipe_id = %s",
             (recipe_id,),
             fetch_one=True
@@ -161,7 +213,7 @@ async def get_recipe_ratings(recipe_id: int):
             }
         
         # Get recent reviews
-        recent_reviews = execute_with_retry("""
+        recent_reviews = execute_rating_query("""
             SELECT 
                 ri.rating_score,
                 ri.feedback_text,
@@ -204,7 +256,7 @@ async def get_my_recipe_rating(
     try:
         user_id = user.get('user_id')
         
-        my_rating = execute_with_retry("""
+        my_rating = execute_rating_query("""
             SELECT * FROM recipe_interactions
             WHERE user_id = %s AND recipe_id = %s 
             AND rating_score IS NOT NULL
@@ -243,7 +295,7 @@ async def rate_menu(
         user_id = user.get('user_id')
         
         # Store menu rating in recipe_interactions with special recipe_id
-        menu_rating = execute_with_retry("""
+        menu_rating = execute_rating_query("""
             INSERT INTO recipe_interactions 
             (user_id, recipe_id, interaction_type, rating_score, 
              rating_aspects, feedback_text, timestamp, updated_at)
@@ -299,7 +351,7 @@ async def get_user_preferences(
         if current_user_id != user_id and user.get('role') != 'admin':
             raise HTTPException(status_code=403, detail="Access denied")
         
-        preferences = execute_with_retry(
+        preferences = execute_rating_query(
             "SELECT * FROM user_rating_preferences WHERE user_id = %s",
             (user_id,),
             fetch_one=True
@@ -335,7 +387,7 @@ async def get_recommended_recipes(
         user_id = user.get('user_id')
         
         # Simple recommendation based on highly rated recipes by similar users
-        recommendations = execute_with_retry("""
+        recommendations = execute_rating_query("""
             SELECT DISTINCT
                 ri2.recipe_id,
                 AVG(ri2.rating_score) as avg_rating,
