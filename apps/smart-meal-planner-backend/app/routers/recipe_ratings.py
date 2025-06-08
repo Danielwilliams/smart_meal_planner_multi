@@ -97,10 +97,16 @@ async def rate_recipe(
     user = Depends(get_user_from_token)
 ):
     """Submit a rating for a recipe"""
+    # Check if user is authenticated
+    if not user:
+        logger.error("Authentication required to submit rating")
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required"
+        )
+    
     try:
-        user_id = user.get('id') or user.get('user_id')
-        if not user_id:
-            raise HTTPException(status_code=401, detail="User ID not found")
+        user_id = user.get('user_id')
         
         # Get or create recipe interaction
         interaction_result = execute_with_retry(
@@ -201,10 +207,16 @@ async def get_my_recipe_rating(
     user = Depends(get_user_from_token)
 ):
     """Get current user's rating for a recipe"""
+    # Check if user is authenticated
+    if not user:
+        logger.error("Authentication required to get rating")
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required"
+        )
+    
     try:
-        user_id = user.get('id') or user.get('user_id')
-        if not user_id:
-            raise HTTPException(status_code=401, detail="User ID not found")
+        user_id = user.get('user_id')
         
         my_rating = execute_with_retry("""
             SELECT * FROM recipe_interactions
@@ -233,10 +245,16 @@ async def rate_menu(
     user = Depends(get_user_from_token)
 ):
     """Submit a rating for an entire menu"""
+    # Check if user is authenticated
+    if not user:
+        logger.error("Authentication required to rate menu")
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required"
+        )
+    
     try:
-        user_id = user.get('id') or user.get('user_id')
-        if not user_id:
-            raise HTTPException(status_code=401, detail="User ID not found")
+        user_id = user.get('user_id')
         
         # Store menu rating in recipe_interactions with special recipe_id
         menu_rating = execute_with_retry("""
@@ -281,9 +299,17 @@ async def get_user_preferences(
     user = Depends(get_user_from_token)
 ):
     """Get user's rating-based preferences"""
+    # Check if user is authenticated
+    if not user:
+        logger.error("Authentication required to get preferences")
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required"
+        )
+    
     try:
         # Only allow users to see their own preferences or admins
-        current_user_id = user.get('id') or user.get('user_id')
+        current_user_id = user.get('user_id')
         if current_user_id != user_id and user.get('role') != 'admin':
             raise HTTPException(status_code=403, detail="Access denied")
         
@@ -311,10 +337,16 @@ async def get_recommended_recipes(
     user = Depends(get_user_from_token)
 ):
     """Get recipe recommendations based on user's ratings"""
+    # Check if user is authenticated
+    if not user:
+        logger.error("Authentication required to get recommendations")
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required"
+        )
+    
     try:
-        user_id = user.get('id') or user.get('user_id')
-        if not user_id:
-            raise HTTPException(status_code=401, detail="User ID not found")
+        user_id = user.get('user_id')
         
         # Simple recommendation based on highly rated recipes by similar users
         recommendations = execute_with_retry("""
