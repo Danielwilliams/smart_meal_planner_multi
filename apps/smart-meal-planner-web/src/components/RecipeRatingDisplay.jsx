@@ -8,16 +8,13 @@ import {
   CircularProgress,
   Alert,
   Grid,
-  LinearProgress
+  LinearProgress,
+  List,
+  ListItem,
+  ListItemAvatar,
+  ListItemText,
+  Avatar
 } from '@mui/material';
-import {
-  Timeline,
-  TimelineItem,
-  TimelineSeparator,
-  TimelineConnector,
-  TimelineContent,
-  TimelineDot
-} from '@mui/lab';
 import PersonIcon from '@mui/icons-material/Person';
 import StarRating from './StarRating';
 import apiService from '../services/apiService';
@@ -187,17 +184,16 @@ const RecipeRatingDisplay = ({ recipeId, compact = false }) => {
             Recent Reviews
           </Typography>
           
-          <Timeline>
+          <List>
             {recent_reviews.slice(0, 3).map((review, index) => (
-              <TimelineItem key={index}>
-                <TimelineSeparator>
-                  <TimelineDot color="primary">
+              <ListItem key={index} alignItems="flex-start">
+                <ListItemAvatar>
+                  <Avatar>
                     <PersonIcon />
-                  </TimelineDot>
-                  {index < recent_reviews.length - 1 && <TimelineConnector />}
-                </TimelineSeparator>
-                <TimelineContent>
-                  <Box sx={{ pb: 2 }}>
+                  </Avatar>
+                </ListItemAvatar>
+                <ListItemText
+                  primary={
                     <Box display="flex" alignItems="center" gap={1} mb={1}>
                       <StarRating
                         value={review.rating_score}
@@ -217,21 +213,23 @@ const RecipeRatingDisplay = ({ recipeId, compact = false }) => {
                         />
                       )}
                     </Box>
-                    
-                    {review.feedback_text && (
-                      <Typography variant="body2" sx={{ mb: 1 }}>
-                        "{review.feedback_text}"
+                  }
+                  secondary={
+                    <Box>
+                      {review.feedback_text && (
+                        <Typography variant="body2" sx={{ mb: 1 }}>
+                          "{review.feedback_text}"
+                        </Typography>
+                      )}
+                      <Typography variant="caption" color="text.secondary">
+                        {new Date(review.updated_at).toLocaleDateString()}
                       </Typography>
-                    )}
-                    
-                    <Typography variant="caption" color="text.secondary">
-                      {new Date(review.updated_at).toLocaleDateString()}
-                    </Typography>
-                  </Box>
-                </TimelineContent>
-              </TimelineItem>
+                    </Box>
+                  }
+                />
+              </ListItem>
             ))}
-          </Timeline>
+          </List>
           
           {recent_reviews.length > 3 && (
             <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
