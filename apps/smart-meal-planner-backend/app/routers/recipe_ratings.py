@@ -316,6 +316,28 @@ async def get_recipe_ratings(recipe_id: int):
         logger.info(f"Summary query completed: {bool(summary)}")
         
         if not summary:
+            logger.info(f"No summary found for recipe {recipe_id}, checking for raw ratings")
+            # Try to get ratings directly from recipe_interactions
+            try:
+                direct_ratings = execute_rating_query("""
+                    SELECT 
+                        COUNT(*) as total_ratings,
+                        AVG(rating_score) as average_rating
+                    FROM recipe_interactions
+                    WHERE recipe_id = %s 
+                    AND rating_score IS NOT NULL
+                """, (recipe_id,), fetch_one=True)
+                
+                if direct_ratings and direct_ratings['total_ratings'] > 0:
+                    return {
+                        "recipe_id": recipe_id,
+                        "total_ratings": direct_ratings['total_ratings'],
+                        "average_rating": float(direct_ratings['average_rating']) if direct_ratings['average_rating'] else None,
+                        "message": "Summary view not available, using direct query"
+                    }
+            except Exception as e:
+                logger.warning(f"Direct rating query failed: {str(e)}")
+            
             return {
                 "recipe_id": recipe_id,
                 "total_ratings": 0,
@@ -323,28 +345,47 @@ async def get_recipe_ratings(recipe_id: int):
                 "message": "No ratings yet"
             }
         
-        # Get recent reviews
-        recent_reviews = execute_rating_query("""
-            SELECT 
-                ri.rating_score,
-                ri.feedback_text,
-                ri.made_recipe,
-                ri.would_make_again,
-                ri.updated_at,
-                u.full_name as user_name
-            FROM recipe_interactions ri
-            JOIN user_profiles u ON ri.user_id = u.id
-            WHERE ri.recipe_id = %s 
-            AND ri.rating_score IS NOT NULL
-            ORDER BY ri.updated_at DESC
-            LIMIT 5
-        """, (recipe_id,), fetch_all=True)
+        # Get recent reviews - simplified without join
+        try:
+            recent_reviews = execute_rating_query("""
+                SELECT 
+                    rating_score,
+                    feedback_text,
+                    made_recipe,
+                    would_make_again,
+                    updated_at,
+                    user_id
+                FROM recipe_interactions
+                WHERE recipe_id = %s 
+                AND rating_score IS NOT NULL
+                ORDER BY updated_at DESC
+                LIMIT 5
+            """, (recipe_id,), fetch_all=True)
+            logger.info(f"Found {len(recent_reviews) if recent_reviews else 0} recent reviews")
+        except Exception as e:
+            logger.error(f"Error fetching recent reviews: {str(e)}")
+            recent_reviews = []
         
-        return {
-            "recipe_id": recipe_id,
-            "summary": dict(summary),
-            "recent_reviews": [dict(review) for review in (recent_reviews or [])]
-        }
+        # Flatten the response structure for easier frontend handling
+        if summary:
+            result = {
+                "recipe_id": recipe_id,
+                "total_ratings": summary.get('total_ratings', 0),
+                "average_rating": summary.get('average_rating'),
+                "summary": dict(summary),
+                "recent_reviews": [dict(review) for review in (recent_reviews or [])]
+            }
+        else:
+            result = {
+                "recipe_id": recipe_id,
+                "total_ratings": 0,
+                "average_rating": None,
+                "summary": {},
+                "recent_reviews": []
+            }
+        
+        logger.info(f"Returning rating response for recipe {recipe_id}: {result.get('total_ratings', 0)} ratings")
+        return result
         
     except Exception as e:
         logger.error(f"Error getting recipe ratings: {str(e)}")
