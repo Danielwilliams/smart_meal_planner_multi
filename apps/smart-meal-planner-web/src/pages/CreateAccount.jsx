@@ -89,11 +89,13 @@ function CreateAccount() {
         email: formData.email,
         password: formData.password,
         account_type: formData.account_type,
-        recaptcha_token: recaptchaToken
+        name: formData.email.split('@')[0], // Use part of email as name
+        captchaToken: recaptchaToken // Renamed to match what the backend expects
       };
       
       // Call the signup API
-      const response = await apiService.post('/auth/signup', signupPayload);
+      // Use the signUp method which is designed to handle the signup flow
+      const response = await apiService.signUp(signupPayload);
       
       // Handle both direct response and response.data patterns
       if (response) {
