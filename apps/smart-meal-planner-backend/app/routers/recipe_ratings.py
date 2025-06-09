@@ -255,37 +255,59 @@ async def rate_recipe(
         import json
         rating_aspects_json = json.dumps(rating.rating_aspects.model_dump()) if rating.rating_aspects else None
         
-        # Insert or update the rating directly using ON CONFLICT
-        updated_rating = execute_rating_query("""
-            INSERT INTO recipe_interactions 
-            (user_id, recipe_id, interaction_type, rating_score, rating_aspects, 
-             feedback_text, made_recipe, would_make_again, difficulty_rating, 
-             time_accuracy, timestamp, updated_at)
-            VALUES (%s, %s, 'rating', %s, %s::jsonb, %s, %s, %s, %s, %s, 
-                    CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-            ON CONFLICT (user_id, recipe_id) 
-            DO UPDATE SET 
-                rating_score = EXCLUDED.rating_score,
-                rating_aspects = EXCLUDED.rating_aspects,
-                feedback_text = EXCLUDED.feedback_text,
-                made_recipe = EXCLUDED.made_recipe,
-                would_make_again = EXCLUDED.would_make_again,
-                difficulty_rating = EXCLUDED.difficulty_rating,
-                time_accuracy = EXCLUDED.time_accuracy,
-                interaction_type = 'rating',
-                updated_at = CURRENT_TIMESTAMP
-            RETURNING *
-        """, (
-            user_id,
-            recipe_id,
-            rating.rating_score,
-            rating_aspects_json,
-            rating.feedback_text,
-            rating.made_recipe,
-            rating.would_make_again,
-            rating.difficulty_rating,
-            rating.time_accuracy
-        ), fetch_one=True)
+        # Check if rating already exists
+        existing_rating = execute_rating_query("""
+            SELECT id FROM recipe_interactions 
+            WHERE user_id = %s AND recipe_id = %s 
+            AND rating_score IS NOT NULL
+        """, (user_id, recipe_id), fetch_one=True)
+        
+        if existing_rating:
+            # Update existing rating
+            updated_rating = execute_rating_query("""
+                UPDATE recipe_interactions 
+                SET rating_score = %s,
+                    rating_aspects = %s::jsonb,
+                    feedback_text = %s,
+                    made_recipe = %s,
+                    would_make_again = %s,
+                    difficulty_rating = %s,
+                    time_accuracy = %s,
+                    interaction_type = 'rating',
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s
+                RETURNING *
+            """, (
+                rating.rating_score,
+                rating_aspects_json,
+                rating.feedback_text,
+                rating.made_recipe,
+                rating.would_make_again,
+                rating.difficulty_rating,
+                rating.time_accuracy,
+                existing_rating['id']
+            ), fetch_one=True)
+        else:
+            # Insert new rating
+            updated_rating = execute_rating_query("""
+                INSERT INTO recipe_interactions 
+                (user_id, recipe_id, interaction_type, rating_score, rating_aspects, 
+                 feedback_text, made_recipe, would_make_again, difficulty_rating, 
+                 time_accuracy, timestamp, updated_at)
+                VALUES (%s, %s, 'rating', %s, %s::jsonb, %s, %s, %s, %s, %s, 
+                        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                RETURNING *
+            """, (
+                user_id,
+                recipe_id,
+                rating.rating_score,
+                rating_aspects_json,
+                rating.feedback_text,
+                rating.made_recipe,
+                rating.would_make_again,
+                rating.difficulty_rating,
+                rating.time_accuracy
+            ), fetch_one=True)
         
         result = {
             "success": True,
