@@ -28,7 +28,7 @@ const RatingBasedRecommendations = ({ maxItems = 6, showTitle = true }) => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (user?.user_id) {
+    if (user?.userId) {
       loadRecommendations();
     } else {
       setLoading(false);

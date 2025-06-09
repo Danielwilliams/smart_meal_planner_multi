@@ -36,7 +36,7 @@ const UserPreferencesAnalytics = ({ userId, compact = false }) => {
   const { user } = useAuth();
 
   useEffect(() => {
-    const targetUserId = userId || user?.user_id;
+    const targetUserId = userId || user?.userId;
     if (targetUserId) {
       loadPreferences();
       loadInsights();
@@ -46,7 +46,7 @@ const UserPreferencesAnalytics = ({ userId, compact = false }) => {
     }
   }, [userId, user]);
 
-  const targetUserId = userId || user?.user_id;
+  const targetUserId = userId || user?.userId;
 
   const loadPreferences = async () => {
     try {

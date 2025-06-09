@@ -45,29 +45,40 @@ const UserProfilePage = () => {
   const [topRecipes, setTopRecipes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const { user } = useAuth();
+  const { user, isAuthenticated } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (user?.user_id) {
+    console.log('UserProfilePage - Current user:', user);
+    console.log('User object keys:', user ? Object.keys(user) : 'No user');
+    console.log('User ID (userId):', user?.userId);
+    console.log('Is authenticated:', isAuthenticated);
+    
+    if (isAuthenticated && user?.userId) {
       loadUserData();
-    } else {
+    } else if (isAuthenticated === false) {
       setLoading(false);
       setError('Please log in to view your profile');
+    } else {
+      // Still loading authentication
+      setLoading(true);
     }
-  }, [user]);
+  }, [user, isAuthenticated]);
 
   const loadUserData = async () => {
     try {
       setLoading(true);
       setError('');
+      
+      const userId = user?.userId;
+      console.log('Loading data for user ID:', userId);
 
       // Load user analytics
       try {
-        const analyticsResponse = await apiService.get(`/analytics/users/${user.user_id}/personalization`);
+        const analyticsResponse = await apiService.get(`/analytics/users/${userId}/personalization`);
         setAnalytics(analyticsResponse.data.insights);
       } catch (err) {
-        console.log('Analytics not available yet');
+        console.log('Analytics not available yet:', err.response?.status);
       }
 
       // Load recommendations
@@ -152,7 +163,7 @@ const UserProfilePage = () => {
                 Insights from your recipe ratings and cooking adventures
               </Typography>
               
-              <UserPreferencesAnalytics userId={user?.user_id} compact={false} />
+              <UserPreferencesAnalytics userId={user?.userId} compact={false} />
             </Paper>
           </Grid>
         ) : (
