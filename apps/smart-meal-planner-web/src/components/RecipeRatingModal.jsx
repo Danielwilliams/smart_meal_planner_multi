@@ -67,10 +67,11 @@ const RecipeRatingModal = ({
       const response = await apiService.get(`/ratings/recipes/${recipeId}/my-rating`);
       
       console.log('My rating response:', response);
+      console.log('Response.data:', response.data);
       
-      // Check if response and response.data exist
-      if (!response || !response.data) {
-        console.log('No response data received');
+      // Check if response exists
+      if (!response) {
+        console.log('No response received');
         return;
       }
       

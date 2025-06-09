@@ -35,10 +35,13 @@ const RecipeRatingDisplay = ({ recipeId, compact = false }) => {
       setLoading(true);
       setError('');
       
+      console.log(`Loading ratings for recipe ID: ${recipeId}`);
       const response = await apiService.get(`/ratings/recipes/${recipeId}/ratings`);
+      console.log('Ratings response:', response.data);
       setRatings(response.data);
     } catch (err) {
       console.error('Error loading ratings:', err);
+      console.error('Error details:', err.response?.data);
       setError('Failed to load ratings');
     } finally {
       setLoading(false);

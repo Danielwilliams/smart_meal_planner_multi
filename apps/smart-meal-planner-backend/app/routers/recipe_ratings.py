@@ -325,7 +325,7 @@ async def rate_recipe(
 @router.get("/recipes/{recipe_id}/ratings")
 async def get_recipe_ratings(recipe_id: int):
     """Get aggregated ratings for a recipe"""
-    logger.info(f"Getting ratings for recipe {recipe_id}")
+    logger.info(f"=== GET RECIPE RATINGS: recipe_id={recipe_id} ===")
     try:
         # Get ratings directly from recipe_interactions (skip view dependency)
         direct_ratings = execute_rating_query("""
@@ -343,9 +343,20 @@ async def get_recipe_ratings(recipe_id: int):
         """, (recipe_id,), fetch_one=True)
         
         logger.info(f"Direct ratings query completed: {bool(direct_ratings)}")
+        if direct_ratings:
+            logger.info(f"Query result: total_ratings={direct_ratings['total_ratings']}, avg_rating={direct_ratings['average_rating']}")
         
         if not direct_ratings or direct_ratings['total_ratings'] == 0:
             logger.info(f"No ratings found for recipe {recipe_id}")
+            # Let's also check what's actually in the table for this recipe
+            debug_check = execute_rating_query("""
+                SELECT id, user_id, rating_score, interaction_type 
+                FROM recipe_interactions 
+                WHERE recipe_id = %s 
+                LIMIT 5
+            """, (recipe_id,), fetch_all=True)
+            logger.info(f"Debug - all interactions for recipe {recipe_id}: {debug_check}")
+            
             return {
                 "recipe_id": recipe_id,
                 "total_ratings": 0,
