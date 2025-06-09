@@ -251,42 +251,40 @@ async def rate_recipe(
         )
     
     try:
-        
-        # Get or create recipe interaction
-        interaction_result = execute_rating_query(
-            "SELECT get_or_create_recipe_interaction(%s, %s, %s)", 
-            (user_id, recipe_id, 'rating'),
-            fetch_one=True
-        )
-        interaction_id = interaction_result['get_or_create_recipe_interaction']
-        
         # Convert rating_aspects to JSON string if it exists
         import json
         rating_aspects_json = json.dumps(rating.rating_aspects.model_dump()) if rating.rating_aspects else None
         
-        # Update the rating
+        # Insert or update the rating directly using ON CONFLICT
         updated_rating = execute_rating_query("""
-            UPDATE recipe_interactions 
-            SET rating_score = %s,
-                rating_aspects = %s::jsonb,
-                feedback_text = %s,
-                made_recipe = %s,
-                would_make_again = %s,
-                difficulty_rating = %s,
-                time_accuracy = %s,
+            INSERT INTO recipe_interactions 
+            (user_id, recipe_id, interaction_type, rating_score, rating_aspects, 
+             feedback_text, made_recipe, would_make_again, difficulty_rating, 
+             time_accuracy, timestamp, updated_at)
+            VALUES (%s, %s, 'rating', %s, %s::jsonb, %s, %s, %s, %s, %s, 
+                    CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            ON CONFLICT (user_id, recipe_id) 
+            DO UPDATE SET 
+                rating_score = EXCLUDED.rating_score,
+                rating_aspects = EXCLUDED.rating_aspects,
+                feedback_text = EXCLUDED.feedback_text,
+                made_recipe = EXCLUDED.made_recipe,
+                would_make_again = EXCLUDED.would_make_again,
+                difficulty_rating = EXCLUDED.difficulty_rating,
+                time_accuracy = EXCLUDED.time_accuracy,
                 interaction_type = 'rating',
                 updated_at = CURRENT_TIMESTAMP
-            WHERE id = %s
             RETURNING *
         """, (
+            user_id,
+            recipe_id,
             rating.rating_score,
             rating_aspects_json,
             rating.feedback_text,
             rating.made_recipe,
             rating.would_make_again,
             rating.difficulty_rating,
-            rating.time_accuracy,
-            interaction_id
+            rating.time_accuracy
         ), fetch_one=True)
         
         result = {
@@ -307,43 +305,38 @@ async def get_recipe_ratings(recipe_id: int):
     """Get aggregated ratings for a recipe"""
     logger.info(f"Getting ratings for recipe {recipe_id}")
     try:
-        # Get rating summary from view
-        summary = execute_rating_query(
-            "SELECT * FROM recipe_ratings_summary WHERE recipe_id = %s",
-            (recipe_id,),
-            fetch_one=True
-        )
-        logger.info(f"Summary query completed: {bool(summary)}")
+        # Get ratings directly from recipe_interactions (skip view dependency)
+        direct_ratings = execute_rating_query("""
+            SELECT 
+                COUNT(*) as total_ratings,
+                AVG(rating_score) as average_rating,
+                AVG(difficulty_rating) as avg_difficulty,
+                AVG(time_accuracy) as avg_time_accuracy,
+                COUNT(CASE WHEN made_recipe = true THEN 1 END) as times_made,
+                COUNT(CASE WHEN would_make_again = true THEN 1 END) as would_remake_count,
+                COUNT(CASE WHEN would_make_again IS NOT NULL THEN 1 END) as would_remake_total
+            FROM recipe_interactions
+            WHERE recipe_id = %s 
+            AND rating_score IS NOT NULL
+        """, (recipe_id,), fetch_one=True)
         
-        if not summary:
-            logger.info(f"No summary found for recipe {recipe_id}, checking for raw ratings")
-            # Try to get ratings directly from recipe_interactions
-            try:
-                direct_ratings = execute_rating_query("""
-                    SELECT 
-                        COUNT(*) as total_ratings,
-                        AVG(rating_score) as average_rating
-                    FROM recipe_interactions
-                    WHERE recipe_id = %s 
-                    AND rating_score IS NOT NULL
-                """, (recipe_id,), fetch_one=True)
-                
-                if direct_ratings and direct_ratings['total_ratings'] > 0:
-                    return {
-                        "recipe_id": recipe_id,
-                        "total_ratings": direct_ratings['total_ratings'],
-                        "average_rating": float(direct_ratings['average_rating']) if direct_ratings['average_rating'] else None,
-                        "message": "Summary view not available, using direct query"
-                    }
-            except Exception as e:
-                logger.warning(f"Direct rating query failed: {str(e)}")
-            
+        logger.info(f"Direct ratings query completed: {bool(direct_ratings)}")
+        
+        if not direct_ratings or direct_ratings['total_ratings'] == 0:
+            logger.info(f"No ratings found for recipe {recipe_id}")
             return {
                 "recipe_id": recipe_id,
                 "total_ratings": 0,
                 "average_rating": None,
+                "summary": {},
+                "recent_reviews": [],
                 "message": "No ratings yet"
             }
+        
+        # Calculate remake percentage
+        remake_percentage = 0
+        if direct_ratings['would_remake_total'] > 0:
+            remake_percentage = round((direct_ratings['would_remake_count'] / direct_ratings['would_remake_total']) * 100)
         
         # Get recent reviews - simplified without join
         try:
@@ -366,23 +359,23 @@ async def get_recipe_ratings(recipe_id: int):
             logger.error(f"Error fetching recent reviews: {str(e)}")
             recent_reviews = []
         
-        # Flatten the response structure for easier frontend handling
-        if summary:
-            result = {
-                "recipe_id": recipe_id,
-                "total_ratings": summary.get('total_ratings', 0),
-                "average_rating": summary.get('average_rating'),
-                "summary": dict(summary),
-                "recent_reviews": [dict(review) for review in (recent_reviews or [])]
-            }
-        else:
-            result = {
-                "recipe_id": recipe_id,
-                "total_ratings": 0,
-                "average_rating": None,
-                "summary": {},
-                "recent_reviews": []
-            }
+        # Build summary object
+        summary = {
+            "total_ratings": direct_ratings['total_ratings'],
+            "average_rating": float(direct_ratings['average_rating']) if direct_ratings['average_rating'] else None,
+            "avg_difficulty": float(direct_ratings['avg_difficulty']) if direct_ratings['avg_difficulty'] else None,
+            "avg_time_accuracy": float(direct_ratings['avg_time_accuracy']) if direct_ratings['avg_time_accuracy'] else None,
+            "times_made": direct_ratings['times_made'],
+            "remake_percentage": remake_percentage
+        }
+        
+        result = {
+            "recipe_id": recipe_id,
+            "total_ratings": direct_ratings['total_ratings'],
+            "average_rating": float(direct_ratings['average_rating']) if direct_ratings['average_rating'] else None,
+            "summary": summary,
+            "recent_reviews": [dict(review) for review in (recent_reviews or [])]
+        }
         
         logger.info(f"Returning rating response for recipe {recipe_id}: {result.get('total_ratings', 0)} ratings")
         return result
