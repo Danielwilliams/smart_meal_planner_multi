@@ -51,8 +51,13 @@ function SubscriptionRoute({ children }) {
     );
   }
 
-  // Redirect to login if not authenticated
+  // Allow the subscription page to be viewed without authentication
+  // For other routes protected by SubscriptionRoute, redirect to subscription page
   if (!isAuthenticated) {
+    // Special case for subscription-related paths - don't redirect
+    if (location.pathname.startsWith('/subscription')) {
+      return children;
+    }
     return <Navigate to="/login" replace />;
   }
 

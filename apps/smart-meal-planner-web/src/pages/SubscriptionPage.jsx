@@ -50,16 +50,18 @@ const SubscriptionPage = () => {
   useEffect(() => {
     if (!isAuthenticated) {
       // Don't redirect - allow viewing subscription plans without login
+      console.log('SubscriptionPage: Not authenticated, showing plans only');
       setLoading(false);
       return;
     }
-    
+
     const fetchSubscriptionData = async () => {
       try {
         setLoading(true);
+        console.log('SubscriptionPage: Fetching subscription data for authenticated user');
         const subscriptionData = await subscriptionService.getSubscriptionStatus();
         setSubscription(subscriptionData);
-        
+
         // Fetch invoices if user has an active subscription
         if (subscriptionData && subscriptionData.status === 'active') {
           const invoicesData = await subscriptionService.getInvoices();
@@ -72,7 +74,7 @@ const SubscriptionPage = () => {
         setLoading(false);
       }
     };
-    
+
     fetchSubscriptionData();
   }, [isAuthenticated, navigate]);
   
