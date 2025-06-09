@@ -40,11 +40,11 @@ function AcceptInvitation() {
 
       try {
         // Fetch organization details
-        const orgDetails = await apiService.getOrganizationDetails(orgId);
+        const orgDetails = await apiService.get(`/api/organizations/${orgId}`);
         setOrganizationName(orgDetails.name);
         
         // Check invitation validity and get associated email
-        const invitationCheck = await apiService.checkInvitation(token, orgId);
+        const invitationCheck = await apiService.get(`/api/invitations/check?token=${token}&organization_id=${orgId}`);
         if (invitationCheck.valid) {
           setInvitationEmail(invitationCheck.email);
         }
@@ -56,7 +56,10 @@ function AcceptInvitation() {
         }
         
         // If authenticated, attempt to accept the invitation
-        await apiService.acceptInvitation(token, orgId);
+        await apiService.post('/api/invitations/accept', {
+          token,
+          organization_id: parseInt(orgId)
+        });
         setSuccess(true);
       } catch (err) {
         console.error('Error validating invitation:', err);
@@ -167,7 +170,10 @@ function AcceptInvitation() {
                   onClick={async () => {
                     setLoading(true);
                     try {
-                      await apiService.acceptInvitation(token, orgId);
+                      await apiService.post('/api/invitations/accept', {
+                        token,
+                        organization_id: parseInt(orgId)
+                      });
                       setSuccess(true);
                     } catch (err) {
                       setError(err.response?.data?.detail || 'Failed to accept invitation');

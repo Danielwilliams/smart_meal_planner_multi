@@ -53,7 +53,7 @@ const ClientInvitationConnect = () => {
         setLoading(true);
         
         // First check if the invitation is valid
-        const invitationInfo = await apiService.checkInvitation(token, orgId);
+        const invitationInfo = await apiService.get(`/api/invitations/check?token=${token}&organization_id=${orgId}`);
         if (!invitationInfo.valid) {
           setError('This invitation link is invalid or has expired.');
           setInvitationValid(false);
@@ -65,7 +65,7 @@ const ClientInvitationConnect = () => {
         
         // Get organization details
         try {
-          const orgDetails = await apiService.getOrganizationDetails(orgId);
+          const orgDetails = await apiService.get(`/api/organizations/${orgId}`);
           setOrgName(orgDetails.name || 'your nutrition provider');
         } catch (err) {
           console.error('Error fetching organization details:', err);
@@ -92,7 +92,10 @@ const ClientInvitationConnect = () => {
       setLoading(true);
       
       // Accept the invitation
-      const response = await apiService.acceptInvitation(token, orgId);
+      const response = await apiService.post('/api/invitations/accept', {
+        token,
+        organization_id: parseInt(orgId)
+      });
       console.log('Invitation accepted:', response);
       
       // Update user information locally

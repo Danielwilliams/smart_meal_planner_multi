@@ -94,10 +94,13 @@ function SignUpPage() {
       };
       
       // Call the signup API
-      const response = await apiService.signup(signupPayload);
+      // Use post method instead of signup which doesn't exist
+      const response = await apiService.post('/api/auth/signup', signupPayload);
       
-      if (response && response.message) {
-        setSuccessMessage(response.message);
+      if (response && (response.message || response.data)) {
+        // Extract message from response data if available
+        const message = response.data?.message || response.message || "Account created successfully!";
+        setSuccessMessage(message);
         
         // If we have subscription parameters, log in and redirect to subscription
         if (subscriptionPlan) {
