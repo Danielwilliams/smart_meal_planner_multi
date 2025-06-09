@@ -51,6 +51,7 @@ import SupportPage from './pages/SupportPage';
 import SubscriptionPage from './pages/SubscriptionPage';
 import SubscriptionSuccessPage from './pages/SubscriptionSuccessPage';
 import SubscriptionCancelPage from './pages/SubscriptionCancelPage';
+import UserProfilePage from './pages/UserProfilePage';
 
 
 function App() {
@@ -120,6 +121,14 @@ function App() {
                 element={
                   <SubscriptionRoute>
                     <PreferencesPage />
+                  </SubscriptionRoute>
+                } 
+              />
+              <Route 
+                path="/profile" 
+                element={
+                  <SubscriptionRoute>
+                    <UserProfilePage />
                   </SubscriptionRoute>
                 } 
               />

@@ -28,7 +28,6 @@ import {
 import apiService from '../services/apiService';
 import { useAuth } from '../context/AuthContext';
 import MacroDefaults from '../components/MacroDefaults';
-import UserPreferencesAnalytics from '../components/UserPreferencesAnalytics';
 
 
 function PreferencesPage() {
@@ -541,9 +540,6 @@ useEffect(() => {
 
   return (
     <Container maxWidth="md">
-      {/* Rating-based Analytics Section */}
-      <UserPreferencesAnalytics compact={true} />
-      
       <Paper elevation={3} sx={{ p: 4, mt: 4 }}>
         <Typography variant="h4" gutterBottom>
           Set Your Meal Preferences

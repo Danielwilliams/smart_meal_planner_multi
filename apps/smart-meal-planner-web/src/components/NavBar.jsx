@@ -147,6 +147,7 @@ function NavBar() {
     // Items that will appear in both main nav and drawer
     const mainItems = [
       { text: 'Home', icon: <HomeIcon />, path: '/' },
+      { text: 'Your Food Journey', icon: <DashboardIcon />, path: '/profile' },
       { text: 'Menu', icon: <RestaurantIcon />, path: '/menu' },
       { text: 'Shopping List', icon: <ListIcon />, path: '/shopping-list' },
       { text: 'Cart', icon: <CartIcon />, path: '/cart' },
@@ -391,8 +392,12 @@ function NavBar() {
               </Box>
             </MenuItem>
             <Divider />
+            <MenuItem onClick={() => { handleMenuClose(); navigate('/profile'); }}>
+              <DashboardIcon sx={{ mr: 1 }} fontSize="small" />
+              Your Food Journey
+            </MenuItem>
             <MenuItem onClick={() => { handleMenuClose(); navigate('/preferences-page'); }}>
-              <PersonIcon sx={{ mr: 1 }} fontSize="small" />
+              <SettingsIcon sx={{ mr: 1 }} fontSize="small" />
               Profile Settings
             </MenuItem>
             {isOrgAccount && (
