@@ -37,6 +37,7 @@ function LoginPage() {
   const subscriptionPlan = query.get('plan');
   const paymentProvider = query.get('provider') || 'stripe';
   const isFromSignup = query.get('message') === 'signup-complete';
+  const isCreateAccount = query.get('message') === 'create-account';
   const hasSubscription = query.get('subscription') === 'true';
   const discountCode = query.get('discount');
 
@@ -208,6 +209,13 @@ function LoginPage() {
     if (isInvitation && invitationToken && organizationId) {
       // If this is an invitation flow, redirect to client-specific signup
       navigate(`/client-signup?token=${invitationToken}&org=${organizationId}`);
+    } else if (isCreateAccount && subscriptionPlan) {
+      // If coming from subscription page, create registration page with the plan info
+      const registrationPath = '/create-account' +
+        `?plan=${subscriptionPlan}` +
+        `&provider=${paymentProvider}` +
+        (discountCode ? `&discount=${discountCode}` : '');
+      navigate(registrationPath);
     } else {
       // Regular signup
       navigate('/signup');
@@ -329,6 +337,12 @@ function LoginPage() {
             {isFromSignup && (
               <Alert severity="success" sx={{ mb: 2 }}>
                 Account created successfully! Please sign in{hasSubscription ? ' to continue with your subscription' : ''}.
+              </Alert>
+            )}
+
+            {isCreateAccount && subscriptionPlan && (
+              <Alert severity="info" sx={{ mb: 2 }}>
+                To subscribe to the {subscriptionPlan.charAt(0).toUpperCase() + subscriptionPlan.slice(1)} plan, please sign in or create a new account.
               </Alert>
             )}
 

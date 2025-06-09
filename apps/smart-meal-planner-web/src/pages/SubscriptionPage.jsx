@@ -129,16 +129,18 @@ const SubscriptionPage = () => {
   
   const handleSubscribe = async (subscriptionType) => {
     if (!isAuthenticated) {
-      // For non-authenticated users, redirect to signup with plan info
-      // This allows users to create an account and then continue with subscription
-      let signupUrl = '/signup?plan=' + subscriptionType + '&provider=' + selectedPaymentProvider;
+      // For non-authenticated users, redirect to login with a message to create an account
+      let loginUrl = '/login?message=create-account&plan=' + subscriptionType;
+
+      // Add payment provider
+      loginUrl += '&provider=' + selectedPaymentProvider;
 
       // Add discount code if valid
       if (discountCodeValid && discountCode) {
-        signupUrl += '&discount=' + encodeURIComponent(discountCode);
+        loginUrl += '&discount=' + encodeURIComponent(discountCode);
       }
 
-      navigate(signupUrl);
+      navigate(loginUrl);
       return;
     }
 

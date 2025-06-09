@@ -11,6 +11,7 @@ import { BrandingProvider, withBrandingGuard } from './context/BrandingContext';
 import NavBar from './components/NavBar';
 import LoginPage from './pages/LoginPage';
 import SignUpPage from './pages/SignUpPage';
+import CreateAccount from './pages/CreateAccount';
 import PreferencesPage from './pages/PreferencesPage';
 import MenuDisplayPage from './pages/MenuDisplayPage';
 import ShoppingListPage from './pages/ShoppingListPage';
@@ -76,6 +77,7 @@ function App() {
               <Route path="/" element={<LandingPage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/signup" element={<SignUpPage />} />
+              <Route path="/create-account" element={<CreateAccount />} />
               <Route path="/forgot-password" element={<ForgotPasswordPage />} />
               <Route path="/reset-password" element={<ResetPasswordPage />} />
               {/* Client signup routes - simplified direct access */}
