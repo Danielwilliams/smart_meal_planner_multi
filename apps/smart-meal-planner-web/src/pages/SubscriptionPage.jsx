@@ -42,6 +42,9 @@ const SubscriptionPage = () => {
   const [invoices, setInvoices] = useState([]);
   const [openCancelDialog, setOpenCancelDialog] = useState(false);
   const [selectedPaymentProvider, setSelectedPaymentProvider] = useState('stripe');
+  const [discountCode, setDiscountCode] = useState('');
+  const [discountCodeValid, setDiscountCodeValid] = useState(null);
+  const [discountInfo, setDiscountInfo] = useState(null);
   
   useEffect(() => {
     if (!isAuthenticated) {
@@ -89,28 +92,70 @@ const SubscriptionPage = () => {
     setError(null);
     setSuccessMessage(null);
   };
+
+  const validateDiscountCode = async () => {
+    if (!discountCode.trim()) {
+      setDiscountCodeValid(false);
+      setDiscountInfo(null);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const response = await subscriptionService.validateDiscountCode(
+        discountCode.trim(),
+        'individual' // Default to individual, will be overridden at checkout
+      );
+
+      if (response.valid) {
+        setDiscountCodeValid(true);
+        setDiscountInfo(response);
+        setSuccessMessage(`Discount code applied: ${response.description}`);
+      } else {
+        setDiscountCodeValid(false);
+        setDiscountInfo(null);
+        setError(response.message || "Invalid discount code");
+      }
+    } catch (err) {
+      console.error('Error validating discount code:', err);
+      setDiscountCodeValid(false);
+      setDiscountInfo(null);
+      setError('Failed to validate discount code. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
   
   const handleSubscribe = async (subscriptionType) => {
     if (!isAuthenticated) {
-      // For non-authenticated users, redirect to login with a message to create an account
-      navigate('/login?message=create-account&plan=' + subscriptionType);
+      // For non-authenticated users, redirect to signup with plan info
+      // This allows users to create an account and then continue with subscription
+      let signupUrl = '/signup?plan=' + subscriptionType + '&provider=' + selectedPaymentProvider;
+
+      // Add discount code if valid
+      if (discountCodeValid && discountCode) {
+        signupUrl += '&discount=' + encodeURIComponent(discountCode);
+      }
+
+      navigate(signupUrl);
       return;
     }
-    
+
     try {
       setLoading(true);
-      
+
       // Define success and cancel URLs
       const successUrl = `${window.location.origin}/subscription/success`;
       const cancelUrl = `${window.location.origin}/subscription/cancel`;
-      
+
       const response = await subscriptionService.createCheckoutSession(
         subscriptionType,
         selectedPaymentProvider,
         successUrl,
-        cancelUrl
+        cancelUrl,
+        discountCodeValid ? discountCode : null
       );
-      
+
       // Redirect to checkout (works for both Stripe and PayPal)
       if (response && response.checkout_url) {
         window.location.href = response.checkout_url;
@@ -185,6 +230,48 @@ const SubscriptionPage = () => {
         onProviderChange={setSelectedPaymentProvider}
         disabled={loading}
       />
+
+      {/* Discount Code */}
+      <Box sx={{ my: 3 }}>
+        <Typography variant="h6" gutterBottom>
+          Have a Discount Code?
+        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <TextField
+            variant="outlined"
+            size="small"
+            placeholder="Enter discount code"
+            value={discountCode}
+            onChange={(e) => setDiscountCode(e.target.value)}
+            sx={{ flexGrow: 1 }}
+            error={discountCodeValid === false}
+            helperText={discountCodeValid === false ? "Invalid code" : ""}
+            disabled={loading || discountCodeValid === true}
+          />
+          <Button
+            variant="outlined"
+            onClick={validateDiscountCode}
+            disabled={loading || !discountCode || discountCodeValid === true}
+          >
+            Apply
+          </Button>
+        </Box>
+
+        {discountInfo && (
+          <Box sx={{ mt: 1, p: 1, bgcolor: 'success.light', borderRadius: 1 }}>
+            <Typography variant="body2">
+              {discountInfo.discount_type === 'percentage' ? (
+                `${discountInfo.percent_off}% off`
+              ) : (
+                `$${discountInfo.amount_off} off`
+              )}
+              {discountInfo.duration === 'once' ? ' (one-time)' :
+               discountInfo.duration === 'forever' ? ' (forever)' :
+               ` (for ${discountInfo.duration_in_months} months)`}
+            </Typography>
+          </Box>
+        )}
+      </Box>
       
       <Grid container spacing={3} sx={{ mt: 2 }}>
         {/* Individual Plan */}

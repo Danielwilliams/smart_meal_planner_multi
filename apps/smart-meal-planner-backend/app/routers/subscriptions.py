@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 
 # Import your models and utilities
 from app.models.subscription import (
-    create_subscription, get_subscription, get_user_subscription, 
+    create_subscription, get_subscription, get_user_subscription,
     get_organization_subscription, update_subscription, cancel_subscription,
     create_payment_method, get_payment_methods, get_default_payment_method,
     delete_payment_method, log_subscription_event, create_invoice,
@@ -17,6 +17,7 @@ from app.models.subscription import (
     SubscriptionCreate, PaymentMethodCreate, SubscriptionResponse, PaymentMethodResponse,
     SubscriptionType, SubscriptionStatus, PaymentProvider
 )
+from pydantic import BaseModel
 from app.utils.auth_middleware import get_user_from_token
 from app.db import get_db_connection, get_db_cursor
 
@@ -32,6 +33,11 @@ ENABLE_SUBSCRIPTION_FEATURES = os.getenv("ENABLE_SUBSCRIPTION_FEATURES", "false"
 # Configuration for free tier
 FREE_TIER_DAYS = int(os.getenv("FREE_TIER_DAYS", "90"))  # Default 90-day free tier
 
+# Model for discount code validation
+class DiscountCodeRequest(BaseModel):
+    code: str
+    subscription_type: str
+
 # Fallback function for when subscriptions are disabled
 async def subscription_disabled():
     """Handler for when subscription features are disabled"""
@@ -39,6 +45,89 @@ async def subscription_disabled():
         "enabled": False,
         "message": "Subscription features are currently disabled"
     }
+
+@router.post("/validate-discount")
+async def validate_discount_code(
+    request: DiscountCodeRequest,
+    user = Depends(get_user_from_token)
+):
+    """
+    Validate a discount code and return its details
+
+    Args:
+        request: Contains the discount code and subscription type
+
+    Returns:
+        Discount code details if valid, error message if not
+    """
+    # First, check if subscriptions are enabled
+    if not ENABLE_SUBSCRIPTION_FEATURES:
+        return await subscription_disabled()
+
+    # Ensure Stripe is imported
+    if 'stripe' not in globals():
+        # Import stripe if not already imported
+        import stripe
+
+    # Check if Stripe API key is configured
+    if not hasattr(stripe, 'api_key') or not stripe.api_key:
+        logger.error("Stripe API key is not configured")
+        raise HTTPException(
+            status_code=503,
+            detail="Payment integration is not available - API key not configured"
+        )
+
+    try:
+        # Try to retrieve the coupon from Stripe
+        discount_code = request.code
+        logger.info(f"Validating discount code: {discount_code}")
+
+        try:
+            coupon = stripe.Coupon.retrieve(discount_code)
+
+            # Check if coupon is valid
+            if coupon and not coupon.get('deleted'):
+                # Format response with coupon details
+                response = {
+                    "valid": True,
+                    "code": discount_code,
+                    "description": coupon.get('name', 'Discount'),
+                }
+
+                # Add discount amount information
+                if coupon.get('percent_off'):
+                    response["percent_off"] = coupon['percent_off']
+                    response["discount_type"] = "percentage"
+                elif coupon.get('amount_off'):
+                    response["amount_off"] = coupon['amount_off'] / 100  # Convert from cents
+                    response["currency"] = coupon.get('currency', 'usd').upper()
+                    response["discount_type"] = "fixed"
+
+                # Add duration information
+                response["duration"] = coupon.get('duration', 'once')
+                if response["duration"] == "repeating":
+                    response["duration_in_months"] = coupon.get('duration_in_months', 0)
+
+                return response
+            else:
+                # Coupon was deleted or is invalid
+                return {
+                    "valid": False,
+                    "message": "This discount code is no longer valid"
+                }
+        except stripe.error.InvalidRequestError as e:
+            # Coupon doesn't exist
+            logger.warning(f"Invalid coupon code: {discount_code}, error: {str(e)}")
+            return {
+                "valid": False,
+                "message": "Invalid discount code"
+            }
+    except Exception as e:
+        logger.error(f"Error validating discount code: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error validating discount code: {str(e)}"
+        )
 
 # Helper function to check if subscriptions are enabled
 def check_subscriptions_enabled():
@@ -702,10 +791,14 @@ async def create_checkout_session(
         # Get optional URL parameters
         success_url = body.get('success_url')
         cancel_url = body.get('cancel_url')
-        
+
+        # Get discount code if provided
+        discount_code = body.get('discount_code')
+
         # Log the received parameters for debugging
         logger.info(f"Creating checkout session with params: subscription_type={subscription_type}, "
-                    f"payment_provider={payment_provider}, success_url={success_url}, cancel_url={cancel_url}")
+                    f"payment_provider={payment_provider}, success_url={success_url}, cancel_url={cancel_url}, "
+                    f"discount_code={discount_code}")
 
         # Determine which user or organization is subscribing
         user_id = user.get('user_id')
@@ -819,18 +912,42 @@ async def create_checkout_session(
             try:
                 # Create checkout session
                 logger.info("Calling stripe.checkout.Session.create...")
-                checkout_session = stripe.checkout.Session.create(
-                    customer=customer_id,
-                    payment_method_types=["card"],
-                    line_items=[{
+
+                # Prepare checkout session parameters
+                checkout_params = {
+                    "customer": customer_id,
+                    "payment_method_types": ["card"],
+                    "line_items": [{
                         "price": price_id,
                         "quantity": 1
                     }],
-                    mode="subscription",
-                    success_url=success_url,
-                    cancel_url=cancel_url,
-                    metadata=metadata
-                )
+                    "mode": "subscription",
+                    "success_url": success_url,
+                    "cancel_url": cancel_url,
+                    "metadata": metadata
+                }
+
+                # If discount code provided, validate and apply it
+                if discount_code:
+                    try:
+                        # Check if the coupon exists and is valid
+                        logger.info(f"Validating discount code: {discount_code}")
+                        try:
+                            coupon = stripe.Coupon.retrieve(discount_code)
+                            if coupon and not coupon.get('deleted'):
+                                # Add the discount to the checkout session
+                                checkout_params["discounts"] = [{"coupon": discount_code}]
+                                logger.info(f"Applied discount code: {discount_code}")
+                            else:
+                                logger.warning(f"Coupon not found or deleted: {discount_code}")
+                        except stripe.error.InvalidRequestError as e:
+                            logger.warning(f"Invalid coupon code: {discount_code}, error: {str(e)}")
+                    except Exception as coupon_err:
+                        logger.error(f"Error validating coupon: {str(coupon_err)}", exc_info=True)
+                        # Continue without the coupon rather than failing
+
+                # Create the checkout session
+                checkout_session = stripe.checkout.Session.create(**checkout_params)
 
                 # Log the checkout session creation
                 logger.info(f"Created Stripe checkout session: {checkout_session.id}")

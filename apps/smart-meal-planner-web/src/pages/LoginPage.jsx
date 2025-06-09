@@ -32,7 +32,14 @@ function LoginPage() {
   const isInvitation = query.get('invitation') === 'true';
   const invitationToken = query.get('token');
   const organizationId = query.get('org');
-  
+
+  // Check if we have subscription parameters
+  const subscriptionPlan = query.get('plan');
+  const paymentProvider = query.get('provider') || 'stripe';
+  const isFromSignup = query.get('message') === 'signup-complete';
+  const hasSubscription = query.get('subscription') === 'true';
+  const discountCode = query.get('discount');
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -85,10 +92,87 @@ function LoginPage() {
     let retryCount = 0;
     const maxRetries = 1;
 
+<<<<<<< Updated upstream
     while (retryCount <= maxRetries) {
       try {
         if (!executeRecaptcha) {
           throw new Error('reCAPTCHA not initialized');
+=======
+      const captchaToken = await executeRecaptcha('login');
+      
+      // Use the AuthContext login function that handles the API call
+      const response = await login({
+        email,
+        password,
+        captchaToken
+      });
+
+      console.log('Login Response:', response);
+
+      // If this is an invitation login flow, redirect to the connect-to-organization page
+      if (isInvitation && invitationToken && organizationId) {
+        // Instead of accepting invitation here, redirect to the dedicated connection page
+        navigate(`/connect-to-organization?token=${invitationToken}&org=${organizationId}`);
+        return; // Exit early since we've already navigated
+      }
+
+      // If this login is part of a subscription flow
+      if (subscriptionPlan || hasSubscription) {
+        // Redirect to subscription checkout
+        if (subscriptionPlan) {
+          // If we have a specific plan, create checkout session and redirect
+          try {
+            const successUrl = `${window.location.origin}/subscription/success`;
+            const cancelUrl = `${window.location.origin}/subscription/cancel`;
+
+            // Import the subscription service dynamically to avoid circular dependencies
+            const subscriptionService = await import('../services/subscriptionService').then(module => module.default);
+
+            const checkoutResponse = await subscriptionService.createCheckoutSession(
+              subscriptionPlan,
+              paymentProvider,
+              successUrl,
+              cancelUrl,
+              discountCode
+            );
+
+            if (checkoutResponse && checkoutResponse.checkout_url) {
+              window.location.href = checkoutResponse.checkout_url;
+              return;
+            } else {
+              // If checkout session creation fails, redirect to subscription page
+              navigate('/subscription');
+              return;
+            }
+          } catch (checkoutError) {
+            console.error('Error creating checkout session:', checkoutError);
+            // Redirect to subscription page on error
+            navigate('/subscription');
+            return;
+          }
+        } else {
+          // If no specific plan but subscription=true, just go to subscription page
+          navigate('/subscription');
+          return;
+        }
+      }
+
+      // Standard redirect flow (if not handling invitation or subscription)
+      if (response.account_type === 'organization') {
+        navigate('/organization/dashboard');
+      } else if (response.account_type === 'client') {
+        // Client account flow - send to client dashboard
+        console.log('Navigating to client dashboard');
+        navigate('/client-dashboard');
+      } else {
+        // Regular user flow
+        if (response.progress?.has_preferences) {
+          console.log('Navigating to /home');
+          navigate('/home');
+        } else {
+          console.log('Navigating to /preferences-page');
+          navigate('/preferences-page');
+>>>>>>> Stashed changes
         }
 
         const captchaToken = await executeRecaptcha('login');
@@ -166,9 +250,13 @@ function LoginPage() {
         break;
       }
     }
+<<<<<<< Updated upstream
     
     setLoading(false);
   }, [email, password, executeRecaptcha, navigate, login, isInvitation, invitationToken, organizationId]);
+=======
+  }, [email, password, executeRecaptcha, navigate, login, isInvitation, invitationToken, organizationId, subscriptionPlan, paymentProvider, hasSubscription]);
+>>>>>>> Stashed changes
 
   const handleResendVerification = async () => {
     if (!email) {
@@ -310,6 +398,12 @@ function LoginPage() {
             >
               Sign In
             </Typography>
+
+            {isFromSignup && (
+              <Alert severity="success" sx={{ mb: 2 }}>
+                Account created successfully! Please sign in{hasSubscription ? ' to continue with your subscription' : ''}.
+              </Alert>
+            )}
 
             {error && (
               <Alert severity={resendSuccess ? "success" : "error"} sx={{ mb: 2 }}>

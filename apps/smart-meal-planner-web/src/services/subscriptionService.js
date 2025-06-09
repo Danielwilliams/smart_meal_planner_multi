@@ -118,9 +118,10 @@ const subscriptionService = {
    * @param {string} paymentProvider - Payment provider (stripe or paypal)
    * @param {string} successUrl - URL to redirect after successful payment
    * @param {string} cancelUrl - URL to redirect after cancelled payment
+   * @param {string} discountCode - Optional discount code to apply
    * @returns {Promise<Object>} Checkout session data
    */
-  async createCheckoutSession(subscriptionType, paymentProvider, successUrl, cancelUrl) {
+  async createCheckoutSession(subscriptionType, paymentProvider, successUrl, cancelUrl, discountCode = null) {
     try {
       const payload = {
         subscription_type: subscriptionType,
@@ -128,6 +129,11 @@ const subscriptionService = {
         success_url: successUrl,
         cancel_url: cancelUrl
       };
+
+      // Add discount code to payload if provided
+      if (discountCode) {
+        payload.discount_code = discountCode;
+      }
 
       console.log('Creating checkout session with payload:', payload);
 
@@ -140,6 +146,29 @@ const subscriptionService = {
       return response;
     } catch (error) {
       console.error('Error creating checkout session:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Validate a discount code
+   * @param {string} code - The discount code to validate
+   * @param {string} subscriptionType - The type of subscription (individual or organization)
+   * @returns {Promise<Object>} Validation result
+   */
+  async validateDiscountCode(code, subscriptionType) {
+    try {
+      const response = await makeApiRequest('/api/subscriptions/validate-discount', {
+        method: 'POST',
+        body: JSON.stringify({
+          code: code,
+          subscription_type: subscriptionType
+        })
+      });
+
+      return response;
+    } catch (error) {
+      console.error('Error validating discount code:', error);
       throw error;
     }
   },
