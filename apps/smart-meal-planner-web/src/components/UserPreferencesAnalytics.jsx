@@ -36,9 +36,13 @@ const UserPreferencesAnalytics = ({ userId, compact = false }) => {
   const { user } = useAuth();
 
   useEffect(() => {
-    if (userId || user?.user_id) {
+    const targetUserId = userId || user?.user_id;
+    if (targetUserId) {
       loadPreferences();
       loadInsights();
+    } else {
+      setLoading(false);
+      setError('User not found');
     }
   }, [userId, user]);
 
@@ -47,11 +51,33 @@ const UserPreferencesAnalytics = ({ userId, compact = false }) => {
   const loadPreferences = async () => {
     try {
       setLoading(true);
+      setError('');
+      
+      console.log(`Loading analytics for user ${targetUserId}`);
       const response = await apiService.get(`/analytics/users/${targetUserId}/preferences`);
-      setPreferences(response.data.preferences);
+      console.log('Analytics response:', response);
+      
+      if (response.data && response.data.preferences) {
+        setPreferences(response.data.preferences);
+      } else {
+        console.log('No preferences data in response');
+        setPreferences(null);
+      }
     } catch (err) {
       console.error('Error loading preferences:', err);
-      setError('Failed to load preferences');
+      console.error('Error details:', err.response?.data);
+      
+      // Handle specific error cases
+      if (err.response?.status === 401) {
+        setError('Please log in to view analytics');
+      } else if (err.response?.status === 403) {
+        setError('Access denied');
+      } else if (err.response?.status === 404) {
+        setError('Analytics not available');
+      } else {
+        setError(''); // Don't show error for missing analytics - it's optional
+        setPreferences(null);
+      }
     } finally {
       setLoading(false);
     }
@@ -59,22 +85,26 @@ const UserPreferencesAnalytics = ({ userId, compact = false }) => {
 
   const loadInsights = async () => {
     try {
+      console.log(`Loading insights for user ${targetUserId}`);
       const response = await apiService.get(`/analytics/users/${targetUserId}/personalization`);
-      setInsights(response.data.insights);
+      if (response.data && response.data.insights) {
+        setInsights(response.data.insights);
+      }
     } catch (err) {
       console.error('Error loading insights:', err);
+      // Don't set error state for insights - they're optional
     }
   };
 
   if (loading) {
     return (
-      <Box display="flex" justifyContent="center" py={2}>
-        <CircularProgress />
+      <Box display="flex" justifyContent="center" py={1}>
+        <CircularProgress size={24} />
       </Box>
     );
   }
 
-  if (error) {
+  if (error && error !== '') {
     return (
       <Alert severity="error" sx={{ my: 1 }}>
         {error}
@@ -83,11 +113,8 @@ const UserPreferencesAnalytics = ({ userId, compact = false }) => {
   }
 
   if (!preferences || preferences.total_ratings === 0) {
-    return (
-      <Alert severity="info" sx={{ my: 1 }}>
-        No rating data available yet. Rate some recipes to see your personalized preferences!
-      </Alert>
-    );
+    // Don't render anything if no ratings - this will prevent the spinner from showing
+    return null;
   }
 
   const renderCompactView = () => (
