@@ -40,11 +40,11 @@ function AcceptInvitation() {
 
       try {
         // Fetch organization details
-        const orgDetails = await apiService.get(`/api/organizations/${orgId}`);
+        const orgDetails = await apiService.get(`/organizations/${orgId}`);
         setOrganizationName(orgDetails.name);
         
         // Check invitation validity and get associated email
-        const invitationCheck = await apiService.get(`/api/invitations/check?token=${token}&organization_id=${orgId}`);
+        const invitationCheck = await apiService.get(`/org-invitations/check?token=${token}&organization_id=${orgId}`);
         if (invitationCheck.valid) {
           setInvitationEmail(invitationCheck.email);
         }
@@ -56,7 +56,7 @@ function AcceptInvitation() {
         }
         
         // If authenticated, attempt to accept the invitation
-        await apiService.post('/api/invitations/accept', {
+        await apiService.post('/org-invitations/accept', {
           token,
           organization_id: parseInt(orgId)
         });
@@ -170,7 +170,7 @@ function AcceptInvitation() {
                   onClick={async () => {
                     setLoading(true);
                     try {
-                      await apiService.post('/api/invitations/accept', {
+                      await apiService.post('/org-invitations/accept', {
                         token,
                         organization_id: parseInt(orgId)
                       });

@@ -124,7 +124,7 @@ const ClientSignupPage = () => {
       
       try {
         // Call an endpoint to validate invitation token without accepting it
-        const response = await apiService.get(`/api/invitations/check?token=${token}&organization_id=${orgId}`);
+        const response = await apiService.get(`/org-invitations/check?token=${token}&organization_id=${orgId}`);
         
         if (response.valid) {
           // If the invitation is valid and has an associated email, pre-fill it
@@ -203,7 +203,7 @@ const ClientSignupPage = () => {
       });
       
       // First create the user account
-      const signupResponse = await apiService.post('/api/auth/signup', {
+      const signupResponse = await apiService.post('/auth/signup', {
         name: signupData.name,
         email: signupData.email,
         password: signupData.password,
@@ -234,7 +234,7 @@ const ClientSignupPage = () => {
       console.log('Accepting invitation with token and orgId:', { token, orgId });
       
       // Accept the invitation with the token and org ID
-      const acceptResponse = await apiService.post('/api/invitations/accept', {
+      const acceptResponse = await apiService.post('/org-invitations/accept', {
         token,
         organization_id: parseInt(orgId)
       });
