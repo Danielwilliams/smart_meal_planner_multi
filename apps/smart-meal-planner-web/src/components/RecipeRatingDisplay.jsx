@@ -37,8 +37,14 @@ const RecipeRatingDisplay = ({ recipeId, compact = false }) => {
       
       console.log(`Loading ratings for recipe ID: ${recipeId}`);
       const response = await apiService.get(`/ratings/recipes/${recipeId}/ratings`);
-      console.log('Ratings response:', response.data);
-      setRatings(response.data);
+      console.log('Full response object:', response);
+      console.log('Response.data:', response.data);
+      console.log('Response.data type:', typeof response.data);
+      
+      // Handle different response structures
+      const ratingsData = response.data || response;
+      console.log('Using ratings data:', ratingsData);
+      setRatings(ratingsData);
     } catch (err) {
       console.error('Error loading ratings:', err);
       console.error('Error details:', err.response?.data);
@@ -64,7 +70,12 @@ const RecipeRatingDisplay = ({ recipeId, compact = false }) => {
     );
   }
 
+  console.log('Ratings state:', ratings);
+  console.log('Ratings total_ratings:', ratings?.total_ratings);
+  console.log('Condition check: !ratings =', !ratings, ', total_ratings === 0 =', ratings?.total_ratings === 0);
+  
   if (!ratings || ratings.total_ratings === 0) {
+    console.log('Showing no ratings message');
     return (
       <Box sx={{ py: 2, textAlign: 'center' }}>
         <Typography variant="body2" color="text.secondary">
