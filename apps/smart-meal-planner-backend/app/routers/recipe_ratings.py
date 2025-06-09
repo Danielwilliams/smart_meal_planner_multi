@@ -412,8 +412,17 @@ async def get_my_recipe_rating(
     request: Request
 ):
     """Get current user's rating for a recipe"""
+    logger.info(f"=== GET MY RATING: recipe_id={recipe_id} ===")
+    
     # Use simplified auth
-    user = await get_rating_user_from_token(request)
+    try:
+        user = await get_rating_user_from_token(request)
+        logger.info(f"Auth result for my-rating: {bool(user)}")
+        if user:
+            logger.info(f"User ID from auth: {user.get('user_id')}")
+    except Exception as e:
+        logger.error(f"Auth error in my-rating: {str(e)}")
+        user = None
     
     # Check if user is authenticated
     if not user:
@@ -425,6 +434,7 @@ async def get_my_recipe_rating(
     
     try:
         user_id = user.get('user_id')
+        logger.info(f"Looking for rating: user_id={user_id}, recipe_id={recipe_id}")
         
         my_rating = execute_rating_query("""
             SELECT * FROM recipe_interactions
@@ -434,15 +444,24 @@ async def get_my_recipe_rating(
             LIMIT 1
         """, (user_id, recipe_id), fetch_one=True)
         
+        logger.info(f"Rating query result: {bool(my_rating)}")
+        if my_rating:
+            logger.info(f"Found rating ID: {my_rating.get('id')}, score: {my_rating.get('rating_score')}")
+        
         if not my_rating:
+            logger.info("No rating found, returning no rating message")
             return {"message": "No rating found"}
         
-        return {
+        result = {
             "rating": dict(my_rating)
         }
+        logger.info(f"Returning rating data: {result}")
+        return result
         
     except Exception as e:
         logger.error(f"Error getting user rating: {str(e)}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Failed to get user rating: {str(e)}")
 
 # Menu Rating Endpoints

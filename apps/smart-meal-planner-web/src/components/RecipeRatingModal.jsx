@@ -58,13 +58,26 @@ const RecipeRatingModal = ({
   const loadExistingRating = async () => {
     try {
       const token = localStorage.getItem('access_token');
-      if (!token) return;
+      if (!token) {
+        console.log('No access token found for loading existing rating');
+        return;
+      }
 
+      console.log(`Loading existing rating for recipe ${recipeId}`);
       const response = await apiService.get(`/ratings/recipes/${recipeId}/my-rating`);
+      
+      console.log('My rating response:', response);
+      
+      // Check if response and response.data exist
+      if (!response || !response.data) {
+        console.log('No response data received');
+        return;
+      }
       
       // Backend returns {"rating": {...}} if rating exists, or {"message": "No rating found"} if not
       if (response.data.rating) {
         const existingData = response.data.rating;
+        console.log('Found existing rating:', existingData);
         setExistingRating(existingData);
         
         // Populate form with existing data
@@ -84,9 +97,13 @@ const RecipeRatingModal = ({
           difficulty_rating: existingData.difficulty_rating || 0,
           time_accuracy: existingData.time_accuracy || 0
         });
+      } else if (response.data.message) {
+        console.log('No existing rating found:', response.data.message);
       }
     } catch (err) {
       console.error('Error loading existing rating:', err);
+      console.error('Error details:', err.response?.data);
+      // Don't show error to user for existing rating load failures
     }
   };
 
