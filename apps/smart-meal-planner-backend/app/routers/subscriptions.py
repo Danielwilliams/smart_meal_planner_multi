@@ -1089,25 +1089,74 @@ async def create_checkout_session(
                         logger.error(f"Error applying discount: {str(coupon_err)}", exc_info=True)
                         # Continue without the discount rather than failing
 
-                # Modify checkout params for free coupons
+                # Handle free coupons differently - create subscription directly
                 if is_free_coupon:
-                    logger.info("Configuring checkout session for free subscription (no payment method required)")
-                    # For 100% off coupons, don't require payment method collection
-                    checkout_params["payment_method_collection"] = {"enabled": False}
-                    # Remove payment method types when no payment is required
-                    checkout_params.pop("payment_method_types", None)
+                    logger.info("Creating free subscription directly (bypassing checkout)")
+                    try:
+                        # Create the subscription directly with the discount
+                        subscription_params = {
+                            "customer": customer_id,
+                            "items": [{"price": price_id}],
+                            "metadata": metadata
+                        }
+                        
+                        # Apply the discount to the subscription
+                        if "discounts" in checkout_params:
+                            subscription_params["discounts"] = checkout_params["discounts"]
+                        
+                        # Create the subscription
+                        subscription = stripe.Subscription.create(**subscription_params)
+                        
+                        logger.info(f"Created free subscription: {subscription.id}")
+                        
+                        # Record the subscription in our database
+                        try:
+                            subscription_data = SubscriptionCreate(
+                                user_id=user_id if not organization_id else None,
+                                organization_id=organization_id,
+                                subscription_type=subscription_type,
+                                stripe_subscription_id=subscription.id,
+                                stripe_customer_id=customer_id,
+                                status=SubscriptionStatus.active,
+                                current_period_start=datetime.fromtimestamp(subscription.current_period_start),
+                                current_period_end=datetime.fromtimestamp(subscription.current_period_end),
+                                payment_provider=PaymentProvider.stripe
+                            )
+                            
+                            create_subscription(subscription_data)
+                            logger.info(f"Recorded free subscription in database for user_id={user_id}, org_id={organization_id}")
+                            
+                        except Exception as db_err:
+                            logger.error(f"Error recording subscription in database: {str(db_err)}", exc_info=True)
+                            # Don't fail the whole process, subscription is created in Stripe
+                        
+                        # Return success URL directly since no checkout is needed
+                        return {
+                            "success": True,
+                            "checkout_url": success_url,  # Redirect directly to success page
+                            "subscription_id": subscription.id,
+                            "is_free_subscription": True
+                        }
+                        
+                    except stripe.error.StripeError as free_stripe_err:
+                        logger.error(f"Error creating free subscription: {str(free_stripe_err)}", exc_info=True)
+                        # Fall back to regular checkout if direct subscription creation fails
+                        logger.info("Falling back to regular checkout flow")
+                        is_free_coupon = False
+                
+                # Create regular checkout session for paid subscriptions
+                if not is_free_coupon:
+                    # Create the checkout session
+                    checkout_session = stripe.checkout.Session.create(**checkout_params)
 
-                # Create the checkout session
-                checkout_session = stripe.checkout.Session.create(**checkout_params)
+                    # Log the checkout session creation
+                    logger.info(f"Created Stripe checkout session: {checkout_session.id}")
 
-                # Log the checkout session creation
-                logger.info(f"Created Stripe checkout session: {checkout_session.id}")
-
-                return {
-                    "success": True,
-                    "checkout_url": checkout_session.url,
-                    "session_id": checkout_session.id
-                }
+                    return {
+                        "success": True,
+                        "checkout_url": checkout_session.url,
+                        "session_id": checkout_session.id
+                    }
             except stripe.error.StripeError as stripe_err:
                 # Handle Stripe-specific errors
                 logger.error(f"Stripe error creating checkout session: {str(stripe_err)}", exc_info=True)
