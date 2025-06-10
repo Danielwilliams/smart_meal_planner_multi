@@ -6,6 +6,15 @@ import json
 import os
 from datetime import datetime, timedelta
 
+# Import Stripe conditionally
+try:
+    import stripe
+    STRIPE_AVAILABLE = True
+except ImportError:
+    stripe = None
+    STRIPE_AVAILABLE = False
+    logging.warning("Stripe module not installed. Stripe integration will be disabled.")
+
 # Import your models and utilities
 from app.models.subscription import (
     create_subscription, get_subscription, get_user_subscription,
@@ -41,15 +50,39 @@ class DiscountCodeRequest(BaseModel):
 # Fallback function for when subscriptions are disabled
 async def subscription_disabled():
     """Handler for when subscription features are disabled"""
-    return {
-        "enabled": False,
-        "message": "Subscription features are currently disabled"
-    }
+    return JSONResponse(
+        content={
+            "enabled": False,
+            "message": "Subscription features are currently disabled"
+        },
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization"
+        }
+    )
+
+@router.get("/test")
+async def test_endpoint():
+    """Simple test endpoint to verify routing works"""
+    return {"message": "Subscriptions router is working", "enabled": ENABLE_SUBSCRIPTION_FEATURES}
+
+@router.options("/validate-discount")
+async def validate_discount_options():
+    """Handle preflight CORS requests"""
+    return JSONResponse(
+        content={},
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With",
+            "Access-Control-Max-Age": "86400"
+        }
+    )
 
 @router.post("/validate-discount")
 async def validate_discount_code(
-    request: DiscountCodeRequest,
-    user = Depends(get_user_from_token)
+    request: DiscountCodeRequest
 ):
     """
     Validate a discount code and return its details
@@ -60,24 +93,40 @@ async def validate_discount_code(
     Returns:
         Discount code details if valid, error message if not
     """
-    # First, check if subscriptions are enabled
-    if not ENABLE_SUBSCRIPTION_FEATURES:
-        return await subscription_disabled()
-
-    # Ensure Stripe is imported
-    if 'stripe' not in globals():
-        # Import stripe if not already imported
-        import stripe
-
-    # Check if Stripe API key is configured
-    if not hasattr(stripe, 'api_key') or not stripe.api_key:
-        logger.error("Stripe API key is not configured")
-        raise HTTPException(
-            status_code=503,
-            detail="Payment integration is not available - API key not configured"
-        )
-
+    logger.info(f"Validate discount endpoint called with code: {request.code}, subscription_type: {request.subscription_type}")
+    logger.info(f"ENABLE_SUBSCRIPTION_FEATURES: {ENABLE_SUBSCRIPTION_FEATURES}, STRIPE_AVAILABLE: {STRIPE_AVAILABLE}")
+    
     try:
+        # First, check if subscriptions are enabled
+        if not ENABLE_SUBSCRIPTION_FEATURES:
+            return await subscription_disabled()
+
+        # Check if Stripe is available
+        if not STRIPE_AVAILABLE or stripe is None:
+            logger.error("Stripe module is not available")
+            return JSONResponse(
+                status_code=503,
+                content={"detail": "Payment integration is not available - Stripe not installed"},
+                headers={
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+                    "Access-Control-Allow-Headers": "Content-Type, Authorization"
+                }
+            )
+
+        # Check if Stripe API key is configured
+        if not stripe.api_key:
+            logger.error("Stripe API key is not configured")
+            return JSONResponse(
+                status_code=503,
+                content={"detail": "Payment integration is not available - API key not configured"},
+                headers={
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+                    "Access-Control-Allow-Headers": "Content-Type, Authorization"
+                }
+            )
+
         # Try to retrieve the coupon from Stripe
         discount_code = request.code
         logger.info(f"Validating discount code: {discount_code}")
@@ -146,18 +195,37 @@ async def validate_discount_code(
                         }
                     response["remaining_uses"] = remaining
 
-            return response
+            return JSONResponse(
+                content=response,
+                headers={
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+                    "Access-Control-Allow-Headers": "Content-Type, Authorization"
+                }
+            )
         else:
             # Coupon was deleted or is invalid
-            return {
-                "valid": False,
-                "message": "Invalid or expired discount code"
-            }
+            return JSONResponse(
+                content={
+                    "valid": False,
+                    "message": "Invalid or expired discount code"
+                },
+                headers={
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+                    "Access-Control-Allow-Headers": "Content-Type, Authorization"
+                }
+            )
     except Exception as e:
         logger.error(f"Error validating discount code: {str(e)}", exc_info=True)
-        raise HTTPException(
+        return JSONResponse(
             status_code=500,
-            detail=f"Error validating discount code: {str(e)}"
+            content={"detail": f"Error validating discount code: {str(e)}"},
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type, Authorization"
+            }
         )
 
 # Helper function to check if subscriptions are enabled
@@ -386,11 +454,15 @@ async def migrate_all_users(
             detail=f"Error migrating all users: {str(e)}"
         )
 
+# Initialize Stripe configuration variables
+STRIPE_INDIVIDUAL_PRICE_ID = ""
+STRIPE_ORGANIZATION_PRICE_ID = ""
+STRIPE_WEBHOOK_SECRET = ""
+
 # Configure payment providers if enabled
-if ENABLE_SUBSCRIPTION_FEATURES:
+if ENABLE_SUBSCRIPTION_FEATURES and STRIPE_AVAILABLE:
     # Configure Stripe
-    try:
-        import stripe
+    if stripe is not None:
         stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
         STRIPE_INDIVIDUAL_PRICE_ID = os.getenv("STRIPE_INDIVIDUAL_PRICE_ID", "")
         STRIPE_ORGANIZATION_PRICE_ID = os.getenv("STRIPE_ORGANIZATION_PRICE_ID", "")
@@ -400,9 +472,6 @@ if ENABLE_SUBSCRIPTION_FEATURES:
         logger.info(f"Stripe configured: API Key present: {bool(stripe.api_key)}")
         logger.info(f"Stripe Individual Price ID: {STRIPE_INDIVIDUAL_PRICE_ID}")
         logger.info(f"Stripe Organization Price ID: {STRIPE_ORGANIZATION_PRICE_ID}")
-    except ImportError:
-        logger.warning("Stripe module not installed. Stripe integration will be disabled.")
-        stripe = None
     
     # Configure PayPal
     try:
