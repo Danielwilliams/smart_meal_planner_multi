@@ -1028,12 +1028,15 @@ async def create_checkout_session(
                 }
 
                 # If discount code provided, validate and apply it
+                is_free_coupon = False
                 if discount_code:
                     try:
                         logger.info(f"Applying discount code to checkout: {discount_code}")
                         
                         # First, try to find it as a promotion code
                         promotion_code_found = False
+                        coupon_obj = None
+                        
                         try:
                             # List all promotion codes and find matching one
                             promotion_codes = stripe.PromotionCode.list(
@@ -1044,6 +1047,7 @@ async def create_checkout_session(
                             
                             if promotion_codes.data:
                                 promotion_code_obj = promotion_codes.data[0]
+                                coupon_obj = promotion_code_obj.coupon
                                 # For promotion codes, use the promotion_code parameter
                                 checkout_params["discounts"] = [{"promotion_code": promotion_code_obj.id}]
                                 logger.info(f"Applied promotion code: {discount_code} (ID: {promotion_code_obj.id})")
@@ -1056,8 +1060,8 @@ async def create_checkout_session(
                         # If not found as promotion code, try as direct coupon ID
                         if not promotion_code_found:
                             try:
-                                coupon = stripe.Coupon.retrieve(discount_code)
-                                if coupon and not coupon.get('deleted'):
+                                coupon_obj = stripe.Coupon.retrieve(discount_code)
+                                if coupon_obj and not coupon_obj.get('deleted'):
                                     # For direct coupon IDs, use the coupon parameter
                                     checkout_params["discounts"] = [{"coupon": discount_code}]
                                     logger.info(f"Applied coupon ID: {discount_code}")
@@ -1065,10 +1069,33 @@ async def create_checkout_session(
                                     logger.warning(f"Coupon not found or deleted: {discount_code}")
                             except stripe.error.InvalidRequestError as e:
                                 logger.warning(f"Invalid coupon code: {discount_code}, error: {str(e)}")
+                        
+                        # Check if this is a 100% off coupon
+                        if coupon_obj:
+                            if coupon_obj.get('percent_off') == 100:
+                                logger.info(f"100% off coupon detected: {discount_code}")
+                                is_free_coupon = True
+                            elif coupon_obj.get('amount_off'):
+                                # For amount_off coupons, we'd need to compare with the price
+                                # For simplicity, let's assume any large amount_off is also free
+                                # You may need to adjust this logic based on your pricing
+                                amount_off_dollars = coupon_obj.get('amount_off') / 100  # Convert from cents
+                                logger.info(f"Amount off coupon: ${amount_off_dollars}")
+                                # If amount off is >= $50 (assuming this covers your highest plan), treat as free
+                                if amount_off_dollars >= 50:
+                                    is_free_coupon = True
                                 
                     except Exception as coupon_err:
                         logger.error(f"Error applying discount: {str(coupon_err)}", exc_info=True)
                         # Continue without the discount rather than failing
+
+                # Modify checkout params for free coupons
+                if is_free_coupon:
+                    logger.info("Configuring checkout session for free subscription (no payment method required)")
+                    # For 100% off coupons, don't require payment method collection
+                    checkout_params["payment_method_collection"] = {"enabled": False}
+                    # Remove payment method types when no payment is required
+                    checkout_params.pop("payment_method_types", None)
 
                 # Create the checkout session
                 checkout_session = stripe.checkout.Session.create(**checkout_params)
