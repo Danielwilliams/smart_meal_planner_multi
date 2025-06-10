@@ -82,45 +82,76 @@ async def validate_discount_code(
         discount_code = request.code
         logger.info(f"Validating discount code: {discount_code}")
 
+        coupon = None
+        promotion_code_obj = None
+        
+        # First, try to find it as a promotion code
         try:
-            coupon = stripe.Coupon.retrieve(discount_code)
-
-            # Check if coupon is valid
-            if coupon and not coupon.get('deleted'):
-                # Format response with coupon details
-                response = {
-                    "valid": True,
-                    "code": discount_code,
-                    "description": coupon.get('name', 'Discount'),
-                }
-
-                # Add discount amount information
-                if coupon.get('percent_off'):
-                    response["percent_off"] = coupon['percent_off']
-                    response["discount_type"] = "percentage"
-                elif coupon.get('amount_off'):
-                    response["amount_off"] = coupon['amount_off'] / 100  # Convert from cents
-                    response["currency"] = coupon.get('currency', 'usd').upper()
-                    response["discount_type"] = "fixed"
-
-                # Add duration information
-                response["duration"] = coupon.get('duration', 'once')
-                if response["duration"] == "repeating":
-                    response["duration_in_months"] = coupon.get('duration_in_months', 0)
-
-                return response
+            # List all promotion codes and find matching one
+            promotion_codes = stripe.PromotionCode.list(
+                code=discount_code,
+                active=True,
+                limit=1
+            )
+            
+            if promotion_codes.data:
+                promotion_code_obj = promotion_codes.data[0]
+                # Get the associated coupon
+                coupon = promotion_code_obj.coupon
+                logger.info(f"Found promotion code: {discount_code}, coupon ID: {coupon.id}")
             else:
-                # Coupon was deleted or is invalid
-                return {
-                    "valid": False,
-                    "message": "This discount code is no longer valid"
-                }
-        except stripe.error.InvalidRequestError as e:
-            # Coupon doesn't exist
-            logger.warning(f"Invalid coupon code: {discount_code}, error: {str(e)}")
+                logger.info(f"No promotion code found for: {discount_code}, trying as coupon ID")
+        except Exception as promo_err:
+            logger.warning(f"Error checking promotion codes: {str(promo_err)}")
+        
+        # If not found as promotion code, try as direct coupon ID
+        if not coupon:
+            try:
+                coupon = stripe.Coupon.retrieve(discount_code)
+                logger.info(f"Found coupon by ID: {discount_code}")
+            except stripe.error.InvalidRequestError as e:
+                logger.warning(f"Not a valid coupon ID either: {discount_code}, error: {str(e)}")
+                
+        # Check if we found a valid coupon
+        if coupon and coupon.get('valid', True) and not coupon.get('deleted'):
+            # Format response with coupon details
+            response = {
+                "valid": True,
+                "code": discount_code,
+                "description": coupon.get('name', 'Discount'),
+            }
+
+            # Add discount amount information
+            if coupon.get('percent_off'):
+                response["percent_off"] = coupon['percent_off']
+                response["discount_type"] = "percentage"
+            elif coupon.get('amount_off'):
+                response["amount_off"] = coupon['amount_off'] / 100  # Convert from cents
+                response["currency"] = coupon.get('currency', 'usd').upper()
+                response["discount_type"] = "fixed"
+
+            # Add duration information
+            response["duration"] = coupon.get('duration', 'once')
+            if response["duration"] == "repeating":
+                response["duration_in_months"] = coupon.get('duration_in_months', 0)
+                
+            # Add any restrictions from promotion code
+            if promotion_code_obj:
+                if promotion_code_obj.get('max_redemptions'):
+                    remaining = promotion_code_obj['max_redemptions'] - promotion_code_obj.get('times_redeemed', 0)
+                    if remaining <= 0:
+                        return {
+                            "valid": False,
+                            "message": "This promotion code has reached its redemption limit"
+                        }
+                    response["remaining_uses"] = remaining
+
+            return response
+        else:
+            # Coupon was deleted or is invalid
             return {
                 "valid": False,
-                "message": "Invalid discount code"
+                "message": "Invalid or expired discount code"
             }
     except Exception as e:
         logger.error(f"Error validating discount code: {str(e)}", exc_info=True)
@@ -930,21 +961,45 @@ async def create_checkout_session(
                 # If discount code provided, validate and apply it
                 if discount_code:
                     try:
-                        # Check if the coupon exists and is valid
-                        logger.info(f"Validating discount code: {discount_code}")
+                        logger.info(f"Applying discount code to checkout: {discount_code}")
+                        
+                        # First, try to find it as a promotion code
+                        promotion_code_found = False
                         try:
-                            coupon = stripe.Coupon.retrieve(discount_code)
-                            if coupon and not coupon.get('deleted'):
-                                # Add the discount to the checkout session
-                                checkout_params["discounts"] = [{"coupon": discount_code}]
-                                logger.info(f"Applied discount code: {discount_code}")
+                            # List all promotion codes and find matching one
+                            promotion_codes = stripe.PromotionCode.list(
+                                code=discount_code,
+                                active=True,
+                                limit=1
+                            )
+                            
+                            if promotion_codes.data:
+                                promotion_code_obj = promotion_codes.data[0]
+                                # For promotion codes, use the promotion_code parameter
+                                checkout_params["discounts"] = [{"promotion_code": promotion_code_obj.id}]
+                                logger.info(f"Applied promotion code: {discount_code} (ID: {promotion_code_obj.id})")
+                                promotion_code_found = True
                             else:
-                                logger.warning(f"Coupon not found or deleted: {discount_code}")
-                        except stripe.error.InvalidRequestError as e:
-                            logger.warning(f"Invalid coupon code: {discount_code}, error: {str(e)}")
+                                logger.info(f"No promotion code found for: {discount_code}, trying as coupon ID")
+                        except Exception as promo_err:
+                            logger.warning(f"Error checking promotion codes: {str(promo_err)}")
+                        
+                        # If not found as promotion code, try as direct coupon ID
+                        if not promotion_code_found:
+                            try:
+                                coupon = stripe.Coupon.retrieve(discount_code)
+                                if coupon and not coupon.get('deleted'):
+                                    # For direct coupon IDs, use the coupon parameter
+                                    checkout_params["discounts"] = [{"coupon": discount_code}]
+                                    logger.info(f"Applied coupon ID: {discount_code}")
+                                else:
+                                    logger.warning(f"Coupon not found or deleted: {discount_code}")
+                            except stripe.error.InvalidRequestError as e:
+                                logger.warning(f"Invalid coupon code: {discount_code}, error: {str(e)}")
+                                
                     except Exception as coupon_err:
-                        logger.error(f"Error validating coupon: {str(coupon_err)}", exc_info=True)
-                        # Continue without the coupon rather than failing
+                        logger.error(f"Error applying discount: {str(coupon_err)}", exc_info=True)
+                        # Continue without the discount rather than failing
 
                 # Create the checkout session
                 checkout_session = stripe.checkout.Session.create(**checkout_params)
