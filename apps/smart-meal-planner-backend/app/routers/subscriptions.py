@@ -67,6 +67,49 @@ async def test_endpoint():
     """Simple test endpoint to verify routing works"""
     return {"message": "Subscriptions router is working", "enabled": ENABLE_SUBSCRIPTION_FEATURES}
 
+@router.post("/test-free-subscription")
+async def test_free_subscription(
+    request: DiscountCodeRequest
+):
+    """Test endpoint to create free subscription directly"""
+    try:
+        logger.info(f"Testing free subscription creation with code: {request.code}")
+        
+        if not STRIPE_AVAILABLE or stripe is None:
+            return {"error": "Stripe not available"}
+            
+        if not stripe.api_key:
+            return {"error": "Stripe API key not configured"}
+        
+        # Test coupon retrieval
+        try:
+            promotion_codes = stripe.PromotionCode.list(
+                code=request.code,
+                active=True,
+                limit=1
+            )
+            
+            if promotion_codes.data:
+                promo_code = promotion_codes.data[0]
+                coupon = promo_code.coupon
+                return {
+                    "success": True,
+                    "promotion_code_id": promo_code.id,
+                    "coupon_id": coupon.id,
+                    "percent_off": coupon.get('percent_off'),
+                    "amount_off": coupon.get('amount_off'),
+                    "is_100_percent": coupon.get('percent_off') == 100
+                }
+            else:
+                return {"error": "Promotion code not found"}
+                
+        except Exception as e:
+            return {"error": f"Error testing promotion code: {str(e)}"}
+            
+    except Exception as e:
+        logger.error(f"Error in test endpoint: {str(e)}", exc_info=True)
+        return {"error": f"Test failed: {str(e)}"}
+
 @router.options("/validate-discount")
 async def validate_discount_options():
     """Handle preflight CORS requests"""
@@ -82,7 +125,8 @@ async def validate_discount_options():
 
 @router.post("/validate-discount")
 async def validate_discount_code(
-    request: DiscountCodeRequest
+    request: DiscountCodeRequest,
+    user: Optional[Dict] = Depends(get_user_from_token)
 ):
     """
     Validate a discount code and return its details
@@ -1072,6 +1116,7 @@ async def create_checkout_session(
                         
                         # Check if this is a 100% off coupon
                         if coupon_obj:
+                            logger.info(f"Analyzing coupon: {coupon_obj.id}, percent_off: {coupon_obj.get('percent_off')}, amount_off: {coupon_obj.get('amount_off')}")
                             if coupon_obj.get('percent_off') == 100:
                                 logger.info(f"100% off coupon detected: {discount_code}")
                                 is_free_coupon = True
@@ -1084,6 +1129,12 @@ async def create_checkout_session(
                                 # If amount off is >= $50 (assuming this covers your highest plan), treat as free
                                 if amount_off_dollars >= 50:
                                     is_free_coupon = True
+                            else:
+                                logger.info(f"Coupon {discount_code} is not a free coupon")
+                        else:
+                            logger.warning(f"No coupon object found for {discount_code}")
+                        
+                        logger.info(f"Final is_free_coupon determination: {is_free_coupon}")
                                 
                     except Exception as coupon_err:
                         logger.error(f"Error applying discount: {str(coupon_err)}", exc_info=True)
@@ -1092,6 +1143,7 @@ async def create_checkout_session(
                 # Handle free coupons differently - create subscription directly
                 if is_free_coupon:
                     logger.info("Creating free subscription directly (bypassing checkout)")
+                    logger.info(f"Free coupon detected - subscription_type: {subscription_type}, user_id: {user_id}, org_id: {organization_id}")
                     try:
                         # Create the subscription directly with the discount
                         subscription_params = {
@@ -1139,9 +1191,15 @@ async def create_checkout_session(
                         }
                         
                     except stripe.error.StripeError as free_stripe_err:
-                        logger.error(f"Error creating free subscription: {str(free_stripe_err)}", exc_info=True)
+                        logger.error(f"Stripe error creating free subscription: {str(free_stripe_err)}", exc_info=True)
+                        logger.error(f"Stripe error type: {type(free_stripe_err).__name__}")
+                        logger.error(f"Stripe error details: {free_stripe_err.user_message if hasattr(free_stripe_err, 'user_message') else 'No user message'}")
                         # Fall back to regular checkout if direct subscription creation fails
-                        logger.info("Falling back to regular checkout flow")
+                        logger.warning("Falling back to regular checkout flow due to Stripe error")
+                        is_free_coupon = False
+                    except Exception as general_err:
+                        logger.error(f"General error creating free subscription: {str(general_err)}", exc_info=True)
+                        logger.warning("Falling back to regular checkout flow due to general error")
                         is_free_coupon = False
                 
                 # Create regular checkout session for paid subscriptions
