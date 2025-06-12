@@ -7,6 +7,12 @@ class UserProgress(BaseModel):
     has_preferences: Optional[bool] = None
     has_generated_menu: Optional[bool] = None
     has_shopping_list: Optional[bool] = None
+    # Walkthrough progress fields
+    walkthrough_preferences_completed: Optional[bool] = None
+    walkthrough_menu_completed: Optional[bool] = None
+    walkthrough_recipe_browser_completed: Optional[bool] = None
+    walkthrough_shopping_completed: Optional[bool] = None
+    walkthrough_completed: Optional[bool] = None
 
 class UserProfileResponse(BaseModel):
     id: int

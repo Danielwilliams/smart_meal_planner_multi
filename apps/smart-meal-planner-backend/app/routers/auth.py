@@ -247,7 +247,7 @@ async def login(user_data: UserLogin):
             logger.info("DB connection established")
             logger.info("Cursor created")
 
-            # Updated query to include verified status
+            # Updated query to include verified status and walkthrough progress
             cursor.execute("""
                 SELECT
                     id,
@@ -259,7 +259,12 @@ async def login(user_data: UserLogin):
                     has_generated_menu,
                     has_shopping_list,
                     verified,
-                    account_type
+                    account_type,
+                    COALESCE(walkthrough_preferences_completed, FALSE) as walkthrough_preferences_completed,
+                    COALESCE(walkthrough_menu_completed, FALSE) as walkthrough_menu_completed,
+                    COALESCE(walkthrough_recipe_browser_completed, FALSE) as walkthrough_recipe_browser_completed,
+                    COALESCE(walkthrough_shopping_completed, FALSE) as walkthrough_shopping_completed,
+                    COALESCE(walkthrough_completed, FALSE) as walkthrough_completed
                 FROM user_profiles
                 WHERE email = %s
             """, (user_data.email,))
@@ -276,8 +281,8 @@ async def login(user_data: UserLogin):
                     detail="Invalid email or password"
                 )
 
-            # Unpack user data (added verified at the end)
-            user_id, email, name, stored_hash, profile_complete, has_prefs, has_menu, has_list, verified, account_type = user
+            # Unpack user data (added verified and walkthrough progress)
+            user_id, email, name, stored_hash, profile_complete, has_prefs, has_menu, has_list, verified, account_type, walkthrough_prefs, walkthrough_menu, walkthrough_browser, walkthrough_shopping, walkthrough_complete = user
 
             # Check if email is verified
             if not verified:
@@ -328,6 +333,13 @@ async def login(user_data: UserLogin):
                 "has_generated_menu": has_menu,
                 "has_shopping_list": has_list
             },
+            "walkthrough": {
+                "walkthrough_preferences_completed": walkthrough_prefs,
+                "walkthrough_menu_completed": walkthrough_menu,
+                "walkthrough_recipe_browser_completed": walkthrough_browser,
+                "walkthrough_shopping_completed": walkthrough_shopping,
+                "walkthrough_completed": walkthrough_complete
+            },
             "user": {
                 "id": user_id,
                 "email": email,
@@ -358,7 +370,7 @@ async def get_account_info(current_user: Dict[str, Any] = Depends(get_user_from_
         with get_db_cursor(dict_cursor=True, autocommit=True) as (cursor, conn):
             # Autocommit is enabled at connection creation time
             
-            # Get user details from database
+            # Get user details from database including walkthrough progress
             cursor.execute("""
                 SELECT 
                     id, 
@@ -369,7 +381,12 @@ async def get_account_info(current_user: Dict[str, Any] = Depends(get_user_from_
                     created_at,
                     has_preferences, 
                     has_generated_menu, 
-                    has_shopping_list
+                    has_shopping_list,
+                    COALESCE(walkthrough_preferences_completed, FALSE) as walkthrough_preferences_completed,
+                    COALESCE(walkthrough_menu_completed, FALSE) as walkthrough_menu_completed,
+                    COALESCE(walkthrough_recipe_browser_completed, FALSE) as walkthrough_recipe_browser_completed,
+                    COALESCE(walkthrough_shopping_completed, FALSE) as walkthrough_shopping_completed,
+                    COALESCE(walkthrough_completed, FALSE) as walkthrough_completed
                 FROM user_profiles 
                 WHERE id = %s
             """, (current_user["user_id"],))
@@ -449,22 +466,59 @@ async def update_user_progress(user_id: int, progress: UserProgress):
     """Update user progress flags in the database"""
     try:
         with get_db_cursor(dict_cursor=False) as (cursor, conn):
-            # Update all progress flags
-            cursor.execute("""
+            # Build dynamic update query
+            update_fields = []
+            params = []
+            
+            # Handle basic progress flags
+            if progress.has_preferences is not None:
+                update_fields.append("has_preferences = %s")
+                params.append(progress.has_preferences)
+            if progress.has_generated_menu is not None:
+                update_fields.append("has_generated_menu = %s")
+                params.append(progress.has_generated_menu)
+            if progress.has_shopping_list is not None:
+                update_fields.append("has_shopping_list = %s")
+                params.append(progress.has_shopping_list)
+            
+            # Handle walkthrough progress flags
+            if progress.walkthrough_preferences_completed is not None:
+                update_fields.append("walkthrough_preferences_completed = %s")
+                params.append(progress.walkthrough_preferences_completed)
+            if progress.walkthrough_menu_completed is not None:
+                update_fields.append("walkthrough_menu_completed = %s")
+                params.append(progress.walkthrough_menu_completed)
+            if progress.walkthrough_recipe_browser_completed is not None:
+                update_fields.append("walkthrough_recipe_browser_completed = %s")
+                params.append(progress.walkthrough_recipe_browser_completed)
+            if progress.walkthrough_shopping_completed is not None:
+                update_fields.append("walkthrough_shopping_completed = %s")
+                params.append(progress.walkthrough_shopping_completed)
+            if progress.walkthrough_completed is not None:
+                update_fields.append("walkthrough_completed = %s")
+                params.append(progress.walkthrough_completed)
+                # Set completion timestamp if walkthrough is being marked complete
+                if progress.walkthrough_completed:
+                    update_fields.append("walkthrough_completed_at = CURRENT_TIMESTAMP")
+            
+            # Set walkthrough_started_at if any walkthrough field is being set for the first time
+            if any([progress.walkthrough_preferences_completed, progress.walkthrough_menu_completed, 
+                   progress.walkthrough_recipe_browser_completed, progress.walkthrough_shopping_completed]):
+                update_fields.append("walkthrough_started_at = COALESCE(walkthrough_started_at, CURRENT_TIMESTAMP)")
+            
+            if not update_fields:
+                return {"status": "success", "message": "No fields to update"}
+            
+            # Build and execute query
+            query = f"""
                 UPDATE user_profiles 
-                SET 
-                    has_preferences = COALESCE(%s, has_preferences),
-                    has_generated_menu = COALESCE(%s, has_generated_menu),
-                    has_shopping_list = COALESCE(%s, has_shopping_list)
+                SET {', '.join(update_fields)}
                 WHERE id = %s
                 RETURNING id
-            """, (
-                progress.has_preferences,
-                progress.has_generated_menu,
-                progress.has_shopping_list,
-                user_id
-            ))
+            """
+            params.append(user_id)
             
+            cursor.execute(query, params)
             conn.commit()
 
             if cursor.rowcount == 0:
@@ -474,6 +528,20 @@ async def update_user_progress(user_id: int, progress: UserProgress):
 
     except Exception as e:
         logger.error(f"Error updating user progress: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to update user progress")
+
+@router.put("/progress")
+async def update_current_user_progress(progress: UserProgress, current_user: Dict[str, Any] = Depends(get_user_from_token)):
+    """Update current user's progress flags"""
+    try:
+        user_id = current_user.get("user_id")
+        if not user_id:
+            raise HTTPException(status_code=400, detail="User ID not found in token")
+        
+        # Reuse the existing logic
+        return await update_user_progress(user_id, progress)
+    except Exception as e:
+        logger.error(f"Error updating current user progress: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to update user progress")
 
 @router.post("/forgot-password")
