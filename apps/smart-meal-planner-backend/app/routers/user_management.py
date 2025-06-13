@@ -58,8 +58,8 @@ async def get_user_permissions(request: Request):
 
 @router.get("/users", response_model=UserListResponse)
 async def list_users(
-    filter: UserListFilter = Depends(),
     request: Request,
+    filter: UserListFilter = Depends(),
     conn=Depends(get_db_connection)
 ):
     """List users with filtering and pagination"""
@@ -169,8 +169,8 @@ async def list_users(
 @router.post("/users/{user_id}/pause")
 async def pause_user(
     user_id: int,
-    action: UserManagementAction,
     request: Request,
+    action: UserManagementAction,
     conn=Depends(get_db_connection)
 ):
     """Pause a user account"""
@@ -291,8 +291,8 @@ async def unpause_user(
 @router.delete("/users/{user_id}")
 async def delete_user(
     user_id: int,
-    action: UserManagementAction,
     request: Request,
+    action: UserManagementAction,
     conn=Depends(get_db_connection)
 ):
     """Soft delete a user account"""
