@@ -53,6 +53,8 @@ import SubscriptionPage from './pages/SubscriptionPage';
 import SubscriptionSuccessPage from './pages/SubscriptionSuccessPage';
 import SubscriptionCancelPage from './pages/SubscriptionCancelPage';
 import UserProfilePage from './pages/UserProfilePage';
+import TestWalkthroughPage from './pages/TestWalkthroughPage';
+import UserManagementPage from './components/UserManagement/UserManagementPage';
 
 
 function App() {
@@ -197,6 +199,7 @@ function App() {
               <Route path="/debug/api-test" element={<ApiTestPage />} />
               <Route path="/debug/instacart-test" element={<InstacartTestPage />} />
               <Route path="/debug/shared-menus" element={<DebugSharedMenus />} />
+              <Route path="/test-walkthrough" element={<TestWalkthroughPage />} />
               <Route 
                 path="/cart" 
                 element={
@@ -227,6 +230,14 @@ function App() {
                   <SubscriptionRoute>
                     <OrganizationSettingsPage />
                   </SubscriptionRoute>
+                } 
+              />
+              <Route 
+                path="/organization/users" 
+                element={
+                  <PrivateRoute>
+                    <UserManagementPage />
+                  </PrivateRoute>
                 } 
               />
               <Route 

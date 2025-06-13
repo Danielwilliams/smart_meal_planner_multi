@@ -274,6 +274,9 @@ class UserWithRole(BaseModel):
     profile_complete: bool
     organization_id: Optional[int] = None
     role: Optional[str] = None
+    is_active: bool = True
+    paused_at: Optional[datetime] = None
+    pause_reason: Optional[str] = None
 
 class ClientInvitation(BaseModel):
     email: str
@@ -733,3 +736,52 @@ class UserRecipeListItem(BaseModel):
     created_at: datetime
     created_by_user_id: Optional[int] = None
     created_by_organization_id: Optional[int] = None
+
+# User Management Models
+
+class UserManagementAction(BaseModel):
+    """Model for user management actions"""
+    action: str  # 'pause', 'unpause', 'delete'
+    reason: Optional[str] = None
+    send_notification: bool = True
+
+class UserManagementLog(BaseModel):
+    """Model for user management audit logs"""
+    id: int
+    user_id: int
+    action: str
+    performed_by: int
+    performed_at: datetime
+    reason: Optional[str] = None
+    metadata: Dict[str, Any] = {}
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
+
+class UserListFilter(BaseModel):
+    """Model for filtering user lists"""
+    organization_id: Optional[int] = None
+    is_active: Optional[bool] = None
+    is_paused: Optional[bool] = None
+    search_query: Optional[str] = None
+    role: Optional[str] = None
+    created_after: Optional[datetime] = None
+    created_before: Optional[datetime] = None
+    limit: int = Field(default=50, le=100)
+    offset: int = Field(default=0, ge=0)
+
+class UserListResponse(BaseModel):
+    """Model for user list response with pagination"""
+    users: List[UserWithRole]
+    total_count: int
+    limit: int
+    offset: int
+    has_more: bool
+
+class UserManagementPermissions(BaseModel):
+    """Model for user management permissions"""
+    can_pause_users: bool = False
+    can_delete_users: bool = False
+    can_restore_users: bool = False
+    can_view_all_users: bool = False
+    can_manage_org_users: bool = False
+    is_system_admin: bool = False

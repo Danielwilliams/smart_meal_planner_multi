@@ -28,6 +28,7 @@ import {
 import apiService from '../services/apiService';
 import { useAuth } from '../context/AuthContext';
 import MacroDefaults from '../components/MacroDefaults';
+import OnboardingWalkthrough from '../components/ImprovedOnboardingWalkthrough';
 
 
 function PreferencesPage() {
@@ -546,7 +547,7 @@ useEffect(() => {
         </Typography>
 
         {/* Diet Types */}
-        <Box sx={{ mt: 3, mb: 2 }}>
+        <Box sx={{ mt: 3, mb: 2 }} data-testid="diet-types-section">
           <Typography variant="subtitle1" gutterBottom>
             Diet Types
           </Typography>
@@ -591,7 +592,7 @@ useEffect(() => {
         </Box>
 
         {/* Recipe Types */}
-        <Box sx={{ mt: 3, mb: 2 }}>
+        <Box sx={{ mt: 3, mb: 2 }} data-testid="recipe-types-section">
           <Typography variant="subtitle1" gutterBottom>
             Recipe Types
           </Typography>
@@ -638,7 +639,7 @@ useEffect(() => {
         <Divider sx={{ my: 3 }} />
 
         {/* Preferred Proteins */}
-        <Box sx={{ mt: 3, mb: 2 }}>
+        <Box sx={{ mt: 3, mb: 2 }} data-testid="preferred-proteins-section">
           <Typography variant="subtitle1" gutterBottom>
             Preferred Proteins
           </Typography>
@@ -852,20 +853,22 @@ useEffect(() => {
           helperText="Enter dietary restrictions, separated by commas"
         />
 
-        <TextField
-          name="dislikedIngredients"
-          label="Disliked Ingredients"
-          fullWidth
-          margin="normal"
-          value={preferences.dislikedIngredients}
-          onChange={handleChange}
-          helperText="Enter ingredients you dislike, separated by commas"
-        />
+        <Box data-testid="disliked-ingredients-section">
+          <TextField
+            name="dislikedIngredients"
+            label="Disliked Ingredients"
+            fullWidth
+            margin="normal"
+            value={preferences.dislikedIngredients}
+            onChange={handleChange}
+            helperText="Enter ingredients you dislike, separated by commas"
+          />
+        </Box>
 
         {/* Removed basic Meal Times section in favor of detailed Meal Schedule below */}
         
         {/* Meal Schedule (Enhanced) - Moved above servings per meal */}
-        <Box sx={{ mt: 3, mb: 2 }}>
+        <Box sx={{ mt: 3, mb: 2 }} data-testid="meal-schedule-section">
           <Typography variant="subtitle1" gutterBottom>
             Meal Schedule
           </Typography>
@@ -1292,11 +1295,13 @@ useEffect(() => {
             color="primary"
             fullWidth
             onClick={handleSave}
+            data-testid="save-preferences-button"
           >
             Save Preferences
           </Button>
         </Box>
       </Paper>
+      <OnboardingWalkthrough />
     </Container>
   );
 }

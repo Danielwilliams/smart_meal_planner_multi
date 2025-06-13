@@ -160,7 +160,8 @@ function NavBar() {
     if (isOrgAccount || user?.account_type === 'admin') {
       items.push(
         { text: 'Recipe Admin', icon: <AdminIcon />, path: '/recipe-admin' },
-        { text: 'Manage Organization', icon: <DashboardIcon />, path: '/organization/dashboard' }
+        { text: 'Manage Organization', icon: <DashboardIcon />, path: '/organization/dashboard' },
+        { text: 'User Management', icon: <PersonIcon />, path: '/organization/users' }
       );
     }
     
@@ -293,16 +294,28 @@ function NavBar() {
                           )}
                           
                           {isOrgAccount && (
-                            <MenuItem 
-                              component={Link} 
-                              to="/organization/dashboard"
-                              onClick={() => setMoreMenuAnchorEl(null)}
-                            >
-                              <ListItemIcon>
-                                <DashboardIcon fontSize="small" />
-                              </ListItemIcon>
-                              <ListItemText>Organization</ListItemText>
-                            </MenuItem>
+                            <>
+                              <MenuItem 
+                                component={Link} 
+                                to="/organization/dashboard"
+                                onClick={() => setMoreMenuAnchorEl(null)}
+                              >
+                                <ListItemIcon>
+                                  <DashboardIcon fontSize="small" />
+                                </ListItemIcon>
+                                <ListItemText>Organization</ListItemText>
+                              </MenuItem>
+                              <MenuItem 
+                                component={Link} 
+                                to="/organization/users"
+                                onClick={() => setMoreMenuAnchorEl(null)}
+                              >
+                                <ListItemIcon>
+                                  <PersonIcon fontSize="small" />
+                                </ListItemIcon>
+                                <ListItemText>User Management</ListItemText>
+                              </MenuItem>
+                            </>
                           )}
                         </Menu>
                       </Box>

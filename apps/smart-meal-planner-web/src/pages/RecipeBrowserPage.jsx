@@ -15,6 +15,7 @@ import Alert from '@mui/material/Alert';
 import RecipeTagsDisplay from '../components/RecipeTagsDisplay';
 import RateRecipeButton from '../components/RateRecipeButton';
 import RecipeRatingDisplay from '../components/RecipeRatingDisplay';
+import OnboardingWalkthrough from '../components/ImprovedOnboardingWalkthrough';
 
 const RecipeBrowserPage = () => {
   const [recipes, setRecipes] = useState([]);
@@ -204,7 +205,7 @@ const RecipeBrowserPage = () => {
 
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-      <Typography variant="h4" gutterBottom>
+      <Typography variant="h4" gutterBottom data-testid="recipe-browser-nav">
         Recipe Browser
       </Typography>
       
@@ -225,6 +226,7 @@ const RecipeBrowserPage = () => {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+              data-testid="recipe-search-bar"
               InputProps={{
                 endAdornment: (
                   <IconButton onClick={handleSearch}>
@@ -239,7 +241,7 @@ const RecipeBrowserPage = () => {
           </Grid>
           
           {/* Filters - stacked on mobile, side by side on desktop */}
-          <Grid item xs={12} sm={6} md={2}>
+          <Grid item xs={12} sm={6} md={2} data-testid="recipe-filters">
             <FormControl fullWidth>
               <InputLabel>Complexity</InputLabel>
               <Select
@@ -399,6 +401,7 @@ const RecipeBrowserPage = () => {
                   <Card 
                     component={Link} 
                     to={`/recipes/${recipe.id}`}
+                    data-testid="recipe-card"
                     sx={{ 
                       height: '100%', 
                       display: 'flex', 
@@ -501,11 +504,13 @@ const RecipeBrowserPage = () => {
                           recipeTitle={recipe.title}
                           variant="icon"
                           size="small"
+                          data-testid="rate-recipe-button"
                         />
                         <IconButton
                           color="primary"
                           onClick={(e) => handleSaveRecipe(recipe, e)}
                           aria-label={recipe.is_saved ? "Unsave recipe" : "Save recipe"}
+                          data-testid="save-recipe-button"
                         >
                           {recipe.is_saved ? <BookmarkIcon /> : <BookmarkBorderIcon />}
                         </IconButton>
@@ -597,6 +602,7 @@ const RecipeBrowserPage = () => {
           {alertMessage}
         </Alert>
       </Snackbar>
+      <OnboardingWalkthrough />
     </Container>
   );
 }

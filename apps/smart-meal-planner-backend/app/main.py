@@ -62,6 +62,7 @@ from app.routers import test_invitation # Test invitation router for debugging
 from app.routers import organization_branding  # Add organization branding router
 from app.routers import recipe_ratings  # Add recipe ratings router
 from app.routers import rating_analytics  # Add rating analytics router
+from app.routers import user_management  # Add user management router
 
 
 # Load environment variables
@@ -169,6 +170,7 @@ def create_app() -> FastAPI:
     app.include_router(recipe_ratings.router)  # Add rating endpoints
     app.include_router(rating_analytics.router)  # Add rating analytics endpoints
     app.include_router(subscriptions.router)  # Add subscription endpoints
+    app.include_router(user_management.router, prefix="/api/user-management", tags=["user-management"])
 
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request, exc):
