@@ -170,7 +170,8 @@ def create_app() -> FastAPI:
     app.include_router(recipe_ratings.router)  # Add rating endpoints
     app.include_router(rating_analytics.router)  # Add rating analytics endpoints
     app.include_router(subscriptions.router)  # Add subscription endpoints
-    app.include_router(user_management.router)
+    app.include_router(user_management.router, prefix="/admin", tags=["admin-user-management"])
+    app.include_router(user_management.router, prefix="/organization", tags=["org-user-management"])
     
     # Test endpoint to verify routing is working
     @app.get("/api/test-user-mgmt")
