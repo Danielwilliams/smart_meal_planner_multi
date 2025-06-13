@@ -211,11 +211,13 @@ const UserManagementPage = () => {
     }
   };
 
-  if (!permissions.can_view_all_users && !permissions.can_manage_org_users) {
+  if (!permissions.can_view_all_users && !permissions.can_manage_org_users && !permissions.is_system_admin) {
     return (
       <Box sx={{ p: 3 }}>
         <Alert severity="error">
           You don't have permission to manage users.
+          <br />
+          Debug: {JSON.stringify(permissions)}
         </Alert>
       </Box>
     );
