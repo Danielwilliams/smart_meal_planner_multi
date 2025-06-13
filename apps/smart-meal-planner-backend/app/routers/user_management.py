@@ -11,7 +11,7 @@ from app.models.user import (
 )
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+router = APIRouter(prefix="/user-management", tags=["User Management"])
 
 async def get_current_user(request: Request):
     """Extract current user from JWT token"""
