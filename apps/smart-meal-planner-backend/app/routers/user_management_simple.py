@@ -18,3 +18,12 @@ async def get_permissions():
         "can_manage_org_users": True,
         "is_system_admin": True
     }
+
+@router.get("/debug")
+async def debug_endpoint():
+    """Debug endpoint to verify routing"""
+    return {
+        "message": "User management debug endpoint working",
+        "timestamp": "2025-06-13T18:15:00Z",
+        "status": "ok"
+    }

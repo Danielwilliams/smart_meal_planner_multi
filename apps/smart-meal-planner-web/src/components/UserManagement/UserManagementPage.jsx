@@ -83,7 +83,7 @@ const UserManagementPage = () => {
     try {
       const token = localStorage.getItem('token');
       const response = await axios.get(
-        `${process.env.REACT_APP_API_URL}/api/user-management/permissions`,
+        `${process.env.REACT_APP_API_URL}/user-management/permissions`,
         {
           headers: { Authorization: `Bearer ${token}` }
         }
@@ -112,7 +112,7 @@ const UserManagementPage = () => {
       });
       
       const response = await axios.get(
-        `${process.env.REACT_APP_API_URL}/api/user-management/users?${params}`,
+        `${process.env.REACT_APP_API_URL}/user-management/users?${params}`,
         {
           headers: { Authorization: `Bearer ${token}` }
         }
@@ -132,7 +132,7 @@ const UserManagementPage = () => {
     try {
       const token = localStorage.getItem('token');
       const response = await axios.get(
-        `${process.env.REACT_APP_API_URL}/api/user-management/users/${userId}/logs`,
+        `${process.env.REACT_APP_API_URL}/user-management/users/${userId}/logs`,
         {
           headers: { Authorization: `Bearer ${token}` }
         }
@@ -158,13 +158,13 @@ const UserManagementPage = () => {
       
       switch (action) {
         case 'pause':
-          endpoint = `${process.env.REACT_APP_API_URL}/api/user-management/users/${user.id}/pause`;
+          endpoint = `${process.env.REACT_APP_API_URL}/user-management/users/${user.id}/pause`;
           break;
         case 'unpause':
-          endpoint = `${process.env.REACT_APP_API_URL}/api/user-management/users/${user.id}/unpause`;
+          endpoint = `${process.env.REACT_APP_API_URL}/user-management/users/${user.id}/unpause`;
           break;
         case 'delete':
-          endpoint = `${process.env.REACT_APP_API_URL}/api/user-management/users/${user.id}`;
+          endpoint = `${process.env.REACT_APP_API_URL}/user-management/users/${user.id}`;
           method = 'delete';
           break;
       }
