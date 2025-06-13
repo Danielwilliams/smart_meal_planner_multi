@@ -47,7 +47,7 @@ const UserManagementPage = () => {
   
   // Determine API base path based on current route
   const isAdminRoute = location.pathname.startsWith('/admin');
-  const apiBasePath = isAdminRoute ? '/admin' : '/organizations';
+  const apiBasePath = isAdminRoute ? '/user-mgmt/admin' : '/user-mgmt/org';
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [permissions, setPermissions] = useState({});
