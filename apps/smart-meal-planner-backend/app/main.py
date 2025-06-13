@@ -191,14 +191,15 @@ def create_app() -> FastAPI:
         
     @app.get("/admin/permissions")
     async def admin_permissions():
-        return {
+        from fastapi.responses import JSONResponse
+        return JSONResponse({
             "can_pause_users": True,
             "can_delete_users": True,
             "can_restore_users": True,
             "can_view_all_users": True,
             "can_manage_org_users": True,
             "is_system_admin": True
-        }
+        })
         
     @app.get("/organization/permissions")
     async def org_permissions():

@@ -93,7 +93,21 @@ const UserManagementPage = () => {
           headers: { Authorization: `Bearer ${token}` }
         }
       );
-      setPermissions(response.data);
+      console.log('API Response:', response.data);
+      console.log('Response type:', typeof response.data);
+      
+      // Handle case where response.data might be a string
+      let permissions = response.data;
+      if (typeof response.data === 'string') {
+        try {
+          permissions = JSON.parse(response.data);
+        } catch (parseError) {
+          console.error('Failed to parse response as JSON:', parseError);
+          permissions = {};
+        }
+      }
+      
+      setPermissions(permissions);
     } catch (error) {
       console.error('Error fetching permissions:', error);
     }
