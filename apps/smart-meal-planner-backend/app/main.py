@@ -189,7 +189,7 @@ def create_app() -> FastAPI:
     async def test_org():
         return {"message": "Organization route test successful"}
         
-    @app.get("/api/admin/permissions")
+    @app.get("/admin/permissions")
     async def admin_permissions():
         return {
             "can_pause_users": True,
@@ -200,7 +200,7 @@ def create_app() -> FastAPI:
             "is_system_admin": True
         }
         
-    @app.get("/api/organization/permissions")
+    @app.get("/organization/permissions")
     async def org_permissions():
         return {
             "can_pause_users": True,
