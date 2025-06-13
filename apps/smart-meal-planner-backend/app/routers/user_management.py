@@ -3,7 +3,8 @@ from typing import List, Optional
 from datetime import datetime
 import logging
 
-from app.dependencies import get_current_user, get_db_connection
+from ..db import get_db_connection
+from app.utils.auth_utils import get_user_from_token
 from app.models.user import (
     UserManagementAction, UserManagementLog, UserListFilter,
     UserListResponse, UserWithRole, UserManagementPermissions
@@ -11,6 +12,19 @@ from app.models.user import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+async def get_current_user(request: Request):
+    """Extract current user from JWT token"""
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        raise HTTPException(status_code=401, detail="Authorization header missing")
+    
+    token = auth_header.split(' ')[1]
+    user = get_user_from_token(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    
+    return user
 
 def check_user_management_permissions(current_user: dict, target_user: dict = None) -> UserManagementPermissions:
     """Check what user management actions the current user can perform"""
@@ -37,17 +51,19 @@ def check_user_management_permissions(current_user: dict, target_user: dict = No
     return permissions
 
 @router.get("/permissions", response_model=UserManagementPermissions)
-async def get_user_permissions(current_user: dict = Depends(get_current_user)):
+async def get_user_permissions(request: Request):
     """Get current user's management permissions"""
+    current_user = await get_current_user(request)
     return check_user_management_permissions(current_user)
 
 @router.get("/users", response_model=UserListResponse)
 async def list_users(
     filter: UserListFilter = Depends(),
-    current_user: dict = Depends(get_current_user),
+    request: Request,
     conn=Depends(get_db_connection)
 ):
     """List users with filtering and pagination"""
+    current_user = await get_current_user(request)
     permissions = check_user_management_permissions(current_user)
     cursor = conn.cursor()
     
@@ -155,10 +171,10 @@ async def pause_user(
     user_id: int,
     action: UserManagementAction,
     request: Request,
-    current_user: dict = Depends(get_current_user),
     conn=Depends(get_db_connection)
 ):
     """Pause a user account"""
+    current_user = await get_current_user(request)
     if action.action != 'pause':
         raise HTTPException(status_code=400, detail="Invalid action for this endpoint")
     
@@ -220,10 +236,10 @@ async def pause_user(
 async def unpause_user(
     user_id: int,
     request: Request,
-    current_user: dict = Depends(get_current_user),
     conn=Depends(get_db_connection)
 ):
     """Unpause a user account"""
+    current_user = await get_current_user(request)
     cursor = conn.cursor()
     
     try:
@@ -277,10 +293,10 @@ async def delete_user(
     user_id: int,
     action: UserManagementAction,
     request: Request,
-    current_user: dict = Depends(get_current_user),
     conn=Depends(get_db_connection)
 ):
     """Soft delete a user account"""
+    current_user = await get_current_user(request)
     if action.action != 'delete':
         raise HTTPException(status_code=400, detail="Invalid action for this endpoint")
     
@@ -341,10 +357,11 @@ async def delete_user(
 @router.get("/users/{user_id}/logs", response_model=List[UserManagementLog])
 async def get_user_logs(
     user_id: int,
-    current_user: dict = Depends(get_current_user),
+    request: Request,
     conn=Depends(get_db_connection)
 ):
     """Get management logs for a specific user"""
+    current_user = await get_current_user(request)
     cursor = conn.cursor()
     
     try:
