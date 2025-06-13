@@ -21,47 +21,47 @@ def upgrade(conn):
     try:
         # Add is_active field for soft delete/pause
         cursor.execute("""
-            ALTER TABLE users 
+            ALTER TABLE user_profiles 
             ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE
         """)
         
         # Add soft delete fields
         cursor.execute("""
-            ALTER TABLE users 
+            ALTER TABLE user_profiles 
             ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP DEFAULT NULL
         """)
         
         cursor.execute("""
-            ALTER TABLE users 
+            ALTER TABLE user_profiles 
             ADD COLUMN IF NOT EXISTS deleted_by INTEGER DEFAULT NULL
         """)
         
         # Add pause/suspension fields
         cursor.execute("""
-            ALTER TABLE users 
+            ALTER TABLE user_profiles 
             ADD COLUMN IF NOT EXISTS paused_at TIMESTAMP DEFAULT NULL
         """)
         
         cursor.execute("""
-            ALTER TABLE users 
+            ALTER TABLE user_profiles 
             ADD COLUMN IF NOT EXISTS paused_by INTEGER DEFAULT NULL
         """)
         
         cursor.execute("""
-            ALTER TABLE users 
+            ALTER TABLE user_profiles 
             ADD COLUMN IF NOT EXISTS pause_reason TEXT DEFAULT NULL
         """)
         
         # Add index for active users
         cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_users_is_active 
-            ON users(is_active)
+            CREATE INDEX IF NOT EXISTS idx_user_profiles_is_active 
+            ON user_profiles(is_active)
         """)
         
         # Add index for organization users
         cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_users_organization_active 
-            ON users(organization_id, is_active) 
+            CREATE INDEX IF NOT EXISTS idx_user_profiles_organization_active 
+            ON user_profiles(organization_id, is_active) 
             WHERE organization_id IS NOT NULL
         """)
         
@@ -77,8 +77,8 @@ def upgrade(conn):
                 metadata JSONB DEFAULT '{}',
                 ip_address VARCHAR(45),
                 user_agent TEXT,
-                FOREIGN KEY (user_id) REFERENCES users(id),
-                FOREIGN KEY (performed_by) REFERENCES users(id)
+                FOREIGN KEY (user_id) REFERENCES user_profiles(id),
+                FOREIGN KEY (performed_by) REFERENCES user_profiles(id)
             )
         """)
         
@@ -100,14 +100,14 @@ def upgrade(conn):
         
         # Add role field for system administrators
         cursor.execute("""
-            ALTER TABLE users 
+            ALTER TABLE user_profiles 
             ADD COLUMN IF NOT EXISTS system_role VARCHAR(50) DEFAULT NULL
         """)
         
         # Create index for system roles
         cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_users_system_role 
-            ON users(system_role) 
+            CREATE INDEX IF NOT EXISTS idx_user_profiles_system_role 
+            ON user_profiles(system_role) 
             WHERE system_role IS NOT NULL
         """)
         
@@ -125,24 +125,24 @@ def downgrade(conn):
     
     try:
         # Drop indexes first
-        cursor.execute("DROP INDEX IF EXISTS idx_users_is_active")
-        cursor.execute("DROP INDEX IF EXISTS idx_users_organization_active")
+        cursor.execute("DROP INDEX IF EXISTS idx_user_profiles_is_active")
+        cursor.execute("DROP INDEX IF EXISTS idx_user_profiles_organization_active")
         cursor.execute("DROP INDEX IF EXISTS idx_user_management_logs_user_id")
         cursor.execute("DROP INDEX IF EXISTS idx_user_management_logs_performed_by")
         cursor.execute("DROP INDEX IF EXISTS idx_user_management_logs_action")
-        cursor.execute("DROP INDEX IF EXISTS idx_users_system_role")
+        cursor.execute("DROP INDEX IF EXISTS idx_user_profiles_system_role")
         
         # Drop user_management_logs table
         cursor.execute("DROP TABLE IF EXISTS user_management_logs")
         
         # Drop columns from users table
-        cursor.execute("ALTER TABLE users DROP COLUMN IF EXISTS is_active")
-        cursor.execute("ALTER TABLE users DROP COLUMN IF EXISTS deleted_at")
-        cursor.execute("ALTER TABLE users DROP COLUMN IF EXISTS deleted_by")
-        cursor.execute("ALTER TABLE users DROP COLUMN IF EXISTS paused_at")
-        cursor.execute("ALTER TABLE users DROP COLUMN IF EXISTS paused_by")
-        cursor.execute("ALTER TABLE users DROP COLUMN IF EXISTS pause_reason")
-        cursor.execute("ALTER TABLE users DROP COLUMN IF EXISTS system_role")
+        cursor.execute("ALTER TABLE user_profiles DROP COLUMN IF EXISTS is_active")
+        cursor.execute("ALTER TABLE user_profiles DROP COLUMN IF EXISTS deleted_at")
+        cursor.execute("ALTER TABLE user_profiles DROP COLUMN IF EXISTS deleted_by")
+        cursor.execute("ALTER TABLE user_profiles DROP COLUMN IF EXISTS paused_at")
+        cursor.execute("ALTER TABLE user_profiles DROP COLUMN IF EXISTS paused_by")
+        cursor.execute("ALTER TABLE user_profiles DROP COLUMN IF EXISTS pause_reason")
+        cursor.execute("ALTER TABLE user_profiles DROP COLUMN IF EXISTS system_role")
         
         conn.commit()
         logger.info("Successfully removed user management fields")

@@ -63,7 +63,7 @@ async def list_users(
                     ELSE NULL
                 END as role,
                 o.name as organization_name
-            FROM users u
+            FROM user_profiles u
             LEFT JOIN organization_clients oc ON u.id = oc.client_id
             LEFT JOIN organizations o ON u.organization_id = o.id
             WHERE 1=1
@@ -166,7 +166,7 @@ async def pause_user(
     
     try:
         # Get target user
-        cursor.execute("SELECT id, organization_id FROM users WHERE id = %s", (user_id,))
+        cursor.execute("SELECT id, organization_id FROM user_profiles WHERE id = %s", (user_id,))
         target_user = cursor.fetchone()
         
         if not target_user:
@@ -184,7 +184,7 @@ async def pause_user(
         
         # Pause the user
         cursor.execute("""
-            UPDATE users 
+            UPDATE user_profiles 
             SET paused_at = CURRENT_TIMESTAMP,
                 paused_by = %s,
                 pause_reason = %s
@@ -228,7 +228,7 @@ async def unpause_user(
     
     try:
         # Get target user
-        cursor.execute("SELECT id, organization_id FROM users WHERE id = %s", (user_id,))
+        cursor.execute("SELECT id, organization_id FROM user_profiles WHERE id = %s", (user_id,))
         target_user = cursor.fetchone()
         
         if not target_user:
@@ -242,7 +242,7 @@ async def unpause_user(
         
         # Unpause the user
         cursor.execute("""
-            UPDATE users 
+            UPDATE user_profiles 
             SET paused_at = NULL,
                 paused_by = NULL,
                 pause_reason = NULL
@@ -288,7 +288,7 @@ async def delete_user(
     
     try:
         # Get target user
-        cursor.execute("SELECT id, organization_id FROM users WHERE id = %s", (user_id,))
+        cursor.execute("SELECT id, organization_id FROM user_profiles WHERE id = %s", (user_id,))
         target_user = cursor.fetchone()
         
         if not target_user:
@@ -306,7 +306,7 @@ async def delete_user(
         
         # Soft delete the user
         cursor.execute("""
-            UPDATE users 
+            UPDATE user_profiles 
             SET is_active = FALSE,
                 deleted_at = CURRENT_TIMESTAMP,
                 deleted_by = %s
@@ -349,7 +349,7 @@ async def get_user_logs(
     
     try:
         # Check permissions
-        cursor.execute("SELECT organization_id FROM users WHERE id = %s", (user_id,))
+        cursor.execute("SELECT organization_id FROM user_profiles WHERE id = %s", (user_id,))
         target_user = cursor.fetchone()
         
         if not target_user:
