@@ -157,11 +157,18 @@ function NavBar() {
     
     const items = [...mainItems, ...moreItems];
     
-    if (isOrgAccount || user?.account_type === 'admin') {
+    if (isOrgAccount) {
       items.push(
         { text: 'Recipe Admin', icon: <AdminIcon />, path: '/recipe-admin' },
         { text: 'Manage Organization', icon: <DashboardIcon />, path: '/organization/dashboard' },
         { text: 'User Management', icon: <PersonIcon />, path: '/organization/users' }
+      );
+    }
+    
+    if (user?.account_type === 'admin') {
+      items.push(
+        { text: 'Recipe Admin', icon: <AdminIcon />, path: '/recipe-admin' },
+        { text: 'System User Management', icon: <PersonIcon />, path: '/admin/users' }
       );
     }
     
@@ -316,6 +323,19 @@ function NavBar() {
                                 <ListItemText>User Management</ListItemText>
                               </MenuItem>
                             </>
+                          )}
+                          
+                          {user?.account_type === 'admin' && (
+                            <MenuItem 
+                              component={Link} 
+                              to="/admin/users"
+                              onClick={() => setMoreMenuAnchorEl(null)}
+                            >
+                              <ListItemIcon>
+                                <PersonIcon fontSize="small" />
+                              </ListItemIcon>
+                              <ListItemText>System User Management</ListItemText>
+                            </MenuItem>
                           )}
                         </Menu>
                       </Box>

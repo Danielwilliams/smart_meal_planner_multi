@@ -241,6 +241,14 @@ function App() {
                 } 
               />
               <Route 
+                path="/admin/users" 
+                element={
+                  <PrivateRoute>
+                    <UserManagementPage />
+                  </PrivateRoute>
+                } 
+              />
+              <Route 
                 path="/organization/clients/:clientId" 
                 element={
                   <PrivateRoute>

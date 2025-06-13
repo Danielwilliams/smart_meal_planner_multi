@@ -30,8 +30,8 @@ def check_user_management_permissions(current_user: dict, target_user: dict = No
     """Check what user management actions the current user can perform"""
     permissions = UserManagementPermissions()
     
-    # Check if user is system admin
-    if current_user.get('system_role') == 'admin':
+    # Check if user is system admin (can manage all accounts)
+    if current_user.get('account_type') == 'admin':
         permissions.is_system_admin = True
         permissions.can_pause_users = True
         permissions.can_delete_users = True
@@ -40,14 +40,16 @@ def check_user_management_permissions(current_user: dict, target_user: dict = No
         permissions.can_manage_org_users = True
         return permissions
     
-    # Check if user is organization owner/manager
-    if current_user.get('organization_id') and current_user.get('role') in ['owner', 'manager']:
+    # Check if user is organization account (can manage their clients)
+    if current_user.get('account_type') == 'organization':
         permissions.can_manage_org_users = True
         permissions.can_pause_users = True
-        # Only allow deletion of organization users, not the organization itself
-        if target_user and target_user.get('organization_id') == current_user.get('organization_id'):
-            permissions.can_delete_users = True
+        permissions.can_delete_users = True  # Organizations can delete their clients
+        permissions.can_restore_users = True
+        # Can only view users within their organization
+        return permissions
     
+    # Individual and client accounts have no management permissions
     return permissions
 
 @router.get("/permissions", response_model=UserManagementPermissions)
@@ -87,17 +89,20 @@ async def list_users(
         params = []
         
         # Apply filters based on permissions
-        if not permissions.can_view_all_users:
-            if permissions.can_manage_org_users and current_user.get('organization_id'):
+        if permissions.is_system_admin:
+            # Admin can see all users - no additional filters needed
+            # Allow admin to filter by specific organization if requested
+            if filter.organization_id is not None:
                 query += " AND u.organization_id = %s"
-                params.append(current_user['organization_id'])
-            else:
-                # Can only see themselves
-                query += " AND u.id = %s"
-                params.append(current_user['id'])
-        elif filter.organization_id is not None:
-            query += " AND u.organization_id = %s"
-            params.append(filter.organization_id)
+                params.append(filter.organization_id)
+        elif current_user.get('account_type') == 'organization':
+            # Organizations can only see their clients (users who belong to their organization)
+            query += " AND (u.organization_id = %s OR oc.organization_id = %s)"
+            params.extend([current_user['id'], current_user['id']])
+        else:
+            # Individual/client users can only see themselves
+            query += " AND u.id = %s"
+            params.append(current_user['id'])
         
         # Apply other filters
         if filter.is_active is not None:
@@ -197,6 +202,16 @@ async def pause_user(
         # Prevent self-pause
         if user_id == current_user['id']:
             raise HTTPException(status_code=400, detail="You cannot pause your own account")
+            
+        # Ensure organizations can only manage their clients
+        if current_user.get('account_type') == 'organization':
+            # Check if target user is a client of this organization
+            cursor.execute("""
+                SELECT 1 FROM organization_clients 
+                WHERE organization_id = %s AND client_id = %s
+            """, (current_user['id'], user_id))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=403, detail="You can only manage your organization's clients")
         
         # Pause the user
         cursor.execute("""
@@ -255,6 +270,16 @@ async def unpause_user(
         
         if not permissions.can_pause_users:
             raise HTTPException(status_code=403, detail="You don't have permission to unpause users")
+            
+        # Ensure organizations can only manage their clients
+        if current_user.get('account_type') == 'organization':
+            # Check if target user is a client of this organization
+            cursor.execute("""
+                SELECT 1 FROM organization_clients 
+                WHERE organization_id = %s AND client_id = %s
+            """, (current_user['id'], user_id))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=403, detail="You can only manage your organization's clients")
         
         # Unpause the user
         cursor.execute("""
@@ -319,6 +344,16 @@ async def delete_user(
         # Prevent self-deletion
         if user_id == current_user['id']:
             raise HTTPException(status_code=400, detail="You cannot delete your own account")
+            
+        # Ensure organizations can only manage their clients
+        if current_user.get('account_type') == 'organization':
+            # Check if target user is a client of this organization
+            cursor.execute("""
+                SELECT 1 FROM organization_clients 
+                WHERE organization_id = %s AND client_id = %s
+            """, (current_user['id'], user_id))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=403, detail="You can only manage your organization's clients")
         
         # Soft delete the user
         cursor.execute("""
@@ -374,9 +409,17 @@ async def get_user_logs(
         
         permissions = check_user_management_permissions(current_user)
         if not permissions.is_system_admin:
-            if not (permissions.can_manage_org_users and 
-                    target_user[0] == current_user.get('organization_id')):
+            if not permissions.can_manage_org_users:
                 raise HTTPException(status_code=403, detail="You don't have permission to view these logs")
+                
+            # Ensure organizations can only view logs for their clients
+            if current_user.get('account_type') == 'organization':
+                cursor.execute("""
+                    SELECT 1 FROM organization_clients 
+                    WHERE organization_id = %s AND client_id = %s
+                """, (current_user['id'], user_id))
+                if not cursor.fetchone():
+                    raise HTTPException(status_code=403, detail="You can only view logs for your organization's clients")
         
         # Get logs
         cursor.execute("""

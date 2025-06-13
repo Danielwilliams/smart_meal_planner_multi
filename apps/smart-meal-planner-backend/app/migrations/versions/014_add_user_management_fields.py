@@ -98,18 +98,7 @@ def upgrade(conn):
             ON user_management_logs(action)
         """)
         
-        # Add role field for system administrators
-        cursor.execute("""
-            ALTER TABLE user_profiles 
-            ADD COLUMN IF NOT EXISTS system_role VARCHAR(50) DEFAULT NULL
-        """)
-        
-        # Create index for system roles
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_user_profiles_system_role 
-            ON user_profiles(system_role) 
-            WHERE system_role IS NOT NULL
-        """)
+        # Note: Using existing account_type column instead of system_role
         
         conn.commit()
         logger.info("Successfully added user management fields")
@@ -130,7 +119,6 @@ def downgrade(conn):
         cursor.execute("DROP INDEX IF EXISTS idx_user_management_logs_user_id")
         cursor.execute("DROP INDEX IF EXISTS idx_user_management_logs_performed_by")
         cursor.execute("DROP INDEX IF EXISTS idx_user_management_logs_action")
-        cursor.execute("DROP INDEX IF EXISTS idx_user_profiles_system_role")
         
         # Drop user_management_logs table
         cursor.execute("DROP TABLE IF EXISTS user_management_logs")
@@ -142,7 +130,6 @@ def downgrade(conn):
         cursor.execute("ALTER TABLE user_profiles DROP COLUMN IF EXISTS paused_at")
         cursor.execute("ALTER TABLE user_profiles DROP COLUMN IF EXISTS paused_by")
         cursor.execute("ALTER TABLE user_profiles DROP COLUMN IF EXISTS pause_reason")
-        cursor.execute("ALTER TABLE user_profiles DROP COLUMN IF EXISTS system_role")
         
         conn.commit()
         logger.info("Successfully removed user management fields")
