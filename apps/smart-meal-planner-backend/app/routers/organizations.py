@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Body
 import logging
 from app.utils.auth_utils import get_user_from_token
 from app.utils.auth_middleware import require_organization_owner
-from app.models.user import OrganizationCreate, Organization
+from app.models.user import OrganizationCreate, Organization, UserManagementPermissions
 from app.db import get_db_connection, get_db_cursor
 from typing import List
 from app.utils.auth_middleware import require_organization_owner, require_organization_member
@@ -212,4 +212,20 @@ async def get_client_details(
     except Exception as e:
         logger.error(f"Error getting client details: {str(e)}")
         raise HTTPException(status_code=500, detail="Error fetching client details")
+
+# User Management endpoints for organizations
+@router.get("/permissions", response_model=UserManagementPermissions)
+async def get_org_user_permissions(user=Depends(get_user_from_token)):
+    """Get organization user management permissions"""
+    if user.get('account_type') != 'organization':
+        return UserManagementPermissions()
+    
+    return UserManagementPermissions(
+        can_pause_users=True,
+        can_delete_users=True,
+        can_restore_users=True,
+        can_view_all_users=False,
+        can_manage_org_users=True,
+        is_system_admin=False
+    )
 

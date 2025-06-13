@@ -170,13 +170,22 @@ def create_app() -> FastAPI:
     app.include_router(recipe_ratings.router)  # Add rating endpoints
     app.include_router(rating_analytics.router)  # Add rating analytics endpoints
     app.include_router(subscriptions.router)  # Add subscription endpoints
+    # Add user management routes for both admin and organization
     app.include_router(user_management.router, prefix="/admin", tags=["admin-user-management"])
-    app.include_router(user_management.router, prefix="/organization", tags=["org-user-management"])
+    # Note: Organizations use existing organization routes, not separate user management routes
     
-    # Test endpoint to verify routing is working
+    # Test endpoints to verify routing is working
     @app.get("/api/test-user-mgmt")
     async def test_user_mgmt():
         return {"message": "User management routing test successful"}
+    
+    @app.get("/admin/test")
+    async def test_admin():
+        return {"message": "Admin route test successful"}
+    
+    @app.get("/organization/test")
+    async def test_org():
+        return {"message": "Organization route test successful"}
 
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request, exc):
