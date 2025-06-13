@@ -62,7 +62,7 @@ from app.routers import test_invitation # Test invitation router for debugging
 from app.routers import organization_branding  # Add organization branding router
 from app.routers import recipe_ratings  # Add recipe ratings router
 from app.routers import rating_analytics  # Add rating analytics router
-from app.routers import user_management  # Add user management router
+from app.routers import user_management_simple as user_management  # Add user management router
 
 
 # Load environment variables
