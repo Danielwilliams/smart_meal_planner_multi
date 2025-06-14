@@ -1039,25 +1039,25 @@ def check_subscription_status(user_id=None, organization_id=None, include_free_t
 
             status, current_period_end, trial_end, subscription_type = result
 
-            # Special handling for free tier
-            if subscription_type == 'free':
+            # Special handling for free tier and organization subscriptions
+            if subscription_type in ('free', 'organization'):
                 if include_free_tier:
-                    # For free tier, check if it's still active (either indefinite or within trial period)
+                    # For free tier and organization subscriptions, check if it's still active
                     if status == 'active':
                         if trial_end is None:
-                            # Indefinite free tier
-                            logger.info("Free tier with no expiration - active")
+                            # Indefinite free tier or organization subscription
+                            logger.info(f"{subscription_type} subscription with no expiration - active")
                             return True
                         else:
-                            # Free tier with expiration
+                            # Free tier/organization with expiration
                             import datetime
                             now = datetime.datetime.now(datetime.timezone.utc)
                             is_valid = now < trial_end
-                            logger.info(f"Free tier with expiration - active: {is_valid}")
+                            logger.info(f"{subscription_type} subscription with expiration - active: {is_valid}")
                             return is_valid
                 else:
                     # If we're not including free tier, it doesn't count as an active subscription
-                    logger.info("Free tier not included in check - inactive")
+                    logger.info(f"{subscription_type} subscription not included in check - inactive")
                     return False
 
             # Regular subscription checks for paid tiers
