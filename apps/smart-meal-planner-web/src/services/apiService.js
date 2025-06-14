@@ -153,11 +153,14 @@ const apiService = {
         hasCaptcha: !!payload.captchaToken
       });
 
-      const resp = await axiosInstance.post('/auth/login', {
+      // Create a clean payload object to prevent password exposure in dev tools
+      const loginPayload = {
         email: payload.email,
         password: payload.password,
-        captcha_token: payload.captchaToken  // Note: backend might expect snake_case
-      });
+        captcha_token: payload.captchaToken
+      };
+
+      const resp = await axiosInstance.post('/auth/login', loginPayload);
       
       console.log('Login Response Status:', resp.status);
       return resp.data;

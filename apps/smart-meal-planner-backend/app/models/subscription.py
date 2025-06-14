@@ -71,6 +71,7 @@ class PaymentMethodResponse(BaseModel):
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import logging
+import json
 from app.db import get_db_connection
 
 # Set up logging
