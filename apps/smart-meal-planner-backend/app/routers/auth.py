@@ -310,6 +310,10 @@ async def login(user_data: UserLogin):
         logger.info("Generating token")
 
         # Generate JWT token
+        # Get organization data for the user (if any)
+        from app.utils.auth_utils import get_user_organization_role
+        org_data = await get_user_organization_role(user_id)
+        
         token_payload = {
             "user_id": user_id,
             "email": email,
@@ -318,6 +322,10 @@ async def login(user_data: UserLogin):
             "account_type": account_type,
             "exp": datetime.utcnow() + timedelta(hours=12)
         }
+        
+        # Add organization data to token if present
+        if org_data:
+            token_payload.update(org_data)
 
         token = jwt.encode(token_payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
