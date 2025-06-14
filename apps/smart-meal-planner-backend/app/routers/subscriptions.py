@@ -22,7 +22,7 @@ from app.models.subscription import (
     create_payment_method, get_payment_methods, get_default_payment_method,
     delete_payment_method, log_subscription_event, create_invoice,
     get_subscription_invoices, update_invoice, check_subscription_status,
-    get_subscription_details, migrate_to_free_tier, migrate_all_users_to_free_tier,
+    check_user_subscription_access, get_subscription_details, migrate_to_free_tier, migrate_all_users_to_free_tier,
     SubscriptionCreate, PaymentMethodCreate, SubscriptionResponse, PaymentMethodResponse,
     SubscriptionType, SubscriptionStatus, PaymentProvider
 )
@@ -295,36 +295,37 @@ async def subscription_status(user = Depends(get_user_from_token)):
 
     try:
         user_id = user.get('user_id')
+        account_type = user.get('account_type')
         organization_id = user.get('organization_id')
 
-        # Check if the user is part of an organization as a client
-        # (in this case, they're covered by the organization's subscription)
-        is_client = False
-        if 'account_type' in user and user['account_type'] == 'client':
-            # Get the organization ID for this client
-            from app.db import get_db_cursor
-            with get_db_cursor() as (cur, conn):
-                # Enable autocommit to prevent transaction blocking during menu generation
-                conn.autocommit = True
-
-                cur.execute("""
-                    SELECT organization_id FROM organization_clients
-                    WHERE client_id = %s
-                """, (user_id,))
-
-                org_result = cur.fetchone()
-                if org_result:
-                    organization_id = org_result[0]
-                    is_client = True
-
-        # Get subscription details
+        # Determine subscription source based on account type
+        is_client = account_type == 'client'
         subscription = None
 
-        if organization_id:
-            # For organization members or clients, check the organization's subscription
+        if is_client:
+            # For client accounts, check their organization's subscription
+            if organization_id:
+                # Use organization_id from JWT token if available
+                subscription = get_subscription_details(organization_id=organization_id)
+            else:
+                # Look up the client's organization
+                from app.db import get_db_cursor
+                with get_db_cursor() as (cur, conn):
+                    conn.autocommit = True
+                    cur.execute("""
+                        SELECT organization_id FROM organization_clients
+                        WHERE client_id = %s AND status = 'active'
+                        LIMIT 1
+                    """, (user_id,))
+                    org_result = cur.fetchone()
+                    if org_result:
+                        organization_id = org_result[0]
+                        subscription = get_subscription_details(organization_id=organization_id)
+        elif account_type == 'organization' and organization_id:
+            # For organization accounts, check their organization's subscription
             subscription = get_subscription_details(organization_id=organization_id)
-        elif user_id:
-            # For individual users, check their personal subscription
+        else:
+            # For individual accounts, check their personal subscription
             subscription = get_subscription_details(user_id=user_id)
 
         if subscription:

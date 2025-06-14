@@ -933,6 +933,63 @@ def migrate_all_users_to_free_tier(days_until_expiration=90):
         if conn:
             conn.close()
 
+def check_user_subscription_access(user_id, account_type=None, organization_id=None, include_free_tier=True):
+    """
+    Check if a user has subscription access considering organizational hierarchies
+    
+    For client accounts: Check their organization's subscription
+    For organization accounts: Check their own subscription
+    For individual accounts: Check their own subscription
+    
+    Args:
+        user_id: ID of the user to check
+        account_type: Type of account ('client', 'organization', 'individual')
+        organization_id: Organization ID (if known)
+        include_free_tier: Whether to consider free tier as active
+        
+    Returns:
+        Boolean indicating if the user has subscription access
+    """
+    conn = None
+    try:
+        logger.info(f"Checking user subscription access: user_id={user_id}, account_type={account_type}, org_id={organization_id}")
+        
+        # For client accounts, check their organization's subscription
+        if account_type == 'client':
+            if organization_id:
+                # Use the provided organization_id
+                return check_subscription_status(organization_id=organization_id, include_free_tier=include_free_tier)
+            else:
+                # Look up the client's organization
+                conn = get_db_connection()
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT oc.organization_id 
+                        FROM organization_clients oc 
+                        WHERE oc.client_id = %s AND oc.status = 'active'
+                        LIMIT 1
+                    """, (user_id,))
+                    result = cur.fetchone()
+                    
+                    if result:
+                        client_org_id = result[0]
+                        logger.info(f"Found organization {client_org_id} for client {user_id}")
+                        return check_subscription_status(organization_id=client_org_id, include_free_tier=include_free_tier)
+                    else:
+                        logger.warning(f"No organization found for client {user_id}")
+                        return False
+        
+        # For organization and individual accounts, check their own subscription
+        else:
+            return check_subscription_status(user_id=user_id, include_free_tier=include_free_tier)
+            
+    except Exception as e:
+        logger.error(f"Error checking user subscription access: {str(e)}", exc_info=True)
+        return False
+    finally:
+        if conn:
+            conn.close()
+
 def check_subscription_status(user_id=None, organization_id=None, include_free_tier=True):
     """
     Check if a user or organization has an active subscription
