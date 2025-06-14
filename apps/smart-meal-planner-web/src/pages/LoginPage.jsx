@@ -104,7 +104,12 @@ function LoginPage() {
         captchaToken
       });
 
-      console.log('Login Response:', response);
+      // SECURITY: Log response without any sensitive data
+      console.log('Login Response:', {
+        success: !!response.access_token,
+        account_type: response.account_type,
+        profile_complete: response.profile_complete
+      });
 
       // If this is an invitation login flow, redirect to the connect-to-organization page
       if (isInvitation && invitationToken && organizationId) {

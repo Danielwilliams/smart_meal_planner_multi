@@ -146,6 +146,7 @@ const apiService = {
   // Authentication Endpoints
   async login(payload) {
     try {
+      // SECURITY: Never log the actual password - only log sanitized data
       console.log('Sending login request with payload:', {
         email: payload.email,
         hasPassword: !!payload.password,
