@@ -47,6 +47,24 @@
       }
     },
     {
+      "src": "/organizations/(.*)",
+      "dest": "https://smartmealplannermulti-production.up.railway.app/organizations/$1",
+      "headers": {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+        "Access-Control-Allow-Headers": "X-Requested-With, Content-Type, Authorization"
+      }
+    },
+    {
+      "src": "/organizations$",
+      "dest": "https://smartmealplannermulti-production.up.railway.app/organizations/",
+      "headers": {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+        "Access-Control-Allow-Headers": "X-Requested-With, Content-Type, Authorization"
+      }
+    },
+    {
       "src": "/api/auth/(.*)",
       "dest": "https://smartmealplannermulti-production.up.railway.app/auth/$1",
       "headers": {
