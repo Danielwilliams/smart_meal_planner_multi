@@ -1096,81 +1096,81 @@ def get_subscription_details(user_id=None, organization_id=None):
 
         with get_db_connection() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            if user_id:
-                cur.execute("""
-                    SELECT s.*, pm.last_four, pm.brand, pm.exp_month, pm.exp_year, pm.payment_type
-                    FROM subscriptions s
-                    JOIN user_profiles u ON s.id = u.subscription_id
-                    LEFT JOIN payment_methods pm ON (pm.user_id = u.id AND pm.is_default = TRUE AND pm.is_active = TRUE)
-                    WHERE u.id = %s
-                """, (user_id,))
-            else:
-                cur.execute("""
-                    SELECT s.*, pm.last_four, pm.brand, pm.exp_month, pm.exp_year, pm.payment_type
-                    FROM subscriptions s
-                    JOIN organizations o ON s.id = o.subscription_id
-                    LEFT JOIN payment_methods pm ON (pm.organization_id = o.id AND pm.is_default = TRUE AND pm.is_active = TRUE)
-                    WHERE o.id = %s
-                """, (organization_id,))
-
-            result = cur.fetchone()
-            logger.info(f"Found subscription details: {result is not None}")
-
-            if result:
-                # Create a dictionary with defaults for all possible null fields
-                safe_result = dict(result)
-
-                # Provide defaults for critical fields that must not be null
-                if safe_result.get('subscription_type') is None:
-                    safe_result['subscription_type'] = 'free'
-
-                if safe_result.get('status') is None:
-                    safe_result['status'] = 'unknown'
-
-                if safe_result.get('currency') is None:
-                    safe_result['currency'] = 'usd'
-
-                if safe_result.get('monthly_amount') is None:
-                    safe_result['monthly_amount'] = 0.0
-
-                # Add formatted dates and calculated fields for frontend
-                import datetime
-
-                # Calculate days remaining in current period
-                now = datetime.datetime.now(datetime.timezone.utc)
-                if safe_result.get('current_period_end'):
-                    days_remaining = (safe_result['current_period_end'] - now).days
-                    safe_result['days_remaining'] = max(0, days_remaining)
+                if user_id:
+                    cur.execute("""
+                        SELECT s.*, pm.last_four, pm.brand, pm.exp_month, pm.exp_year, pm.payment_type
+                        FROM subscriptions s
+                        JOIN user_profiles u ON s.id = u.subscription_id
+                        LEFT JOIN payment_methods pm ON (pm.user_id = u.id AND pm.is_default = TRUE AND pm.is_active = TRUE)
+                        WHERE u.id = %s
+                    """, (user_id,))
                 else:
-                    safe_result['days_remaining'] = 0
+                    cur.execute("""
+                        SELECT s.*, pm.last_four, pm.brand, pm.exp_month, pm.exp_year, pm.payment_type
+                        FROM subscriptions s
+                        JOIN organizations o ON s.id = o.subscription_id
+                        LEFT JOIN payment_methods pm ON (pm.organization_id = o.id AND pm.is_default = TRUE AND pm.is_active = TRUE)
+                        WHERE o.id = %s
+                    """, (organization_id,))
 
-                # Calculate days remaining in trial
-                if safe_result.get('trial_end'):
-                    trial_days_remaining = (safe_result['trial_end'] - now).days
-                    safe_result['trial_days_remaining'] = max(0, trial_days_remaining)
-                else:
-                    safe_result['trial_days_remaining'] = 0
+                result = cur.fetchone()
+                logger.info(f"Found subscription details: {result is not None}")
 
-                # Check if subscription is active
-                safe_result['is_active'] = check_subscription_status(user_id, organization_id)
+                if result:
+                    # Create a dictionary with defaults for all possible null fields
+                    safe_result = dict(result)
 
-                # Format payment method for display with null checks
-                if safe_result.get('last_four'):
-                    if safe_result.get('payment_type') == 'card':
-                        brand = safe_result.get('brand', 'Card')
-                        safe_result['payment_display'] = f"{brand} •••• {safe_result['last_four']}"
-                    elif safe_result.get('payment_type') == 'paypal':
-                        safe_result['payment_display'] = "PayPal"
+                    # Provide defaults for critical fields that must not be null
+                    if safe_result.get('subscription_type') is None:
+                        safe_result['subscription_type'] = 'free'
+
+                    if safe_result.get('status') is None:
+                        safe_result['status'] = 'unknown'
+
+                    if safe_result.get('currency') is None:
+                        safe_result['currency'] = 'usd'
+
+                    if safe_result.get('monthly_amount') is None:
+                        safe_result['monthly_amount'] = 0.0
+
+                    # Add formatted dates and calculated fields for frontend
+                    import datetime
+
+                    # Calculate days remaining in current period
+                    now = datetime.datetime.now(datetime.timezone.utc)
+                    if safe_result.get('current_period_end'):
+                        days_remaining = (safe_result['current_period_end'] - now).days
+                        safe_result['days_remaining'] = max(0, days_remaining)
                     else:
-                        payment_type = safe_result.get('payment_type', 'Payment')
-                        safe_result['payment_display'] = f"{payment_type} •••• {safe_result['last_four']}"
-                else:
-                    safe_result['payment_display'] = None
+                        safe_result['days_remaining'] = 0
 
-                return safe_result
-            else:
-                # No result found
-                return None
+                    # Calculate days remaining in trial
+                    if safe_result.get('trial_end'):
+                        trial_days_remaining = (safe_result['trial_end'] - now).days
+                        safe_result['trial_days_remaining'] = max(0, trial_days_remaining)
+                    else:
+                        safe_result['trial_days_remaining'] = 0
+
+                    # Check if subscription is active
+                    safe_result['is_active'] = check_subscription_status(user_id, organization_id)
+
+                    # Format payment method for display with null checks
+                    if safe_result.get('last_four'):
+                        if safe_result.get('payment_type') == 'card':
+                            brand = safe_result.get('brand', 'Card')
+                            safe_result['payment_display'] = f"{brand} •••• {safe_result['last_four']}"
+                        elif safe_result.get('payment_type') == 'paypal':
+                            safe_result['payment_display'] = "PayPal"
+                        else:
+                            payment_type = safe_result.get('payment_type', 'Payment')
+                            safe_result['payment_display'] = f"{payment_type} •••• {safe_result['last_four']}"
+                    else:
+                        safe_result['payment_display'] = None
+
+                    return safe_result
+                else:
+                    # No result found
+                    return None
     except Exception as e:
         logger.error(f"Error getting subscription details: {str(e)}", exc_info=True)
         return None
