@@ -62,9 +62,34 @@ async def get_user_organizations(user=Depends(get_user_from_token)):
     - If client: returns organizations where user is a client
     """
     user_id = user.get('user_id')
+    organization_id = user.get('organization_id')
+    role = user.get('role')
+    account_type = user.get('account_type')
     
+    # If user has organization_id in JWT token, use it directly
+    if organization_id and account_type == 'organization' and role == 'owner':
+        try:
+            with get_db_cursor(dict_cursor=True) as (cur, conn):
+                cur.execute("""
+                    SELECT id, name, description, owner_id, created_at
+                    FROM organizations WHERE id = %s AND owner_id = %s
+                """, (organization_id, user_id))
+                
+                org = cur.fetchone()
+                if org:
+                    return [{
+                        "id": org['id'],
+                        "name": org['name'],
+                        "description": org['description'],
+                        "owner_id": org['owner_id'],
+                        "created_at": org['created_at'].isoformat()
+                    }]
+        except Exception as e:
+            logger.error(f"Error getting organization by JWT token: {str(e)}")
+    
+    # Fallback to the original logic for other cases
     try:
-        with get_db_cursor() as (cur, conn):
+        with get_db_cursor(dict_cursor=True) as (cur, conn):
             # Check if user is an owner
             cur.execute("""
                 SELECT id, name, description, owner_id, created_at
@@ -74,11 +99,11 @@ async def get_user_organizations(user=Depends(get_user_from_token)):
             owned_orgs = cur.fetchall()
             if owned_orgs:
                 return [{
-                    "id": org[0],
-                    "name": org[1],
-                    "description": org[2],
-                    "owner_id": org[3],
-                    "created_at": org[4].isoformat()
+                    "id": org['id'],
+                    "name": org['name'],
+                    "description": org['description'],
+                    "owner_id": org['owner_id'],
+                    "created_at": org['created_at'].isoformat()
                 } for org in owned_orgs]
             
             # Check if user is a client
@@ -91,11 +116,11 @@ async def get_user_organizations(user=Depends(get_user_from_token)):
             
             client_orgs = cur.fetchall()
             return [{
-                "id": org[0],
-                "name": org[1],
-                "description": org[2],
-                "owner_id": org[3],
-                "created_at": org[4].isoformat()
+                "id": org['id'],
+                "name": org['name'],
+                "description": org['description'],
+                "owner_id": org['owner_id'],
+                "created_at": org['created_at'].isoformat()
             } for org in client_orgs]
     except Exception as e:
         logger.error(f"Error getting user organizations: {str(e)}")
