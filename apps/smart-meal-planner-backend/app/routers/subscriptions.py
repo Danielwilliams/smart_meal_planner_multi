@@ -29,6 +29,7 @@ from app.models.subscription import (
 from pydantic import BaseModel
 from app.utils.auth_middleware import get_user_from_token
 from app.db import get_db_connection, get_db_cursor
+from psycopg2.extras import RealDictCursor
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -3166,7 +3167,18 @@ async def update_user_payment_method(
 
 # User Management endpoints added to subscriptions router since it works
 @router.get("/user-management/admin/permissions")
-async def admin_permissions():
+async def admin_permissions(current_user: Dict[str, Any] = Depends(get_user_from_token)):
+    """Get admin user management permissions"""
+    if current_user.get('account_type') != 'admin':
+        return {
+            "can_pause_users": False,
+            "can_delete_users": False,
+            "can_restore_users": False,
+            "can_view_all_users": False,
+            "can_manage_org_users": False,
+            "is_system_admin": False
+        }
+    
     return {
         "can_pause_users": True,
         "can_delete_users": True,
@@ -3177,12 +3189,569 @@ async def admin_permissions():
     }
 
 @router.get("/user-management/org/permissions")
-async def org_permissions():
+async def org_permissions(current_user: Dict[str, Any] = Depends(get_user_from_token)):
+    """Get organization user management permissions"""
+    account_type = current_user.get('account_type')
+    
+    # Organization accounts can manage their users
+    if account_type == 'organization':
+        return {
+            "can_pause_users": True,
+            "can_delete_users": True,
+            "can_restore_users": True,
+            "can_view_all_users": False,
+            "can_manage_org_users": True,
+            "is_system_admin": False
+        }
+    
+    # No permissions for other account types
     return {
-        "can_pause_users": True,
-        "can_delete_users": True,
-        "can_restore_users": True,
+        "can_pause_users": False,
+        "can_delete_users": False,
+        "can_restore_users": False,
         "can_view_all_users": False,
-        "can_manage_org_users": True,
+        "can_manage_org_users": False,
         "is_system_admin": False
     }
+
+@router.get("/user-management/admin/users")
+async def list_all_users(
+    limit: int = 25,
+    offset: int = 0,
+    search_query: str = None,
+    role: str = None,
+    is_active: bool = None,
+    is_paused: bool = None,
+    current_user: Dict[str, Any] = Depends(get_user_from_token)
+):
+    """List all users (admin only)"""
+    if current_user.get('account_type') != 'admin':
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    try:
+        with get_db_cursor(dict_cursor=True) as (cur, conn):
+            # Build query conditions
+            conditions = []
+            params = []
+            
+            if search_query:
+                conditions.append("(up.name ILIKE %s OR up.email ILIKE %s)")
+                params.extend([f"%{search_query}%", f"%{search_query}%"])
+            
+            if role:
+                conditions.append("up.account_type = %s")
+                params.append(role)
+            
+            if is_active is not None:
+                conditions.append("up.is_active = %s")
+                params.append(is_active)
+            
+            if is_paused is not None:
+                if is_paused:
+                    conditions.append("up.paused_at IS NOT NULL")
+                else:
+                    conditions.append("up.paused_at IS NULL")
+            
+            where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
+            
+            # Get total count
+            count_query = f"""
+                SELECT COUNT(*) 
+                FROM user_profiles up
+                LEFT JOIN organizations o ON up.organization_id = o.id
+                {where_clause}
+            """
+            cur.execute(count_query, params)
+            total_count = cur.fetchone()['count']
+            
+            # Get users with pagination
+            query = f"""
+                SELECT 
+                    up.id,
+                    up.name,
+                    up.email,
+                    up.account_type as role,
+                    up.is_active,
+                    up.paused_at,
+                    up.pause_reason,
+                    up.created_at,
+                    o.name as organization_name
+                FROM user_profiles up
+                LEFT JOIN organizations o ON up.organization_id = o.id
+                {where_clause}
+                ORDER BY up.created_at DESC
+                LIMIT %s OFFSET %s
+            """
+            params.extend([limit, offset])
+            cur.execute(query, params)
+            users = cur.fetchall()
+            
+            return {
+                "users": [dict(user) for user in users],
+                "total_count": total_count
+            }
+    
+    except Exception as e:
+        logger.error(f"Error listing users: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error fetching users")
+
+@router.get("/user-management/org/users")
+async def list_org_users(
+    limit: int = 25,
+    offset: int = 0,
+    search_query: str = None,
+    role: str = None,
+    is_active: bool = None,
+    is_paused: bool = None,
+    current_user: Dict[str, Any] = Depends(get_user_from_token)
+):
+    """List organization users (organization owners only)"""
+    if current_user.get('account_type') != 'organization':
+        raise HTTPException(status_code=403, detail="Organization access required")
+    
+    org_id = current_user.get('organization_id')
+    if not org_id:
+        raise HTTPException(status_code=400, detail="User not associated with an organization")
+    
+    try:
+        with get_db_cursor(dict_cursor=True) as (cur, conn):
+            # Build query conditions
+            conditions = ["oc.organization_id = %s"]
+            params = [org_id]
+            
+            if search_query:
+                conditions.append("(up.name ILIKE %s OR up.email ILIKE %s)")
+                params.extend([f"%{search_query}%", f"%{search_query}%"])
+            
+            if role:
+                conditions.append("oc.role = %s")
+                params.append(role)
+            
+            if is_active is not None:
+                conditions.append("up.is_active = %s")
+                params.append(is_active)
+            
+            if is_paused is not None:
+                if is_paused:
+                    conditions.append("up.paused_at IS NOT NULL")
+                else:
+                    conditions.append("up.paused_at IS NULL")
+            
+            where_clause = "WHERE " + " AND ".join(conditions)
+            
+            # Get total count
+            count_query = f"""
+                SELECT COUNT(*) 
+                FROM user_profiles up
+                JOIN organization_clients oc ON up.id = oc.client_id
+                {where_clause}
+            """
+            cur.execute(count_query, params)
+            total_count = cur.fetchone()['count']
+            
+            # Get users with pagination
+            query = f"""
+                SELECT 
+                    up.id,
+                    up.name,
+                    up.email,
+                    oc.role,
+                    up.is_active,
+                    up.paused_at,
+                    up.pause_reason,
+                    up.created_at,
+                    o.name as organization_name
+                FROM user_profiles up
+                JOIN organization_clients oc ON up.id = oc.client_id
+                JOIN organizations o ON oc.organization_id = o.id
+                {where_clause}
+                ORDER BY up.created_at DESC
+                LIMIT %s OFFSET %s
+            """
+            params.extend([limit, offset])
+            cur.execute(query, params)
+            users = cur.fetchall()
+            
+            return {
+                "users": [dict(user) for user in users],
+                "total_count": total_count
+            }
+    
+    except Exception as e:
+        logger.error(f"Error listing organization users: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error fetching organization users")
+
+@router.post("/user-management/admin/users/{user_id}/pause")
+async def pause_user_admin(
+    user_id: int,
+    request_body: dict = Body(...),
+    current_user: Dict[str, Any] = Depends(get_user_from_token)
+):
+    """Pause a user (admin only)"""
+    if current_user.get('account_type') != 'admin':
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    reason = request_body.get('reason')
+    
+    try:
+        with get_db_cursor(dict_cursor=True) as (cur, conn):
+            # Update user
+            cur.execute("""
+                UPDATE user_profiles 
+                SET paused_at = NOW(), 
+                    paused_by = %s, 
+                    pause_reason = %s
+                WHERE id = %s AND is_active = TRUE
+                RETURNING id, name, email
+            """, (current_user['user_id'], reason, user_id))
+            
+            user = cur.fetchone()
+            if not user:
+                raise HTTPException(status_code=404, detail="User not found or already inactive")
+            
+            # Log action if table exists
+            try:
+                cur.execute("""
+                    INSERT INTO user_management_logs 
+                    (user_id, action, performed_by, reason, performed_at)
+                    VALUES (%s, %s, %s, %s, NOW())
+                """, (user_id, 'paused', current_user['user_id'], reason))
+            except Exception as log_error:
+                logger.warning(f"Could not log action: {log_error}")
+            
+            conn.commit()
+            return {"status": "success", "message": f"User {user['name']} has been paused"}
+    
+    except Exception as e:
+        logger.error(f"Error pausing user: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error pausing user")
+
+@router.post("/user-management/org/users/{user_id}/pause")
+async def pause_user_org(
+    user_id: int,
+    request_body: dict = Body(...),
+    current_user: Dict[str, Any] = Depends(get_user_from_token)
+):
+    """Pause a user (organization only)"""
+    if current_user.get('account_type') != 'organization':
+        raise HTTPException(status_code=403, detail="Organization access required")
+    
+    org_id = current_user.get('organization_id')
+    if not org_id:
+        raise HTTPException(status_code=400, detail="User not associated with an organization")
+    
+    reason = request_body.get('reason')
+    
+    try:
+        with get_db_cursor(dict_cursor=True) as (cur, conn):
+            # Check if user belongs to organization
+            cur.execute("""
+                SELECT up.id, up.name, up.email
+                FROM user_profiles up
+                JOIN organization_clients oc ON up.id = oc.client_id
+                WHERE up.id = %s AND oc.organization_id = %s AND up.is_active = TRUE
+            """, (user_id, org_id))
+            
+            user = cur.fetchone()
+            if not user:
+                raise HTTPException(status_code=404, detail="User not found in your organization")
+            
+            # Update user
+            cur.execute("""
+                UPDATE user_profiles 
+                SET paused_at = NOW(), 
+                    paused_by = %s, 
+                    pause_reason = %s
+                WHERE id = %s
+            """, (current_user['user_id'], reason, user_id))
+            
+            # Log action if table exists
+            try:
+                cur.execute("""
+                    INSERT INTO user_management_logs 
+                    (user_id, action, performed_by, reason, performed_at)
+                    VALUES (%s, %s, %s, %s, NOW())
+                """, (user_id, 'paused', current_user['user_id'], reason))
+            except Exception as log_error:
+                logger.warning(f"Could not log action: {log_error}")
+            
+            conn.commit()
+            return {"status": "success", "message": f"User {user['name']} has been paused"}
+    
+    except Exception as e:
+        logger.error(f"Error pausing user: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error pausing user")
+
+@router.post("/user-management/admin/users/{user_id}/unpause")
+async def unpause_user_admin(
+    user_id: int,
+    current_user: Dict[str, Any] = Depends(get_user_from_token)
+):
+    """Unpause a user (admin only)"""
+    if current_user.get('account_type') != 'admin':
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    try:
+        with get_db_cursor(dict_cursor=True) as (cur, conn):
+            # Update user
+            cur.execute("""
+                UPDATE user_profiles 
+                SET paused_at = NULL, 
+                    paused_by = NULL, 
+                    pause_reason = NULL
+                WHERE id = %s AND is_active = TRUE
+                RETURNING id, name, email
+            """, (user_id,))
+            
+            user = cur.fetchone()
+            if not user:
+                raise HTTPException(status_code=404, detail="User not found or inactive")
+            
+            # Log action if table exists
+            try:
+                cur.execute("""
+                    INSERT INTO user_management_logs 
+                    (user_id, action, performed_by, performed_at)
+                    VALUES (%s, %s, %s, NOW())
+                """, (user_id, 'unpaused', current_user['user_id']))
+            except Exception as log_error:
+                logger.warning(f"Could not log action: {log_error}")
+            
+            conn.commit()
+            return {"status": "success", "message": f"User {user['name']} has been unpaused"}
+    
+    except Exception as e:
+        logger.error(f"Error unpausing user: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error unpausing user")
+
+@router.post("/user-management/org/users/{user_id}/unpause")
+async def unpause_user_org(
+    user_id: int,
+    current_user: Dict[str, Any] = Depends(get_user_from_token)
+):
+    """Unpause a user (organization only)"""
+    if current_user.get('account_type') != 'organization':
+        raise HTTPException(status_code=403, detail="Organization access required")
+    
+    org_id = current_user.get('organization_id')
+    if not org_id:
+        raise HTTPException(status_code=400, detail="User not associated with an organization")
+    
+    try:
+        with get_db_cursor(dict_cursor=True) as (cur, conn):
+            # Check if user belongs to organization
+            cur.execute("""
+                SELECT up.id, up.name, up.email
+                FROM user_profiles up
+                JOIN organization_clients oc ON up.id = oc.client_id
+                WHERE up.id = %s AND oc.organization_id = %s AND up.is_active = TRUE
+            """, (user_id, org_id))
+            
+            user = cur.fetchone()
+            if not user:
+                raise HTTPException(status_code=404, detail="User not found in your organization")
+            
+            # Update user
+            cur.execute("""
+                UPDATE user_profiles 
+                SET paused_at = NULL, 
+                    paused_by = NULL, 
+                    pause_reason = NULL
+                WHERE id = %s
+            """, (user_id,))
+            
+            # Log action if table exists
+            try:
+                cur.execute("""
+                    INSERT INTO user_management_logs 
+                    (user_id, action, performed_by, performed_at)
+                    VALUES (%s, %s, %s, NOW())
+                """, (user_id, 'unpaused', current_user['user_id']))
+            except Exception as log_error:
+                logger.warning(f"Could not log action: {log_error}")
+            
+            conn.commit()
+            return {"status": "success", "message": f"User {user['name']} has been unpaused"}
+    
+    except Exception as e:
+        logger.error(f"Error unpausing user: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error unpausing user")
+
+@router.delete("/user-management/admin/users/{user_id}")
+async def delete_user_admin(
+    user_id: int,
+    request_body: dict = Body(...),
+    current_user: Dict[str, Any] = Depends(get_user_from_token)
+):
+    """Soft delete a user (admin only)"""
+    if current_user.get('account_type') != 'admin':
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    reason = request_body.get('reason')
+    
+    try:
+        with get_db_cursor(dict_cursor=True) as (cur, conn):
+            # Update user
+            cur.execute("""
+                UPDATE user_profiles 
+                SET is_active = FALSE, 
+                    deleted_at = NOW(), 
+                    deleted_by = %s
+                WHERE id = %s AND is_active = TRUE
+                RETURNING id, name, email
+            """, (current_user['user_id'], user_id))
+            
+            user = cur.fetchone()
+            if not user:
+                raise HTTPException(status_code=404, detail="User not found or already deleted")
+            
+            # Log action if table exists
+            try:
+                cur.execute("""
+                    INSERT INTO user_management_logs 
+                    (user_id, action, performed_by, reason, performed_at)
+                    VALUES (%s, %s, %s, %s, NOW())
+                """, (user_id, 'deleted', current_user['user_id'], reason))
+            except Exception as log_error:
+                logger.warning(f"Could not log action: {log_error}")
+            
+            conn.commit()
+            return {"status": "success", "message": f"User {user['name']} has been deleted"}
+    
+    except Exception as e:
+        logger.error(f"Error deleting user: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error deleting user")
+
+@router.delete("/user-management/org/users/{user_id}")
+async def delete_user_org(
+    user_id: int,
+    request_body: dict = Body(...),
+    current_user: Dict[str, Any] = Depends(get_user_from_token)
+):
+    """Soft delete a user (organization only)"""
+    if current_user.get('account_type') != 'organization':
+        raise HTTPException(status_code=403, detail="Organization access required")
+    
+    org_id = current_user.get('organization_id')
+    if not org_id:
+        raise HTTPException(status_code=400, detail="User not associated with an organization")
+    
+    reason = request_body.get('reason')
+    
+    try:
+        with get_db_cursor(dict_cursor=True) as (cur, conn):
+            # Check if user belongs to organization
+            cur.execute("""
+                SELECT up.id, up.name, up.email
+                FROM user_profiles up
+                JOIN organization_clients oc ON up.id = oc.client_id
+                WHERE up.id = %s AND oc.organization_id = %s AND up.is_active = TRUE
+            """, (user_id, org_id))
+            
+            user = cur.fetchone()
+            if not user:
+                raise HTTPException(status_code=404, detail="User not found in your organization")
+            
+            # Update user
+            cur.execute("""
+                UPDATE user_profiles 
+                SET is_active = FALSE, 
+                    deleted_at = NOW(), 
+                    deleted_by = %s
+                WHERE id = %s
+            """, (current_user['user_id'], user_id))
+            
+            # Log action if table exists
+            try:
+                cur.execute("""
+                    INSERT INTO user_management_logs 
+                    (user_id, action, performed_by, reason, performed_at)
+                    VALUES (%s, %s, %s, %s, NOW())
+                """, (user_id, 'deleted', current_user['user_id'], reason))
+            except Exception as log_error:
+                logger.warning(f"Could not log action: {log_error}")
+            
+            conn.commit()
+            return {"status": "success", "message": f"User {user['name']} has been deleted"}
+    
+    except Exception as e:
+        logger.error(f"Error deleting user: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error deleting user")
+
+@router.get("/user-management/admin/users/{user_id}/logs")
+async def get_user_logs_admin(
+    user_id: int,
+    current_user: Dict[str, Any] = Depends(get_user_from_token)
+):
+    """Get user management logs (admin only)"""
+    if current_user.get('account_type') != 'admin':
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    try:
+        with get_db_cursor(dict_cursor=True) as (cur, conn):
+            cur.execute("""
+                SELECT 
+                    uml.id,
+                    uml.action,
+                    uml.reason,
+                    uml.performed_at,
+                    up.name as performed_by
+                FROM user_management_logs uml
+                JOIN user_profiles up ON uml.performed_by = up.id
+                WHERE uml.user_id = %s
+                ORDER BY uml.performed_at DESC
+            """, (user_id,))
+            
+            logs = cur.fetchall()
+            return [dict(log) for log in logs]
+    
+    except Exception as e:
+        logger.error(f"Error fetching user logs: {str(e)}")
+        # Return empty logs if table doesn't exist
+        return []
+
+@router.get("/user-management/org/users/{user_id}/logs")
+async def get_user_logs_org(
+    user_id: int,
+    current_user: Dict[str, Any] = Depends(get_user_from_token)
+):
+    """Get user management logs (organization only)"""
+    if current_user.get('account_type') != 'organization':
+        raise HTTPException(status_code=403, detail="Organization access required")
+    
+    org_id = current_user.get('organization_id')
+    if not org_id:
+        raise HTTPException(status_code=400, detail="User not associated with an organization")
+    
+    try:
+        with get_db_cursor(dict_cursor=True) as (cur, conn):
+            # Check if user belongs to organization
+            cur.execute("""
+                SELECT 1
+                FROM organization_clients oc
+                WHERE oc.client_id = %s AND oc.organization_id = %s
+            """, (user_id, org_id))
+            
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail="User not found in your organization")
+            
+            cur.execute("""
+                SELECT 
+                    uml.id,
+                    uml.action,
+                    uml.reason,
+                    uml.performed_at,
+                    up.name as performed_by
+                FROM user_management_logs uml
+                JOIN user_profiles up ON uml.performed_by = up.id
+                WHERE uml.user_id = %s
+                ORDER BY uml.performed_at DESC
+            """, (user_id,))
+            
+            logs = cur.fetchall()
+            return [dict(log) for log in logs]
+    
+    except Exception as e:
+        logger.error(f"Error fetching user logs: {str(e)}")
+        # Return empty logs if table doesn't exist
+        return []
