@@ -1086,7 +1086,6 @@ def check_subscription_status(user_id=None, organization_id=None, include_free_t
 
 def get_subscription_details(user_id=None, organization_id=None):
     """Get detailed subscription information for a user or organization"""
-    conn = None
     try:
         logger.info(f"Getting subscription details: user_id={user_id}, org_id={organization_id}")
 
@@ -1095,8 +1094,8 @@ def get_subscription_details(user_id=None, organization_id=None):
             logger.error(f"Either user_id or organization_id must be provided, but not both")
             return None
 
-        conn = get_db_connection()
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        with get_db_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
             if user_id:
                 cur.execute("""
                     SELECT s.*, pm.last_four, pm.brand, pm.exp_month, pm.exp_year, pm.payment_type
@@ -1175,6 +1174,3 @@ def get_subscription_details(user_id=None, organization_id=None):
     except Exception as e:
         logger.error(f"Error getting subscription details: {str(e)}", exc_info=True)
         return None
-    finally:
-        if conn:
-            conn.close()
