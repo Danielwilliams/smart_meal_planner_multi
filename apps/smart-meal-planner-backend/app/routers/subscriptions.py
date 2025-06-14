@@ -3163,3 +3163,26 @@ async def update_user_payment_method(
         "message": "This is a placeholder for updating payment method",
         "payment_method": payment_method.dict()
     }
+
+# User Management endpoints added to subscriptions router since it works
+@router.get("/user-management/admin/permissions")
+async def admin_permissions():
+    return {
+        "can_pause_users": True,
+        "can_delete_users": True,
+        "can_restore_users": True,
+        "can_view_all_users": True,
+        "can_manage_org_users": True,
+        "is_system_admin": True
+    }
+
+@router.get("/user-management/org/permissions")
+async def org_permissions():
+    return {
+        "can_pause_users": True,
+        "can_delete_users": True,
+        "can_restore_users": True,
+        "can_view_all_users": False,
+        "can_manage_org_users": True,
+        "is_system_admin": False
+    }

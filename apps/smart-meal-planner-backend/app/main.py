@@ -189,28 +189,7 @@ def create_app() -> FastAPI:
     async def test_org():
         return {"message": "Organization route test successful"}
         
-    @app.get("/api/user-management/admin/permissions")
-    async def admin_permissions():
-        from fastapi.responses import JSONResponse
-        return JSONResponse({
-            "can_pause_users": True,
-            "can_delete_users": True,
-            "can_restore_users": True,
-            "can_view_all_users": True,
-            "can_manage_org_users": True,
-            "is_system_admin": True
-        })
-        
-    @app.get("/api/user-management/org/permissions")
-    async def org_permissions():
-        return {
-            "can_pause_users": True,
-            "can_delete_users": True,
-            "can_restore_users": True,
-            "can_view_all_users": False,
-            "can_manage_org_users": True,
-            "is_system_admin": False
-        }
+    # User management endpoints moved to subscriptions router
 
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request, exc):
