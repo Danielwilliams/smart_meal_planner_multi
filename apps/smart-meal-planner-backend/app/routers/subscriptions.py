@@ -302,10 +302,18 @@ async def subscription_status(user = Depends(get_user_from_token)):
         is_client = account_type == 'client'
         subscription = None
 
+        # Use our new hierarchical subscription checking
+        has_subscription_access = check_user_subscription_access(
+            user_id=user_id,
+            account_type=account_type,
+            organization_id=organization_id,
+            include_free_tier=True
+        )
+        
+        # Get subscription details based on account type
         if is_client:
-            # For client accounts, check their organization's subscription
+            # For client accounts, get their organization's subscription details
             if organization_id:
-                # Use organization_id from JWT token if available
                 subscription = get_subscription_details(organization_id=organization_id)
             else:
                 # Look up the client's organization
@@ -328,13 +336,13 @@ async def subscription_status(user = Depends(get_user_from_token)):
             # For individual accounts, check their personal subscription
             subscription = get_subscription_details(user_id=user_id)
 
-        if subscription:
+        if subscription and has_subscription_access:
             # Create a DTO with default values for all required fields
             result = {
                 "has_subscription": True,
                 "subscription_type": subscription.get('subscription_type', 'free'),
                 "status": subscription.get('status', 'unknown'),
-                "is_active": subscription.get('is_active', False),
+                "is_active": has_subscription_access,  # Use our hierarchical check result
                 "is_free_tier": subscription.get('subscription_type', 'free') == 'free',
                 "currency": subscription.get('currency', 'usd'),
                 "monthly_amount": float(subscription.get('monthly_amount', 0))

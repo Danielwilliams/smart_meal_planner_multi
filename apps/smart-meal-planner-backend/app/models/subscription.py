@@ -958,9 +958,11 @@ def check_user_subscription_access(user_id, account_type=None, organization_id=N
         if account_type == 'client':
             if organization_id:
                 # Use the provided organization_id
+                logger.info(f"Client {user_id} using JWT organization_id: {organization_id}")
                 return check_subscription_status(organization_id=organization_id, include_free_tier=include_free_tier)
             else:
                 # Look up the client's organization
+                logger.info(f"Client {user_id} missing organization_id, looking up in database")
                 conn = get_db_connection()
                 with conn.cursor() as cur:
                     cur.execute("""
@@ -976,7 +978,7 @@ def check_user_subscription_access(user_id, account_type=None, organization_id=N
                         logger.info(f"Found organization {client_org_id} for client {user_id}")
                         return check_subscription_status(organization_id=client_org_id, include_free_tier=include_free_tier)
                     else:
-                        logger.warning(f"No organization found for client {user_id}")
+                        logger.error(f"No active organization found for client {user_id}")
                         return False
         
         # For organization and individual accounts, check their own subscription
