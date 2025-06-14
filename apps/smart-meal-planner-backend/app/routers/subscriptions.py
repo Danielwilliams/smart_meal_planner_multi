@@ -3192,31 +3192,21 @@ async def admin_permissions(current_user: Dict[str, Any] = Depends(get_user_from
 async def org_permissions(current_user: Dict[str, Any] = Depends(get_user_from_token)):
     """Get organization user management permissions"""
     account_type = current_user.get('account_type')
-    user_id = current_user.get('user_id')
+    organization_id = current_user.get('organization_id')
+    role = current_user.get('role')
     
-    # Organization accounts can manage their users
-    if account_type == 'organization':
-        # Check if user owns an organization
-        try:
-            with get_db_cursor(dict_cursor=True) as (cur, conn):
-                cur.execute("""
-                    SELECT id FROM organizations WHERE owner_id = %s
-                """, (user_id,))
-                org = cur.fetchone()
-                
-                if org:
-                    return {
-                        "can_pause_users": True,
-                        "can_delete_users": True,
-                        "can_restore_users": True,
-                        "can_view_all_users": False,
-                        "can_manage_org_users": True,
-                        "is_system_admin": False
-                    }
-        except Exception as e:
-            logger.error(f"Error checking organization ownership: {str(e)}")
+    # Organization accounts can manage their users if they have an organization_id and are owners
+    if account_type == 'organization' and organization_id and role == 'owner':
+        return {
+            "can_pause_users": True,
+            "can_delete_users": True,
+            "can_restore_users": True,
+            "can_view_all_users": False,
+            "can_manage_org_users": True,
+            "is_system_admin": False
+        }
     
-    # No permissions for other account types or if no organization found
+    # No permissions for other account types
     return {
         "can_pause_users": False,
         "can_delete_users": False,
@@ -3320,6 +3310,9 @@ async def list_org_users(
     """List organization users (organization owners only)"""
     if current_user.get('account_type') != 'organization':
         raise HTTPException(status_code=403, detail="Organization access required")
+    
+    if current_user.get('role') != 'owner':
+        raise HTTPException(status_code=403, detail="Organization owner access required")
     
     org_id = current_user.get('organization_id')
     if not org_id:
