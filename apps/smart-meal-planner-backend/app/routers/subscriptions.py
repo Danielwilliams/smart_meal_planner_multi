@@ -3192,19 +3192,31 @@ async def admin_permissions(current_user: Dict[str, Any] = Depends(get_user_from
 async def org_permissions(current_user: Dict[str, Any] = Depends(get_user_from_token)):
     """Get organization user management permissions"""
     account_type = current_user.get('account_type')
+    user_id = current_user.get('user_id')
     
     # Organization accounts can manage their users
     if account_type == 'organization':
-        return {
-            "can_pause_users": True,
-            "can_delete_users": True,
-            "can_restore_users": True,
-            "can_view_all_users": False,
-            "can_manage_org_users": True,
-            "is_system_admin": False
-        }
+        # Check if user owns an organization
+        try:
+            with get_db_cursor(dict_cursor=True) as (cur, conn):
+                cur.execute("""
+                    SELECT id FROM organizations WHERE owner_id = %s
+                """, (user_id,))
+                org = cur.fetchone()
+                
+                if org:
+                    return {
+                        "can_pause_users": True,
+                        "can_delete_users": True,
+                        "can_restore_users": True,
+                        "can_view_all_users": False,
+                        "can_manage_org_users": True,
+                        "is_system_admin": False
+                    }
+        except Exception as e:
+            logger.error(f"Error checking organization ownership: {str(e)}")
     
-    # No permissions for other account types
+    # No permissions for other account types or if no organization found
     return {
         "can_pause_users": False,
         "can_delete_users": False,

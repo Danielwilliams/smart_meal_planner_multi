@@ -104,7 +104,7 @@ async def get_user_organizations(user=Depends(get_user_from_token)):
 @router.get("/{org_id}")
 async def get_organization(
     org_id: int,
-    user=Depends(get_user_from_token, use_cache=False)
+    user=Depends(get_user_from_token)
 ):
     """Get organization details (basic info is public for invitation flow)"""
     # For non-authenticated requests or invitation flow, allow access to basic info
