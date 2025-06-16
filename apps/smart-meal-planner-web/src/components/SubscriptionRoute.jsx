@@ -64,64 +64,91 @@ function SubscriptionRoute({ children }) {
   // Log the subscription status for debugging
   console.log('Raw subscription status:', subscriptionStatus);
 
-  // SUBSCRIPTION_ENFORCE environment variable is set to false in Railway,
-  // so we should grant access to all users regardless of subscription status
+  // First attempt: Check if we received a valid response
+  // If we received nothing, assume the backend created a free tier subscription and grant access
+  if (!subscriptionStatus) {
+    console.log('No subscription status received, assuming free tier access was granted');
+    return children;
+  }
 
-  // Check for explicit environment override in the response
-  const enforcementDisabled = subscriptionStatus &&
-    (subscriptionStatus.subscription_enforce === false ||
-     subscriptionStatus.enforce === false);
+  // Second attempt: check explicit subscription status flags
 
-  // Check subscription status
-  const isActiveSubscription = subscriptionStatus &&
-    (subscriptionStatus.status === 'active' || subscriptionStatus.status === 'trialing');
+  // Check for a subscription in the response
+  const hasSubscription = subscriptionStatus.has_subscription === true;
 
-  const isFreeTier = subscriptionStatus &&
-    (subscriptionStatus.is_free_tier === true ||
-     subscriptionStatus.subscription_type === 'free');
+  // Check for active status
+  const isActiveSubscription =
+    subscriptionStatus.status === 'active' ||
+    subscriptionStatus.status === 'trialing';
 
-  const hasAccessFlag = subscriptionStatus &&
-    (subscriptionStatus.is_active === true ||
-     subscriptionStatus.has_access === true);
+  // Check for free tier indicators
+  const isFreeTier =
+    subscriptionStatus.is_free_tier === true ||
+    subscriptionStatus.subscription_type === 'free' ||
+    subscriptionStatus.status === 'free_tier' ||
+    subscriptionStatus.status === 'free';
 
-  const hasSubscription = subscriptionStatus &&
-    subscriptionStatus.has_subscription === true;
+  // Check for active access flag
+  const hasAccessFlag =
+    subscriptionStatus.is_active === true ||
+    subscriptionStatus.has_access === true;
 
-  const isFreeTrialActive = subscriptionStatus &&
-    ((subscriptionStatus.status === 'free_tier' || subscriptionStatus.status === 'free') &&
+  // Check for active free trial
+  const isFreeTrialActive =
+    (subscriptionStatus.status === 'free_tier' || subscriptionStatus.status === 'free') &&
     subscriptionStatus.beta_expiration_date &&
-    new Date(subscriptionStatus.beta_expiration_date) > new Date());
+    new Date(subscriptionStatus.beta_expiration_date) > new Date();
 
-  // Check if user is a grandfathered free user (no expiration date = permanent free access)
-  const isGrandfatheredFreeUser = subscriptionStatus &&
-    ((subscriptionStatus.status === 'free_tier' || subscriptionStatus.status === 'free') &&
-    !subscriptionStatus.beta_expiration_date);
+  // Check for grandfathered free user status
+  const isGrandfatheredFreeUser =
+    (subscriptionStatus.status === 'free_tier' || subscriptionStatus.status === 'free') &&
+    !subscriptionStatus.beta_expiration_date;
 
-  // Check if subscription checking is entirely disabled
-  const subscriptionCheckingDisabled =
-    subscriptionStatus?.enabled === false ||
-    enforcementDisabled;
+  // Check if available_plans exists but is empty, indicating backend didn't find plans to suggest
+  const hasNoPlans =
+    subscriptionStatus.available_plans &&
+    subscriptionStatus.available_plans.length === 0;
 
+  // Log details for debugging
   console.log('Subscription access evaluation:', {
-    enforcementDisabled,
+    hasSubscription,
     isActiveSubscription,
     isFreeTier,
     hasAccessFlag,
-    hasSubscription,
     isFreeTrialActive,
     isGrandfatheredFreeUser,
-    subscriptionCheckingDisabled
+    hasNoPlans
   });
 
-  // Allow access if subscription checking is disabled or any access condition is true
-  if (subscriptionCheckingDisabled ||
+  // If we detect ANY indication of valid subscription access, grant access
+  if (hasSubscription ||
       isActiveSubscription ||
       isFreeTrialActive ||
       isGrandfatheredFreeUser ||
       hasAccessFlag ||
       isFreeTier ||
-      hasSubscription) {
+      hasNoPlans) {
+    console.log('Access granted based on subscription status');
     return children;
+  }
+
+  // Third attempt: check for a response that only has available_plans
+  // If we got here but all we have is available_plans, that means the backend
+  // didn't complete creating the free tier subscription
+  if (subscriptionStatus &&
+      subscriptionStatus.available_plans &&
+      Object.keys(subscriptionStatus).length <= 2) {
+    console.log('Backend responded with only available_plans, attempting to retry');
+
+    // If this happens repeatedly, we should not block access
+    const retryCount = sessionStorage.getItem('subscriptionRetryCount') || 0;
+    sessionStorage.setItem('subscriptionRetryCount', parseInt(retryCount) + 1);
+
+    // If we've tried more than 3 times, just grant access anyway
+    if (parseInt(retryCount) >= 3) {
+      console.log('Multiple retry attempts - granting access anyway');
+      return children;
+    }
   }
 
   // Show subscription required page

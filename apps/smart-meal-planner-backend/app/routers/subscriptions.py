@@ -302,21 +302,95 @@ async def subscription_status(user = Depends(get_user_from_token)):
         is_client = account_type == 'client'
         subscription = None
 
-        # Check if subscription enforcement is disabled
+        # We want subscription enforcement enabled, but all users should have access
+        # through either a free subscription or beta tier
         import os
-        subscription_enforce = os.getenv("SUBSCRIPTION_ENFORCE", "false").lower() == "true"
-        if not subscription_enforce:
-            # If subscription enforcement is disabled, all users have access
-            has_subscription_access = True
-            logger.info(f"Subscription enforcement disabled - granting access to user {user_id}")
-        else:
-            # Use our hierarchical subscription checking
-            has_subscription_access = check_user_subscription_access(
-                user_id=user_id,
-                account_type=account_type,
-                organization_id=organization_id,
-                include_free_tier=True
-            )
+        from app.db import get_db_connection
+        from datetime import datetime, timedelta
+
+        subscription_enforce = os.getenv("SUBSCRIPTION_ENFORCE", "true").lower() == "true"
+
+        # Check if the user has a subscription record
+        conn = None
+        try:
+            conn = get_db_connection()
+            with conn.cursor() as cur:
+                # First, check if user has a subscription record in their profile
+                if account_type != 'client':  # For non-client accounts
+                    cur.execute("""
+                        SELECT subscription_id FROM user_profiles
+                        WHERE id = %s
+                    """, (user_id,))
+                    result = cur.fetchone()
+
+                    # If no subscription found, create a free tier subscription for this user
+                    if not result or not result[0]:
+                        logger.info(f"No subscription found for user {user_id} - creating free tier subscription")
+                        # Create a free tier subscription
+                        cur.execute("""
+                            INSERT INTO subscriptions (
+                                user_id, subscription_type, payment_provider,
+                                monthly_amount, currency, status
+                            ) VALUES (%s, 'free', 'none', 0.00, 'USD', 'active')
+                            RETURNING id
+                        """, (user_id,))
+                        new_subscription_id = cur.fetchone()[0]
+
+                        # Update the user's profile with the new subscription
+                        cur.execute("""
+                            UPDATE user_profiles
+                            SET subscription_id = %s
+                            WHERE id = %s
+                        """, (new_subscription_id, user_id))
+
+                        conn.commit()
+                        logger.info(f"Created free tier subscription {new_subscription_id} for user {user_id}")
+                else:
+                    # For client accounts, make sure their organization has a subscription
+                    if organization_id:
+                        cur.execute("""
+                            SELECT subscription_id FROM organizations
+                            WHERE id = %s
+                        """, (organization_id,))
+                        result = cur.fetchone()
+
+                        # If no subscription found, create a free tier subscription for this organization
+                        if not result or not result[0]:
+                            logger.info(f"No subscription found for organization {organization_id} - creating free tier subscription")
+                            # Create a free tier subscription
+                            cur.execute("""
+                                INSERT INTO subscriptions (
+                                    organization_id, subscription_type, payment_provider,
+                                    monthly_amount, currency, status
+                                ) VALUES (%s, 'free', 'none', 0.00, 'USD', 'active')
+                                RETURNING id
+                            """, (organization_id,))
+                            new_subscription_id = cur.fetchone()[0]
+
+                            # Update the organization with the new subscription
+                            cur.execute("""
+                                UPDATE organizations
+                                SET subscription_id = %s
+                                WHERE id = %s
+                            """, (new_subscription_id, organization_id))
+
+                            conn.commit()
+                            logger.info(f"Created free tier subscription {new_subscription_id} for organization {organization_id}")
+        except Exception as e:
+            logger.error(f"Error ensuring free tier subscription: {str(e)}", exc_info=True)
+            if conn:
+                conn.rollback()
+        finally:
+            if conn:
+                conn.close()
+
+        # Now check subscription access normally - users should all have access now
+        has_subscription_access = check_user_subscription_access(
+            user_id=user_id,
+            account_type=account_type,
+            organization_id=organization_id,
+            include_free_tier=True
+        )
         
         # Get subscription details based on account type
         if is_client:

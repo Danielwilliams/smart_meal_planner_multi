@@ -118,22 +118,59 @@ const subscriptionService = {
             (response.has_subscription === true ||
              response.status === 'active' ||
              response.status === 'trialing' ||
-             response.status === 'free_tier')) {
+             response.status === 'free_tier' ||
+             response.subscription_type === 'free')) {
           response.is_active = true;
         }
 
         // Add is_free_tier flag if missing but response indicates a free tier
         if (response.is_free_tier === undefined &&
             (response.subscription_type === 'free' ||
-             response.status === 'free_tier')) {
+             response.status === 'free_tier' ||
+             response.status === 'free')) {
           response.is_free_tier = true;
+        }
+
+        // If we only have available_plans but nothing else, try to check if we're a free tier user
+        if (!response.has_subscription && response.available_plans) {
+          // Make an explicit check for subscription status in user profile
+          try {
+            // Send a second request to get user profile data which may contain subscription info
+            const userProfile = await makeApiRequest('/api/user/profile', {
+              method: 'GET'
+            });
+
+            console.log('User profile for subscription check:', userProfile);
+
+            if (userProfile && userProfile.account_type) {
+              // If the user has any account type, we assume they should have access
+              // as our backend creates free tier subscriptions for all users
+              response.has_subscription = true;
+              response.is_active = true;
+              response.is_free_tier = true;
+              response.subscription_type = 'free';
+              response.status = 'active';
+            }
+          } catch (profileError) {
+            console.error('Error fetching user profile for subscription check:', profileError);
+          }
         }
       }
 
       return response;
     } catch (error) {
       console.error('Error fetching subscription status:', error);
-      throw error;
+
+      // Return a default free tier subscription response on error
+      // This helps ensure users don't get locked out due to network issues
+      return {
+        has_subscription: true,
+        is_active: true,
+        is_free_tier: true,
+        subscription_type: 'free',
+        status: 'active',
+        error_fallback: true
+      };
     }
   },
 
