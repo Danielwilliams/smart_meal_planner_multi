@@ -937,24 +937,33 @@ def migrate_all_users_to_free_tier(days_until_expiration=90):
 def check_user_subscription_access(user_id, account_type=None, organization_id=None, include_free_tier=True):
     """
     Check if a user has subscription access considering organizational hierarchies
-    
+
     For client accounts: Check their organization's subscription
     For organization accounts: Check their own subscription
     For individual accounts: Check their own subscription
-    
+
     Args:
         user_id: ID of the user to check
         account_type: Type of account ('client', 'organization', 'individual')
         organization_id: Organization ID (if known)
         include_free_tier: Whether to consider free tier as active
-        
+
     Returns:
         Boolean indicating if the user has subscription access
     """
+    # Check if subscription enforcement is disabled via environment variable
+    import os
+    subscription_enforce = os.getenv("SUBSCRIPTION_ENFORCE", "false").lower() == "true"
+
+    if not subscription_enforce:
+        # If subscription enforcement is disabled, all users have access
+        logger.info(f"Subscription enforcement disabled (SUBSCRIPTION_ENFORCE=false) - granting access to user {user_id}")
+        return True
+
     conn = None
     try:
         logger.info(f"Checking user subscription access: user_id={user_id}, account_type={account_type}, org_id={organization_id}")
-        
+
         # For client accounts, check their organization's subscription
         if account_type == 'client':
             if organization_id:
@@ -967,13 +976,13 @@ def check_user_subscription_access(user_id, account_type=None, organization_id=N
                 conn = get_db_connection()
                 with conn.cursor() as cur:
                     cur.execute("""
-                        SELECT oc.organization_id 
-                        FROM organization_clients oc 
+                        SELECT oc.organization_id
+                        FROM organization_clients oc
                         WHERE oc.client_id = %s AND oc.status = 'active'
                         LIMIT 1
                     """, (user_id,))
                     result = cur.fetchone()
-                    
+
                     if result:
                         client_org_id = result[0]
                         logger.info(f"Found organization {client_org_id} for client {user_id}")
@@ -981,11 +990,11 @@ def check_user_subscription_access(user_id, account_type=None, organization_id=N
                     else:
                         logger.error(f"No active organization found for client {user_id}")
                         return False
-        
+
         # For organization and individual accounts, check their own subscription
         else:
             return check_subscription_status(user_id=user_id, include_free_tier=include_free_tier)
-            
+
     except Exception as e:
         logger.error(f"Error checking user subscription access: {str(e)}", exc_info=True)
         return False
@@ -1005,6 +1014,15 @@ def check_subscription_status(user_id=None, organization_id=None, include_free_t
     Returns:
         Boolean indicating if the user/org has an active subscription
     """
+    # Check if subscription enforcement is disabled via environment variable
+    import os
+    subscription_enforce = os.getenv("SUBSCRIPTION_ENFORCE", "false").lower() == "true"
+
+    if not subscription_enforce:
+        # If subscription enforcement is disabled, all subscriptions are considered active
+        logger.info(f"Subscription enforcement disabled (SUBSCRIPTION_ENFORCE=false) - all subscriptions considered active")
+        return True
+
     conn = None
     try:
         logger.info(f"Checking subscription status: user_id={user_id}, org_id={organization_id}")
