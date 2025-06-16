@@ -62,21 +62,27 @@ function SubscriptionRoute({ children }) {
   }
 
   // Check subscription status
-  const isActiveSubscription = subscriptionStatus && 
+  const isActiveSubscription = subscriptionStatus &&
     (subscriptionStatus.status === 'active' || subscriptionStatus.status === 'trialing');
 
-  const isFreeTrialActive = subscriptionStatus && 
-    subscriptionStatus.status === 'free_tier' && 
+  const isFreeTier = subscriptionStatus &&
+    subscriptionStatus.is_free_tier === true;
+
+  const hasAccessFlag = subscriptionStatus &&
+    subscriptionStatus.is_active === true;
+
+  const isFreeTrialActive = subscriptionStatus &&
+    subscriptionStatus.status === 'free_tier' &&
     subscriptionStatus.beta_expiration_date &&
     new Date(subscriptionStatus.beta_expiration_date) > new Date();
 
   // Check if user is a grandfathered free user (no expiration date = permanent free access)
-  const isGrandfatheredFreeUser = subscriptionStatus && 
-    subscriptionStatus.status === 'free_tier' && 
+  const isGrandfatheredFreeUser = subscriptionStatus &&
+    subscriptionStatus.status === 'free_tier' &&
     !subscriptionStatus.beta_expiration_date;
 
-  // Allow access if user has active subscription, active free trial, or is grandfathered
-  if (isActiveSubscription || isFreeTrialActive || isGrandfatheredFreeUser) {
+  // Allow access if user has active subscription, active free trial, is grandfathered, or backend says they have access
+  if (isActiveSubscription || isFreeTrialActive || isGrandfatheredFreeUser || hasAccessFlag || isFreeTier) {
     return children;
   }
 

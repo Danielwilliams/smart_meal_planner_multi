@@ -302,13 +302,21 @@ async def subscription_status(user = Depends(get_user_from_token)):
         is_client = account_type == 'client'
         subscription = None
 
-        # Use our new hierarchical subscription checking
-        has_subscription_access = check_user_subscription_access(
-            user_id=user_id,
-            account_type=account_type,
-            organization_id=organization_id,
-            include_free_tier=True
-        )
+        # Check if subscription enforcement is disabled
+        import os
+        subscription_enforce = os.getenv("SUBSCRIPTION_ENFORCE", "false").lower() == "true"
+        if not subscription_enforce:
+            # If subscription enforcement is disabled, all users have access
+            has_subscription_access = True
+            logger.info(f"Subscription enforcement disabled - granting access to user {user_id}")
+        else:
+            # Use our hierarchical subscription checking
+            has_subscription_access = check_user_subscription_access(
+                user_id=user_id,
+                account_type=account_type,
+                organization_id=organization_id,
+                include_free_tier=True
+            )
         
         # Get subscription details based on account type
         if is_client:
