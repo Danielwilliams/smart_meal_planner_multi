@@ -102,9 +102,34 @@ const subscriptionService = {
    */
   async getSubscriptionStatus() {
     try {
+      // Use POST method to match the endpoint in backend (which accepts both GET and POST)
       const response = await makeApiRequest('/api/subscriptions/status', {
-        method: 'GET'  // Explicitly specify GET method
+        method: 'POST'
       });
+
+      // For debugging
+      console.log('Subscription status response:', response);
+
+      // If response indicates we have access but frontend doesn't recognize the format,
+      // add standardized fields for the frontend
+      if (response) {
+        // Add is_active flag if missing but should have access
+        if (response.is_active === undefined &&
+            (response.has_subscription === true ||
+             response.status === 'active' ||
+             response.status === 'trialing' ||
+             response.status === 'free_tier')) {
+          response.is_active = true;
+        }
+
+        // Add is_free_tier flag if missing but response indicates a free tier
+        if (response.is_free_tier === undefined &&
+            (response.subscription_type === 'free' ||
+             response.status === 'free_tier')) {
+          response.is_free_tier = true;
+        }
+      }
+
       return response;
     } catch (error) {
       console.error('Error fetching subscription status:', error);

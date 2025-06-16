@@ -61,28 +61,66 @@ function SubscriptionRoute({ children }) {
     return <Navigate to="/login" replace />;
   }
 
+  // Log the subscription status for debugging
+  console.log('Raw subscription status:', subscriptionStatus);
+
+  // SUBSCRIPTION_ENFORCE environment variable is set to false in Railway,
+  // so we should grant access to all users regardless of subscription status
+
+  // Check for explicit environment override in the response
+  const enforcementDisabled = subscriptionStatus &&
+    (subscriptionStatus.subscription_enforce === false ||
+     subscriptionStatus.enforce === false);
+
   // Check subscription status
   const isActiveSubscription = subscriptionStatus &&
     (subscriptionStatus.status === 'active' || subscriptionStatus.status === 'trialing');
 
   const isFreeTier = subscriptionStatus &&
-    subscriptionStatus.is_free_tier === true;
+    (subscriptionStatus.is_free_tier === true ||
+     subscriptionStatus.subscription_type === 'free');
 
   const hasAccessFlag = subscriptionStatus &&
-    subscriptionStatus.is_active === true;
+    (subscriptionStatus.is_active === true ||
+     subscriptionStatus.has_access === true);
+
+  const hasSubscription = subscriptionStatus &&
+    subscriptionStatus.has_subscription === true;
 
   const isFreeTrialActive = subscriptionStatus &&
-    subscriptionStatus.status === 'free_tier' &&
+    ((subscriptionStatus.status === 'free_tier' || subscriptionStatus.status === 'free') &&
     subscriptionStatus.beta_expiration_date &&
-    new Date(subscriptionStatus.beta_expiration_date) > new Date();
+    new Date(subscriptionStatus.beta_expiration_date) > new Date());
 
   // Check if user is a grandfathered free user (no expiration date = permanent free access)
   const isGrandfatheredFreeUser = subscriptionStatus &&
-    subscriptionStatus.status === 'free_tier' &&
-    !subscriptionStatus.beta_expiration_date;
+    ((subscriptionStatus.status === 'free_tier' || subscriptionStatus.status === 'free') &&
+    !subscriptionStatus.beta_expiration_date);
 
-  // Allow access if user has active subscription, active free trial, is grandfathered, or backend says they have access
-  if (isActiveSubscription || isFreeTrialActive || isGrandfatheredFreeUser || hasAccessFlag || isFreeTier) {
+  // Check if subscription checking is entirely disabled
+  const subscriptionCheckingDisabled =
+    subscriptionStatus?.enabled === false ||
+    enforcementDisabled;
+
+  console.log('Subscription access evaluation:', {
+    enforcementDisabled,
+    isActiveSubscription,
+    isFreeTier,
+    hasAccessFlag,
+    hasSubscription,
+    isFreeTrialActive,
+    isGrandfatheredFreeUser,
+    subscriptionCheckingDisabled
+  });
+
+  // Allow access if subscription checking is disabled or any access condition is true
+  if (subscriptionCheckingDisabled ||
+      isActiveSubscription ||
+      isFreeTrialActive ||
+      isGrandfatheredFreeUser ||
+      hasAccessFlag ||
+      isFreeTier ||
+      hasSubscription) {
     return children;
   }
 
