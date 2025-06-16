@@ -157,24 +157,12 @@ function SubscriptionRoute({ children }) {
     return children;
   }
 
-  // Third attempt: check for a response that only has available_plans
-  // If we got here but all we have is available_plans, that means the backend
-  // didn't complete creating the free tier subscription
-  if (subscriptionStatus &&
-      subscriptionStatus.available_plans &&
-      Object.keys(subscriptionStatus).length <= 2) {
-    console.log('Backend responded with only available_plans, attempting to retry');
-
-    // If this happens repeatedly, we should not block access
-    const retryCount = sessionStorage.getItem('subscriptionRetryCount') || 0;
-    sessionStorage.setItem('subscriptionRetryCount', parseInt(retryCount) + 1);
-
-    // If we've tried more than 2 times, just grant access anyway
-    if (parseInt(retryCount) >= 2) {
-      console.log('Multiple retry attempts - granting access anyway');
-      sessionStorage.setItem('freeAccessGranted', 'true');
-      return children;
-    }
+  // For any authenticated user, just grant access regardless of subscription
+  // This is a safety measure to ensure no one gets locked out
+  if (isAuthenticated) {
+    console.log('User is authenticated - granting access regardless of subscription status');
+    sessionStorage.setItem('freeAccessGranted', 'true');
+    return children;
   }
 
   // Show subscription required page

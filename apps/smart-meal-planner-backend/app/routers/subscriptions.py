@@ -418,29 +418,45 @@ async def subscription_status(user = Depends(get_user_from_token)):
             # For individual accounts, check their personal subscription
             subscription = get_subscription_details(user_id=user_id)
 
-        if subscription and has_subscription_access:
+        # If user has subscription access, always return a valid subscription
+        # even if subscription details weren't found
+        if has_subscription_access:
             # Create a DTO with default values for all required fields
             result = {
                 "has_subscription": True,
-                "subscription_type": subscription.get('subscription_type', 'free'),
-                "status": subscription.get('status', 'unknown'),
-                "is_active": has_subscription_access,  # Use our hierarchical check result
-                "is_free_tier": subscription.get('subscription_type', 'free') == 'free',
-                "currency": subscription.get('currency', 'usd'),
-                "monthly_amount": float(subscription.get('monthly_amount', 0))
+                "is_active": True,
+                "status": "active"
             }
 
-            # Add expiration details if available
-            if subscription.get('trial_end'):
-                result["expires_at"] = subscription['trial_end'].isoformat()
-                result["days_remaining"] = subscription.get('trial_days_remaining', 0)
-            elif subscription.get('current_period_end'):
-                result["renews_at"] = subscription['current_period_end'].isoformat()
-                result["days_remaining"] = subscription.get('days_remaining', 0)
+            # If we have actual subscription details, add them
+            if subscription:
+                result.update({
+                    "subscription_type": subscription.get('subscription_type', 'free'),
+                    "is_free_tier": subscription.get('subscription_type', 'free') == 'free',
+                    "currency": subscription.get('currency', 'usd'),
+                    "monthly_amount": float(subscription.get('monthly_amount', 0))
+                })
 
-            # Add payment details if available
-            if subscription.get('payment_display'):
-                result["payment_method"] = subscription['payment_display']
+                # Add expiration details if available
+                if subscription.get('trial_end'):
+                    result["expires_at"] = subscription['trial_end'].isoformat()
+                    result["days_remaining"] = subscription.get('trial_days_remaining', 0)
+                elif subscription.get('current_period_end'):
+                    result["renews_at"] = subscription['current_period_end'].isoformat()
+                    result["days_remaining"] = subscription.get('days_remaining', 0)
+
+                # Add payment details if available
+                if subscription.get('payment_display'):
+                    result["payment_method"] = subscription['payment_display']
+            else:
+                # If no subscription details but user has access, use free tier defaults
+                result.update({
+                    "subscription_type": "free",
+                    "is_free_tier": True,
+                    "currency": "usd",
+                    "monthly_amount": 0.0,
+                    "status": "active"
+                })
 
             # Add organization context for clients
             if is_client:
@@ -448,7 +464,7 @@ async def subscription_status(user = Depends(get_user_from_token)):
 
             return result
         else:
-            # No subscription found
+            # No subscription access found
             return {
                 "has_subscription": False,
                 "available_plans": [

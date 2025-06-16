@@ -101,6 +101,20 @@ const subscriptionService = {
    * @returns {Promise<Object>} Subscription status data
    */
   async getSubscriptionStatus() {
+    // First check if we've already granted free access in this session
+    const freeAccessGranted = sessionStorage.getItem('freeAccessGranted') === 'true';
+    if (freeAccessGranted) {
+      console.log('Free access already granted in session - returning cached free tier status');
+      return {
+        has_subscription: true,
+        is_active: true,
+        is_free_tier: true,
+        subscription_type: 'free',
+        status: 'active',
+        cached: true
+      };
+    }
+
     try {
       // Use POST method to match the endpoint in backend (which accepts both GET and POST)
       const response = await makeApiRequest('/api/subscriptions/status', {
@@ -142,8 +156,10 @@ const subscriptionService = {
           response.is_free_tier = true;
           response.subscription_type = 'free';
           response.status = 'active';
+        }
 
-          // Store in sessionStorage to persist across page navigations
+        // If this response grants access, store in sessionStorage
+        if (response.has_subscription || response.is_active || response.is_free_tier) {
           try {
             sessionStorage.setItem('freeAccessGranted', 'true');
           } catch (e) {
@@ -158,7 +174,7 @@ const subscriptionService = {
 
       // Return a default free tier subscription response on error
       // This helps ensure users don't get locked out due to network issues
-      return {
+      const freeTierResponse = {
         has_subscription: true,
         is_active: true,
         is_free_tier: true,
@@ -166,6 +182,15 @@ const subscriptionService = {
         status: 'active',
         error_fallback: true
       };
+
+      // Store the free tier access in session storage
+      try {
+        sessionStorage.setItem('freeAccessGranted', 'true');
+      } catch (e) {
+        console.error('Error storing free access flag in session storage:', e);
+      }
+
+      return freeTierResponse;
     }
   },
 
