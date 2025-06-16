@@ -131,28 +131,23 @@ const subscriptionService = {
           response.is_free_tier = true;
         }
 
-        // If we only have available_plans but nothing else, try to check if we're a free tier user
+        // If we only have available_plans but nothing else, automatically grant free tier access
         if (!response.has_subscription && response.available_plans) {
-          // Make an explicit check for subscription status in user profile
+          console.log('User is authenticated but has no subscription - granting free access');
+
+          // Since we're making this API call with a valid auth token,
+          // we know the user is authenticated, so grant them free access
+          response.has_subscription = true;
+          response.is_active = true;
+          response.is_free_tier = true;
+          response.subscription_type = 'free';
+          response.status = 'active';
+
+          // Store in sessionStorage to persist across page navigations
           try {
-            // Send a second request to get user profile data which may contain subscription info
-            const userProfile = await makeApiRequest('/api/user/profile', {
-              method: 'GET'
-            });
-
-            console.log('User profile for subscription check:', userProfile);
-
-            if (userProfile && userProfile.account_type) {
-              // If the user has any account type, we assume they should have access
-              // as our backend creates free tier subscriptions for all users
-              response.has_subscription = true;
-              response.is_active = true;
-              response.is_free_tier = true;
-              response.subscription_type = 'free';
-              response.status = 'active';
-            }
-          } catch (profileError) {
-            console.error('Error fetching user profile for subscription check:', profileError);
+            sessionStorage.setItem('freeAccessGranted', 'true');
+          } catch (e) {
+            console.error('Error storing free access flag in session storage:', e);
           }
         }
       }

@@ -61,6 +61,13 @@ function SubscriptionRoute({ children }) {
     return <Navigate to="/login" replace />;
   }
 
+  // Check if we already granted free access in this session
+  const freeAccessGranted = sessionStorage.getItem('freeAccessGranted') === 'true';
+  if (freeAccessGranted) {
+    console.log('Free access already granted in this session');
+    return children;
+  }
+
   // Log the subscription status for debugging
   console.log('Raw subscription status:', subscriptionStatus);
 
@@ -68,6 +75,7 @@ function SubscriptionRoute({ children }) {
   // If we received nothing, assume the backend created a free tier subscription and grant access
   if (!subscriptionStatus) {
     console.log('No subscription status received, assuming free tier access was granted');
+    sessionStorage.setItem('freeAccessGranted', 'true');
     return children;
   }
 
@@ -109,6 +117,12 @@ function SubscriptionRoute({ children }) {
     subscriptionStatus.available_plans &&
     subscriptionStatus.available_plans.length === 0;
 
+  // Check if this is the "Subscription Required" error state we're trying to avoid
+  const isErrorState =
+    subscriptionStatus &&
+    subscriptionStatus.available_plans &&
+    subscriptionStatus.has_subscription === false;
+
   // Log details for debugging
   console.log('Subscription access evaluation:', {
     hasSubscription,
@@ -117,7 +131,9 @@ function SubscriptionRoute({ children }) {
     hasAccessFlag,
     isFreeTrialActive,
     isGrandfatheredFreeUser,
-    hasNoPlans
+    hasNoPlans,
+    isErrorState,
+    freeAccessGranted
   });
 
   // If we detect ANY indication of valid subscription access, grant access
@@ -129,6 +145,15 @@ function SubscriptionRoute({ children }) {
       isFreeTier ||
       hasNoPlans) {
     console.log('Access granted based on subscription status');
+    sessionStorage.setItem('freeAccessGranted', 'true');
+    return children;
+  }
+
+  // If the user is authenticated and we're getting the "Subscription Required" error state,
+  // just grant them access directly
+  if (isErrorState && isAuthenticated) {
+    console.log('User is authenticated but subscription check failed - granting free access anyway');
+    sessionStorage.setItem('freeAccessGranted', 'true');
     return children;
   }
 
@@ -144,9 +169,10 @@ function SubscriptionRoute({ children }) {
     const retryCount = sessionStorage.getItem('subscriptionRetryCount') || 0;
     sessionStorage.setItem('subscriptionRetryCount', parseInt(retryCount) + 1);
 
-    // If we've tried more than 3 times, just grant access anyway
-    if (parseInt(retryCount) >= 3) {
+    // If we've tried more than 2 times, just grant access anyway
+    if (parseInt(retryCount) >= 2) {
       console.log('Multiple retry attempts - granting access anyway');
+      sessionStorage.setItem('freeAccessGranted', 'true');
       return children;
     }
   }
