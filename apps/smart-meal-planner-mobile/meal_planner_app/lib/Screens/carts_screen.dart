@@ -1165,7 +1165,13 @@ class _CartsScreenState extends State<CartsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return WillPopScope(
+      onWillPop: () async {
+        // Handle back button press properly
+        Navigator.of(context).pop();
+        return false; // Prevent default back behavior
+      },
+      child: Scaffold(
       appBar: AppBar(
         title: Consumer<CartState>(
           builder: (context, cartState, child) {
@@ -1236,6 +1242,7 @@ class _CartsScreenState extends State<CartsScreen> {
               ),
             ),
         ],
+      ),
       ),
     );
   }

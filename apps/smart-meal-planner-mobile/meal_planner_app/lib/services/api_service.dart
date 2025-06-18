@@ -973,6 +973,215 @@ class ApiService {
     }
   }
   
+  // Get grocery list by menu ID - Direct access method like the web app
+  static Future<Map<String, dynamic>> getGroceryListByMenuId(int menuId, String authToken) async {
+    try {
+      print("Fetching grocery list for menu ID: $menuId");
+      print("Using auth token with length: ${authToken.length}");
+      if (authToken.length >= 10) {
+        print("Auth token starts with: ${authToken.substring(0, 10)}...");
+      } else {
+        print("Auth token is too short: $authToken");
+      }
+
+      // Check if menuId is valid
+      if (menuId <= 0) {
+        print("Invalid menu ID: $menuId");
+        return {
+          "groceryList": [
+            {"name": "Please select a valid menu", "quantity": "", "unit": ""}
+          ]
+        };
+      }
+
+      // Try multiple endpoints in sequence to get the grocery list
+      List<String> endpoints = [
+        "/grocery-list/$menuId",
+        "/menu/$menuId/grocery-list",
+        "/grocery-list/menu/$menuId",
+        "/menu/grocery-list/$menuId",
+        "/menu/shopping-list/$menuId",
+        "/menu/$menuId/shopping-list",
+      ];
+
+      // Try all endpoints sequentially
+      for (String endpoint in endpoints) {
+        print("Trying endpoint: $endpoint");
+        final result = await _get(endpoint, authToken);
+        if (result != null) {
+          print("Found data at endpoint: $endpoint");
+          print("Result type: ${result.runtimeType}");
+
+          if (result is Map) {
+            // Check if groceryList is inside the map
+            if (result.containsKey('groceryList')) {
+              print("Response contains groceryList key");
+              var groceryList = result['groceryList'];
+
+              // Convert to proper format
+              if (groceryList is List) {
+                print("GroceryList is a list with ${groceryList.length} items");
+                return {"groceryList": groceryList};
+              } else if (groceryList is Map) {
+                print("GroceryList is a map with ${groceryList.keys.length} categories");
+                return {"groceryList": groceryList};
+              } else {
+                print("GroceryList is an unexpected type: ${groceryList.runtimeType}");
+              }
+            }
+
+            // If there's no groceryList key but the response seems valid
+            if (result.containsKey('ingredients') || result.containsKey('items')) {
+              var items = result.containsKey('ingredients') ? result['ingredients'] : result['items'];
+              if (items is List) {
+                print("Found ${items.length} items in ingredients/items list");
+                return {"groceryList": items};
+              }
+            }
+
+            // Just return the map as is
+            return Map<String, dynamic>.from(result);
+          } else if (result is List) {
+            print("Got list response with ${result.length} items");
+
+            // Convert ingredients to proper objects
+            List<Map<String, dynamic>> processedItems = [];
+            for (var item in result) {
+              if (item is String) {
+                processedItems.add({"name": item, "quantity": "", "unit": ""});
+              } else if (item is Map) {
+                processedItems.add(Map<String, dynamic>.from(item));
+              }
+            }
+
+            return {"groceryList": processedItems};
+          }
+        }
+      }
+
+      // If all direct attempts fail, try getting the menu details and extracting
+      print("Direct grocery list endpoints failed, trying to get menu details");
+      final menuResult = await _get("/menu/details/$menuId", authToken);
+      if (menuResult != null) {
+        print("Got menu details, extracting grocery list");
+        if (menuResult is Map && menuResult.containsKey('groceryList')) {
+          return {"groceryList": menuResult['groceryList']};
+        } else if (menuResult is Map && menuResult.containsKey('meal_plan')) {
+          // Extract from meal plan
+          var mealPlan = menuResult['meal_plan'];
+          List<Map<String, dynamic>> ingredients = [];
+
+          if (mealPlan is String) {
+            try {
+              mealPlan = jsonDecode(mealPlan);
+            } catch (e) {
+              print("Error parsing meal_plan: $e");
+            }
+          }
+
+          if (mealPlan is Map && mealPlan.containsKey('days')) {
+            var days = mealPlan['days'];
+            if (days is List) {
+              for (var day in days) {
+                if (day is Map) {
+                  // Extract meals
+                  if (day.containsKey('meals') && day['meals'] is List) {
+                    for (var meal in day['meals']) {
+                      if (meal is Map && meal.containsKey('ingredients')) {
+                        var mealIngredients = meal['ingredients'];
+                        if (mealIngredients is List) {
+                          for (var ingredient in mealIngredients) {
+                            if (ingredient is String) {
+                              ingredients.add({"name": ingredient, "quantity": "", "unit": ""});
+                            } else if (ingredient is Map) {
+                              String name = ingredient['name'] ?? '';
+                              String quantity = ingredient['quantity'] ?? '';
+                              String unit = ingredient['unit'] ?? '';
+                              ingredients.add({
+                                "name": name,
+                                "quantity": quantity,
+                                "unit": unit
+                              });
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+
+                  // Extract snacks
+                  if (day.containsKey('snacks') && day['snacks'] is List) {
+                    for (var snack in day['snacks']) {
+                      if (snack is Map && snack.containsKey('ingredients')) {
+                        var snackIngredients = snack['ingredients'];
+                        if (snackIngredients is List) {
+                          for (var ingredient in snackIngredients) {
+                            if (ingredient is String) {
+                              ingredients.add({"name": ingredient, "quantity": "", "unit": ""});
+                            } else if (ingredient is Map) {
+                              String name = ingredient['name'] ?? '';
+                              String quantity = ingredient['quantity'] ?? '';
+                              String unit = ingredient['unit'] ?? '';
+                              ingredients.add({
+                                "name": name,
+                                "quantity": quantity,
+                                "unit": unit
+                              });
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+
+          if (ingredients.isNotEmpty) {
+            print("Extracted ${ingredients.length} ingredients from meal plan");
+            return {"groceryList": ingredients};
+          }
+        }
+      }
+
+      // Use the getShoppingList method directly as fallback
+      print("Falling back to getShoppingList method");
+      final shoppingListResult = await getShoppingList(0, authToken, menuId);
+      if (shoppingListResult != null && shoppingListResult.containsKey('ingredients')) {
+        List<dynamic> ingredients = shoppingListResult['ingredients'];
+        List<Map<String, dynamic>> formattedIngredients = [];
+
+        for (var ingredient in ingredients) {
+          if (ingredient is String) {
+            formattedIngredients.add({"name": ingredient, "quantity": "", "unit": ""});
+          } else if (ingredient is Map) {
+            formattedIngredients.add(Map<String, dynamic>.from(ingredient));
+          }
+        }
+
+        if (formattedIngredients.isNotEmpty) {
+          print("Got ${formattedIngredients.length} ingredients from getShoppingList");
+          return {"groceryList": formattedIngredients};
+        }
+      }
+
+      // Last resort: Generate a placeholder item to avoid UI errors
+      print("All attempts to get grocery list failed, returning placeholder");
+      return {
+        "groceryList": [
+          {"name": "Please select a menu with ingredients", "quantity": "", "unit": ""}
+        ]
+      };
+    } catch (e) {
+      print("Error getting grocery list by menu ID: $e");
+      // Return an empty object instead of an error to avoid UI crashes
+      return {"groceryList": [
+        {"name": "Error loading ingredients", "quantity": "", "unit": ""}
+      ]};
+    }
+  }
+
   // Get shopping list for a menu - Enhanced with AI option
   static Future<Map<String, dynamic>> getShoppingList(int userId, String authToken, int menuId, {bool useAi = false}) async {
     try {
@@ -2825,11 +3034,11 @@ class ApiService {
   ) async {
     try {
       final result = await _post("/invitations/$invitationId/resend", {}, authToken);
-      
+
       if (result != null && result is Map) {
         return _toStringDynamicMap(result);
       }
-      
+
       return {
         "success": false,
         "error": "Could not resend invitation"
@@ -2840,6 +3049,212 @@ class ApiService {
         "success": false,
         "error": e.toString()
       };
+    }
+  }
+
+  // Get user subscription status
+  static Future<Map<String, dynamic>> getUserSubscription(String authToken) async {
+    try {
+      print("Checking user subscription status");
+
+      // Try both GET and POST methods since the web app had issues with method compatibility
+      // First try GET
+      final getResult = await _get("/user/subscription", authToken);
+      if (getResult != null && getResult is Map) {
+        final safeResult = _toStringDynamicMap(getResult);
+        print("Subscription GET response: $safeResult");
+        return safeResult;
+      }
+
+      // If GET fails, try POST
+      final postResult = await _post("/user/subscription", {}, authToken);
+      if (postResult != null && postResult is Map) {
+        final safeResult = _toStringDynamicMap(postResult);
+        print("Subscription POST response: $safeResult");
+        return safeResult;
+      }
+
+      // Check if SUBSCRIPTION_ENFORCE environment variable is disabled
+      final envResult = await _get("/subscriptions/check-enforcement", authToken);
+      if (envResult != null && envResult is Map && envResult.containsKey('enforce_subscription')) {
+        final safeResult = _toStringDynamicMap(envResult);
+        print("Subscription enforcement check: $safeResult");
+
+        if (safeResult['enforce_subscription'] == false) {
+          return {
+            "has_subscription": true,
+            "is_active": true,
+            "status": "active",
+            "subscription_type": "free",
+            "is_free_tier": true,
+            "enforce_subscription": false
+          };
+        }
+      }
+
+      // Default response when API fails but we still want to grant access
+      return {
+        "has_subscription": true,
+        "is_active": true,
+        "status": "active",
+        "subscription_type": "free",
+        "is_free_tier": true
+      };
+    } catch (e) {
+      print("Error getting subscription status: $e");
+      return {
+        "has_subscription": true,
+        "is_active": true,
+        "status": "active",
+        "subscription_type": "free",
+        "is_free_tier": true,
+        "error": e.toString()
+      };
+    }
+  }
+
+  // Get organization clients
+  static Future<List<dynamic>> getOrganizationClientsList(String authToken) async {
+    try {
+      print("Getting organization clients");
+
+      // First try the subscriptions endpoint (which is where they were moved in the web app)
+      final result = await _get("/subscriptions/user-management/org/clients", authToken);
+
+      if (result != null) {
+        if (result is List) {
+          print("Got list of ${result.length} clients from subscriptions endpoint");
+          return result;
+        } else if (result is Map && result.containsKey('clients') && result['clients'] is List) {
+          final clientsList = result['clients'] as List;
+          print("Got list of ${clientsList.length} clients from subscriptions endpoint (wrapped in 'clients' key)");
+          return clientsList;
+        }
+      }
+
+      // If first endpoint fails, try the original endpoint
+      final fallbackResult = await _get("/organization-clients", authToken);
+
+      if (fallbackResult != null) {
+        if (fallbackResult is List) {
+          print("Got list of ${fallbackResult.length} clients from original endpoint");
+          return fallbackResult;
+        } else if (fallbackResult is Map && fallbackResult.containsKey('clients') && fallbackResult['clients'] is List) {
+          final clientsList = fallbackResult['clients'] as List;
+          print("Got list of ${clientsList.length} clients from original endpoint (wrapped in 'clients' key)");
+          return clientsList;
+        }
+      }
+
+      // Return empty list if both fail
+      print("Failed to get clients from any endpoint, returning empty list");
+      return [];
+    } catch (e) {
+      print("Error getting organization clients: $e");
+      return [];
+    }
+  }
+
+  // Add a client to organization
+  static Future<Map<String, dynamic>> addOrganizationClient(
+    String authToken,
+    String name,
+    String email,
+    String password
+  ) async {
+    try {
+      print("Adding client to organization");
+
+      // Try the subscriptions endpoint first
+      final result = await _post("/subscriptions/user-management/org/clients", {
+        "name": name,
+        "email": email,
+        "password": password,
+      }, authToken);
+
+      if (result != null && result is Map) {
+        return _toStringDynamicMap(result);
+      }
+
+      // If first endpoint fails, try the original endpoint
+      final fallbackResult = await _post("/organization-clients", {
+        "name": name,
+        "email": email,
+        "password": password,
+      }, authToken);
+
+      if (fallbackResult != null && fallbackResult is Map) {
+        return _toStringDynamicMap(fallbackResult);
+      }
+
+      // Return error if both fail
+      return {
+        "success": false,
+        "error": "Failed to add client - API did not return valid response"
+      };
+    } catch (e) {
+      print("Error adding organization client: $e");
+      return {
+        "success": false,
+        "error": e.toString()
+      };
+    }
+  }
+
+  // Remove client from organization
+  static Future<Map<String, dynamic>> removeOrganizationClient(
+    String authToken,
+    int clientId
+  ) async {
+    try {
+      print("Removing client $clientId from organization");
+
+      // Try the subscriptions endpoint first
+      final result = await _post("/subscriptions/user-management/org/clients/$clientId/delete", {}, authToken);
+
+      if (result != null && result is Map) {
+        return _toStringDynamicMap(result);
+      }
+
+      // If first endpoint fails, try the original endpoint
+      final fallbackResult = await _post("/organization-clients/$clientId/delete", {}, authToken);
+
+      if (fallbackResult != null && fallbackResult is Map) {
+        return _toStringDynamicMap(fallbackResult);
+      }
+
+      // Return error if both fail
+      return {
+        "success": false,
+        "error": "Failed to remove client - API did not return valid response"
+      };
+    } catch (e) {
+      print("Error removing organization client: $e");
+      return {
+        "success": false,
+        "error": e.toString()
+      };
+    }
+  }
+
+  // Get meal-specific shopping lists for a menu
+  static Future<Map<String, dynamic>?> getMealShoppingLists(String authToken, int menuId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/menu/$menuId/meal-shopping-lists'),
+        headers: _getHeaders(authToken),
+      );
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        print('Failed to get meal shopping lists: ${response.statusCode}');
+        print('Response body: ${response.body}');
+        return null;
+      }
+    } catch (e) {
+      print('Error getting meal shopping lists: $e');
+      return null;
     }
   }
 }

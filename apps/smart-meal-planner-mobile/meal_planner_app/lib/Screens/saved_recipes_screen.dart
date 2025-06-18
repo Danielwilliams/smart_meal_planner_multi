@@ -111,57 +111,68 @@ class _SavedRecipesScreenState extends State<SavedRecipesScreen> {
   }
 
   void _showRecipeDetails(Recipe recipe) {
-    showModalBottomSheet(
+    print("Showing recipe details for: ${recipe.title}");
+    print("Recipe image URL: ${recipe.imageUrl}");
+    print("Recipe data: ${recipe.toJson()}");
+
+    // Use a fullscreen dialog instead of bottom sheet for better visibility
+    showDialog(
       context: context,
-      isScrollControlled: true,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.6,
-        maxChildSize: 0.9,
-        minChildSize: 0.4,
-        expand: false,
-        builder: (context, scrollController) {
-          return SingleChildScrollView(
-            controller: scrollController,
-            child: Padding(
-              padding: EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 5,
-                      decoration: BoxDecoration(
-                        color: Colors.grey[300],
-                        borderRadius: BorderRadius.circular(10),
+      builder: (context) => Dialog(
+        insetPadding: EdgeInsets.all(16),
+        child: Container(
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.9),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // App bar with title and close button
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                color: Theme.of(context).primaryColor,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        recipe.title,
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
                       ),
-                      margin: EdgeInsets.only(bottom: 16),
                     ),
-                  ),
-                  Row(
+                    IconButton(
+                      icon: Icon(Icons.close, color: Colors.white),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Scrollable content
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(
-                        child: Text(
-                          recipe.title,
-                          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                        ),
+                      // Add favorite button
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          IconButton(
+                            icon: Icon(
+                              Icons.favorite,
+                              color: Colors.red,
+                            ),
+                            onPressed: () {
+                              _unsaveRecipe(recipe);
+                              Navigator.pop(context);
+                            },
+                            tooltip: 'Remove from favorites',
+                          ),
+                        ],
                       ),
-                      IconButton(
-                        icon: Icon(
-                          Icons.favorite,
-                          color: Colors.red,
-                        ),
-                        onPressed: () {
-                          _unsaveRecipe(recipe);
-                          Navigator.pop(context);
-                        },
-                        tooltip: 'Remove from favorites',
-                      ),
-                    ],
-                  ),
                   if (recipe.category != null) ...[
                     SizedBox(height: 4),
                     Wrap(
@@ -182,27 +193,36 @@ class _SavedRecipesScreenState extends State<SavedRecipesScreen> {
                       style: TextStyle(fontSize: 16, color: Colors.grey[700]),
                     ),
                   ],
-                  if (recipe.imageUrl != null) ...[
-                    SizedBox(height: 16),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: Image.network(
-                        recipe.imageUrl!,
-                        height: 200,
-                        width: double.infinity,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) {
-                          return Container(
+                      // Recipe image at the top
+                      if (recipe.imageUrl != null && recipe.imageUrl!.isNotEmpty) ...[
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.network(
+                            recipe.imageUrl!,
                             height: 200,
-                            color: Colors.grey[200],
-                            child: Center(
-                              child: Icon(Icons.image_not_supported, size: 50, color: Colors.grey),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ],
+                            width: double.infinity,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) {
+                              print("Error loading image: $error");
+                              return Container(
+                                height: 200,
+                                color: Colors.grey[200],
+                                child: Center(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.image_not_supported, size: 50, color: Colors.grey),
+                                      SizedBox(height: 8),
+                                      Text("Image not available", style: TextStyle(color: Colors.grey)),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                        SizedBox(height: 16),
+                      ],
                   SizedBox(height: 16),
                   Row(
                     children: [
@@ -298,11 +318,13 @@ class _SavedRecipesScreenState extends State<SavedRecipesScreen> {
                     }).toList(),
                   ],
                   SizedBox(height: 40),
-                ],
+                    ],
+                  ),
+                ),
               ),
-            ),
-          );
-        },
+            ],
+          ),
+        ),
       ),
     );
   }

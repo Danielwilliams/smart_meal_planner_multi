@@ -243,198 +243,227 @@ class _RecipeBrowserScreenState extends State<RecipeBrowserScreen> {
   }
 
   void _showRecipeDetails(Recipe recipe) {
-    showModalBottomSheet(
+    print("Showing recipe details for: ${recipe.title}");
+    print("Recipe data: ${recipe.toJson()}");
+
+    // Use a fullscreen dialog instead of bottom sheet for better visibility
+    showDialog(
       context: context,
-      isScrollControlled: true,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.6,
-        maxChildSize: 0.9,
-        minChildSize: 0.4,
-        expand: false,
-        builder: (context, scrollController) {
-          return SingleChildScrollView(
-            controller: scrollController,
-            child: Padding(
-              padding: EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 5,
-                      decoration: BoxDecoration(
-                        color: Colors.grey[300],
-                        borderRadius: BorderRadius.circular(10),
+      builder: (context) => Dialog(
+        insetPadding: EdgeInsets.all(16),
+        child: Container(
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.9),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // App bar with title and close button
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                color: Theme.of(context).primaryColor,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        recipe.title,
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
                       ),
-                      margin: EdgeInsets.only(bottom: 16),
                     ),
-                  ),
-                  Row(
+                    IconButton(
+                      icon: Icon(Icons.close, color: Colors.white),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Scrollable content
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(
-                        child: Text(
-                          recipe.title,
-                          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                      // Recipe image at the top
+                      if (recipe.imageUrl != null && recipe.imageUrl!.isNotEmpty) ...[
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.network(
+                            recipe.imageUrl!,
+                            height: 200,
+                            width: double.infinity,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) {
+                              print("Error loading image: $error");
+                              return Container(
+                                height: 200,
+                                color: Colors.grey[200],
+                                child: Center(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.image_not_supported, size: 50, color: Colors.grey),
+                                      SizedBox(height: 8),
+                                      Text("Image not available", style: TextStyle(color: Colors.grey)),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
                         ),
+                        SizedBox(height: 16),
+                      ],
+
+                      // Category and save button
+                      Row(
+                        children: [
+                          if (recipe.category != null) ...[
+                            Chip(
+                              label: Text(recipe.category!),
+                              backgroundColor: Theme.of(context).primaryColor.withOpacity(0.1),
+                              labelStyle: TextStyle(color: Theme.of(context).primaryColor),
+                            ),
+                            Spacer(),
+                          ],
+                          IconButton(
+                            icon: Icon(
+                              recipe.isSaved == true ? Icons.favorite : Icons.favorite_border,
+                              color: recipe.isSaved == true ? Colors.red : null,
+                            ),
+                            onPressed: () => _saveRecipe(recipe),
+                            tooltip: recipe.isSaved == true ? 'Remove from favorites' : 'Add to favorites',
+                          ),
+                        ],
                       ),
-                      IconButton(
-                        icon: Icon(
-                          recipe.isSaved == true ? Icons.favorite : Icons.favorite_border,
-                          color: recipe.isSaved == true ? Colors.red : null,
-                        ),
-                        onPressed: () {
-                          _saveRecipe(recipe);
-                          Navigator.pop(context);
-                        },
-                        tooltip: recipe.isSaved == true ? 'Remove from favorites' : 'Add to favorites',
-                      ),
-                    ],
-                  ),
-                  if (recipe.category != null) ...[
-                    SizedBox(height: 4),
-                    Wrap(
-                      spacing: 8,
-                      children: [
-                        Chip(
-                          label: Text(recipe.category!),
-                          backgroundColor: Theme.of(context).primaryColor.withOpacity(0.1),
-                          labelStyle: TextStyle(color: Theme.of(context).primaryColor),
+
+                      // Description
+                      if (recipe.description != null && recipe.description!.isNotEmpty) ...[
+                        SizedBox(height: 8),
+                        Text(
+                          recipe.description!,
+                          style: TextStyle(fontSize: 16, color: Colors.grey[700]),
                         ),
                       ],
-                    ),
-                  ],
-                  if (recipe.description != null) ...[
-                    SizedBox(height: 8),
-                    Text(
-                      recipe.description!,
-                      style: TextStyle(fontSize: 16, color: Colors.grey[700]),
-                    ),
-                  ],
-                  if (recipe.imageUrl != null) ...[
-                    SizedBox(height: 16),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: Image.network(
-                        recipe.imageUrl!,
-                        height: 200,
-                        width: double.infinity,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) {
-                          return Container(
-                            height: 200,
-                            color: Colors.grey[200],
-                            child: Center(
-                              child: Icon(Icons.image_not_supported, size: 50, color: Colors.grey),
+
+                      // Cooking info (time, servings)
+                      SizedBox(height: 16),
+                      Card(
+                        color: Colors.grey[100],
+                        child: Padding(
+                          padding: EdgeInsets.all(12),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceAround,
+                            children: [
+                              if (recipe.prepTime != null)
+                                _buildInfoItem(Icons.access_time, 'Prep: ${recipe.prepTime}'),
+                              if (recipe.cookTime != null)
+                                _buildInfoItem(Icons.timer, 'Cook: ${recipe.cookTime}'),
+                              if (recipe.servings != null)
+                                _buildInfoItem(Icons.people, '${recipe.servings} servings'),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                      // Nutrition info
+                      if (recipe.macros != null) ...[
+                        SizedBox(height: 16),
+                        Text(
+                          "Nutrition",
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        ),
+                        SizedBox(height: 8),
+                        _buildMacrosGrid(recipe.macros!),
+                      ],
+
+                      // Ingredients section
+                      if (recipe.ingredients != null && recipe.ingredients!.isNotEmpty) ...[
+                        SizedBox(height: 24),
+                        Text(
+                          "Ingredients",
+                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                        ),
+                        Divider(),
+                        SizedBox(height: 8),
+                        ...recipe.ingredients!.map((ingredient) {
+                          return Padding(
+                            padding: EdgeInsets.symmetric(vertical: 6),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text("• ", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                Expanded(
+                                  child: Text(
+                                    ingredient,
+                                    style: TextStyle(fontSize: 16),
+                                  ),
+                                ),
+                              ],
                             ),
                           );
-                        },
-                      ),
-                    ),
-                  ],
-                  SizedBox(height: 16),
-                  Row(
-                    children: [
-                      if (recipe.prepTime != null) ...[
-                        _buildInfoItem(Icons.access_time, 'Prep: ${recipe.prepTime}'),
-                        SizedBox(width: 16),
+                        }).toList(),
                       ],
-                      if (recipe.cookTime != null) ...[
-                        _buildInfoItem(Icons.timer, 'Cook: ${recipe.cookTime}'),
-                        SizedBox(width: 16),
+
+                      // Instructions section
+                      if (recipe.instructions != null && recipe.instructions!.isNotEmpty) ...[
+                        SizedBox(height: 24),
+                        Text(
+                          "Instructions",
+                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                        ),
+                        Divider(),
+                        SizedBox(height: 8),
+                        ...recipe.instructions!.asMap().entries.map((entry) {
+                          final index = entry.key;
+                          final instruction = entry.value;
+                          return Padding(
+                            padding: EdgeInsets.symmetric(vertical: 10),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  width: 26,
+                                  height: 26,
+                                  alignment: Alignment.center,
+                                  margin: EdgeInsets.only(right: 10, top: 2),
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context).primaryColor,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Text(
+                                    "${index + 1}",
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: Text(
+                                    instruction,
+                                    style: TextStyle(fontSize: 16),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }).toList(),
                       ],
-                      if (recipe.servings != null) ...[
-                        _buildInfoItem(Icons.people, '${recipe.servings} servings'),
-                      ],
+
+                      // Bottom padding
+                      SizedBox(height: 40),
                     ],
                   ),
-                  if (recipe.macros != null) ...[
-                    SizedBox(height: 16),
-                    Text(
-                      "Nutrition",
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                    SizedBox(height: 8),
-                    _buildMacrosGrid(recipe.macros!),
-                  ],
-                  if (recipe.ingredients != null && recipe.ingredients!.isNotEmpty) ...[
-                    SizedBox(height: 16),
-                    Text(
-                      "Ingredients",
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                    SizedBox(height: 8),
-                    ...recipe.ingredients!.map((ingredient) {
-                      return Padding(
-                        padding: EdgeInsets.symmetric(vertical: 4),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text("• ", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                            Expanded(
-                              child: Text(
-                                ingredient,
-                                style: TextStyle(fontSize: 16),
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }).toList(),
-                  ],
-                  if (recipe.instructions != null && recipe.instructions!.isNotEmpty) ...[
-                    SizedBox(height: 16),
-                    Text(
-                      "Instructions",
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                    SizedBox(height: 8),
-                    ...recipe.instructions!.asMap().entries.map((entry) {
-                      final index = entry.key;
-                      final instruction = entry.value;
-                      return Padding(
-                        padding: EdgeInsets.symmetric(vertical: 6),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Container(
-                              width: 24,
-                              height: 24,
-                              alignment: Alignment.center,
-                              margin: EdgeInsets.only(right: 8, top: 2),
-                              decoration: BoxDecoration(
-                                color: Theme.of(context).primaryColor,
-                                shape: BoxShape.circle,
-                              ),
-                              child: Text(
-                                "${index + 1}",
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14,
-                                ),
-                              ),
-                            ),
-                            Expanded(
-                              child: Text(
-                                instruction,
-                                style: TextStyle(fontSize: 16),
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }).toList(),
-                  ],
-                  SizedBox(height: 40),
-                ],
+                ),
               ),
-            ),
-          );
-        },
+            ],
+          ),
+        ),
       ),
     );
   }

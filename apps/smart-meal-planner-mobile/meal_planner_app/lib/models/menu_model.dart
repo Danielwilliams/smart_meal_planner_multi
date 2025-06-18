@@ -34,6 +34,26 @@ class Recipe {
     this.servings,
   });
   
+  // Convert Recipe to JSON for debugging
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'title': title,
+      'description': description,
+      'imageUrl': imageUrl,
+      'macros': macros,
+      'ingredients': ingredients,
+      'instructions': instructions,
+      'category': category,
+      'tags': tags,
+      'isSaved': isSaved,
+      'rating': rating,
+      'prepTime': prepTime,
+      'cookTime': cookTime,
+      'servings': servings,
+    };
+  }
+
   factory Recipe.fromJson(Map<String, dynamic> json) {
     // Print the incoming JSON for debugging
     print("Parsing recipe: ${json.keys.toList()}");
