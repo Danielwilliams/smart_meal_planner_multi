@@ -3503,7 +3503,10 @@ async def pause_user_admin(
     if current_user.get('account_type') != 'admin':
         raise HTTPException(status_code=403, detail="Admin access required")
     
+    # Extract reason from request body
     reason = request_body.get('reason')
+    if not reason:
+        raise HTTPException(status_code=422, detail="Reason is required for pausing user")
     
     try:
         with get_db_cursor(dict_cursor=True) as (cur, conn):
@@ -3699,7 +3702,10 @@ async def delete_user_admin(
     if current_user.get('account_type') != 'admin':
         raise HTTPException(status_code=403, detail="Admin access required")
     
+    # Extract reason from request body
     reason = request_body.get('reason')
+    if not reason:
+        raise HTTPException(status_code=422, detail="Reason is required for deletion")
     
     try:
         with get_db_cursor(dict_cursor=True) as (cur, conn):

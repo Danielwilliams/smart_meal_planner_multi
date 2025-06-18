@@ -229,9 +229,11 @@ const UserManagementPage = () => {
 
       if (action === 'delete') {
         await apiService.delete(endpoint, {
-          action,
-          reason,
-          send_notification: true
+          data: {
+            action,
+            reason,
+            send_notification: true
+          }
         });
       } else if (action === 'unpause') {
         await apiService.post(endpoint, {});
@@ -509,12 +511,15 @@ const UserManagementPage = () => {
             <TextField
               autoFocus
               margin="dense"
-              label="Reason (optional)"
+              label="Reason (required)"
               fullWidth
               multiline
               rows={3}
+              required
               value={actionDialog.reason}
               onChange={(e) => setActionDialog({ ...actionDialog, reason: e.target.value })}
+              error={!actionDialog.reason && actionDialog.open}
+              helperText={!actionDialog.reason && actionDialog.open ? "Reason is required" : ""}
             />
           )}
         </DialogContent>
@@ -522,7 +527,12 @@ const UserManagementPage = () => {
           <Button onClick={() => setActionDialog({ open: false, action: null, user: null, reason: '' })}>
             Cancel
           </Button>
-          <Button onClick={handleAction} color="primary" variant="contained">
+          <Button 
+            onClick={handleAction} 
+            color="primary" 
+            variant="contained"
+            disabled={actionDialog.action !== 'unpause' && !actionDialog.reason}
+          >
             Confirm
           </Button>
         </DialogActions>
