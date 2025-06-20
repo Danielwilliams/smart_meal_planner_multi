@@ -53,13 +53,55 @@ class _InstacartCartScreenState extends State<InstacartCartScreen> {
       print("RetailerId: ${widget.retailerId} (${widget.retailerId.runtimeType})");
       print("RetailerName: ${widget.retailerName} (${widget.retailerName.runtimeType})");
 
+      // Check if the token needs refresh
+      String? validToken = widget.authToken;
+
+      // Try to get a valid token from the AuthProvider
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      if (await authProvider.refreshTokenIfNeeded()) {
+        validToken = authProvider.authToken;
+        print("🔄 Using refreshed token for Instacart cart fetch");
+      }
+
+      if (validToken == null) {
+        setState(() {
+          _isLoading = false;
+          _error = 'Authentication token is invalid. Please log in again.';
+        });
+        return;
+      }
+
       // Ensure retailerId is a string
       String retailerIdStr = widget.retailerId.toString();
 
       final cartData = await InstacartService.getCartContents(
-        widget.authToken,
+        validToken,
         retailerIdStr,
       );
+
+      // Check if the result is an error response with token expiration
+      if (cartData.containsKey('detail') &&
+          (cartData['detail'] == 'Token has expired' || cartData['detail'] == 'Could not validate credentials')) {
+
+        print("🔑 Token expired error detected in Instacart cart response");
+
+        // Try to refresh the token
+        if (await authProvider.refreshTokenIfNeeded()) {
+          // Token refreshed, retry the fetch with the new token
+          print("🔄 Token refreshed, retrying Instacart cart fetch");
+          setState(() {
+            _isLoading = false; // Reset loading state before retrying
+          });
+          return _fetchCartContents();
+        } else {
+          // Token refresh failed, show login error
+          setState(() {
+            _isLoading = false;
+            _error = 'Your session has expired. Please log in again.';
+          });
+          return;
+        }
+      }
 
       setState(() {
         _isLoading = false;
@@ -113,11 +155,29 @@ class _InstacartCartScreenState extends State<InstacartCartScreen> {
     try {
       print("Proceeding to checkout with retailerId: ${widget.retailerId} (${widget.retailerId.runtimeType})");
 
+      // Check if the token needs refresh
+      String? validToken = widget.authToken;
+
+      // Try to get a valid token from the AuthProvider
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      if (await authProvider.refreshTokenIfNeeded()) {
+        validToken = authProvider.authToken;
+        print("🔄 Using refreshed token for Instacart checkout");
+      }
+
+      if (validToken == null) {
+        setState(() {
+          _checkingOut = false;
+          _error = 'Authentication token is invalid. Please log in again.';
+        });
+        return;
+      }
+
       // Ensure retailerId is a string
       String retailerIdStr = widget.retailerId.toString();
 
       final checkoutUrl = await InstacartService.getCheckoutUrl(
-        widget.authToken,
+        validToken,
         retailerIdStr,
       );
 
@@ -141,6 +201,20 @@ class _InstacartCartScreenState extends State<InstacartCartScreen> {
         }
       } else {
         print("Failed to get checkout URL");
+
+        // Check if this might be a token expiration issue and retry
+        if (await authProvider.refreshTokenIfNeeded()) {
+          print("🔄 Token refreshed after failed checkout, retrying");
+          setState(() {
+            _checkingOut = false;
+          });
+          // Retry the checkout after a short delay
+          Future.delayed(Duration(milliseconds: 500), () {
+            _proceedToCheckout();
+          });
+          return;
+        }
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text("Failed to get checkout URL")),
         );

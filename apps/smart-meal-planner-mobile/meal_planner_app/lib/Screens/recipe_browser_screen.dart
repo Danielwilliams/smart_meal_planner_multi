@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../models/menu_model.dart';
 import '../services/api_service.dart';
+import '../Providers/auth_providers.dart';
 
 class RecipeBrowserScreen extends StatefulWidget {
   final int userId;
@@ -82,21 +84,63 @@ class _RecipeBrowserScreenState extends State<RecipeBrowserScreen> {
     });
 
     try {
+      // Check if the token needs refresh
+      String? validToken = widget.authToken;
+
+      // Try to get a valid token from the AuthProvider
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      if (await authProvider.refreshTokenIfNeeded()) {
+        validToken = authProvider.authToken;
+        print("🔄 Using refreshed token for recipe search");
+      }
+
+      if (validToken == null) {
+        setState(() {
+          _isLoading = false;
+          _hasError = true;
+          _errorMessage = 'Authentication token is invalid. Please log in again.';
+        });
+        return;
+      }
+
       final result = await ApiService.searchRecipes(
         userId: widget.userId,
-        authToken: widget.authToken,
+        authToken: validToken,
         query: _searchQuery,
         categories: _selectedCategories.isNotEmpty ? _selectedCategories : null,
         page: _page,
         pageSize: _pageSize,
       );
 
+      // Check if the result contains a token expired error
+      if (result is Map &&
+          result.containsKey('detail') &&
+          (result['detail'] == 'Token has expired' || result['detail'] == 'Could not validate credentials')) {
+
+        print("🔑 Token expired error detected in recipes response");
+
+        // Try to refresh the token
+        if (await authProvider.refreshTokenIfNeeded()) {
+          // Token refreshed, retry the fetch with the new token
+          print("🔄 Token refreshed, retrying recipe search");
+          return _fetchRecipes(refresh: refresh);
+        } else {
+          // Token refresh failed, show login error
+          setState(() {
+            _isLoading = false;
+            _hasError = true;
+            _errorMessage = 'Your session has expired. Please log in again.';
+          });
+          return;
+        }
+      }
+
       if (result != null) {
         // Check for different response formats
         List<dynamic> recipesData = [];
-        
+
         print("API Response Keys: ${result.keys.toList()}");
-        
+
         // Handle different possible response formats from the backend
         if (result.containsKey('recipes')) {
           // Format: { "recipes": [...] }
@@ -116,14 +160,14 @@ class _RecipeBrowserScreenState extends State<RecipeBrowserScreen> {
               break;
             }
           }
-          
+
           if (recipesData.isEmpty) {
             print("Unable to find recipe data in response: ${result.keys}");
           }
         }
-        
+
         print("Found ${recipesData.length} recipes in response");
-        
+
         // Map the recipes with error handling
         List<Recipe> recipes = [];
         for (var recipeJson in recipesData) {
@@ -546,12 +590,56 @@ class _RecipeBrowserScreenState extends State<RecipeBrowserScreen> {
 
   Future<void> _saveRecipe(Recipe recipe) async {
     try {
-      await ApiService.saveRecipe(
+      // Check if the token needs refresh
+      String? validToken = widget.authToken;
+
+      // Try to get a valid token from the AuthProvider
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      if (await authProvider.refreshTokenIfNeeded()) {
+        validToken = authProvider.authToken;
+        print("🔄 Using refreshed token for saving recipe");
+      }
+
+      if (validToken == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Authentication token is invalid. Please log in again.'),
+            duration: Duration(seconds: 3),
+          ),
+        );
+        return;
+      }
+
+      final result = await ApiService.saveRecipe(
         userId: widget.userId,
-        authToken: widget.authToken,
+        authToken: validToken,
         recipeId: recipe.id,
       );
-      
+
+      // Check if the result contains a token expired error
+      if (result is Map &&
+          result.containsKey('detail') &&
+          (result['detail'] == 'Token has expired' || result['detail'] == 'Could not validate credentials')) {
+
+        print("🔑 Token expired error detected in save recipe response");
+
+        // Try to refresh the token
+        if (await authProvider.refreshTokenIfNeeded()) {
+          // Token refreshed, retry saving the recipe with the new token
+          print("🔄 Token refreshed, retrying save recipe");
+          return _saveRecipe(recipe);
+        } else {
+          // Token refresh failed, show login error
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Your session has expired. Please log in again.'),
+              duration: Duration(seconds: 3),
+            ),
+          );
+          return;
+        }
+      }
+
       setState(() {
         // Update the saved status in our local list
         final recipeIndex = _recipes.indexWhere((r) => r.id == recipe.id);
@@ -572,16 +660,16 @@ class _RecipeBrowserScreenState extends State<RecipeBrowserScreen> {
             cookTime: recipe.cookTime,
             servings: recipe.servings,
           );
-          
+
           _recipes[recipeIndex] = updatedRecipe;
         }
       });
-      
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            recipe.isSaved == true 
-              ? 'Recipe removed from favorites' 
+            recipe.isSaved == true
+              ? 'Recipe removed from favorites'
               : 'Recipe added to favorites'
           ),
           duration: Duration(seconds: 2),

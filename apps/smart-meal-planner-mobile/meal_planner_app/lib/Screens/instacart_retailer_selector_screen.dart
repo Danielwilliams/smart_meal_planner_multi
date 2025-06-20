@@ -61,15 +61,59 @@ class _InstacartRetailerSelectorScreenState extends State<InstacartRetailerSelec
     });
 
     try {
-      final retailers = await InstacartService.getNearbyRetailers(
-        widget.authToken,
+      // Check if the token needs refresh
+      String? validToken = widget.authToken;
+
+      // Try to get a valid token from the AuthProvider
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      if (await authProvider.refreshTokenIfNeeded()) {
+        validToken = authProvider.authToken;
+        print("🔄 Using refreshed token for Instacart retailers search");
+      }
+
+      if (validToken == null) {
+        setState(() {
+          _isLoading = false;
+          _error = 'Authentication token is invalid. Please log in again.';
+        });
+        return;
+      }
+
+      final result = await InstacartService.getNearbyRetailers(
+        validToken,
         _zipCode!,
       );
 
+      // Check if the result is an error response with token expiration
+      if (result.isNotEmpty &&
+          result[0] is Map &&
+          result[0].containsKey('detail') &&
+          (result[0]['detail'] == 'Token has expired' || result[0]['detail'] == 'Could not validate credentials')) {
+
+        print("🔑 Token expired error detected in Instacart retailers response");
+
+        // Try to refresh the token
+        if (await authProvider.refreshTokenIfNeeded()) {
+          // Token refreshed, retry the fetch with the new token
+          print("🔄 Token refreshed, retrying Instacart retailers search");
+          setState(() {
+            _isLoading = false; // Reset loading state before retrying
+          });
+          return _fetchRetailers();
+        } else {
+          // Token refresh failed, show login error
+          setState(() {
+            _isLoading = false;
+            _error = 'Your session has expired. Please log in again.';
+          });
+          return;
+        }
+      }
+
       setState(() {
         _isLoading = false;
-        _retailers = retailers;
-        if (retailers.isEmpty) {
+        _retailers = result;
+        if (result.isEmpty) {
           _error = "No retailers found for ZIP code $_zipCode";
         }
       });

@@ -275,33 +275,124 @@ class _CartScreenState extends State<CartScreen> {
             : Column(
               children: [
                 Expanded(
-                  child: ListView.builder(
-                    itemCount: _cartItems.length,
-                    itemBuilder: (context, index) {
-                      final item = _cartItems[index];
-                      final ingredient = item["ingredient"];
-                      final price = item["price"] ?? 0.0;
-                      final imageUrl = item["image_url"];
+                  child: Stack(
+                    children: [
+                      ListView.builder(
+                        itemCount: _cartItems.length,
+                        itemBuilder: (context, index) {
+                          final item = _cartItems[index];
+                          final ingredient = item["ingredient"];
+                          final price = item["price"] ?? 0.0;
+                          final imageUrl = item["image_url"];
+                          
+                          // Extract image URL from nested objects if needed
+                          String finalImageUrl = imageUrl;
+                          if (finalImageUrl == null && item.containsKey('images')) {
+                            if (item['images'] is List && (item['images'] as List).isNotEmpty) {
+                              finalImageUrl = item['images'][0].toString();
+                            } else if (item['images'] is Map) {
+                              final imagesMap = item['images'] as Map;
+                              if (imagesMap.isNotEmpty) {
+                                finalImageUrl = imagesMap.values.first.toString();
+                              }
+                            }
+                          }
 
-                      return ListTile(
-                        leading: imageUrl != null
-                            ? Image.network(
-                                ApiService.cleanImageUrl(imageUrl),
-                                width: 50,
-                                height: 50,
-                                fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) {
-                                  print("Error loading image: $error");
-                                  print("Original URL: $imageUrl");
-                                  print("Cleaned URL: ${ApiService.cleanImageUrl(imageUrl)}");
-                                  return Icon(Icons.image_not_supported);
-                                },
-                              )
-                            : Icon(Icons.image_not_supported),
-                        title: Text(ingredient),
-                        subtitle: Text("\$${price.toStringAsFixed(2)}"),
-                      );
-                    },
+                          return ListTile(
+                            leading: finalImageUrl != null
+                                ? SizedBox(
+                                    width: 60,
+                                    height: 60,
+                                    child: Image.network(
+                                      ApiService.cleanImageUrl(finalImageUrl),
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (context, error, stackTrace) {
+                                        print("Error loading image: $error");
+                                        print("Original URL: $finalImageUrl");
+                                        print("Cleaned URL: ${ApiService.cleanImageUrl(finalImageUrl)}");
+                                        return Container(
+                                          width: 60,
+                                          height: 60,
+                                          color: Colors.grey[200],
+                                          child: Icon(Icons.image_not_supported, color: Colors.grey),
+                                        );
+                                      },
+                                    ),
+                                  )
+                                : Container(
+                                    width: 60,
+                                    height: 60,
+                                    color: Colors.grey[200],
+                                    child: Icon(Icons.image_not_supported, color: Colors.grey),
+                                  ),
+                            title: Text(ingredient),
+                            subtitle: Text("\$${price.toStringAsFixed(2)}"),
+                          );
+                        },
+                      ),
+                      
+                      // Add debug button
+                      Positioned(
+                        bottom: 10,
+                        right: 10,
+                        child: Opacity(
+                          opacity: 0.7,
+                          child: FloatingActionButton.small(
+                            backgroundColor: Colors.grey[800],
+                            child: Icon(Icons.bug_report, size: 20),
+                            onPressed: () {
+                              // Show debug info dialog with cart data
+                              showDialog(
+                                context: context,
+                                builder: (context) => AlertDialog(
+                                  title: Text("Kroger Cart Debug Info"),
+                                  content: SingleChildScrollView(
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text("Cart items count: ${_cartItems.length}"),
+                                        Divider(),
+                                        if (_cartItems.isNotEmpty) ...[
+                                          Text("First item keys:", style: TextStyle(fontWeight: FontWeight.bold)),
+                                          Text(_cartItems[0].keys.toList().toString()),
+                                          SizedBox(height: 10),
+                                          if (_cartItems[0].containsKey('image_url')) ...[
+                                            Text("Image URL: ${_cartItems[0]['image_url']}"),
+                                            Text("Cleaned URL: ${ApiService.cleanImageUrl(_cartItems[0]['image_url'])}"),
+                                          ],
+                                          if (_cartItems[0].containsKey('images')) ...[
+                                            Text("Images field type: ${_cartItems[0]['images'].runtimeType}"),
+                                            Text("Images value: ${_cartItems[0]['images']}"),
+                                          ],
+                                          Divider(),
+                                          Text("First item:", style: TextStyle(fontWeight: FontWeight.bold)),
+                                          Container(
+                                            padding: EdgeInsets.all(8),
+                                            color: Colors.grey[200],
+                                            child: Text(
+                                              _cartItems[0].toString(),
+                                              style: TextStyle(fontSize: 12),
+                                            ),
+                                          ),
+                                        ] else
+                                          Text("No cart items available"),
+                                      ],
+                                    ),
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      child: Text("Close"),
+                                      onPressed: () => Navigator.of(context).pop(),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 Padding(

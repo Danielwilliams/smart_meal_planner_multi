@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:jwt_decoder/jwt_decoder.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'dart:convert';
 import '../services/api_service.dart';
 import '../services/instacart_service.dart';
 import '../models/menu_model.dart';
 import '../main.dart'; // Import to access CartState provider
+import '../Providers/auth_providers.dart'; // Import AuthProvider
 
 class ShoppingListScreen extends StatefulWidget {
   final int userId;
@@ -160,11 +164,325 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> with SingleTick
       print("Auth token available: ${widget.authToken.isNotEmpty}");
       print("Auth token length: ${widget.authToken.length}");
 
-      // Get the shopping list data from API directly (no AI generation)
-      final result = await ApiService.getGroceryListByMenuId(
-        _selectedMenuId,
-        widget.authToken,
-      );
+      // Check if the token needs refresh
+      String? validToken = widget.authToken;
+
+      // Try to get a valid token from the AuthProvider
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      if (await authProvider.refreshTokenIfNeeded()) {
+        validToken = authProvider.authToken;
+        print("🔄 Using refreshed token for shopping list fetch");
+      }
+
+      if (validToken == null) {
+        setState(() {
+          _isLoading = false;
+          _error = 'Authentication token is invalid. Please log in again.';
+        });
+        return;
+      }
+
+      // Use the correct endpoint that's used in the web app
+      Map<String, dynamic>? result;
+      bool success = false;
+      List<String> attemptedEndpoints = [];
+
+      // Try the web app's grocery list endpoint first
+      print("APPROACH 1: Using the web app's grocery list endpoint");
+      final groceryListEndpoint = "/menu/$_selectedMenuId/grocery-list";
+      attemptedEndpoints.add(groceryListEndpoint);
+
+      try {
+        // This is the same endpoint used in the web app's apiService.js
+        print("Fetching from: $groceryListEndpoint");
+        result = await ApiService.callApiEndpoint(
+          'GET',
+          groceryListEndpoint,
+          validToken,
+          null
+        );
+
+        if (result != null && result is Map) {
+          print("Got grocery list from web app endpoint");
+          if (result.containsKey('groceryList') || result.containsKey('items') || result.containsKey('ingredients')) {
+            success = true;
+          }
+        }
+      } catch (e) {
+        print("Error fetching from web app endpoint: $e");
+      }
+
+      // Try 2: Get menu details - as fallback
+      print("APPROACH 2: Get menu details and extract grocery list");
+      final menuDetailsEndpoint = "/menu/details/$_selectedMenuId";
+      attemptedEndpoints.add(menuDetailsEndpoint);
+
+      try {
+        final menuDetails = await ApiService.callApiEndpoint(
+          'GET',
+          menuDetailsEndpoint,
+          validToken,
+          null
+        );
+
+        if (menuDetails != null && menuDetails is Map) {
+          print("Got menu details, menu title: ${menuDetails['title'] ?? 'Unknown'}");
+          // Extract groceryList if it exists
+          if (menuDetails.containsKey('groceryList')) {
+            print("Menu details contains groceryList key");
+            result = {"groceryList": menuDetails['groceryList']};
+            success = true;
+          }
+          // Extract ingredients if it exists
+          else if (menuDetails.containsKey('ingredients') && menuDetails['ingredients'] is List) {
+            print("Menu details contains ingredients key");
+            result = {"groceryList": menuDetails['ingredients']};
+            success = true;
+          }
+          // Try meal_plan
+          else if ((menuDetails.containsKey('meal_plan') || menuDetails.containsKey('meal_plan_json'))) {
+            print("Menu details contains meal_plan, extracting ingredients");
+            // Get meal plan data
+            var mealPlan = menuDetails.containsKey('meal_plan')
+                ? menuDetails['meal_plan']
+                : menuDetails['meal_plan_json'];
+
+            // If meal plan is a string, parse it
+            if (mealPlan is String) {
+              try {
+                mealPlan = json.decode(mealPlan);
+              } catch (e) {
+                print("Error parsing meal plan JSON: $e");
+              }
+            }
+
+            // Extract ingredients from the meal plan
+            List<Map<String, dynamic>> extractedIngredients = [];
+
+            if (mealPlan is Map && mealPlan.containsKey('days') && mealPlan['days'] is List) {
+              print("Found days in meal plan, extracting ingredients");
+              List<dynamic> days = mealPlan['days'];
+
+              for (var day in days) {
+                if (day is Map) {
+                  // Extract from meals
+                  if (day.containsKey('meals') && day['meals'] is List) {
+                    for (var meal in day['meals']) {
+                      if (meal is Map && meal.containsKey('ingredients') && meal['ingredients'] is List) {
+                        for (var ingredient in meal['ingredients']) {
+                          if (ingredient is String) {
+                            extractedIngredients.add({'name': ingredient, 'quantity': '', 'unit': ''});
+                          } else if (ingredient is Map) {
+                            extractedIngredients.add({
+                              'name': ingredient['name'] ?? 'Unknown',
+                              'quantity': ingredient['quantity'] ?? '',
+                              'unit': ingredient['unit'] ?? '',
+                            });
+                          }
+                        }
+                      }
+                    }
+                  }
+
+                  // Extract from snacks
+                  if (day.containsKey('snacks') && day['snacks'] is List) {
+                    for (var snack in day['snacks']) {
+                      if (snack is Map && snack.containsKey('ingredients') && snack['ingredients'] is List) {
+                        for (var ingredient in snack['ingredients']) {
+                          if (ingredient is String) {
+                            extractedIngredients.add({'name': ingredient, 'quantity': '', 'unit': ''});
+                          } else if (ingredient is Map) {
+                            extractedIngredients.add({
+                              'name': ingredient['name'] ?? 'Unknown',
+                              'quantity': ingredient['quantity'] ?? '',
+                              'unit': ingredient['unit'] ?? '',
+                            });
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+
+            if (extractedIngredients.isNotEmpty) {
+              print("Extracted ${extractedIngredients.length} ingredients from meal plan");
+              result = {"groceryList": extractedIngredients};
+              success = true;
+            }
+          }
+
+          // If we couldn't extract grocery list, try using the whole menu details
+          if (!success) {
+            print("Could not extract grocery list from menu details, using raw data");
+            // Convert to Map<String, dynamic> for type safety
+            result = Map<String, dynamic>.from(menuDetails);
+            success = true;
+          }
+        }
+      } catch (e) {
+        print("Error in menu details approach: $e");
+      }
+
+      // Try 3: Try direct grocery list endpoint
+      if (!success) {
+        print("APPROACH 3: Try direct grocery list endpoints");
+        List<String> groceryListEndpoints = [
+          "/menu/$_selectedMenuId/grocery-list",
+          "/grocery-list/menu/$_selectedMenuId",
+          "/grocery-list/$_selectedMenuId",
+          "/menu/grocery-list/$_selectedMenuId",
+        ];
+
+        for (String endpoint in groceryListEndpoints) {
+          if (success) break;
+          attemptedEndpoints.add(endpoint);
+
+          try {
+            print("Trying endpoint: $endpoint");
+            final response = await ApiService.callApiEndpoint('GET', endpoint, validToken, null);
+
+            if (response != null) {
+              print("Got response from $endpoint");
+              if (response is Map) {
+                if (response.containsKey('groceryList')) {
+                  print("Response contains groceryList key");
+                  result = {"groceryList": response['groceryList']};
+                  success = true;
+                  break;
+                } else if (response.containsKey('ingredients')) {
+                  print("Response contains ingredients key");
+                  result = {"groceryList": response['ingredients']};
+                  success = true;
+                  break;
+                } else {
+                  // Use the whole response - Convert to Map<String, dynamic> for type safety
+                  result = Map<String, dynamic>.from(response);
+                  success = true;
+                  break;
+                }
+              } else if (response is List) {
+                print("Response is a list with ${response.length} items");
+                result = {"groceryList": response};
+                success = true;
+                break;
+              }
+            }
+          } catch (e) {
+            print("Error with endpoint $endpoint: $e");
+          }
+        }
+      }
+
+      // Try 4: POST to grocery list endpoints
+      if (!success) {
+        print("APPROACH 4: Try POST to grocery list endpoints");
+        List<String> postEndpoints = [
+          "/grocery-list",
+          "/menu/grocery-list",
+        ];
+
+        for (String endpoint in postEndpoints) {
+          if (success) break;
+          attemptedEndpoints.add("POST $endpoint");
+
+          try {
+            print("Trying POST to: $endpoint");
+            final response = await ApiService.callApiEndpoint(
+              'POST',
+              endpoint,
+              validToken,
+              {"menu_id": _selectedMenuId}
+            );
+
+            if (response != null) {
+              print("Got response from POST $endpoint");
+              if (response is Map) {
+                if (response.containsKey('groceryList')) {
+                  print("Response contains groceryList key");
+                  result = {"groceryList": response['groceryList']};
+                  success = true;
+                  break;
+                } else if (response.containsKey('ingredients')) {
+                  print("Response contains ingredients key");
+                  result = {"groceryList": response['ingredients']};
+                  success = true;
+                  break;
+                } else {
+                  // Use the whole response - Convert to Map<String, dynamic> for type safety
+                  result = Map<String, dynamic>.from(response);
+                  success = true;
+                  break;
+                }
+              } else if (response is List) {
+                print("Response is a list with ${response.length} items");
+                result = {"groceryList": response};
+                success = true;
+                break;
+              }
+            }
+          } catch (e) {
+            print("Error with POST to $endpoint: $e");
+          }
+        }
+      }
+
+      // If we couldn't get the grocery list, try to build it from meal shopping lists
+      if (!success || result == null) {
+        print("Direct grocery list approaches failed, trying to build from meal lists");
+
+        try {
+          // Get meal shopping lists which we know works
+          final mealListsResult = await ApiService.callApiEndpoint(
+            'GET',
+            "/menu/$_selectedMenuId/meal-shopping-lists",
+            validToken,
+            null
+          );
+
+          if (mealListsResult != null && mealListsResult is Map &&
+              mealListsResult.containsKey('meal_lists') && mealListsResult['meal_lists'] is List) {
+
+            print("Building grocery list from meal shopping lists");
+            List<dynamic> mealLists = mealListsResult['meal_lists'];
+            List<Map<String, dynamic>> combinedIngredients = [];
+
+            // Extract and combine all ingredients from all meals
+            for (var meal in mealLists) {
+              if (meal is Map && meal.containsKey('ingredients') && meal['ingredients'] is List) {
+                List<dynamic> mealIngredients = meal['ingredients'];
+
+                for (var ingredient in mealIngredients) {
+                  if (ingredient is Map) {
+                    // Convert to Map<String, dynamic> for type safety
+                    Map<String, dynamic> safeIngredient = Map<String, dynamic>.from(ingredient);
+
+                    // Add meal name as source
+                    safeIngredient['source'] = meal['title'] ?? 'Unknown Meal';
+
+                    combinedIngredients.add(safeIngredient);
+                  }
+                }
+              }
+            }
+
+            if (combinedIngredients.isNotEmpty) {
+              print("Built grocery list with ${combinedIngredients.length} items from meal lists");
+              result = {"groceryList": combinedIngredients};
+              success = true;
+            }
+          }
+        } catch (e) {
+          print("Error building grocery list from meal lists: $e");
+        }
+
+        // If all approaches failed, return empty response
+        if (!success || result == null) {
+          print("All approaches failed, attempted: $attemptedEndpoints");
+          result = {"groceryList": []};
+        }
+      }
 
       print("Shopping list API response received");
       if (result != null) {
@@ -173,10 +491,46 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> with SingleTick
         print("Shopping list API response is null");
       }
 
+      // Check if the result is an error response with token expiration
+      if (result != null &&
+          result is Map &&
+          result.containsKey('detail') &&
+          (result['detail'] == 'Token has expired' || result['detail'] == 'Could not validate credentials')) {
+
+        print("🔑 Token expired error detected in shopping list response");
+
+        // Try to refresh the token
+        if (await authProvider.refreshTokenIfNeeded()) {
+          // Token refreshed, retry the fetch with the new token
+          print("🔄 Token refreshed, retrying shopping list fetch");
+          setState(() {
+            _isLoading = false; // Reset loading state before retrying
+          });
+          return _fetchShoppingList();
+        } else {
+          // Token refresh failed, show login error
+          setState(() {
+            _isLoading = false;
+            _error = 'Your session has expired. Please log in again.';
+          });
+          return;
+        }
+      }
+
       if (result != null) {
         // Process the shopping list data
         Map<String, List<Map<String, dynamic>>> categorizedItems = {};
         print("Processing shopping list data");
+
+        // Skip processing if we got an error response
+        if (result.containsKey('detail') && result['detail'] == "Method Not Allowed") {
+          print("Got error response, skipping processing");
+          setState(() {
+            _isLoading = false;
+            _error = 'Failed to fetch shopping list data - Method Not Allowed';
+          });
+          return;
+        }
 
         // Check for different possible response formats
         if (result.containsKey('groceryList')) {
@@ -403,15 +757,136 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> with SingleTick
 
     try {
       print("Fetching meal shopping lists for menu ID: $_selectedMenuId");
-      // Get meal-specific shopping list data
-      final result = await ApiService.getMealShoppingLists(
-        widget.authToken,
-        _selectedMenuId,
-      );
+
+      // Check if the token needs refresh
+      String? validToken = widget.authToken;
+
+      // Try to get a valid token from the AuthProvider
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      if (await authProvider.refreshTokenIfNeeded()) {
+        validToken = authProvider.authToken;
+        print("🔄 Using refreshed token for meal shopping lists fetch");
+      }
+
+      if (validToken == null) {
+        print("Invalid token for meal shopping lists, skipping");
+        return;
+      }
+
+      // Try different approaches to get meal shopping lists
+      Map<String, dynamic>? result;
+      bool success = false;
+
+      // Try 1: Direct API call to meal shopping lists endpoint
+      try {
+        print("APPROACH 1: Direct meal shopping lists endpoint");
+        result = await ApiService.callApiEndpoint(
+          'GET',
+          "/menu/$_selectedMenuId/meal-shopping-lists",
+          validToken,
+          null
+        );
+
+        if (result != null && result is Map) {
+          print("Got meal shopping lists from direct endpoint");
+          success = true;
+        }
+      } catch (e) {
+        print("Error with direct meal shopping lists endpoint: $e");
+      }
+
+      // Try 2: Alternative endpoint
+      if (!success) {
+        try {
+          print("APPROACH 2: Alternative meal shopping lists endpoint");
+          result = await ApiService.callApiEndpoint(
+            'GET',
+            "/menu/$_selectedMenuId/by-meal-groceries",
+            validToken,
+            null
+          );
+
+          if (result != null && result is Map) {
+            print("Got meal shopping lists from alternative endpoint");
+            success = true;
+          }
+        } catch (e) {
+          print("Error with alternative meal shopping lists endpoint: $e");
+        }
+      }
+
+      // Try 3: Extract from menu details
+      if (!success) {
+        try {
+          print("APPROACH 3: Extract from menu details");
+          final menuDetails = await ApiService.callApiEndpoint(
+            'GET',
+            "/menu/details/$_selectedMenuId",
+            validToken,
+            null
+          );
+
+          if (menuDetails != null && menuDetails is Map) {
+            print("Got menu details, looking for meal-specific data");
+
+            // Try different possible keys
+            if (menuDetails.containsKey('meal_lists')) {
+              result = {"meal_lists": menuDetails['meal_lists']};
+              success = true;
+            } else if (menuDetails.containsKey('by_meal_groceries')) {
+              result = {"meal_lists": menuDetails['by_meal_groceries']};
+              success = true;
+            }
+          }
+        } catch (e) {
+          print("Error extracting meal lists from menu details: $e");
+        }
+      }
+
+      // If all approaches failed, try using ApiService.getMealShoppingLists as fallback
+      if (!success) {
+        try {
+          print("FALLBACK: Using ApiService.getMealShoppingLists");
+          result = await ApiService.getMealShoppingLists(
+            validToken,
+            _selectedMenuId,
+          );
+
+          if (result != null) {
+            success = true;
+          }
+        } catch (e) {
+          print("Error with getMealShoppingLists fallback: $e");
+        }
+      }
+
+      // If all approaches failed, return empty result
+      if (!success || result == null) {
+        print("All approaches for meal shopping lists failed");
+        result = {"meal_lists": []};
+      }
 
       print("Meal shopping lists API response received");
       if (result != null) {
         print("Meal shopping lists API response keys: ${result.keys.toList()}");
+
+        // Check if the result is an error response with token expiration
+        if (result is Map &&
+            result.containsKey('detail') &&
+            (result['detail'] == 'Token has expired' || result['detail'] == 'Could not validate credentials')) {
+
+          print("🔑 Token expired error detected in meal shopping lists response");
+
+          // Try to refresh the token
+          if (await authProvider.refreshTokenIfNeeded()) {
+            // Token refreshed, retry the fetch with the new token
+            print("🔄 Token refreshed, retrying meal shopping lists fetch");
+            return _fetchMealShoppingLists();
+          } else {
+            print("Token refresh failed for meal shopping lists");
+            return;
+          }
+        }
 
         if (result.containsKey('meal_lists') && result['meal_lists'] is List) {
           final mealLists = result['meal_lists'] as List;
@@ -460,27 +935,67 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> with SingleTick
   // Add all items to cart
   Future<void> _addAllToCart() async {
     if (_categorizedItems.isEmpty) return;
-    
+
     setState(() {
       _isLoading = true;
     });
-    
+
     try {
+      // Check if the token needs refresh
+      String? validToken = widget.authToken;
+
+      // Try to get a valid token from the AuthProvider
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      if (await authProvider.refreshTokenIfNeeded()) {
+        validToken = authProvider.authToken;
+        print("🔄 Using refreshed token for adding items to cart");
+      }
+
+      if (validToken == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Authentication token is invalid. Please log in again.'))
+        );
+        setState(() {
+          _isLoading = false;
+        });
+        return;
+      }
+
       // Get the cart state provider
       final cartState = Provider.of<CartState>(context, listen: false);
-      
+
       // Create cart items with real data
       List<Map<String, dynamic>> cartItems = [];
-      
+
+      // First check if any items are already checked
+      bool anyChecked = false;
+      _categorizedItems.forEach((category, items) {
+        for (var item in items) {
+          if (item['checked'] == true) {
+            anyChecked = true;
+            break;
+          }
+        }
+      });
+
+      print("Any items checked? $anyChecked");
+
       for (var category in _categorizedItems.values) {
         for (var item in category) {
+          // If some items are checked, only include checked items
+          // If no items are checked, include all items and mark them as checked
+          if (anyChecked && item['checked'] != true) {
+            // Skip unchecked items if we have some checked items
+            continue;
+          }
+
           // Format each ingredient with quantity and unit
           String displayText = item['name'] ?? 'Unknown item';
-          
+
           if (item['quantity'] != null && item['quantity'].toString().isNotEmpty) {
             displayText = "$displayText: ${item['quantity']} ${item['unit'] ?? ''}".trim();
           }
-          
+
           // Create a cart item with real ingredient data
           final cartItem = {
             'ingredient': displayText,
@@ -488,35 +1003,41 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> with SingleTick
             'unit': item['unit'],
             'quantity': item['quantity'],
             'notes': item['notes'] ?? '',
-            'store': 'Kroger' // Always Kroger
+            'store': _selectedStore // Use the selected store
           };
-          
+
           cartItems.add(cartItem);
-          
+
           // Mark as checked
           item['checked'] = true;
         }
       }
-      
+
+      print("Adding ${cartItems.length} items to $_selectedStore cart");
+
+      // Clear existing cart to avoid duplicates
+      cartState.clearCart(_selectedStore);
       // Add all items to the cart state
-      cartState.addItemsToCart('Kroger', cartItems);
-      
+      cartState.addItemsToCart(_selectedStore, cartItems);
+      // Debug print to verify items were added
+      cartState.printCartState();
+
       // Navigate to carts screen
       Navigator.pushNamed(
-        context, 
+        context,
         '/carts',
         arguments: {
           'userId': widget.userId,
-          'authToken': widget.authToken,
-          'selectedStore': 'Kroger',
+          'authToken': validToken, // Use the refreshed token
+          'selectedStore': _selectedStore,
         }
       );
-      
+
       // Show success message
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text("Added ${cartItems.length} items to Kroger cart"),
+            content: Text("Added ${cartItems.length} items to $_selectedStore cart"),
             duration: Duration(seconds: 2),
           )
         );
@@ -540,56 +1061,130 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> with SingleTick
   // Add a specific meal's items to cart
   Future<void> _addMealToCart(String mealTitle, List<Map<String, dynamic>> ingredients) async {
     if (ingredients.isEmpty) return;
-    
+
     setState(() {
       _isLoading = true;
     });
-    
+
     try {
+      // Check if the token needs refresh
+      String? validToken = widget.authToken;
+
+      // Try to get a valid token from the AuthProvider
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      if (await authProvider.refreshTokenIfNeeded()) {
+        validToken = authProvider.authToken;
+        print("🔄 Using refreshed token for adding meal to cart");
+      }
+
+      if (validToken == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Authentication token is invalid. Please log in again.'))
+        );
+        setState(() {
+          _isLoading = false;
+        });
+        return;
+      }
+
+      // Check if we're adding to Instacart
+      if (_selectedStore == 'Instacart') {
+        // For Instacart, we need to show the retailer selector
+        setState(() {
+          _isLoading = false;
+        });
+
+        // Convert ingredients to list of ingredient names
+        List<String> ingredientNames = ingredients.map((item) {
+          String name = item['name'] ?? 'Unknown item';
+          if (item['quantity'] != null && item['quantity'].toString().isNotEmpty) {
+            name = "$name: ${item['quantity']} ${item['unit'] ?? ''}".trim();
+          }
+          return name;
+        }).toList();
+
+        // Store this in the cart state for immediate access
+        final cartState = Provider.of<CartState>(context, listen: false);
+        List<Map<String, dynamic>> cartItems = ingredients.map((item) {
+          String displayText = item['name'] ?? 'Unknown item';
+          if (item['quantity'] != null && item['quantity'].toString().isNotEmpty) {
+            displayText = "$displayText: ${item['quantity']} ${item['unit'] ?? ''}".trim();
+          }
+          return {
+            'ingredient': displayText,
+            'name': item['name'],
+            'quantity': item['quantity'],
+            'unit': item['unit'] ?? '',
+            'notes': 'From: $mealTitle',
+            'store': 'Instacart'
+          };
+        }).toList();
+
+        cartState.addItemsToCart('Instacart', cartItems);
+
+        // Show snackbar and prompt for Instacart retailer
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Select an Instacart retailer for ${ingredientNames.length} items from $mealTitle"),
+            duration: Duration(seconds: 3),
+          )
+        );
+
+        // Show the Instacart retailer selector
+        _showInstacartDialog();
+        return;
+      }
+
+      // For other stores (like Kroger), continue with normal cart process
       // Get the cart state provider
       final cartState = Provider.of<CartState>(context, listen: false);
-      
+
       // Create cart items for this meal
       List<Map<String, dynamic>> cartItems = [];
-      
+
       for (var item in ingredients) {
         // Format each ingredient with quantity and unit
         String displayText = item['name'] ?? 'Unknown item';
-        
+
         if (item['quantity'] != null && item['quantity'].toString().isNotEmpty) {
-          displayText = "$displayText: ${item['quantity']}".trim();
+          displayText = "$displayText: ${item['quantity']} ${item['unit'] ?? ''}".trim();
         }
-        
+
         // Create a cart item
         final cartItem = {
           'ingredient': displayText,
           'name': item['name'],
           'quantity': item['quantity'],
+          'unit': item['unit'] ?? '',
           'notes': 'From: $mealTitle',
-          'store': 'Kroger'
+          'store': _selectedStore
         };
-        
+
         cartItems.add(cartItem);
       }
-      
+
+      print("Adding ${cartItems.length} items from $mealTitle to $_selectedStore cart");
+
       // Add items to the cart state
-      cartState.addItemsToCart('Kroger', cartItems);
-      
+      cartState.addItemsToCart(_selectedStore, cartItems);
+      // Debug print to verify items were added
+      cartState.printCartState();
+
       // Show success message
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text("Added ${cartItems.length} items from $mealTitle to Kroger cart"),
+            content: Text("Added ${cartItems.length} items from $mealTitle to $_selectedStore cart"),
             action: SnackBarAction(
               label: 'VIEW CART',
               onPressed: () {
                 Navigator.pushNamed(
-                  context, 
+                  context,
                   '/carts',
                   arguments: {
                     'userId': widget.userId,
-                    'authToken': widget.authToken,
-                    'selectedStore': 'Kroger',
+                    'authToken': validToken, // Use the refreshed token
+                    'selectedStore': _selectedStore,
                   }
                 );
               },
@@ -770,20 +1365,20 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> with SingleTick
                                   'name': item['name'],
                                   'unit': item['unit'],
                                   'quantity': item['quantity'],
-                                  'store': 'Kroger'
+                                  'store': _selectedStore // Use selected store
                                 };
-                                cartState.addItemToCart('Kroger', cartItem);
-                                
+                                cartState.addItemToCart(_selectedStore, cartItem);
+
                                 // Mark as checked
                                 setState(() {
                                   item['checked'] = true;
                                 });
-                                
+
                                 // Show success message
                                 if (mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
-                                      content: Text("Added ${item['name']} to Kroger cart"),
+                                      content: Text("Added ${item['name']} to $_selectedStore cart"),
                                       duration: Duration(seconds: 2),
                                     )
                                   );
@@ -932,6 +1527,26 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> with SingleTick
         _isLoading = true;
       });
 
+      // Check if the token needs refresh
+      String? validToken = widget.authToken;
+
+      // Try to get a valid token from the AuthProvider
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      if (await authProvider.refreshTokenIfNeeded()) {
+        validToken = authProvider.authToken;
+        print("🔄 Using refreshed token for Instacart dialog");
+      }
+
+      if (validToken == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Authentication token is invalid. Please log in again.'))
+        );
+        setState(() {
+          _isLoading = false;
+        });
+        return;
+      }
+
       // Get user's zip code from preferences
       final prefs = await SharedPreferences.getInstance();
       String? zipCode = prefs.getString('zipCode') ?? '80538'; // Default to Loveland, CO
@@ -942,18 +1557,33 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> with SingleTick
 
       final result = await showDialog<Map<String, dynamic>?>(
         context: context,
+        barrierDismissible: false, // Prevent closing by tapping outside
         builder: (context) => AlertDialog(
-          title: Text('Send to Instacart'),
+          title: Row(
+            children: [
+              Image.asset(
+                'assets/instacart/Instacart_Carrot.png',
+                height: 24,
+                width: 24,
+              ),
+              SizedBox(width: 8),
+              Text('Send to Instacart'),
+            ],
+          ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('Select an Instacart retailer to create your shopping list'),
+              Text(
+                'Select an Instacart retailer to create your shopping list',
+                textAlign: TextAlign.center,
+              ),
               SizedBox(height: 16),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  foregroundColor: Colors.black,
+                  backgroundColor: Color(0xFF43B02A), // Instacart green
+                  foregroundColor: Colors.white,
                   elevation: 2,
+                  padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 ),
                 onPressed: () {
                   // Navigate to retailer selector
@@ -981,6 +1611,8 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> with SingleTick
                     arguments: {
                       'zipCode': zipCode,
                       'onRetailerSelected': onRetailerSelectedCallback,
+                      'userId': widget.userId,
+                      'authToken': validToken, // Use the refreshed token
                     },
                   );
                 },
@@ -1025,15 +1657,64 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> with SingleTick
       print("Creating Instacart list with retailerId: $retailerId (${retailerId.runtimeType})");
       print("Retailer name: $retailerName (${retailerName.runtimeType})");
 
-      // Prepare ingredients list
+      // Check if the token needs refresh
+      String? validToken = widget.authToken;
+
+      // Try to get a valid token from the AuthProvider
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      if (await authProvider.refreshTokenIfNeeded()) {
+        validToken = authProvider.authToken;
+        print("🔄 Using refreshed token for Instacart list creation");
+      }
+
+      if (validToken == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Authentication token is invalid. Please log in again.'))
+        );
+        setState(() {
+          _isLoading = false;
+        });
+        return;
+      }
+
+      // Force conversion to string using string interpolation for absolute safety
+      final String safeRetailerId = '$retailerId';
+      final String safeRetailerName = '$retailerName';
+
+      print("Safe retailerId for navigation: $safeRetailerId (${safeRetailerId.runtimeType})");
+      print("Safe retailerName for navigation: $safeRetailerName (${safeRetailerName.runtimeType})");
+
+      // Prepare ingredients list - only include checked items, or mark all as checked if none selected
       List<String> ingredients = [];
+      bool anyChecked = false;
+
+      // First check if any items are already checked
       _categorizedItems.forEach((category, items) {
         for (var item in items) {
+          if (item['checked'] == true) {
+            anyChecked = true;
+            break;
+          }
+        }
+      });
+
+      _categorizedItems.forEach((category, items) {
+        for (var item in items) {
+          // If some items are checked, only include checked items
+          // If no items are checked, include all items and mark them as checked
+          if (anyChecked && item['checked'] != true) {
+            // Skip unchecked items if we have some checked items
+            continue;
+          }
+
           String ingredient = item['name'];
           if (item['quantity'] != null && item['quantity'].toString().isNotEmpty) {
             ingredient = "${ingredient}: ${item['quantity']} ${item['unit'] ?? ''}".trim();
           }
           ingredients.add(ingredient);
+
+          // Mark the item as checked in the UI
+          item['checked'] = true;
         }
       });
 
@@ -1047,35 +1728,170 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> with SingleTick
         return;
       }
 
-      print("Prepared ${ingredients.length} ingredients for Instacart search");
+      print("Prepared ${ingredients.length} ingredients for Instacart");
 
-      // Navigate to Instacart search results
+      // Add to the cart state for consistency and to ensure it's available in other screens
+      try {
+        final cartState = Provider.of<CartState>(context, listen: false);
+        List<Map<String, dynamic>> cartItems = [];
+
+        for (var category in _categorizedItems.values) {
+          for (var item in category) {
+            // Only include checked items (we already filtered them for ingredients above)
+            if (anyChecked && item['checked'] != true) {
+              continue;
+            }
+
+            String displayText = item['name'] ?? 'Unknown item';
+
+            if (item['quantity'] != null && item['quantity'].toString().isNotEmpty) {
+              displayText = "$displayText: ${item['quantity']} ${item['unit'] ?? ''}".trim();
+            }
+
+            final cartItem = {
+              'ingredient': displayText,
+              'name': item['name'],
+              'unit': item['unit'],
+              'quantity': item['quantity'],
+              'notes': item['notes'] ?? '',
+              'store': 'Instacart',
+              'retailer_id': safeRetailerId,
+              'retailer_name': safeRetailerName
+            };
+
+            cartItems.add(cartItem);
+          }
+        }
+
+        print("Adding ${cartItems.length} items to Instacart cart");
+        // Clear existing Instacart cart to avoid duplicates
+        cartState.clearCart('Instacart');
+        // Add new items
+        cartState.addItemsToCart('Instacart', cartItems);
+        cartState.printCartState(); // Debug print to verify items were added
+      } catch (cartError) {
+        print("Error adding to cart state: $cartError");
+        // Continue anyway - the direct shopping list URL is more important
+      }
+
+      // Show pending indicator
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Creating Instacart shopping list with ${ingredients.length} items"),
+          duration: Duration(seconds: 2),
+        )
+      );
+
+      // Get ZIP code from shared preferences
+      final prefs = await SharedPreferences.getInstance();
+      String? zipCode = prefs.getString('zipCode') ?? '80538'; // Default to Loveland, CO
+
+      // Use the new direct shopping list URL approach from the web app
+      final result = await InstacartService.createShoppingListUrl(
+        validToken,
+        safeRetailerId,
+        ingredients,
+        zipCode
+      );
+
+      if (result['success'] == true && result['url'] != null) {
+        // We got a direct URL - launch it
+        print("Got direct shopping list URL: ${result['url']}");
+
+        final url = Uri.parse(result['url']);
+
+        // First try to open in the Instacart app
+        try {
+          print("Attempting to open Instacart app with URL: $url");
+
+          // Try to open in the app first (platformSpecific mode)
+          final appOpened = await launchUrl(
+            url,
+            mode: LaunchMode.platformDefault  // This should try to open in the app if available
+          );
+
+          if (appOpened) {
+            print("Successfully opened URL with default handler (likely Instacart app)");
+            // Show success message
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text("Opening in Instacart"),
+                  duration: Duration(seconds: 3),
+                )
+              );
+            }
+            return; // Exit early if app opened successfully
+          } else {
+            print("Could not open with default handler, falling back to browser");
+          }
+        } catch (e) {
+          print("Error opening in app, will try browser: $e");
+          // Continue to browser fallback
+        }
+
+        // Fallback to browser if app doesn't open
+        try {
+          print("Launching URL in browser: $url");
+          await launchUrl(
+            url,
+            mode: LaunchMode.externalApplication  // External browser
+          );
+
+          // Show success message
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text("Instacart shopping list opened in browser"),
+                duration: Duration(seconds: 3),
+              )
+            );
+          }
+        } catch (e) {
+          print("Error launching in browser: $e");
+          // Automatically copy to clipboard as a final fallback
+          await Clipboard.setData(ClipboardData(text: result['url']));
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text("URL copied to clipboard. Please paste in your browser."),
+                backgroundColor: Colors.orange,
+                duration: Duration(seconds: 5),
+              )
+            );
+          }
+        }
+      } else {
+        // Fallback to the old approach if direct URL fails
+        print("Direct shopping list URL creation failed, falling back to search results screen");
+        print("Error: ${result['error']}");
+
+        // Navigate to Instacart search results
+        Navigator.pushNamed(
+          context,
+          '/instacart-search',
+          arguments: {
+            'retailerId': safeRetailerId,
+            'retailerName': safeRetailerName,
+            'ingredients': ingredients,
+            'userId': widget.userId,
+            'authToken': validToken, // Use the refreshed token
+          },
+        );
+      }
+
       setState(() {
         _isLoading = false;
       });
-
-      // Force conversion to string using string interpolation for absolute safety
-      final String safeRetailerId = '$retailerId';
-      final String safeRetailerName = '$retailerName';
-
-      print("Safe retailerId for navigation: $safeRetailerId (${safeRetailerId.runtimeType})");
-      print("Safe retailerName for navigation: $safeRetailerName (${safeRetailerName.runtimeType})");
-
-      Navigator.pushNamed(
-        context,
-        '/instacart-search',
-        arguments: {
-          'retailerId': safeRetailerId,
-          'retailerName': safeRetailerName,
-          'ingredients': ingredients,
-          'userId': widget.userId,
-          'authToken': widget.authToken,
-        },
-      );
     } catch (e) {
       print("Error creating Instacart list: $e");
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e'))
+        SnackBar(
+          content: Text('Error creating Instacart shopping list: $e'),
+          backgroundColor: Colors.red,
+          duration: Duration(seconds: 5),
+        )
       );
       setState(() {
         _isLoading = false;
@@ -1292,7 +2108,9 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> with SingleTick
                   label: Text("ADD ALL ITEMS TO ${_selectedStore.toUpperCase()} CART"),
                   style: ElevatedButton.styleFrom(
                     padding: EdgeInsets.symmetric(vertical: 16),
-                    backgroundColor: Theme.of(context).primaryColor,
+                    backgroundColor: _selectedStore == 'Instacart'
+                        ? Color(0xFF43B02A) // Instacart green
+                        : Theme.of(context).primaryColor, // Default theme color for Kroger
                     foregroundColor: Colors.white,
                   ),
                 ),
@@ -1307,41 +2125,730 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> with SingleTick
   // Build appropriate floating action button based on store selection
   Widget? _buildFloatingActionButton() {
     if (_selectedStore == 'Instacart') {
-      return FloatingActionButton.extended(
-        onPressed: _showInstacartDialog,
-        icon: Image.asset(
-          'assets/instacart/Instacart_Carrot.png',
-          height: 24,
-          width: 24,
-          color: Colors.white,
-        ),
-        label: Text("Order with Instacart"),
-        backgroundColor: Colors.green,
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Debug button for troubleshooting
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8.0),
+            child: FloatingActionButton.small(
+              heroTag: "debug-btn",
+              onPressed: _showDebugInfo,
+              tooltip: "Show debug info",
+              child: Icon(Icons.bug_report),
+              backgroundColor: Colors.grey[700],
+            ),
+          ),
+          FloatingActionButton.extended(
+            heroTag: "instacart-btn",
+            onPressed: _showInstacartDialog,
+            icon: Image.asset(
+              'assets/instacart/Instacart_Carrot.png',
+              height: 24,
+              width: 24,
+              color: Colors.white,
+            ),
+            label: Text("Order with Instacart"),
+            backgroundColor: Color(0xFF43B02A), // Instacart green
+          ),
+        ],
       );
     } else if (_selectedStore == 'Kroger') {
-      return FloatingActionButton.extended(
-        onPressed: () {
-          // Navigate directly to the carts screen
-          Navigator.pushNamed(
-            context,
-            '/carts',
-            arguments: {
-              'userId': widget.userId,
-              'authToken': widget.authToken,
-              'selectedStore': _selectedStore,
-            }
-          );
-        },
-        icon: Icon(Icons.shopping_cart),
-        label: Text("View Kroger Cart"),
-        backgroundColor: Theme.of(context).colorScheme.secondary,
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Debug button for troubleshooting
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8.0),
+            child: FloatingActionButton.small(
+              heroTag: "debug-btn",
+              onPressed: _showDebugInfo,
+              tooltip: "Show debug info",
+              child: Icon(Icons.bug_report),
+              backgroundColor: Colors.grey[700],
+            ),
+          ),
+          FloatingActionButton.extended(
+            heroTag: "kroger-btn",
+            onPressed: () {
+              // Navigate directly to the carts screen
+              Navigator.pushNamed(
+                context,
+                '/carts',
+                arguments: {
+                  'userId': widget.userId,
+                  'authToken': widget.authToken,
+                  'selectedStore': _selectedStore,
+                }
+              );
+            },
+            icon: Icon(Icons.shopping_cart),
+            label: Text("View Kroger Cart"),
+            backgroundColor: Theme.of(context).primaryColor, // Match Kroger theme
+          ),
+        ],
       );
     }
-    return null;
+
+    // Fallback - just show debug button
+    return FloatingActionButton.small(
+      heroTag: "debug-btn",
+      onPressed: _showDebugInfo,
+      tooltip: "Show debug info",
+      child: Icon(Icons.bug_report),
+      backgroundColor: Colors.grey[700],
+    );
   }
 
   // Helper method to format date
   String _formatDate(DateTime date) {
     return "${date.month}/${date.day}/${date.year}";
+  }
+
+  // Show debug information
+  void _showDebugInfo() {
+    final debugInfo = StringBuffer();
+
+    // General info
+    debugInfo.writeln("=== SHOPPING LIST DEBUG INFO ===");
+    debugInfo.writeln("Menu ID: $_selectedMenuId");
+    debugInfo.writeln("Menu Title: $_selectedMenuTitle");
+    debugInfo.writeln("User ID: ${widget.userId}");
+    debugInfo.writeln("Token Length: ${widget.authToken.length}");
+    debugInfo.writeln("Selected Store: $_selectedStore");
+    debugInfo.writeln("Current Tab: ${_tabController?.index ?? 'null'}");
+    debugInfo.writeln("Is Loading: $_isLoading");
+
+    // Token info
+    try {
+      debugInfo.writeln("\n=== TOKEN INFO ===");
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+
+      // Use JwtDecoder directly since AuthProvider doesn't expose these properties
+      bool isExpired = false;
+      String expTime = "Unknown";
+
+      if (authProvider.authToken != null) {
+        try {
+          isExpired = JwtDecoder.isExpired(authProvider.authToken!);
+          final decoded = JwtDecoder.decode(authProvider.authToken!);
+          if (decoded.containsKey('exp')) {
+            final expTimestamp = decoded['exp'];
+            if (expTimestamp is int) {
+              final expDate = DateTime.fromMillisecondsSinceEpoch(expTimestamp * 1000);
+              expTime = expDate.toString();
+            }
+          }
+        } catch (e) {
+          debugInfo.writeln("Error decoding token: $e");
+        }
+      }
+
+      debugInfo.writeln("Token Expired: $isExpired");
+      debugInfo.writeln("Token Expiration: $expTime");
+      debugInfo.writeln("User ID: ${authProvider.userId}");
+      debugInfo.writeln("User Name: ${authProvider.userName}");
+      debugInfo.writeln("User Email: ${authProvider.userEmail}");
+      debugInfo.writeln("Account Type: ${authProvider.accountType}");
+      debugInfo.writeln("Is Organization: ${authProvider.isOrganization}");
+    } catch (e) {
+      debugInfo.writeln("Error getting token info: $e");
+    }
+
+    // Shopping list info
+    debugInfo.writeln("\n=== SHOPPING LIST INFO ===");
+    debugInfo.writeln("Categories: ${_categorizedItems.keys.join(', ')}");
+    debugInfo.writeln("Total Categories: ${_categorizedItems.length}");
+    int totalItems = 0;
+    _categorizedItems.forEach((category, items) {
+      totalItems += items.length;
+      debugInfo.writeln("Category '$category': ${items.length} items");
+    });
+    debugInfo.writeln("Total Items: $totalItems");
+
+    // Meal lists info
+    debugInfo.writeln("\n=== MEAL SHOPPING LISTS INFO ===");
+    debugInfo.writeln("Total Meal Lists: ${_mealShoppingLists.length}");
+
+    // Error info
+    if (_error.isNotEmpty) {
+      debugInfo.writeln("\n=== ERROR INFO ===");
+      debugInfo.writeln("Error: $_error");
+    }
+
+    // Show in a dialog
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.bug_report, color: Colors.grey[700]),
+            SizedBox(width: 8),
+            Text("Debug Information"),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Debug text
+              SelectableText(
+                debugInfo.toString(),
+                style: TextStyle(fontFamily: 'monospace', fontSize: 12),
+              ),
+              SizedBox(height: 16),
+              // Actions
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      // Copy to clipboard
+                      final data = ClipboardData(text: debugInfo.toString());
+                      Clipboard.setData(data);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text("Debug info copied to clipboard"),
+                          duration: Duration(seconds: 2),
+                        )
+                      );
+                      Navigator.pop(context);
+                    },
+                    icon: Icon(Icons.copy),
+                    label: Text("Copy"),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.grey[700],
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      // Refresh shopping list
+                      Navigator.pop(context);
+                      setState(() {
+                        _isLoading = true;
+                        _error = '';
+                      });
+                      _fetchShoppingList();
+                      _fetchMealShoppingLists();
+                    },
+                    icon: Icon(Icons.refresh),
+                    label: Text("Retry"),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Theme.of(context).primaryColor,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: 16),
+              // Force API approach selection
+              Text("Force API Approach:", style: TextStyle(fontWeight: FontWeight.bold)),
+              SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  ElevatedButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _forceApiApproach(1);
+                    },
+                    child: Text("Web App Endpoint"),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
+                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      textStyle: TextStyle(fontSize: 12),
+                    ),
+                  ),
+                  ElevatedButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _forceApiApproach(2);
+                    },
+                    child: Text("Menu Details"),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      textStyle: TextStyle(fontSize: 12),
+                    ),
+                  ),
+                  ElevatedButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _forceApiApproach(3);
+                    },
+                    child: Text("Direct Endpoints"),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange,
+                      foregroundColor: Colors.white,
+                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      textStyle: TextStyle(fontSize: 12),
+                    ),
+                  ),
+                  ElevatedButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _forceApiApproach(4);
+                    },
+                    child: Text("POST Endpoints"),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.purple,
+                      foregroundColor: Colors.white,
+                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      textStyle: TextStyle(fontSize: 12),
+                    ),
+                  ),
+                  ElevatedButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _forceApiApproach(5);
+                    },
+                    child: Text("From Meal Lists"),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                      foregroundColor: Colors.white,
+                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      textStyle: TextStyle(fontSize: 12),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text("Close"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Force a specific API approach for testing
+  Future<void> _forceApiApproach(int approach) async {
+    setState(() {
+      _isLoading = true;
+      _error = '';
+      _categorizedItems = {};
+    });
+
+    try {
+      print("🔧 Forcing API approach #$approach");
+
+      // Check if the token needs refresh
+      String? validToken = widget.authToken;
+
+      // Try to get a valid token from the AuthProvider
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      if (await authProvider.refreshTokenIfNeeded()) {
+        validToken = authProvider.authToken;
+        print("🔄 Using refreshed token for forced approach");
+      }
+
+      if (validToken == null) {
+        setState(() {
+          _isLoading = false;
+          _error = 'Authentication token is invalid. Please log in again.';
+        });
+        return;
+      }
+
+      Map<String, dynamic>? result;
+      bool success = false;
+
+      switch (approach) {
+        case 1:
+          // Web app's grocery list endpoint
+          print("FORCED APPROACH 1: Using the web app's grocery list endpoint");
+          final groceryListEndpoint = "/menu/$_selectedMenuId/grocery-list";
+
+          try {
+            print("Fetching from: $groceryListEndpoint");
+            result = await ApiService.callApiEndpoint(
+              'GET',
+              groceryListEndpoint,
+              validToken,
+              null
+            );
+
+            if (result != null && result is Map) {
+              print("Got grocery list from web app endpoint");
+              success = true;
+            }
+          } catch (e) {
+            print("Error fetching from web app endpoint: $e");
+            setState(() {
+              _error = 'Error with web app endpoint: $e';
+            });
+          }
+          break;
+
+        case 2:
+          // Get menu details approach
+          print("FORCED APPROACH 2: Get menu details and extract grocery list");
+          final menuDetailsEndpoint = "/menu/details/$_selectedMenuId";
+
+          try {
+            final menuDetails = await ApiService.callApiEndpoint(
+              'GET',
+              menuDetailsEndpoint,
+              validToken,
+              null
+            );
+
+            if (menuDetails != null && menuDetails is Map) {
+              print("Got menu details");
+              result = Map<String, dynamic>.from(menuDetails);
+              success = true;
+            } else {
+              setState(() {
+                _error = 'Menu details response was null or not a Map';
+              });
+            }
+          } catch (e) {
+            print("Error in menu details approach: $e");
+            setState(() {
+              _error = 'Error with menu details endpoint: $e';
+            });
+          }
+          break;
+
+        case 3:
+          // Try direct grocery list endpoints
+          print("FORCED APPROACH 3: Try direct grocery list endpoints");
+          List<String> groceryListEndpoints = [
+            "/menu/$_selectedMenuId/grocery-list",
+            "/grocery-list/menu/$_selectedMenuId",
+            "/grocery-list/$_selectedMenuId",
+            "/menu/grocery-list/$_selectedMenuId",
+          ];
+
+          for (String endpoint in groceryListEndpoints) {
+            if (success) break;
+
+            try {
+              print("Trying endpoint: $endpoint");
+              final response = await ApiService.callApiEndpoint('GET', endpoint, validToken, null);
+
+              if (response != null) {
+                print("Got response from $endpoint");
+                if (response is Map) {
+                  result = Map<String, dynamic>.from(response);
+                  success = true;
+                  break;
+                } else if (response is List) {
+                  print("Response is a list with ${response.length} items");
+                  result = {"groceryList": response};
+                  success = true;
+                  break;
+                }
+              }
+            } catch (e) {
+              print("Error with endpoint $endpoint: $e");
+            }
+          }
+
+          if (!success) {
+            setState(() {
+              _error = 'All direct endpoints failed';
+            });
+          }
+          break;
+
+        case 4:
+          // POST to grocery list endpoints
+          print("FORCED APPROACH 4: Try POST to grocery list endpoints");
+          List<String> postEndpoints = [
+            "/grocery-list",
+            "/menu/grocery-list",
+          ];
+
+          for (String endpoint in postEndpoints) {
+            if (success) break;
+
+            try {
+              print("Trying POST to: $endpoint");
+              final response = await ApiService.callApiEndpoint(
+                'POST',
+                endpoint,
+                validToken,
+                {"menu_id": _selectedMenuId}
+              );
+
+              if (response != null) {
+                print("Got response from POST $endpoint");
+                if (response is Map) {
+                  result = Map<String, dynamic>.from(response);
+                  success = true;
+                  break;
+                } else if (response is List) {
+                  print("Response is a list with ${response.length} items");
+                  result = {"groceryList": response};
+                  success = true;
+                  break;
+                }
+              }
+            } catch (e) {
+              print("Error with POST to $endpoint: $e");
+            }
+          }
+
+          if (!success) {
+            setState(() {
+              _error = 'All POST endpoints failed';
+            });
+          }
+          break;
+
+        case 5:
+          // Build from meal shopping lists
+          print("FORCED APPROACH 5: Building from meal lists");
+
+          try {
+            // Get meal shopping lists
+            final mealListsResult = await ApiService.callApiEndpoint(
+              'GET',
+              "/menu/$_selectedMenuId/meal-shopping-lists",
+              validToken,
+              null
+            );
+
+            if (mealListsResult != null && mealListsResult is Map &&
+                mealListsResult.containsKey('meal_lists') && mealListsResult['meal_lists'] is List) {
+
+              print("Building grocery list from meal shopping lists");
+              List<dynamic> mealLists = mealListsResult['meal_lists'];
+              List<Map<String, dynamic>> combinedIngredients = [];
+
+              // Extract and combine all ingredients from all meals
+              for (var meal in mealLists) {
+                if (meal is Map && meal.containsKey('ingredients') && meal['ingredients'] is List) {
+                  List<dynamic> mealIngredients = meal['ingredients'];
+
+                  for (var ingredient in mealIngredients) {
+                    if (ingredient is Map) {
+                      // Convert to Map<String, dynamic> for type safety
+                      Map<String, dynamic> safeIngredient = Map<String, dynamic>.from(ingredient);
+
+                      // Add meal name as source
+                      safeIngredient['source'] = meal['title'] ?? 'Unknown Meal';
+
+                      combinedIngredients.add(safeIngredient);
+                    }
+                  }
+                }
+              }
+
+              if (combinedIngredients.isNotEmpty) {
+                print("Built grocery list with ${combinedIngredients.length} items from meal lists");
+                result = {"groceryList": combinedIngredients};
+                success = true;
+              } else {
+                setState(() {
+                  _error = 'No ingredients found in meal lists';
+                });
+              }
+            } else {
+              setState(() {
+                _error = 'Meal lists response was invalid';
+              });
+            }
+          } catch (e) {
+            print("Error building grocery list from meal lists: $e");
+            setState(() {
+              _error = 'Error with meal lists approach: $e';
+            });
+          }
+          break;
+
+        default:
+          setState(() {
+            _error = 'Invalid approach selected';
+          });
+          break;
+      }
+
+      if (success && result != null) {
+        // Process the shopping list data
+        Map<String, List<Map<String, dynamic>>> categorizedItems = {};
+        print("Processing shopping list data");
+
+        // Check for different possible response formats
+        if (result.containsKey('groceryList')) {
+          var groceryList = result['groceryList'];
+          print("GroceryList found with type: ${groceryList.runtimeType}");
+
+          if (groceryList is Map) {
+            // Format is {category: [items]}
+            print("Format is {category: [items]}");
+            // Convert dynamically to String keys
+            final groceryMap = Map<String, dynamic>.from(groceryList);
+            groceryMap.forEach((category, items) {
+              print("Processing category: $category with ${items is List ? items.length : 'non-list'} items");
+              if (items is List) {
+                categorizedItems[category] = [];
+                for (var item in items) {
+                  if (item is String) {
+                    categorizedItems[category]!.add({
+                      'name': item,
+                      'checked': false,
+                    });
+                  } else if (item is Map) {
+                    categorizedItems[category]!.add({
+                      'name': item['name'] ?? 'Unknown item',
+                      'quantity': item['quantity'] ?? '',
+                      'unit': item['unit'] ?? '',
+                      'checked': false,
+                    });
+                  }
+                }
+              }
+            });
+          } else if (groceryList is List) {
+            // Format is a flat list in groceryList
+            print("Format is a flat list in groceryList with ${groceryList.length} items");
+            List<dynamic> groceryItems = groceryList;
+
+            // Use category mapping similar to web app
+            Map<String, List<String>> categoryMapping = {
+              'meat-seafood': ['beef', 'chicken', 'fish', 'pork', 'lamb', 'turkey', 'steak', 'salmon', 'tuna', 'shrimp', 'bacon'],
+              'produce': ['apple', 'banana', 'lettuce', 'tomato', 'onion', 'potato', 'carrot', 'pepper', 'broccoli', 'fruit', 'vegetable'],
+              'dairy': ['milk', 'cheese', 'yogurt', 'butter', 'cream', 'egg'],
+              'bakery': ['bread', 'roll', 'bagel', 'muffin', 'cookie', 'cake', 'pie'],
+              'pantry': ['rice', 'pasta', 'flour', 'sugar', 'oil', 'vinegar', 'sauce', 'spice', 'can', 'bean', 'soup'],
+              'beverages': ['water', 'juice', 'soda', 'coffee', 'tea', 'wine', 'beer'],
+              'frozen': ['frozen', 'ice cream'],
+              'snacks': ['chip', 'cracker', 'pretzel', 'popcorn', 'nut', 'candy'],
+            };
+
+            for (var item in groceryItems) {
+              print("Processing item of type: ${item.runtimeType}");
+              String itemName = '';
+              Map<String, dynamic> parsedItem = {};
+
+              if (item is String) {
+                itemName = item.toLowerCase();
+                parsedItem = {'name': item, 'checked': false};
+              } else if (item is Map) {
+                itemName = (item['name'] ?? 'Unknown item').toString().toLowerCase();
+                parsedItem = {
+                  'name': item['name'] ?? 'Unknown item',
+                  'quantity': item['quantity'] ?? '',
+                  'unit': item['unit'] ?? '',
+                  'checked': false,
+                };
+              } else {
+                print("Skipping invalid item type: ${item.runtimeType}");
+                continue; // Skip invalid items
+              }
+
+              // Find the category using the mapping
+              String category = 'Other';
+              categoryMapping.forEach((key, keywords) {
+                for (var keyword in keywords) {
+                  if (itemName.contains(keyword)) {
+                    category = key.split('-').map((word) => word[0].toUpperCase() + word.substring(1)).join(' ');
+                    break;
+                  }
+                }
+              });
+
+              print("Categorized item '${parsedItem['name']}' as '$category'");
+              if (!categorizedItems.containsKey(category)) {
+                categorizedItems[category] = [];
+              }
+              categorizedItems[category]!.add(parsedItem);
+            }
+          }
+        } else if (result.containsKey('ingredients') && result['ingredients'] is List) {
+          // Format is a flat list of ingredients
+          print("Format is a flat list of ingredients");
+          List<dynamic> ingredients = result['ingredients'];
+          print("Found ${ingredients.length} ingredients");
+
+          // Simple categorization
+          for (var item in ingredients) {
+            String category = 'Other';
+            Map<String, dynamic> parsedItem = {};
+
+            if (item is String) {
+              parsedItem = {'name': item, 'checked': false};
+            } else if (item is Map) {
+              parsedItem = {
+                'name': item['name'] ?? 'Unknown item',
+                'quantity': item['quantity'] ?? '',
+                'unit': item['unit'] ?? '',
+                'checked': false,
+              };
+            } else {
+              print("Skipping invalid item type: ${item.runtimeType}");
+              continue;
+            }
+
+            // Place all items in a single category for simplicity
+            if (!categorizedItems.containsKey(category)) {
+              categorizedItems[category] = [];
+            }
+            categorizedItems[category]!.add(parsedItem);
+          }
+        } else if (result.containsKey('items') && result['items'] is List) {
+          // Format with 'items' key
+          print("Found 'items' key with list");
+          List<dynamic> items = result['items'];
+
+          categorizedItems['Items'] = [];
+          for (var item in items) {
+            if (item is String) {
+              categorizedItems['Items']!.add({
+                'name': item,
+                'checked': false,
+              });
+            } else if (item is Map) {
+              categorizedItems['Items']!.add({
+                'name': item['name'] ?? 'Unknown item',
+                'quantity': item['quantity'] ?? '',
+                'unit': item['unit'] ?? '',
+                'checked': false,
+              });
+            }
+          }
+        }
+
+        print("Final categorized items count: ${categorizedItems.length} categories");
+        categorizedItems.forEach((category, items) {
+          print("Category '$category' has ${items.length} items");
+        });
+
+        setState(() {
+          _categorizedItems = categorizedItems;
+          _isLoading = false;
+          if (categorizedItems.isEmpty) {
+            print("No items found in the response");
+            _error = 'No items found in the shopping list using approach #$approach.';
+          } else {
+            _error = '';
+          }
+        });
+      } else {
+        setState(() {
+          _isLoading = false;
+          if (_error.isEmpty) {
+            _error = 'Failed to fetch shopping list data using approach #$approach.';
+          }
+        });
+      }
+    } catch (e) {
+      print("Error in _forceApiApproach: $e");
+      setState(() {
+        _error = 'Error with approach #$approach: $e';
+        _isLoading = false;
+      });
+    }
   }
 }

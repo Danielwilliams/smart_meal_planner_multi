@@ -15,10 +15,10 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 class ApiConfig {
   // Production URL on Railway
   static const String productionUrl = "https://smartmealplannermulti-production.up.railway.app";
-  
+
   // For local development using Android emulator
   static const String localBaseUrl = "http://10.0.2.2:8000";
-  
+
   // Active URL - set to production for release builds
   static const String activeUrl = productionUrl;
 }
@@ -26,17 +26,141 @@ class ApiConfig {
 class ApiService {
   static const String baseUrl = ApiConfig.activeUrl;
 
+  // Helper method to get a valid token from the AuthProvider
+  static Future<String?> _getValidToken(String? token) async {
+    if (token == null) return null;
+
+    try {
+      // Check if navigator key has a context and there's an AuthProvider available
+      if (navigatorKey.currentContext != null) {
+        final authProvider = Provider.of<AuthProvider>(
+          navigatorKey.currentContext!,
+          listen: false
+        );
+
+        // Try to refresh the token if needed
+        if (await authProvider.refreshTokenIfNeeded()) {
+          return authProvider.authToken;
+        } else {
+          print("Token refresh failed");
+          return token; // Return original token as fallback
+        }
+      } else {
+        print("No navigator context available for token refresh");
+        return token;
+      }
+    } catch (e) {
+      print("Error getting valid token: $e");
+      return token; // Return original token as fallback
+    }
+  }
+
   // Add auth token to headers
   static Map<String, String> _getHeaders(String? token) {
     Map<String, String> headers = {
       "Content-Type": "application/json",
     };
-    
+
     if (token != null) {
       headers["Authorization"] = "Bearer $token";
     }
-    
+
     return headers;
+  }
+
+  // Extract user ID from JWT token
+  static int? getUserIdFromToken(String token) {
+    try {
+      // First, check if token is expired
+      if (JwtDecoder.isExpired(token)) {
+        print("⚠️ Token is expired - cannot extract user ID");
+        return null;
+      }
+
+      // Decode the token to get the payload
+      final Map<String, dynamic> decodedToken = JwtDecoder.decode(token);
+      print("Decoded token keys: ${decodedToken.keys.toList()}");
+
+      // Try multiple possible user ID fields
+      // First check standard 'sub' claim
+      if (decodedToken.containsKey('sub')) {
+        final sub = decodedToken['sub'];
+        print("Found 'sub' claim in token: $sub (${sub.runtimeType})");
+
+        // Try to convert to int
+        if (sub is int) {
+          return sub;
+        } else if (sub is String) {
+          try {
+            return int.parse(sub);
+          } catch (e) {
+            print("Could not parse 'sub' as int: $e");
+          }
+        }
+      }
+
+      // Check for user_id field
+      if (decodedToken.containsKey('user_id')) {
+        final userId = decodedToken['user_id'];
+        print("Found 'user_id' claim in token: $userId (${userId.runtimeType})");
+
+        if (userId is int) {
+          return userId;
+        } else if (userId is String) {
+          try {
+            return int.parse(userId);
+          } catch (e) {
+            print("Could not parse 'user_id' as int: $e");
+          }
+        }
+      }
+
+      // Check for id field
+      if (decodedToken.containsKey('id')) {
+        final id = decodedToken['id'];
+        print("Found 'id' claim in token: $id (${id.runtimeType})");
+
+        if (id is int) {
+          return id;
+        } else if (id is String) {
+          try {
+            return int.parse(id);
+          } catch (e) {
+            print("Could not parse 'id' as int: $e");
+          }
+        }
+      }
+
+      // Check for a nested user object
+      if (decodedToken.containsKey('user')) {
+        final user = decodedToken['user'];
+        print("Found 'user' object in token: $user");
+
+        if (user is Map) {
+          // Try to get id from user object
+          if (user.containsKey('id')) {
+            final userId = user['id'];
+            print("Found 'user.id' in token: $userId");
+
+            if (userId is int) {
+              return userId;
+            } else if (userId is String) {
+              try {
+                return int.parse(userId);
+              } catch (e) {
+                print("Could not parse 'user.id' as int: $e");
+              }
+            }
+          }
+        }
+      }
+
+      print("⚠️ Could not find user ID in token");
+      return null;
+    } catch (e) {
+      print("Error decoding token: $e");
+      return null;
+    }
   }
   
   // Helper function to convert Map<dynamic, dynamic> to Map<String, dynamic>
@@ -88,30 +212,80 @@ class ApiService {
     if (url == null || url.isEmpty) {
       return '';
     }
-    
+
+    // Debug logging for input
+    print("🖼️ Cleaning image URL: $url");
+
     // First, remove any semicolons that can appear in Kroger image URLs
     String cleaned = url.replaceAll(';', '').trim();
-    
+
     // Kroger API sometimes returns images with quotes in the URL which need to be removed
     if (cleaned.contains('"')) {
       cleaned = cleaned.replaceAll('"', '');
     }
-    
+
+    // Remove any square brackets
+    if (cleaned.contains('[') || cleaned.contains(']')) {
+      cleaned = cleaned.replaceAll('[', '').replaceAll(']', '');
+    }
+
     // Fix common URL patterns
     if (cleaned.contains('images/xlarge/front')) {
       // Make sure there are no spaces between parts
       cleaned = cleaned.replaceAll(' ', '');
     }
-    
+
+    // Handle the case where URL might be embedded in a JSON string
+    if (cleaned.startsWith('{') && cleaned.endsWith('}')) {
+      try {
+        // Try to parse it as JSON
+        Map<String, dynamic> jsonMap = json.decode(cleaned);
+        // Look for URL-like fields
+        if (jsonMap.containsKey('url')) {
+          cleaned = jsonMap['url'].toString();
+        } else if (jsonMap.containsKey('src')) {
+          cleaned = jsonMap['src'].toString();
+        } else if (jsonMap.containsKey('href')) {
+          cleaned = jsonMap['href'].toString();
+        } else if (jsonMap.containsKey('path')) {
+          cleaned = jsonMap['path'].toString();
+        } else if (jsonMap.isNotEmpty) {
+          // Just use the first value that might be a URL
+          for (var value in jsonMap.values) {
+            if (value is String && (value.startsWith('http') || value.startsWith('/'))) {
+              cleaned = value;
+              break;
+            }
+          }
+        }
+      } catch (e) {
+        print("🖼️ Failed to parse as JSON: $e");
+        // If it fails to parse as JSON, keep the original string
+      }
+    }
+
+    // Handle common Kroger URL formats
+    if (cleaned.contains('kroger.com') && !cleaned.startsWith('http')) {
+      cleaned = 'https://www.kroger.com' + (cleaned.startsWith('/') ? '' : '/') + cleaned;
+    }
+
     // Ensure we're using HTTPS
     if (cleaned.startsWith('http:')) {
       cleaned = 'https:' + cleaned.substring(5);
     }
-    
-    // Debug logging
-    print("Image URL cleaned from: $url");
-    print("                    to: $cleaned");
-    
+
+    // If no protocol is specified but it looks like a domain, assume https
+    if (!cleaned.startsWith('http') && cleaned.contains('.') && !cleaned.contains(' ')) {
+      if (!cleaned.startsWith('//')) {
+        cleaned = 'https://' + cleaned;
+      } else {
+        cleaned = 'https:' + cleaned;
+      }
+    }
+
+    // Debug logging for output
+    print("🖼️ Cleaned image URL: $cleaned");
+
     return cleaned;
   }
   
@@ -132,19 +306,19 @@ class ApiService {
       
       // Parse the JSON first - could be a map or a list
       final dynamic data = json.decode(response.body);
-      
+
       // Handle both Map and List responses
       if (data is Map) {
         // First convert to Map<String, dynamic> for type safety
         final Map<String, dynamic> safeData = _toStringDynamicMap(data);
-        
+
         // Check if response contains error message
         if (safeData.containsKey('detail') && response.statusCode >= 400) {
           print("API Error: ${safeData['detail']}");
         }
-        
+
         print("Response parsed as Map with ${safeData.keys.length} keys: ${safeData.keys.toList()}");
-        return safeData;
+        return safeData; // Already converted to Map<String, dynamic>
       } else if (data is List) {
         // If it's a list, return it directly
         print("Response parsed as List with ${data.length} items");
@@ -171,31 +345,83 @@ class ApiService {
   // Function to make GET requests
   static Future<dynamic> _get(String endpoint, String? token) async {
     try {
+      // Try to refresh token if needed
+      final validToken = await _getValidToken(token);
+
       final url = Uri.parse("$baseUrl$endpoint");
       final response = await http.get(
         url,
-        headers: _getHeaders(token),
+        headers: _getHeaders(validToken),
       );
-      
+
       print("GET $endpoint - Status: ${response.statusCode}");
+
+      // Check for unauthorized (401) error - token expired
+      if (response.statusCode == 401) {
+        print("401 Unauthorized - Token may have expired");
+        final responseBody = response.body.length > 100
+            ? response.body.substring(0, 100) + "..."
+            : response.body;
+        print("Response body preview: $responseBody");
+
+        // If we got a 401 despite token refresh attempt, return the error
+        return _parseResponse(response);
+      }
+
+      // Check for Method Not Allowed (405) error - API might require POST instead of GET
+      if (response.statusCode == 405) {
+        print("Response body preview: ${response.body.length > 100 ? response.body.substring(0, 100) + '...' : response.body}");
+        print("API Error: Method Not Allowed");
+
+        // Try to parse the response anyway, in case there's useful error info
+        final parsed = _parseResponse(response);
+        if (parsed is Map) {
+          print("Response parsed as Map with ${parsed.length} keys: ${parsed.keys.toList()}");
+
+          // Convert to Map<String, dynamic> to avoid type issues
+          if (parsed is! Map<String, dynamic>) {
+            return Map<String, dynamic>.from(parsed);
+          }
+        }
+
+        // Return the parsed response even if it's an error, to allow caller to handle
+        return parsed;
+      }
+
       return _parseResponse(response);
     } catch (e) {
       print("GET $endpoint - Error: $e");
       return null;
     }
   }
-  
+
   // Function to make POST requests
   static Future<dynamic> _post(String endpoint, Map<String, dynamic> data, String? token) async {
     try {
+      // Try to refresh token if needed
+      final validToken = await _getValidToken(token);
+
       final url = Uri.parse("$baseUrl$endpoint");
       final response = await http.post(
         url,
-        headers: _getHeaders(token),
+        headers: _getHeaders(validToken),
         body: jsonEncode(data),
       );
-      
+
       print("POST $endpoint - Status: ${response.statusCode}");
+
+      // Check for unauthorized (401) error - token expired
+      if (response.statusCode == 401) {
+        print("401 Unauthorized - Token may have expired");
+        final responseBody = response.body.length > 100
+            ? response.body.substring(0, 100) + "..."
+            : response.body;
+        print("Response body preview: $responseBody");
+
+        // If we got a 401 despite token refresh attempt, return the error
+        return _parseResponse(response);
+      }
+
       return _parseResponse(response);
     } catch (e) {
       print("POST $endpoint - Error: $e");
@@ -665,11 +891,11 @@ class ApiService {
         "/organizations/clients",
         "/clients"
       ];
-      
+
       for (final endpoint in endpoints) {
         print("Checking endpoint: $endpoint");
         final result = await _get(endpoint, authToken);
-        
+
         if (result != null) {
           if (result is List && result.isNotEmpty) {
             print("Found ${result.length} clients at $endpoint");
@@ -678,18 +904,18 @@ class ApiService {
           else if (result is Map) {
             final safeResult = _toStringDynamicMap(result);
             print("Endpoint $endpoint returned keys: ${safeResult.keys.toList()}");
-            
+
             // Check if there are clients in a 'clients' field
-            if (safeResult.containsKey('clients') && 
-                safeResult['clients'] is List && 
+            if (safeResult.containsKey('clients') &&
+                safeResult['clients'] is List &&
                 (safeResult['clients'] as List).isNotEmpty) {
               print("Found ${(safeResult['clients'] as List).length} clients in 'clients' field");
               return true;
             }
-            
+
             // Or check for a 'total' field indicating client count
-            if (safeResult.containsKey('total') && 
-                safeResult['total'] is num && 
+            if (safeResult.containsKey('total') &&
+                safeResult['total'] is num &&
                 safeResult['total'] > 0) {
               print("Found ${safeResult['total']} total clients");
               return true;
@@ -697,12 +923,76 @@ class ApiService {
           }
         }
       }
-      
+
       print("No organization clients found in any endpoint");
       return false;
     } catch (e) {
       print("Error checking for organization clients: $e");
       return false;
+    }
+  }
+
+  // Login method - authenticates user and returns access token
+  static Future<Map<String, dynamic>?> login(String email, String password) async {
+    try {
+      print("📱 Attempting login for email: $email");
+
+      // Prepare login data
+      final Map<String, dynamic> loginData = {
+        "email": email,
+        "password": password
+      };
+
+      // Try multiple login endpoints
+      final loginEndpoints = [
+        "/auth/login",
+        "/login",
+        "/user/login"
+      ];
+
+      for (final endpoint in loginEndpoints) {
+        print("Trying login endpoint: $endpoint");
+
+        try {
+          final result = await _post(endpoint, loginData, null);
+
+          if (result != null) {
+            print("Login response type: ${result.runtimeType}");
+
+            if (result is Map) {
+              final safeResult = _toStringDynamicMap(result);
+              print("Login response keys: ${safeResult.keys.toList()}");
+
+              // Check for access token
+              if (safeResult.containsKey('access_token') ||
+                  safeResult.containsKey('token') ||
+                  safeResult.containsKey('jwt')) {
+
+                // Normalize token field
+                if (!safeResult.containsKey('access_token')) {
+                  if (safeResult.containsKey('token')) {
+                    safeResult['access_token'] = safeResult['token'];
+                  } else if (safeResult.containsKey('jwt')) {
+                    safeResult['access_token'] = safeResult['jwt'];
+                  }
+                }
+
+                print("🔐 Login successful! Got access token");
+                return safeResult;
+              }
+            }
+          }
+        } catch (endpointError) {
+          print("Error trying login endpoint $endpoint: $endpointError");
+          // Continue to next endpoint
+        }
+      }
+
+      print("⚠️ All login endpoints failed");
+      return null;
+    } catch (e) {
+      print("🔴 Login error: $e");
+      return null;
     }
   }
   
@@ -1007,7 +1297,44 @@ class ApiService {
       // Try all endpoints sequentially
       for (String endpoint in endpoints) {
         print("Trying endpoint: $endpoint");
-        final result = await _get(endpoint, authToken);
+
+        // Try GET first
+        var result = await _get(endpoint, authToken);
+
+        // If we get a 405 Method Not Allowed error, try POST instead
+        if (result is Map && result.containsKey('detail') && result['detail'] == "Method Not Allowed") {
+          print("Got 405 Method Not Allowed for $endpoint, trying POST instead");
+
+          // Try POST with menuId in the body
+          print("POST attempt #1: Using {menu_id: $menuId}");
+          result = await _post(endpoint, {"menu_id": menuId}, authToken);
+
+          if (result != null) {
+            print("POST attempt #1 result type: ${result.runtimeType}");
+            if (result is Map) {
+              print("POST attempt #1 keys: ${result.keys.toList()}");
+            }
+          } else {
+            print("POST attempt #1 failed with null result");
+          }
+
+          // If that fails, try a different POST format
+          if (result == null || (result is Map && result.containsKey('detail'))) {
+            print("First POST attempt failed or returned error, trying with id parameter");
+            print("POST attempt #2: Using {id: $menuId}");
+            result = await _post(endpoint, {"id": menuId}, authToken);
+
+            if (result != null) {
+              print("POST attempt #2 result type: ${result.runtimeType}");
+              if (result is Map) {
+                print("POST attempt #2 keys: ${result.keys.toList()}");
+              }
+            } else {
+              print("POST attempt #2 failed with null result");
+            }
+          }
+        }
+
         if (result != null) {
           print("Found data at endpoint: $endpoint");
           print("Result type: ${result.runtimeType}");
@@ -1145,6 +1472,71 @@ class ApiService {
         }
       }
 
+      // Try direct POST to get shopping list - multiple formats
+      // Format 1: /menu/shopping-list with menu_id parameter
+      print("Trying direct POST #1 to /menu/shopping-list with menu_id");
+      var directResult = await _post("/menu/shopping-list", {"menu_id": menuId}, authToken);
+      if (directResult != null && directResult is Map) {
+        print("Got direct POST #1 response: ${directResult.keys.toList()}");
+
+        if (directResult.containsKey('groceryList') ||
+            directResult.containsKey('ingredients') ||
+            directResult.containsKey('items')) {
+
+          var items = directResult.containsKey('groceryList') ? directResult['groceryList'] :
+                     directResult.containsKey('ingredients') ? directResult['ingredients'] :
+                     directResult['items'];
+
+          if (items is List) {
+            print("Got ${items.length} items from direct POST #1");
+            return {"groceryList": items};
+          }
+        }
+      }
+
+      // Format 2: /api/shopping-list with menu_id parameter
+      print("Trying direct POST #2 to /shopping-list with menu_id");
+      directResult = await _post("/shopping-list", {"menu_id": menuId}, authToken);
+      if (directResult != null && directResult is Map) {
+        print("Got direct POST #2 response: ${directResult.keys.toList()}");
+
+        if (directResult.containsKey('groceryList') ||
+            directResult.containsKey('ingredients') ||
+            directResult.containsKey('items')) {
+
+          var items = directResult.containsKey('groceryList') ? directResult['groceryList'] :
+                     directResult.containsKey('ingredients') ? directResult['ingredients'] :
+                     directResult['items'];
+
+          if (items is List) {
+            print("Got ${items.length} items from direct POST #2");
+            return {"groceryList": items};
+          }
+        }
+      }
+
+      // Format 3: Try directly loading the menu (might have ingredients embedded)
+      print("Trying direct POST #3 to /menu/load with menu_id");
+      directResult = await _post("/menu/load", {"menu_id": menuId}, authToken);
+      if (directResult != null && directResult is Map) {
+        print("Got direct POST #3 response: ${directResult.keys.toList()}");
+
+        // Check if this is a full menu with grocery data
+        if (directResult.containsKey('groceryList') ||
+            directResult.containsKey('ingredients') ||
+            directResult.containsKey('items')) {
+
+          var items = directResult.containsKey('groceryList') ? directResult['groceryList'] :
+                     directResult.containsKey('ingredients') ? directResult['ingredients'] :
+                     directResult['items'];
+
+          if (items is List) {
+            print("Got ${items.length} items from direct POST #3");
+            return {"groceryList": items};
+          }
+        }
+      }
+
       // Use the getShoppingList method directly as fallback
       print("Falling back to getShoppingList method");
       final shoppingListResult = await getShoppingList(0, authToken, menuId);
@@ -1164,6 +1556,29 @@ class ApiService {
           print("Got ${formattedIngredients.length} ingredients from getShoppingList");
           return {"groceryList": formattedIngredients};
         }
+      }
+
+      // Try one more direct fallback - a simple POST with just the menu ID
+      print("Trying last fallback: direct POST to /grocery-list with menu ID");
+      var lastAttempt = await _post("/grocery-list", {"menu_id": menuId}, authToken);
+      if (lastAttempt != null && lastAttempt is Map) {
+        // If we got a response, check for ingredients
+        if (lastAttempt.containsKey('groceryList') ||
+            lastAttempt.containsKey('ingredients') ||
+            lastAttempt.containsKey('items')) {
+
+          var items = lastAttempt.containsKey('groceryList') ? lastAttempt['groceryList'] :
+                     lastAttempt.containsKey('ingredients') ? lastAttempt['ingredients'] :
+                     lastAttempt['items'];
+
+          if (items is List) {
+            print("Got ${items.length} items from last attempt POST");
+            return {"groceryList": items};
+          }
+        }
+
+        // Convert to Map<String, dynamic> before returning
+        return Map<String, dynamic>.from(lastAttempt);
       }
 
       // Last resort: Generate a placeholder item to avoid UI errors
@@ -1675,15 +2090,99 @@ class ApiService {
       } else if (storeName.toLowerCase() == 'walmart') {
         endpoint = "/walmart/search";
       }
-      
+
+      print("🔍 Searching for items in $storeName using endpoint: $endpoint");
+      print("🔍 Ingredients to search: $ingredients");
+
       final result = await _post(endpoint, {
         "items": ingredients
       }, authToken);
-      
+
       if (result != null && result is Map) {
-        return _toStringDynamicMap(result);
+        final processedResult = _toStringDynamicMap(result);
+
+        // Enhanced debug logging for Kroger search results
+        if (storeName.toLowerCase() == 'kroger') {
+          print("🔍 Got Kroger search results: ${processedResult.keys.join(', ')}");
+
+          // Check if we have results
+          if (processedResult.containsKey('results') &&
+              processedResult['results'] is List &&
+              (processedResult['results'] as List).isNotEmpty) {
+
+            final firstItem = processedResult['results'][0];
+            print("🔍 First item keys: ${firstItem.keys.join(', ')}");
+
+            // Check for image fields
+            if (firstItem.containsKey('images')) {
+              print("🔍 Images field type: ${firstItem['images'].runtimeType}");
+              print("🔍 Images value: ${firstItem['images']}");
+
+              // Process images into a more usable format if needed
+              List<dynamic> results = processedResult['results'];
+              for (var i = 0; i < results.length; i++) {
+                var item = results[i];
+
+                // Process images field if it exists
+                if (item.containsKey('images')) {
+                  // If images is a string, make sure it's properly formatted
+                  if (item['images'] is String) {
+                    final imgStr = item['images'] as String;
+                    // Add image_url field for compatibility
+                    item['image_url'] = imgStr;
+                  }
+                  // If images is a list, extract the first one
+                  else if (item['images'] is List && (item['images'] as List).isNotEmpty) {
+                    // Add image_url field for compatibility
+                    item['image_url'] = item['images'][0].toString();
+                  }
+                  // If images is a map, extract a suitable image
+                  else if (item['images'] is Map) {
+                    final imageMap = item['images'] as Map;
+                    if (imageMap.isNotEmpty) {
+                      var imageUrl = '';
+                      // Try to find the best image
+                      if (imageMap.containsKey('primary')) {
+                        imageUrl = imageMap['primary'].toString();
+                      } else if (imageMap.containsKey('medium')) {
+                        imageUrl = imageMap['medium'].toString();
+                      } else if (imageMap.containsKey('thumbnail')) {
+                        imageUrl = imageMap['thumbnail'].toString();
+                      } else {
+                        // Just use the first value
+                        imageUrl = imageMap.values.first.toString();
+                      }
+                      // Add image_url field for compatibility
+                      item['image_url'] = imageUrl;
+                    }
+                  }
+                }
+
+                // Make sure there's an image field for compatibility
+                if (!item.containsKey('image') && item.containsKey('image_url')) {
+                  item['image'] = item['image_url'];
+                }
+
+                // Make sure there's a name field for display
+                if (!item.containsKey('name') && item.containsKey('description')) {
+                  item['name'] = item['description'];
+                } else if (!item.containsKey('name') && item.containsKey('product')) {
+                  item['name'] = item['product'];
+                }
+
+                // Store the processed item back
+                results[i] = item;
+              }
+
+              // Update the results in the response
+              processedResult['results'] = results;
+            }
+          }
+        }
+
+        return processedResult;
       }
-      
+
       // Return empty results instead of mock data
       return {
         "success": false,
@@ -1768,38 +2267,8 @@ class ApiService {
     }
   }
   
-  // Get user ID from token
-  static int? getUserIdFromToken(String token) {
-    try {
-      Map<String, dynamic> decodedToken = JwtDecoder.decode(token);
-      return decodedToken['user_id'];
-    } catch (e) {
-      print("Failed to decode token: $e");
-      return null;
-    }
-  }
-  
-  // Login
-  static Future<Map<String, dynamic>?> login(String email, String password) async {
-    try {
-      final url = Uri.parse("$baseUrl/auth/login");
-      final response = await http.post(
-        url,
-        headers: _getHeaders(null),
-        body: jsonEncode({"email": email, "password": password}),
-      );
-      
-      final result = _parseResponse(response);
-      if (result != null && result is Map) {
-        final Map<String, dynamic> safeResult = _toStringDynamicMap(result);
-        return safeResult;
-      }
-      return null;
-    } catch (e) {
-      print("Login error: $e");
-      return null;
-    }
-  }
+  // These methods are now defined at the top of the file
+  // Do not redefine them here
   
   // Sign up
   static Future<Map<String, dynamic>?> signUp(
@@ -3254,6 +3723,30 @@ class ApiService {
       }
     } catch (e) {
       print('Error getting meal shopping lists: $e');
+      return null;
+    }
+  }
+
+  // Generic API call method with specified HTTP method
+  static Future<dynamic> callApiEndpoint(
+    String method,
+    String endpoint,
+    String token,
+    Map<String, dynamic>? body
+  ) async {
+    try {
+      print("Calling API endpoint $method $endpoint");
+
+      if (method.toUpperCase() == 'GET') {
+        return await _get(endpoint, token);
+      } else if (method.toUpperCase() == 'POST') {
+        return await _post(endpoint, body ?? {}, token);
+      } else {
+        print("Unsupported HTTP method: $method");
+        return null;
+      }
+    } catch (e) {
+      print("Error calling $method $endpoint: $e");
       return null;
     }
   }

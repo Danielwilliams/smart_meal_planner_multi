@@ -21,6 +21,7 @@ import TestDebugPage from './pages/TestDebugPage';
 import CartPage from './pages/CartPage';  // Add this import
 import Home from './pages/Home';
 import LandingPage from './pages/LandingPage';
+import PrivacyPolicy from './pages/PrivacyPolicy';
 // Import PrivateRoute and SubscriptionRoute components
 import PrivateRoute from './components/PrivateRoute';
 import SubscriptionRoute from './components/SubscriptionRoute';
@@ -327,6 +328,9 @@ function App() {
                   </PrivateRoute>
                 }
               />
+
+              {/* Public information pages */}
+              <Route path="/privacy-policy" element={<PrivacyPolicy />} />
 
               {/* Fallback route */}
               <Route path="*" element={<Navigate to="/" replace />} />

@@ -35,12 +35,9 @@ import 'Providers/subscription_provider.dart';
 import 'components/subscription_route_wrapper.dart';
 import 'common/custom_theme.dart';
 import 'services/theme_service.dart';
-import 'services/api_service.dart';
+import 'services/api_service.dart' show navigatorKey, ApiService;
 import 'models/cart_model.dart';
 import 'models/menu_model.dart'; // Import the Menu model
-
-// Global navigator key for accessing navigator from anywhere
-final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -62,45 +59,61 @@ class CartState extends ChangeNotifier {
     'Kroger': 0.0,
     'Instacart': 0.0,
   };
-  
+
   // Add a single item to cart
   void addItemToCart(String store, Map<String, dynamic> item) {
     print("CART STATE: Adding item to $store cart: ${item['name']}");
+    // Make sure the store exists in the cart
+    if (!storeCarts.containsKey(store)) {
+      storeCarts[store] = [];
+      storeTotals[store] = 0.0;
+    }
     storeCarts[store]!.add(item);
     recalculateTotal(store);
     notifyListeners();
   }
-  
+
   // Add multiple items to cart
   void addItemsToCart(String store, List<Map<String, dynamic>> items) {
     print("CART STATE: Adding ${items.length} items to $store cart");
+    // Make sure the store exists in the cart
+    if (!storeCarts.containsKey(store)) {
+      storeCarts[store] = [];
+      storeTotals[store] = 0.0;
+    }
     for (var item in items) {
       storeCarts[store]!.add(item);
     }
     recalculateTotal(store);
     notifyListeners();
   }
-  
+
   // Remove an item from cart
   void removeItemFromCart(String store, dynamic item) {
     print("CART STATE: Removing item from $store cart");
-    storeCarts[store]!.removeWhere((cartItem) => 
-      cartItem['name'] == item['name'] && 
-      cartItem['ingredient'] == item['ingredient']);
-    recalculateTotal(store);
-    notifyListeners();
+    if (storeCarts.containsKey(store)) {
+      storeCarts[store]!.removeWhere((cartItem) =>
+        cartItem['name'] == item['name'] &&
+        cartItem['ingredient'] == item['ingredient']);
+      recalculateTotal(store);
+      notifyListeners();
+    }
   }
-  
+
   // Clear a store's cart
   void clearCart(String store) {
     print("CART STATE: Clearing $store cart");
-    storeCarts[store]!.clear();
-    storeTotals[store] = 0.0;
-    notifyListeners();
+    if (storeCarts.containsKey(store)) {
+      storeCarts[store]!.clear();
+      storeTotals[store] = 0.0;
+      notifyListeners();
+    }
   }
-  
+
   // Recalculate total for a store
   void recalculateTotal(String store) {
+    if (!storeCarts.containsKey(store)) return;
+
     double total = 0.0;
     for (var item in storeCarts[store]!) {
       if (item.containsKey('price') && item['price'] != null) {
@@ -119,14 +132,14 @@ class CartState extends ChangeNotifier {
     }
     storeTotals[store] = total;
   }
-  
+
   // Debug method to print current cart state
   void printCartState() {
     for (var store in storeCarts.keys) {
       print("$store cart has ${storeCarts[store]!.length} items");
       for (var i = 0; i < storeCarts[store]!.length; i++) {
         var item = storeCarts[store]![i];
-        print("  Item $i: ${item['name']} (${item['ingredient']})");
+        print("  Item $i: ${item['name'] ?? 'Unknown'} (${item['ingredient'] ?? 'No ingredient'})");
       }
     }
   }

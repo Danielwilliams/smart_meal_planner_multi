@@ -156,22 +156,132 @@ class _CartsScreenState extends State<CartsScreen> {
         storeName: storeName,
         ingredients: [], // Empty list will fetch all ingredients in internal cart
       );
-      
+
       if (storeItems != null) {
-        if (storeItems.containsKey('results')) {
-          final results = storeItems['results'] as List<dynamic>;
-          
-          setState(() {
-            _searchResults[storeName] = results;
-          });
-          
-          print("Found ${results.length} matching items in $storeName");
+        List<dynamic> results = [];
+
+        // Check various possible result formats
+        if (storeItems.containsKey('results') && storeItems['results'] is List) {
+          results = storeItems['results'] as List<dynamic>;
+        } else if (storeItems.containsKey('data') && storeItems['data'] is List) {
+          results = storeItems['data'] as List<dynamic>;
+        } else if (storeItems.containsKey('items') && storeItems['items'] is List) {
+          results = storeItems['items'] as List<dynamic>;
+        } else if (storeItems.containsKey('products') && storeItems['products'] is List) {
+          results = storeItems['products'] as List<dynamic>;
+        } else if (storeItems is List) {
+          results = storeItems as List<dynamic>;
         } else {
-          print("Invalid search results format");
+          print("Invalid search results format: ${storeItems.keys.toList()}");
           setState(() {
             _searchResults[storeName] = [];
           });
+          return;
         }
+
+        print("Found ${results.length} matching items in $storeName");
+
+        // For Kroger specifically, ensure images are properly processed
+        if (storeName.toLowerCase() == 'kroger' && results.isNotEmpty) {
+          print("🖼️ Processing ${results.length} Kroger search results for images");
+
+          for (var i = 0; i < results.length; i++) {
+            var item = results[i];
+
+            // Ensure the item is a map
+            if (item is! Map) {
+              print("⚠️ Item ${i+1} is not a Map: ${item.runtimeType}");
+              continue;
+            }
+
+            // Convert to a mutable map if needed
+            if (item is! Map<String, dynamic>) {
+              item = Map<String, dynamic>.from(item);
+            }
+
+            // Print item keys for debugging
+            print("🖼️ Item ${i+1} has keys: ${item.keys.toList()}");
+
+            // Check for available image fields and ensure they're properly formatted
+            bool hasImage = false;
+
+            // Check for direct image fields
+            if (item.containsKey('image_url') && item['image_url'] != null && item['image_url'].toString().isNotEmpty) {
+              item['image_url'] = ApiService.cleanImageUrl(item['image_url'].toString());
+              print("🖼️ Item ${i+1} has image_url: ${item['image_url']}");
+              hasImage = true;
+            }
+
+            if (item.containsKey('image') && item['image'] != null && item['image'].toString().isNotEmpty) {
+              item['image'] = ApiService.cleanImageUrl(item['image'].toString());
+              if (!hasImage) {
+                item['image_url'] = item['image']; // Copy to image_url for consistency
+                print("🖼️ Item ${i+1} has image: ${item['image']}");
+                hasImage = true;
+              }
+            }
+
+            // Check for images field
+            if (!hasImage && item.containsKey('images')) {
+              if (item['images'] is List && (item['images'] as List).isNotEmpty) {
+                String imgUrl = ApiService.cleanImageUrl((item['images'] as List)[0].toString());
+                item['image_url'] = imgUrl;
+                item['image'] = imgUrl;
+                print("🖼️ Item ${i+1} has image from list: $imgUrl");
+                hasImage = true;
+              } else if (item['images'] is Map && (item['images'] as Map).isNotEmpty) {
+                Map imagesMap = item['images'] as Map;
+                String imgUrl = '';
+
+                if (imagesMap.containsKey('primary')) {
+                  imgUrl = imagesMap['primary'].toString();
+                } else if (imagesMap.containsKey('medium')) {
+                  imgUrl = imagesMap['medium'].toString();
+                } else if (imagesMap.containsKey('thumbnail')) {
+                  imgUrl = imagesMap['thumbnail'].toString();
+                } else {
+                  imgUrl = imagesMap.values.first.toString();
+                }
+
+                imgUrl = ApiService.cleanImageUrl(imgUrl);
+                item['image_url'] = imgUrl;
+                item['image'] = imgUrl;
+                print("🖼️ Item ${i+1} has image from map: $imgUrl");
+                hasImage = true;
+              } else if (item['images'] != null) {
+                String imgUrl = ApiService.cleanImageUrl(item['images'].toString());
+                item['image_url'] = imgUrl;
+                item['image'] = imgUrl;
+                print("🖼️ Item ${i+1} has image as string: $imgUrl");
+                hasImage = true;
+              }
+            }
+
+            // Check for thumbnail field
+            if (!hasImage && item.containsKey('thumbnail') && item['thumbnail'] != null && item['thumbnail'].toString().isNotEmpty) {
+              String imgUrl = ApiService.cleanImageUrl(item['thumbnail'].toString());
+              item['image_url'] = imgUrl;
+              item['image'] = imgUrl;
+              print("🖼️ Item ${i+1} has thumbnail: $imgUrl");
+              hasImage = true;
+            }
+
+            // If we couldn't find any image, add a placeholder
+            if (!hasImage) {
+              print("⚠️ Item ${i+1} has NO image");
+              // Add empty image fields to prevent null errors
+              item['image'] = '';
+              item['image_url'] = '';
+            }
+
+            // Update the item in the results list
+            results[i] = item;
+          }
+        }
+
+        setState(() {
+          _searchResults[storeName] = results;
+        });
       } else {
         print("No search results for $storeName");
         setState(() {
@@ -979,7 +1089,47 @@ class _CartsScreenState extends State<CartsScreen> {
                 
                 // Extract item details
                 final String name = item['name'] ?? item['description'] ?? 'Product';
-                final String imageUrl = item['image'] ?? item['imageUrl'] ?? item['thumbnail'] ?? '';
+
+                // Check all possible image URL fields that Kroger might return
+                String imageUrl = '';
+
+                // Try direct image fields first
+                if (item.containsKey('image') && item['image'] != null && item['image'].toString().isNotEmpty) {
+                  imageUrl = item['image'].toString();
+                } else if (item.containsKey('imageUrl') && item['imageUrl'] != null && item['imageUrl'].toString().isNotEmpty) {
+                  imageUrl = item['imageUrl'].toString();
+                } else if (item.containsKey('thumbnail') && item['thumbnail'] != null && item['thumbnail'].toString().isNotEmpty) {
+                  imageUrl = item['thumbnail'].toString();
+                } else if (item.containsKey('image_url') && item['image_url'] != null && item['image_url'].toString().isNotEmpty) {
+                  imageUrl = item['image_url'].toString();
+                } else if (item.containsKey('productImage') && item['productImage'] != null && item['productImage'].toString().isNotEmpty) {
+                  imageUrl = item['productImage'].toString();
+                }
+
+                // Check for nested images object or array
+                else if (item.containsKey('images')) {
+                  if (item['images'] is List && (item['images'] as List).isNotEmpty) {
+                    // If it's a list, take the first image
+                    imageUrl = item['images'][0].toString();
+                  } else if (item['images'] is Map) {
+                    // If it's a map, look for standard keys
+                    final imagesMap = item['images'] as Map;
+                    if (imagesMap.containsKey('primary')) {
+                      imageUrl = imagesMap['primary'].toString();
+                    } else if (imagesMap.containsKey('medium')) {
+                      imageUrl = imagesMap['medium'].toString();
+                    } else if (imagesMap.containsKey('thumbnail')) {
+                      imageUrl = imagesMap['thumbnail'].toString();
+                    } else if (imagesMap.containsKey('small')) {
+                      imageUrl = imagesMap['small'].toString();
+                    } else if (imagesMap.isNotEmpty) {
+                      // Just take the first value as a fallback
+                      imageUrl = imagesMap.values.first.toString();
+                    }
+                  } else if (item['images'] != null) {
+                    imageUrl = item['images'].toString();
+                  }
+                }
                 final double price = item['price'] != null 
                     ? (item['price'] is num 
                         ? (item['price'] as num).toDouble() 
@@ -1006,13 +1156,19 @@ class _CartsScreenState extends State<CartsScreen> {
                             AspectRatio(
                               aspectRatio: 1.2,
                               child: imageUrl.isNotEmpty
-                                ? Image.network(
-                                    imageUrl,
+                                ? FadeInImage.assetNetwork(
+                                    placeholder: 'assets/images/placeholder.txt',
+                                    image: ApiService.cleanImageUrl(imageUrl),
                                     fit: BoxFit.cover,
-                                    errorBuilder: (_, __, ___) => Container(
-                                      color: Colors.grey[200],
-                                      child: Icon(Icons.image_not_supported, size: 48),
-                                    ),
+                                    imageErrorBuilder: (context, error, stackTrace) {
+                                      print("Error loading product image: $error");
+                                      print("Original URL: $imageUrl");
+                                      print("Cleaned URL: ${ApiService.cleanImageUrl(imageUrl)}");
+                                      return Container(
+                                        color: Colors.grey[200],
+                                        child: Icon(Icons.image_not_supported, size: 48),
+                                      );
+                                    },
                                   )
                                 : Container(
                                     color: Colors.grey[200],
@@ -1215,7 +1371,65 @@ class _CartsScreenState extends State<CartsScreen> {
                     return _buildStoreCart('Kroger');
                   }
                 ),
-          
+
+          // Add debug button to show API responses
+          Positioned(
+            bottom: 10,
+            right: 10,
+            child: Opacity(
+              opacity: 0.7,
+              child: FloatingActionButton.small(
+                backgroundColor: Colors.grey[800],
+                child: Icon(Icons.bug_report, size: 20),
+                onPressed: () {
+                  // Show debug info dialog with search results
+                  showDialog(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: Text("Kroger Search Debug Info"),
+                      content: SingleChildScrollView(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text("Search results count: ${_searchResults['Kroger']?.length ?? 0}"),
+                            Divider(),
+                            if (_searchResults['Kroger']?.isNotEmpty ?? false) ...[
+                              Text("First result keys:", style: TextStyle(fontWeight: FontWeight.bold)),
+                              Text(_searchResults['Kroger']![0].keys.toList().toString()),
+                              SizedBox(height: 10),
+                              if (_searchResults['Kroger']![0].containsKey('images')) ...[
+                                Text("Images field type: ${_searchResults['Kroger']![0]['images'].runtimeType}"),
+                                Text("Images value: ${_searchResults['Kroger']![0]['images']}"),
+                              ],
+                              Divider(),
+                              Text("First result:", style: TextStyle(fontWeight: FontWeight.bold)),
+                              Container(
+                                padding: EdgeInsets.all(8),
+                                color: Colors.grey[200],
+                                child: Text(
+                                  _searchResults['Kroger']![0].toString(),
+                                  style: TextStyle(fontSize: 12),
+                                ),
+                              ),
+                            ] else
+                              Text("No search results available"),
+                          ],
+                        ),
+                      ),
+                      actions: [
+                        TextButton(
+                          child: Text("Close"),
+                          onPressed: () => Navigator.of(context).pop(),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+
           // Loading overlay with status message
           if (_statusMessage.isNotEmpty)
             Container(
