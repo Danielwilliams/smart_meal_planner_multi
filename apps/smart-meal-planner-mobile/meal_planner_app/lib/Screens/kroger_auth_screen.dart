@@ -55,18 +55,25 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
   }
   
   void _handleAppResumed() async {
-    print('App resumed - checking for deep link authentication');
+    print('🔄 App resumed - checking for deep link authentication');
     
     try {
       final prefs = await SharedPreferences.getInstance();
       final authInProgress = prefs.getBool('kroger_auth_in_progress') ?? false;
       
+      print('Auth in progress: $authInProgress');
+      
       if (authInProgress) {
         print('Kroger auth in progress - checking for completion');
         
-        // Check if we now have valid tokens (from backend polling approach)
+        // First priority: Check if we have received an auth code from the deep link
+        await _checkForDeepLinkAuthCode();
+        
+        // Fallback: Check if we now have valid tokens (from backend polling approach)
         final isAuthenticated = prefs.getBool('kroger_authenticated') ?? false;
         final accessToken = prefs.getString('kroger_access_token');
+        
+        print('Fallback check - isAuthenticated: $isAuthenticated, hasAccessToken: ${accessToken != null}');
         
         if (isAuthenticated && accessToken != null && accessToken.isNotEmpty &&
             !accessToken.contains('mobile_app_token')) {
@@ -90,10 +97,9 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
             
             Navigator.pop(context, true);
           }
-          return;
         }
-        
-        // New deep link approach: Check if we have received an auth code from the deep link
+      } else {
+        print('No auth in progress, but checking for auth code anyway...');
         await _checkForDeepLinkAuthCode();
       }
     } catch (e) {
@@ -104,15 +110,18 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
   // Check for authorization code from deep link callback
   Future<void> _checkForDeepLinkAuthCode() async {
     try {
-      print('Checking for deep link auth code...');
+      print('🔍 Checking for deep link auth code...');
       
       // Check if an auth code was passed through the route arguments
       final context = this.context;
       final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
       final code = args?['code'];
       
+      print('Route args: $args');
+      print('Code from route args: $code');
+      
       if (code != null && code.isNotEmpty) {
-        print('🎉 Found auth code from deep link: ${code.substring(0, 10)}...');
+        print('🎉 Found auth code from route args: ${code.substring(0, 10)}...');
         
         // Process the authorization code
         setState(() {
@@ -127,6 +136,8 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
       // Also check SharedPreferences in case the code was stored there
       final prefs = await SharedPreferences.getInstance();
       final storedCode = prefs.getString('kroger_auth_code');
+      
+      print('Stored code in SharedPreferences: ${storedCode?.substring(0, 10) ?? 'null'}...');
       
       if (storedCode != null && storedCode.isNotEmpty) {
         print('🎉 Found stored auth code: ${storedCode.substring(0, 10)}...');
@@ -144,7 +155,11 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
         return;
       }
       
-      print('No auth code found in deep link or storage');
+      print('❌ No auth code found in route args or SharedPreferences');
+      
+      // As a last resort, let's check if there's a way to get the launch URL
+      // This would require adding package like 'receive_sharing_intent' or similar
+      // For now, let's add a manual way to trigger auth code processing
       
     } catch (e) {
       print('Error checking for deep link auth code: $e');
@@ -1124,7 +1139,7 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
   }
 
   void _handleCustomSchemeUrl(String url) {
-    print('Handling custom scheme URL: $url');
+    print('🔗 Handling custom scheme URL: $url');
     
     if (_authInProgress) {
       print('Authentication already in progress, ignoring custom scheme URL');
@@ -1145,10 +1160,18 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
       }
       
       if (code != null) {
-        print('Found authorization code in custom scheme URL: ${code.substring(0, min(code.length, 10))}...');
+        print('🎉 Found authorization code in custom scheme URL: ${code.substring(0, min(code.length, 10))}...');
+        
+        // Store the code in SharedPreferences for app resume detection
+        SharedPreferences.getInstance().then((prefs) {
+          prefs.setString('kroger_auth_code', code!);
+          print('Stored auth code in SharedPreferences');
+        });
+        
+        // Process the code immediately
         _completeAuthentication(code);
       } else {
-        print('No authorization code found in custom scheme URL');
+        print('❌ No authorization code found in custom scheme URL');
         print('Query parameters: ${uri.queryParameters}');
         print('Fragment: ${uri.fragment}');
         if (uri.fragment.isNotEmpty) {
@@ -1170,6 +1193,65 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
         ),
       );
     }
+  }
+  
+  // Manual auth code processing for testing
+  void _manuallyProcessAuthCode(String authCode) async {
+    if (authCode.isNotEmpty) {
+      print('🔧 Manually processing auth code: ${authCode.substring(0, 10)}...');
+      
+      setState(() {
+        _authInProgress = true;
+        _statusMessage = 'Processing authentication...';
+      });
+      
+      await _completeAuthentication(authCode);
+    }
+  }
+  
+  // Show dialog for manual auth code input
+  void _showManualAuthCodeDialog() {
+    final controller = TextEditingController();
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Manual Auth Code'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Paste the authorization code from the deep link URL:'),
+            SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              decoration: InputDecoration(
+                hintText: 'e.g., i30ZlgktrFaNRdvVXZiyiNs2nHwPmPHea8eu-EwE',
+                border: OutlineInputBorder(),
+              ),
+              maxLines: 3,
+            ),
+            SizedBox(height: 8),
+            Text(
+              'Extract the "code" parameter from the deep link URL you saw in the browser.',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _manuallyProcessAuthCode(controller.text.trim());
+            },
+            child: Text('Process'),
+          ),
+        ],
+      ),
+    );
   }
 
   // Monitor for deep link callback instead of backend polling
@@ -1286,6 +1368,16 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
                       ),
                     ),
                   ],
+                ),
+                SizedBox(height: 16),
+                // Debug button for manual auth code processing
+                ElevatedButton(
+                  onPressed: () => _showManualAuthCodeDialog(),
+                  child: Text('Manual Auth Code'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orange,
+                    foregroundColor: Colors.white,
+                  ),
                 ),
               ],
             ),

@@ -35,6 +35,7 @@ function CreateAccount() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [showVerificationMessage, setShowVerificationMessage] = useState(false);
   
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -145,8 +146,8 @@ function CreateAccount() {
             return;
           }
         } else {
-          // Regular signup without subscription - redirect to login
-          navigate('/login?message=signup-complete');
+          // Regular signup without subscription - show verification message
+          setShowVerificationMessage(true);
         }
       } else {
         setError('An unexpected error occurred. Please try again.');
@@ -184,12 +185,34 @@ function CreateAccount() {
           </Alert>
         )}
         
-        {successMessage && (
+        {successMessage && !showVerificationMessage && (
           <Alert severity="success" sx={{ mb: 3 }}>
             {successMessage}
           </Alert>
         )}
         
+        {showVerificationMessage && (
+          <Alert severity="success" sx={{ mb: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              Account Created Successfully!
+            </Typography>
+            <Typography variant="body2">
+              Please check your email for a verification link. You'll need to verify your email address before you can log in to your account.
+            </Typography>
+            <Box sx={{ mt: 2 }}>
+              <Button 
+                component={RouterLink} 
+                to="/login" 
+                variant="outlined" 
+                color="primary"
+              >
+                Go to Login Page
+              </Button>
+            </Box>
+          </Alert>
+        )}
+        
+        {!showVerificationMessage && (
         <form onSubmit={handleSubmit}>
           <TextField
             label="Email"
@@ -268,6 +291,7 @@ function CreateAccount() {
             </Typography>
           </Box>
         </form>
+        )}
       </Paper>
     </Container>
   );
