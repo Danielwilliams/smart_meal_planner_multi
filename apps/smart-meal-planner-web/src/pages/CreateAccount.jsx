@@ -98,6 +98,8 @@ function CreateAccount() {
       // Use the signUp method which is designed to handle the signup flow
       const response = await apiService.signUp(signupPayload);
       
+      console.log('Signup response:', response);
+      
       // Handle both direct response and response.data patterns
       if (response) {
         // Extract message from response or response.data
@@ -147,7 +149,10 @@ function CreateAccount() {
           }
         } else {
           // Regular signup without subscription - show verification message
+          console.log('Setting verification message to true');
+          setSuccessMessage(''); // Clear any success message
           setShowVerificationMessage(true);
+          return; // Prevent any further execution
         }
       } else {
         setError('An unexpected error occurred. Please try again.');
@@ -198,6 +203,9 @@ function CreateAccount() {
             </Typography>
             <Typography variant="body2">
               Please check your email for a verification link. You'll need to verify your email address before you can log in to your account.
+            </Typography>
+            <Typography variant="body2" sx={{ mt: 1, fontStyle: 'italic' }}>
+              Debug: Verification message is showing (showVerificationMessage = {showVerificationMessage.toString()})
             </Typography>
             <Box sx={{ mt: 2 }}>
               <Button 

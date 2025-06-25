@@ -35,6 +35,7 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
   bool _authInProgress = false;
   int _navigationAttempts = 0;
   DateTime? _lastNavigationTime;
+  static const MethodChannel _platform = MethodChannel('com.example.meal_planner_app/intent');
 
   @override
   void initState() {
@@ -44,6 +45,9 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
     // Set up a listener for app state changes to detect when returning from browser
     WidgetsBinding.instance.addObserver(_AppLifecycleObserver(this));
     
+    // Check for initial intent data (deep link)
+    _checkInitialIntent();
+    
     // First check if we already have valid Kroger auth
     _checkExistingKrogerAuth();
   }
@@ -52,6 +56,73 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
   void dispose() {
     WidgetsBinding.instance.removeObserver(_AppLifecycleObserver(this));
     super.dispose();
+  }
+  
+  // Initialize deep link handling
+  Future<void> _initDeepLinks() async {
+    try {
+      print('🔗 Initializing deep link listener...');
+      
+      // Check for initial link when app is launched
+      final initialLink = await _appLinks.getInitialAppLink();
+      if (initialLink != null) {
+        print('📱 App launched with deep link: $initialLink');
+        _handleDeepLink(initialLink);
+      }
+      
+      // Listen for incoming deep links while app is running
+      _linkSubscription = _appLinks.uriLinkStream.listen(
+        (Uri uri) {
+          print('📱 Received deep link: $uri');
+          _handleDeepLink(uri);
+        },
+        onError: (err) {
+          print('❌ Deep link error: $err');
+        },
+      );
+    } catch (e) {
+      print('❌ Error initializing deep links: $e');
+    }
+  }
+  
+  // Handle incoming deep link
+  void _handleDeepLink(Uri uri) {
+    print('🔗 Processing deep link: $uri');
+    
+    // Check if this is a Kroger auth callback
+    if (uri.scheme == 'smartmealplanner' && uri.host == 'kroger-auth') {
+      final code = uri.queryParameters['code'];
+      final state = uri.queryParameters['state'];
+      
+      print('📝 Deep link query parameters:');
+      print('  - code: ${code?.substring(0, 10) ?? 'null'}...');
+      print('  - state: $state');
+      
+      if (code != null && code.isNotEmpty) {
+        print('🎉 Found auth code in deep link: ${code.substring(0, 10)}...');
+        
+        if (!_authInProgress) {
+          setState(() {
+            _authInProgress = true;
+            _statusMessage = 'Processing authentication...';
+          });
+          
+          _completeAuthentication(code);
+        } else {
+          print('⚠️ Authentication already in progress, ignoring duplicate deep link');
+        }
+      } else {
+        print('❌ No auth code found in deep link');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('No authorization code found in deep link'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    } else {
+      print('🤷 Deep link not for Kroger auth: ${uri.scheme}://${uri.host}');
+    }
   }
   
   void _handleAppResumed() async {

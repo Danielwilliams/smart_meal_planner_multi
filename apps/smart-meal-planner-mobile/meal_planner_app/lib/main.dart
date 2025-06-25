@@ -245,10 +245,12 @@ class _MealPlannerAppState extends State<MealPlannerApp> {
             '/kroger-auth': (context) {
               final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
               
+              print('📱 /kroger-auth route called with args: $args');
+              
               // Check if this is a deep link callback with auth code
               final code = args?['code'];
               if (code != null) {
-                print('Deep link callback received with auth code');
+                print('🎉 Deep link callback received with auth code: ${code.substring(0, 10)}...');
                 // This is a callback from Kroger OAuth - handle it
                 return KrogerAuthScreen(
                   userId: auth.userId ?? 0,
