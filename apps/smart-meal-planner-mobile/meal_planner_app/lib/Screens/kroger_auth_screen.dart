@@ -141,16 +141,13 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
       if (code != null && code.isNotEmpty) {
         print('🎉 Found auth code in deep link: ${code.substring(0, 10)}...');
         
-        if (!_authInProgress) {
-          setState(() {
-            _authInProgress = true;
-            _statusMessage = 'Processing authentication...';
-          });
-          
-          _completeAuthentication(code);
-        } else {
-          print('⚠️ Authentication already in progress, ignoring duplicate deep link');
-        }
+        // Reset auth state and process the deep link regardless
+        setState(() {
+          _authInProgress = true;
+          _statusMessage = 'Processing authentication from deep link...';
+        });
+        
+        _completeAuthentication(code);
       } else {
         print('❌ No auth code found in deep link');
         if (mounted) {

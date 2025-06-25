@@ -24,14 +24,6 @@ function CreateAccount() {
   const paymentProvider = query.get('provider') || 'stripe';
   const discountCode = query.get('discount');
   
-  console.log('URL parameters:', {
-    subscriptionPlan,
-    paymentProvider,
-    discountCode,
-    fullURL: window.location.href,
-    searchParams: window.location.search
-  });
-  
   // Form state
   const [formData, setFormData] = useState({
     email: '',
@@ -45,14 +37,6 @@ function CreateAccount() {
   const [successMessage, setSuccessMessage] = useState('');
   const [showVerificationMessage, setShowVerificationMessage] = useState(false);
   
-  console.log('CreateAccount render - showVerificationMessage:', showVerificationMessage);
-  
-  // Debug effect to monitor state changes
-  useEffect(() => {
-    if (showVerificationMessage) {
-      console.log('Verification message effect triggered - message should stay visible');
-    }
-  }, [showVerificationMessage]);
   
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -115,10 +99,6 @@ function CreateAccount() {
       // Use the signUp method which is designed to handle the signup flow
       const response = await apiService.signUp(signupPayload);
       
-      console.log('Signup response:', response);
-      console.log('Signup response type:', typeof response);
-      console.log('Subscription plan:', subscriptionPlan);
-      
       // Handle both direct response and response.data patterns
       if (response) {
         // Extract message from response or response.data
@@ -126,64 +106,18 @@ function CreateAccount() {
           ? response.data.message || "Account created successfully!"
           : response.message || "Account created successfully!";
         
-        console.log('Setting success message:', message);
         setSuccessMessage(message);
         
-        // If we have subscription parameters, log in and redirect to subscription
-        if (subscriptionPlan) {
-          console.log('Has subscription plan, handling subscription flow');
-          console.log('Taking subscription path - will attempt login');
-          try {
-            // Log in with the new credentials
-            const loginResponse = await login({
-              email: formData.email,
-              password: formData.password
-            });
-            
-            if (loginResponse) {
-              // Define success and cancel URLs
-              const successUrl = `${window.location.origin}/subscription/success`;
-              const cancelUrl = `${window.location.origin}/subscription/cancel`;
-              
-              // Import the subscription service dynamically to avoid circular dependencies
-              const subscriptionService = await import('../services/subscriptionService').then(module => module.default);
-              
-              // Create checkout session
-              const checkoutResponse = await subscriptionService.createCheckoutSession(
-                subscriptionPlan,
-                paymentProvider,
-                successUrl,
-                cancelUrl,
-                discountCode
-              );
-              
-              // Redirect to checkout
-              if (checkoutResponse && checkoutResponse.checkout_url) {
-                window.location.href = checkoutResponse.checkout_url;
-                return;
-              }
-            }
-          } catch (loginError) {
-            console.error('Error logging in after signup:', loginError);
-            // If auto-login fails, still allow the user to proceed manually
-            navigate('/login?message=signup-complete&subscription=true');
-            return;
-          }
-        } else {
-          // Regular signup without subscription - show verification message
-          console.log('No subscription plan - taking verification message path');
-          console.log('Setting verification message to true');
-          setSuccessMessage(''); // Clear any success message
-          setShowVerificationMessage(true);
-          return; // Prevent any further execution
-        }
+        // Always show verification message first, regardless of subscription plan
+        // The user needs to verify their email before they can proceed with any subscription
+        setSuccessMessage(''); // Clear any success message
+        setShowVerificationMessage(true);
+        return; // Prevent any further execution
       } else {
         setError('An unexpected error occurred. Please try again.');
       }
     } catch (err) {
       console.error('Signup error:', err);
-      console.log('Error response:', err.response);
-      console.log('Error message:', err.message);
       
       if (err.response && err.response.data && err.response.data.detail) {
         setError(err.response.data.detail);
@@ -230,17 +164,19 @@ function CreateAccount() {
             <Typography variant="body2">
               Please check your email for a verification link. You'll need to verify your email address before you can log in to your account.
             </Typography>
-            <Typography variant="body2" sx={{ mt: 1, fontStyle: 'italic' }}>
-              Debug: Verification message is showing (showVerificationMessage = {showVerificationMessage.toString()})
-            </Typography>
+            {subscriptionPlan && (
+              <Typography variant="body2" sx={{ mt: 1, fontWeight: 'bold' }}>
+                After verifying your email, you'll be able to complete your {subscriptionPlan} subscription setup.
+              </Typography>
+            )}
             <Box sx={{ mt: 2 }}>
               <Button 
                 component={RouterLink} 
-                to="/login" 
+                to={subscriptionPlan ? `/login?subscription=true&plan=${subscriptionPlan}&provider=${paymentProvider}${discountCode ? `&discount=${discountCode}` : ''}` : "/login"} 
                 variant="outlined" 
                 color="primary"
               >
-                Go to Login Page
+                {subscriptionPlan ? 'Verify Email & Continue to Subscription' : 'Go to Login Page'}
               </Button>
             </Box>
           </Alert>
