@@ -36,6 +36,7 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
   bool _authInProgress = false;
   int _navigationAttempts = 0;
   DateTime? _lastNavigationTime;
+  String? _processedAuthCode; // Track the last processed auth code to prevent duplicates
   static const MethodChannel _platform = MethodChannel('com.example.meal_planner_app/intent');
 
   late AppLinks _appLinks;
@@ -77,6 +78,8 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
       if (initialLink != null) {
         print('📱 Found initial deep link: $initialLink');
         _handleDeepLinkUri(initialLink);
+      } else {
+        print('🤷 No initial deep link found');
       }
       
       // Listen for incoming deep links
@@ -89,6 +92,8 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
           print('❌ Deep link error: $err');
         },
       );
+      
+      print('✅ Deep link listener initialized successfully');
       
     } catch (e) {
       print('❌ Error initializing deep link listener: $e');
@@ -141,7 +146,16 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
       if (code != null && code.isNotEmpty) {
         print('🎉 Found auth code in deep link: ${code.substring(0, 10)}...');
         
-        // Reset auth state and process the deep link regardless
+        // Check if we've already processed this exact auth code
+        if (_processedAuthCode == code) {
+          print('⚠️ Auth code already processed, ignoring duplicate');
+          return;
+        }
+        
+        // Mark this code as processed
+        _processedAuthCode = code;
+        
+        // Reset auth state and process the deep link
         setState(() {
           _authInProgress = true;
           _statusMessage = 'Processing authentication from deep link...';
@@ -233,6 +247,15 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
       if (code != null && code.isNotEmpty) {
         print('🎉 Found auth code from route args: ${code.substring(0, 10)}...');
         
+        // Check if we've already processed this exact auth code
+        if (_processedAuthCode == code) {
+          print('⚠️ Auth code already processed, ignoring duplicate from route args');
+          return;
+        }
+        
+        // Mark this code as processed
+        _processedAuthCode = code;
+        
         // Process the authorization code
         setState(() {
           _authInProgress = true;
@@ -251,6 +274,16 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
       
       if (storedCode != null && storedCode.isNotEmpty) {
         print('🎉 Found stored auth code: ${storedCode.substring(0, 10)}...');
+        
+        // Check if we've already processed this exact auth code
+        if (_processedAuthCode == storedCode) {
+          print('⚠️ Auth code already processed, ignoring duplicate from SharedPreferences');
+          await prefs.remove('kroger_auth_code'); // Clear it anyway
+          return;
+        }
+        
+        // Mark this code as processed
+        _processedAuthCode = storedCode;
         
         // Clear the stored code
         await prefs.remove('kroger_auth_code');
@@ -770,11 +803,6 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
   }
 
   Future<void> _completeAuthentication(String code) async {
-    if (_authInProgress) {
-      print('Authentication already in progress, ignoring duplicate attempt');
-      return;
-    }
-    
     print('🔐 Starting authentication completion process...');
     _authInProgress = true;
     setState(() {
@@ -936,16 +964,26 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
         
         setState(() {
           _isLoading = false;
+          _statusMessage = 'Authentication failed. Please try again.';
         });
         
         _authInProgress = false; // Reset flag on failure
+        _processedAuthCode = null; // Clear processed code so user can retry
         
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Authentication failed. Please try again."),
-            backgroundColor: Colors.red,
-          )
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("Authentication failed. Please try again."),
+              backgroundColor: Colors.red,
+              action: SnackBarAction(
+                label: 'Retry',
+                onPressed: () {
+                  _resetAndRetryAuth();
+                },
+              ),
+            )
+          );
+        }
         
         // Return early without saving invalid tokens
         return;
@@ -1044,6 +1082,38 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
     }
   }
   
+  // Reset authentication state and retry
+  void _resetAndRetryAuth() async {
+    print('🔄 Resetting authentication state and retrying...');
+    
+    try {
+      // Clear all auth state
+      _authInProgress = false;
+      _processedAuthCode = null;
+      
+      // Clear SharedPreferences auth data
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('kroger_auth_in_progress');
+      await prefs.remove('kroger_auth_code');
+      await prefs.remove('kroger_access_token');
+      await prefs.remove('kroger_refresh_token');
+      await prefs.setBool('kroger_authenticated', false);
+      await prefs.setBool('kroger_connected', false);
+      
+      // Reset UI state
+      setState(() {
+        _isLoading = false;
+        _statusMessage = 'Ready to authenticate...';
+      });
+      
+      // Start fresh authentication
+      _directAuth();
+      
+    } catch (e) {
+      print('❌ Error resetting auth state: $e');
+    }
+  }
+
   // Select a default store location for testing purposes
   Future<void> _selectDefaultStoreLocation() async {
     try {
