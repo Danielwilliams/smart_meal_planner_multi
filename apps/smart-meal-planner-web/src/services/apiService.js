@@ -263,7 +263,51 @@ const apiService = {
           prepComplexity: 50,
           snacksPerDay: 0,
           servings_per_meal: 1,
-          kroger_store_location: null
+          kroger_store_location: null,
+          preferred_proteins: {
+            meat: { 
+              chicken: false, 
+              beef: false, 
+              pork: false, 
+              turkey: false, 
+              lamb: false, 
+              bison: false, 
+              other: false 
+            },
+            seafood: { 
+              salmon: false, 
+              tuna: false, 
+              cod: false, 
+              shrimp: false, 
+              crab: false, 
+              mussels: false, 
+              other: false 
+            },
+            vegetarian_vegan: { 
+              tofu: false, 
+              tempeh: false, 
+              seitan: false, 
+              lentils: false, 
+              chickpeas: false, 
+              black_beans: false, 
+              other: false 
+            },
+            other: { 
+              eggs: false, 
+              dairy_milk: false, 
+              dairy_yogurt: false, 
+              protein_powder_whey: false, 
+              protein_powder_pea: false, 
+              quinoa: false, 
+              other: false 
+            }
+          },
+          other_proteins: { 
+            meat: '', 
+            seafood: '', 
+            vegetarian_vegan: '', 
+            other: '' 
+          }
         };
       }
       throw err;

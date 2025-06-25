@@ -77,7 +77,7 @@ class CustomTheme {
         centerTitle: false,
         iconTheme: IconThemeData(color: Colors.white),
       ),
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         elevation: 2,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         margin: EdgeInsets.all(8),
@@ -182,7 +182,7 @@ class CustomTheme {
         centerTitle: false,
         iconTheme: IconThemeData(color: Colors.white),
       ),
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         elevation: 2,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         margin: EdgeInsets.all(8),

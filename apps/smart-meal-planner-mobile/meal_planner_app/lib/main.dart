@@ -244,11 +244,41 @@ class _MealPlannerAppState extends State<MealPlannerApp> {
             },
             '/kroger-auth': (context) {
               final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+              
+              // Check if this is a deep link callback with auth code
+              final code = args?['code'];
+              if (code != null) {
+                print('Deep link callback received with auth code');
+                // This is a callback from Kroger OAuth - handle it
+                return KrogerAuthScreen(
+                  userId: auth.userId ?? 0,
+                  authToken: auth.authToken ?? '',
+                );
+              }
+              
+              // Regular auth screen launch
               return KrogerAuthScreen(
                 authUrl: args?['authUrl'],
                 userId: args?['userId'] ?? auth.userId ?? 0,
                 authToken: args?['authToken'] ?? auth.authToken ?? '',
               );
+            },
+            '/kroger-auth-callback': (context) {
+              // Handle deep link callback from Kroger OAuth
+              final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+              final code = args?['code'];
+              
+              if (auth.isLoggedIn && code != null) {
+                // Process the authorization code
+                // This will typically be handled by the KrogerAuthScreen when it resumes
+                return KrogerAuthScreen(
+                  userId: auth.userId ?? 0,
+                  authToken: auth.authToken ?? '',
+                );
+              }
+              
+              // Fallback to login if not authenticated
+              return LoginScreen();
             },
           },
           onGenerateRoute: (settings) {

@@ -7,6 +7,7 @@ import '../common/custom_theme.dart';
 import '../models/cart_model.dart';
 import '../main.dart'; // Import to access CartState provider
 import 'kroger_auth_screen.dart';
+import '../reconnect_helper.dart'; // Import reconnect helper
 import 'dart:math';
 
 class CartsScreen extends StatefulWidget {
@@ -36,63 +37,249 @@ class _CartsScreenState extends State<CartsScreen> {
   bool _isLoading = true;
   bool _isSearching = false;
   String _statusMessage = '';
-  
+
   // Store search results - Kroger only
   Map<String, List<dynamic>> _searchResults = {
     'Kroger': [],
   };
-  
+
   // Selected search results (to be added to cart) - Kroger only
   Map<String, Set<int>> _selectedResults = {
     'Kroger': {},
   };
+
+  // Helper method to build an image widget with fallback URLs for Kroger products
+  Widget _buildKrogerProductImage(String imageUrl, String? upc) {
+    // List of image URLs to try in order
+    List<String> urlsToTry = [];
+
+    // First add the original URL
+    urlsToTry.add(ApiService.cleanImageUrl(imageUrl));
+
+    // If we have a UPC, add Kroger-specific URL patterns
+    if (upc != null) {
+      // Pad UPC to various formats
+      String paddedUpc = upc;
+      while (paddedUpc.length < 13) {
+        paddedUpc = '0' + paddedUpc;
+      }
+
+      // 12-digit format
+      String upc12Digits = paddedUpc;
+      if (upc12Digits.length > 12) {
+        upc12Digits = upc12Digits.substring(upc12Digits.length - 12);
+      }
+
+      // Add Kroger URL patterns in order of preference
+      urlsToTry.add('https://www.kroger.com/product/images/medium/front/$paddedUpc');
+      urlsToTry.add('https://www.kroger.com/product/images/large/front/$paddedUpc');
+      urlsToTry.add('https://www.kroger.com/product/images/small/front/$paddedUpc');
+      urlsToTry.add('https://www.kroger.com/product/images/medium/$paddedUpc');
+      urlsToTry.add('https://www.kroger.com/product/images/large/$paddedUpc');
+      urlsToTry.add('https://cdn.kroger.com/product-images/medium/front/$paddedUpc');
+      urlsToTry.add('https://www.kroger.com/product/images/medium/front/$upc12Digits');
+    }
+
+    // Start with first URL
+    int currentUrlIndex = 0;
+
+    // Return image widget with error handler to try next URL
+    return Image.network(
+      urlsToTry[currentUrlIndex],
+      fit: BoxFit.cover,
+      loadingBuilder: (context, child, loadingProgress) {
+        if (loadingProgress == null) {
+          return child;
+        } else {
+          return Container(
+            color: Colors.grey[100],
+            child: Center(
+              child: CircularProgressIndicator(
+                value: loadingProgress.expectedTotalBytes != null
+                    ? loadingProgress.cumulativeBytesLoaded /
+                      loadingProgress.expectedTotalBytes!
+                    : null,
+              ),
+            ),
+          );
+        }
+      },
+      errorBuilder: (context, error, stackTrace) {
+        // Log the error
+        print("Error loading Kroger image: $error");
+        print("URL failed: ${urlsToTry[currentUrlIndex]}");
+
+        // Try next URL if available
+        currentUrlIndex++;
+        if (currentUrlIndex < urlsToTry.length) {
+          print("Trying next URL: ${urlsToTry[currentUrlIndex]}");
+
+          // Use a simple state to rebuild with the next URL
+          return StatefulBuilder(
+            builder: (context, setState) {
+              return Image.network(
+                urlsToTry[currentUrlIndex],
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  // If this URL fails too, move to the next one
+                  currentUrlIndex++;
+                  if (currentUrlIndex < urlsToTry.length) {
+                    // Rebuild with next URL
+                    setState(() {});
+                    return Container(
+                      color: Colors.grey[100],
+                      child: Center(child: CircularProgressIndicator()),
+                    );
+                  } else {
+                    // All URLs failed, show error icon
+                    return Container(
+                      color: Colors.grey[200],
+                      child: Icon(Icons.image_not_supported, size: 48),
+                    );
+                  }
+                },
+              );
+            }
+          );
+        } else {
+          // All URLs have failed, show error icon
+          return Container(
+            color: Colors.grey[200],
+            child: Icon(Icons.image_not_supported, size: 48),
+          );
+        }
+      },
+    );
+  }
   
   @override
   void initState() {
     super.initState();
-    
+
     // Ensure we're using real data only
     _searchResults = {
       'Kroger': [],
     };
-    
+
     // Process any new cart items if needed
-    _processLocalItemsIfNeeded();
+    // We need to use Future.microtask to handle the async method in initState
+    Future.microtask(() => _processLocalItemsIfNeeded());
   }
   
   // Process any local cart items passed from shopping list
-  void _processLocalItemsIfNeeded() {
+  Future<void> _processLocalItemsIfNeeded() async {
     setState(() {
       _isLoading = true;
       _statusMessage = 'Loading cart...';
     });
-    
+
     try {
       print("Checking for local cart data to add to global cart state:");
       print("localCartItem: ${widget.localCartItem != null ? 'present' : 'null'}");
       print("localCartItems: ${widget.localCartItems != null ? '${widget.localCartItems!.length} items' : 'null'}");
       print("selectedStore: ${widget.selectedStore ?? 'not specified'}");
-      
+
       // Get cart state
       final cartState = Provider.of<CartState>(context, listen: false);
-      
+
+      // First check Kroger authentication status if we have items to add
+      if ((widget.localCartItem != null ||
+          (widget.localCartItems != null && widget.localCartItems!.isNotEmpty)) &&
+          (widget.selectedStore == 'Kroger' || widget.selectedStore == null)) {
+
+        print("Checking Kroger authentication status before adding items");
+
+        // Verify Kroger authentication via API
+        dynamic authStatus = await ApiService.verifyKrogerAuth(
+          widget.userId,
+          widget.authToken
+        );
+
+        // Check if we need to reconnect - using a type-safe approach
+        bool needsReconnect = false;
+        String? reconnectMessage;
+
+        // Check if authStatus is a Map and if it has needs_reconnect
+        if (authStatus is Map) {
+          Map statusMap = authStatus;
+          if (statusMap.containsKey('needs_reconnect') && statusMap['needs_reconnect'] == true) {
+            needsReconnect = true;
+            reconnectMessage = statusMap.containsKey('message') ? statusMap['message']?.toString() : null;
+          }
+        }
+
+        if (needsReconnect) {
+          print("Kroger session expired, needs reconnection");
+
+          setState(() {
+            _isLoading = false;
+            _statusMessage = '';
+          });
+
+          // Show a dialog to reconnect
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => AlertDialog(
+              title: Text("Kroger Session Expired"),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(reconnectMessage ?? "Your Kroger session has expired. Please reconnect your account to continue."),
+                  SizedBox(height: 12),
+                  Text(
+                    "Would you like to reconnect now?",
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  child: Text("Cancel"),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+                ElevatedButton(
+                  child: Text("Reconnect"),
+                  onPressed: () {
+                    Navigator.of(context).pop();
+
+                    // Navigate to Kroger authentication screen
+                    Navigator.pushNamed(
+                      context,
+                      '/kroger-auth',
+                      arguments: {
+                        'userId': widget.userId,
+                        'authToken': widget.authToken,
+                        'isReconnect': true, // Flag to indicate this is a reconnection
+                      }
+                    );
+                  },
+                ),
+              ],
+            ),
+          );
+          return;
+        }
+      }
+
       // Process single item if available
       if (widget.localCartItem != null) {
         final storeName = 'Kroger'; // Always use Kroger
         print("Adding single item to Kroger cart: ${widget.localCartItem!['name']}");
-        
+
         // Create a copy of the item with the store set to Kroger
         final item = Map<String, dynamic>.from(widget.localCartItem!);
         item['store'] = storeName;
-        
+
         cartState.addItemToCart(storeName, item);
       }
-      
+
       // Process multiple items if available
       if (widget.localCartItems != null && widget.localCartItems!.isNotEmpty) {
         final storeName = 'Kroger'; // Always use Kroger
         print("Adding ${widget.localCartItems!.length} items to Kroger cart");
-        
+
         List<Map<String, dynamic>> items = [];
         for (var item in widget.localCartItems!) {
           // Create a copy of the item with the store set to Kroger
@@ -100,13 +287,13 @@ class _CartsScreenState extends State<CartsScreen> {
           newItem['store'] = storeName;
           items.add(newItem);
         }
-        
+
         cartState.addItemsToCart(storeName, items);
       }
-      
+
       // Print cart state for debugging
       cartState.printCartState();
-      
+
     } catch (e) {
       print("Error processing local cart items: $e");
     } finally {
@@ -128,15 +315,42 @@ class _CartsScreenState extends State<CartsScreen> {
         authToken: widget.authToken,
         storeName: 'Kroger',
       );
-      
+
+      // Check if we need to reconnect - using a type-safe approach
+      bool needsReconnect = false;
+      String? reconnectMessage;
+
+      // Check if result is a Map and if it has needs_reconnect
+      if (result is Map) {
+        Map resultMap = result;
+        if (resultMap.containsKey('needs_reconnect') && resultMap['needs_reconnect'] == true) {
+          needsReconnect = true;
+          reconnectMessage = resultMap.containsKey('message') ? resultMap['message']?.toString() : null;
+        }
+      }
+
+      if (needsReconnect) {
+        print("Kroger session expired when loading cart, needs reconnection");
+
+        // Use the helper to show reconnect dialog and retry operation
+        await showKrogerReconnectDialog(
+          context: context,
+          message: reconnectMessage,
+          userId: widget.userId,
+          authToken: widget.authToken,
+          retryOperation: () => _loadKrogerCart(),
+        );
+        return;
+      }
+
       if (result != null && result.containsKey('items')) {
         final items = result['items'] as List<dynamic>;
-        
+
         // Add items to cart state
         for (var item in items) {
           cartState.addItemToCart('Kroger', Map<String, dynamic>.from(item));
         }
-        
+
         print("Loaded ${items.length} items for Kroger cart");
       } else {
         print("No cart data found for Kroger or invalid format");
@@ -308,26 +522,60 @@ class _CartsScreenState extends State<CartsScreen> {
   }
   
   // Add selected search results to cart
-  Future<void> _addSelectedToCart(String storeName) async {
-    if (_selectedResults[storeName]!.isEmpty) return;
+  Future<void> _addSelectedToCart(String storeName, {bool isRetry = false, int retryCount = 0}) async {
+    // If this is a retry after reconnection, reset loading state
+    if (isRetry) {
+      print("Retrying _addSelectedToCart after Kroger reconnection (attempt ${retryCount + 1})");
+      setState(() {
+        _isLoading = true;
+        _statusMessage = 'Retrying adding items to Kroger cart...';
+      });
+    }
     
+    // Prevent infinite retry loops - max 3 attempts
+    if (retryCount >= 3) {
+      print("❌ Max retry attempts reached for _addSelectedToCart");
+      setState(() {
+        _isLoading = false;
+        _statusMessage = '';
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Failed to add items after multiple attempts. Please try reconnecting to Kroger."),
+          backgroundColor: Colors.red,
+          action: SnackBarAction(
+            label: 'Reconnect',
+            onPressed: () {
+              Navigator.pushNamed(context, '/kroger-auth', arguments: {
+                'userId': widget.userId,
+                'authToken': widget.authToken,
+                'isReconnect': true,
+              });
+            },
+          ),
+        )
+      );
+      return;
+    }
+    if (_selectedResults[storeName]!.isEmpty) return;
+
     setState(() {
       _isLoading = true;
       _statusMessage = 'Adding selected items to Kroger cart...';
     });
-    
+
     try {
       // Convert selected indices to items
       List<Map<String, dynamic>> itemsToAdd = [];
       for (var index in _selectedResults[storeName]!) {
-        if (_searchResults[storeName] != null && 
-            index >= 0 && 
+        if (_searchResults[storeName] != null &&
+            index >= 0 &&
             index < _searchResults[storeName]!.length) {
           final item = _searchResults[storeName]![index];
           itemsToAdd.add(Map<String, dynamic>.from(item));
         }
       }
-      
+
       if (itemsToAdd.isEmpty) {
         print("No valid items selected to add to cart");
         setState(() {
@@ -336,25 +584,60 @@ class _CartsScreenState extends State<CartsScreen> {
         });
         return;
       }
-      
+
       print("Adding ${itemsToAdd.length} items to Kroger cart");
-      
+
+      // Set a timeout to prevent getting stuck
+      bool operationTimedOut = false;
+      Future.delayed(Duration(seconds: 60)).then((_) {
+        if (_isLoading && _statusMessage.contains('Adding selected items to Kroger cart')) {
+          print("Adding to cart operation timed out after 60 seconds");
+          operationTimedOut = true;
+          setState(() {
+            _isLoading = false;
+            _statusMessage = '';
+          });
+
+          // Add items to local cart anyway
+          _addItemsToLocalCart(storeName, itemsToAdd);
+
+          // Show timeout message with instructions
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("Operation timed out. Items added to local cart only."),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 5),
+              action: SnackBarAction(
+                label: 'View on Web',
+                onPressed: () => openKrogerExternalCart(context),
+              ),
+            )
+          );
+        }
+      });
+
       // Use the new specialized Kroger cart method
       final result = await ApiService.addToKrogerCart(
         userId: widget.userId,
         authToken: widget.authToken,
         items: itemsToAdd,
       );
-      
+
+      // Check if operation timed out - if so, don't continue processing
+      if (operationTimedOut) {
+        print("Not processing API result since operation timed out");
+        return;
+      }
+
       if (result != null && result['success'] == true) {
         // Clear selections
         setState(() {
           _selectedResults[storeName]!.clear();
         });
-        
+
         // Refresh cart
         await _loadKrogerCart();
-        
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text("Added ${result['items_added'] ?? itemsToAdd.length} items to Kroger cart"),
@@ -362,8 +645,34 @@ class _CartsScreenState extends State<CartsScreen> {
           )
         );
       } else {
+        // Check if we need to reconnect - using a type-safe approach
+        bool needsReconnect = false;
+        String? reconnectMessage;
+
+        // Check if result is a Map and if it has needs_reconnect
+        if (result is Map) {
+          Map resultMap = result;
+          if (resultMap.containsKey('needs_reconnect') && resultMap['needs_reconnect'] == true) {
+            needsReconnect = true;
+            reconnectMessage = resultMap.containsKey('message') ? resultMap['message']?.toString() : null;
+          }
+        }
+
+        if (needsReconnect) {
+          print("Kroger session expired, needs reconnection");
+
+          // Use the helper to show reconnect dialog and retry operation
+          await showKrogerReconnectDialog(
+            context: context,
+            message: reconnectMessage,
+            userId: widget.userId,
+            authToken: widget.authToken,
+            retryOperation: () => _addSelectedToCart(storeName, isRetry: true, retryCount: retryCount + 1),
+          );
+          return;
+        }
         // Check if we need authentication
-        if (result != null && result['needs_auth'] == true) {
+        else if (result is Map && result.containsKey('needs_auth') && result['needs_auth'] == true) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text("Kroger authentication required"),
@@ -380,9 +689,9 @@ class _CartsScreenState extends State<CartsScreen> {
               ),
             )
           );
-        } 
+        }
         // Check if we need to set up store
-        else if (result != null && result['needs_setup'] == true) {
+        else if (result is Map && result.containsKey('needs_setup') && result['needs_setup'] == true) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text("Kroger store selection required"),
@@ -402,23 +711,52 @@ class _CartsScreenState extends State<CartsScreen> {
           );
         }
         else {
-          // General error
+          // General error, but still add to local cart
+          _addItemsToLocalCart(storeName, itemsToAdd);
+
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(result != null && result['error'] != null 
-                ? "Error: ${result['error']}" 
-                : "Failed to add items to cart"),
-              backgroundColor: Colors.red,
+              content: Text(
+                result is Map && (result.containsKey('error') || result.containsKey('message'))
+                ? "Error: ${result.containsKey('error') ? result['error'] : result.containsKey('message') ? result['message'] : ''}"
+                : "Failed to add items to Kroger's servers. Items added to local cart only."),
+              backgroundColor: Colors.orange,
+              action: SnackBarAction(
+                label: 'View on Web',
+                onPressed: () => openKrogerExternalCart(context),
+              ),
             )
           );
         }
       }
     } catch (e) {
       print("Error adding to cart: $e");
+
+      // Add to local cart anyway on error
+      final cartState = Provider.of<CartState>(context, listen: false);
+      List<Map<String, dynamic>> itemsToAdd = [];
+
+      for (var index in _selectedResults[storeName]!) {
+        if (_searchResults[storeName] != null &&
+            index >= 0 &&
+            index < _searchResults[storeName]!.length) {
+          final item = _searchResults[storeName]![index];
+          itemsToAdd.add(Map<String, dynamic>.from(item));
+        }
+      }
+
+      if (itemsToAdd.isNotEmpty) {
+        _addItemsToLocalCart(storeName, itemsToAdd);
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text("Error: $e"),
-          backgroundColor: Colors.red,
+          content: Text("Error adding to Kroger's servers. Items added to local cart only."),
+          backgroundColor: Colors.orange,
+          action: SnackBarAction(
+            label: 'View on Web',
+            onPressed: () => openKrogerExternalCart(context),
+          ),
         )
       );
     } finally {
@@ -428,12 +766,70 @@ class _CartsScreenState extends State<CartsScreen> {
       });
     }
   }
+
+  // Helper to add items to local cart
+  void _addItemsToLocalCart(String storeName, List<Map<String, dynamic>> items) {
+    final cartState = Provider.of<CartState>(context, listen: false);
+    print("Adding ${items.length} items to local $storeName cart");
+
+    // Clear selections
+    setState(() {
+      _selectedResults[storeName]!.clear();
+    });
+
+    // Add items to cart state
+    cartState.addItemsToCart(storeName, items);
+
+    // Print cart state for verification
+    cartState.printCartState();
+  }
   
   // Recalculate total for a store - no longer needed as CartState handles this
   // We're keeping this method signature to avoid refactoring all the places it's called
   void _recalculateTotal(String store) {
     // This is now handled by the CartState provider
     print("recalculateTotal called for $store - now handled by CartState");
+  }
+
+  // Helper method to reconnect to Kroger and retry the cart operation
+  Future<void> _reconnectAndRetryAddToCart(String storeName) async {
+    print("Starting Kroger reconnection process");
+
+    // Navigate to Kroger authentication screen and wait for result
+    final authResult = await Navigator.pushNamed(
+      context,
+      '/kroger-auth',
+      arguments: {
+        'userId': widget.userId,
+        'authToken': widget.authToken,
+        'isReconnect': true, // Flag to indicate this is a reconnection
+      }
+    );
+
+    // If authentication was successful, retry the operation
+    if (authResult == true) {
+      print("Kroger reconnection successful, retrying add to cart operation");
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Kroger reconnection successful! Retrying operation..."),
+          backgroundColor: Colors.green,
+        )
+      );
+
+      // Retry the add to cart operation after a short delay
+      await Future.delayed(Duration(seconds: 1));
+      await _addSelectedToCart(storeName, isRetry: true, retryCount: 0);
+    } else {
+      print("Kroger reconnection failed or was cancelled by user");
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Reconnection cancelled or failed. Please try again."),
+          backgroundColor: Colors.red,
+        )
+      );
+    }
   }
   
   @override
@@ -627,7 +1023,32 @@ class _CartsScreenState extends State<CartsScreen> {
     
     // Extract image URL if available
     String? imageUrl = item['image_url'] ?? item['image'] ?? item['thumbnail'];
-    
+
+    // Check for UPC for Kroger items
+    String? upc;
+    if (storeName.toLowerCase() == 'kroger') {
+      if (item.containsKey('upc') && item['upc'] != null) {
+        upc = item['upc'].toString();
+        print("Cart item has UPC: $upc");
+      } else if (item.containsKey('productId') && item['productId'] != null) {
+        upc = item['productId'].toString();
+        print("Cart item has productId: $upc");
+      } else if (item.containsKey('id') && item['id'] != null) {
+        upc = item['id'].toString();
+        print("Cart item has id: $upc");
+      }
+
+      // If we have a UPC but no image URL, generate a Kroger URL
+      if (upc != null && (imageUrl == null || imageUrl.isEmpty)) {
+        String paddedUpc = upc;
+        while (paddedUpc.length < 13) {
+          paddedUpc = '0' + paddedUpc;
+        }
+        imageUrl = 'https://www.kroger.com/product/images/medium/front/$paddedUpc';
+        print("Generated Kroger image URL for cart item: $imageUrl");
+      }
+    }
+
     return Card(
       margin: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       child: ListTile(
@@ -635,21 +1056,23 @@ class _CartsScreenState extends State<CartsScreen> {
           ? SizedBox(
               width: 60,
               height: 60,
-              child: Image.network(
-                ApiService.cleanImageUrl(imageUrl),
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  print("Error loading image: $error");
-                  print("Original URL: $imageUrl");
-                  print("Cleaned URL: ${ApiService.cleanImageUrl(imageUrl)}");
-                  return Container(
-                    width: 60,
-                    height: 60,
-                    color: Colors.grey[200],
-                    child: Icon(Icons.fastfood, color: Colors.grey),
-                  );
-                },
-              ),
+              child: storeName.toLowerCase() == 'kroger' && upc != null
+                ? _buildKrogerProductImage(imageUrl, upc)
+                : Image.network(
+                    ApiService.cleanImageUrl(imageUrl),
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      print("Error loading image: $error");
+                      print("Original URL: $imageUrl");
+                      print("Cleaned URL: ${ApiService.cleanImageUrl(imageUrl)}");
+                      return Container(
+                        width: 60,
+                        height: 60,
+                        color: Colors.grey[200],
+                        child: Icon(Icons.fastfood, color: Colors.grey),
+                      );
+                    },
+                  ),
             )
           : Container(
               width: 60,
@@ -912,19 +1335,85 @@ class _CartsScreenState extends State<CartsScreen> {
         return;
       }
       
-      if (result != null) {
+      if (result != null && result is Map) {
         print("Search result keys: ${result.keys.toList()}");
-        
-        // First, check for needs_setup flag
-        if (result.containsKey('needs_setup') && result['needs_setup'] == true) {
-          print("Store setup required for $storeName");
-          
+
+        // Check if we need to reconnect - using a type-safe approach
+        bool needsReconnect = false;
+        String? reconnectMessage;
+
+        // Check if result has needs_reconnect
+        Map resultMap = result;
+        if (resultMap.containsKey('needs_reconnect') && resultMap['needs_reconnect'] == true) {
+          needsReconnect = true;
+          reconnectMessage = resultMap.containsKey('message') ? resultMap['message']?.toString() : null;
+        }
+
+        if (needsReconnect) {
+          print("Kroger session expired during search, needs reconnection");
+
           setState(() {
             _isLoading = false;
             _isSearching = false;
             _statusMessage = '';
           });
-          
+
+          // Show a dialog to reconnect
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => AlertDialog(
+              title: Text("Kroger Session Expired"),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(reconnectMessage ?? "Your Kroger session has expired. Please reconnect your account to continue."),
+                  SizedBox(height: 12),
+                  Text(
+                    "Would you like to reconnect now?",
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  child: Text("Cancel"),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+                ElevatedButton(
+                  child: Text("Reconnect"),
+                  onPressed: () {
+                    Navigator.of(context).pop();
+
+                    // Navigate to Kroger authentication screen
+                    Navigator.pushNamed(
+                      context,
+                      '/kroger-auth',
+                      arguments: {
+                        'userId': widget.userId,
+                        'authToken': widget.authToken,
+                        'isReconnect': true, // Flag to indicate this is a reconnection
+                      }
+                    );
+                  },
+                ),
+              ],
+            ),
+          );
+          return;
+        }
+
+        // First, check for needs_setup flag
+        if (result.containsKey('needs_setup') && result['needs_setup'] == true) {
+          print("Store setup required for $storeName");
+
+          setState(() {
+            _isLoading = false;
+            _isSearching = false;
+            _statusMessage = '';
+          });
+
           // Show dialog to inform user
           await showDialog(
             context: context,
@@ -948,7 +1437,7 @@ class _CartsScreenState extends State<CartsScreen> {
               ],
             ),
           );
-          
+
           return;
         }
         
@@ -1093,41 +1582,91 @@ class _CartsScreenState extends State<CartsScreen> {
                 // Check all possible image URL fields that Kroger might return
                 String imageUrl = '';
 
-                // Try direct image fields first
-                if (item.containsKey('image') && item['image'] != null && item['image'].toString().isNotEmpty) {
-                  imageUrl = item['image'].toString();
-                } else if (item.containsKey('imageUrl') && item['imageUrl'] != null && item['imageUrl'].toString().isNotEmpty) {
-                  imageUrl = item['imageUrl'].toString();
-                } else if (item.containsKey('thumbnail') && item['thumbnail'] != null && item['thumbnail'].toString().isNotEmpty) {
-                  imageUrl = item['thumbnail'].toString();
-                } else if (item.containsKey('image_url') && item['image_url'] != null && item['image_url'].toString().isNotEmpty) {
-                  imageUrl = item['image_url'].toString();
-                } else if (item.containsKey('productImage') && item['productImage'] != null && item['productImage'].toString().isNotEmpty) {
-                  imageUrl = item['productImage'].toString();
+                // First check for UPC to generate Kroger image URL
+                String? upc;
+                if (item.containsKey('upc') && item['upc'] != null) {
+                  upc = item['upc'].toString();
+                  print("Found UPC: $upc");
+
+                  // Pad the UPC to 13 digits for Kroger image URL
+                  String paddedUpc = upc;
+                  while (paddedUpc.length < 13) {
+                    paddedUpc = '0' + paddedUpc;
+                  }
+
+                  // Generate Kroger image URL
+                  imageUrl = 'https://www.kroger.com/product/images/medium/front/$paddedUpc';
+                  print("Generated Kroger image URL from UPC: $imageUrl");
+                }
+                // Also check for productId which might be a UPC
+                else if (item.containsKey('productId') && item['productId'] != null) {
+                  upc = item['productId'].toString();
+                  print("Found productId: $upc");
+
+                  // Pad the UPC to 13 digits for Kroger image URL
+                  String paddedUpc = upc;
+                  while (paddedUpc.length < 13) {
+                    paddedUpc = '0' + paddedUpc;
+                  }
+
+                  // Generate Kroger image URL
+                  imageUrl = 'https://www.kroger.com/product/images/medium/front/$paddedUpc';
+                  print("Generated Kroger image URL from productId: $imageUrl");
+                }
+                // Or plain id field
+                else if (item.containsKey('id') && item['id'] != null) {
+                  upc = item['id'].toString();
+                  print("Found id: $upc");
+
+                  // Pad the UPC to 13 digits for Kroger image URL
+                  String paddedUpc = upc;
+                  while (paddedUpc.length < 13) {
+                    paddedUpc = '0' + paddedUpc;
+                  }
+
+                  // Generate Kroger image URL
+                  imageUrl = 'https://www.kroger.com/product/images/medium/front/$paddedUpc';
+                  print("Generated Kroger image URL from id: $imageUrl");
                 }
 
-                // Check for nested images object or array
-                else if (item.containsKey('images')) {
-                  if (item['images'] is List && (item['images'] as List).isNotEmpty) {
-                    // If it's a list, take the first image
-                    imageUrl = item['images'][0].toString();
-                  } else if (item['images'] is Map) {
-                    // If it's a map, look for standard keys
-                    final imagesMap = item['images'] as Map;
-                    if (imagesMap.containsKey('primary')) {
-                      imageUrl = imagesMap['primary'].toString();
-                    } else if (imagesMap.containsKey('medium')) {
-                      imageUrl = imagesMap['medium'].toString();
-                    } else if (imagesMap.containsKey('thumbnail')) {
-                      imageUrl = imagesMap['thumbnail'].toString();
-                    } else if (imagesMap.containsKey('small')) {
-                      imageUrl = imagesMap['small'].toString();
-                    } else if (imagesMap.isNotEmpty) {
-                      // Just take the first value as a fallback
-                      imageUrl = imagesMap.values.first.toString();
+                // If we didn't generate a URL from UPC, then try other fields
+                if (imageUrl.isEmpty) {
+                  // Try direct image fields first
+                  if (item.containsKey('image') && item['image'] != null && item['image'].toString().isNotEmpty) {
+                    imageUrl = item['image'].toString();
+                  } else if (item.containsKey('imageUrl') && item['imageUrl'] != null && item['imageUrl'].toString().isNotEmpty) {
+                    imageUrl = item['imageUrl'].toString();
+                  } else if (item.containsKey('thumbnail') && item['thumbnail'] != null && item['thumbnail'].toString().isNotEmpty) {
+                    imageUrl = item['thumbnail'].toString();
+                  } else if (item.containsKey('image_url') && item['image_url'] != null && item['image_url'].toString().isNotEmpty) {
+                    imageUrl = item['image_url'].toString();
+                  } else if (item.containsKey('productImage') && item['productImage'] != null && item['productImage'].toString().isNotEmpty) {
+                    imageUrl = item['productImage'].toString();
+                  }
+
+                  // Check for nested images object or array
+                  else if (item.containsKey('images')) {
+                    if (item['images'] is List && (item['images'] as List).isNotEmpty) {
+                      // If it's a list, take the first image
+                      imageUrl = item['images'][0].toString();
+                    } else if (item['images'] is Map) {
+                      // If it's a map, look for standard keys
+                      final imagesMap = item['images'] as Map;
+                      if (imagesMap.containsKey('primary')) {
+                        imageUrl = imagesMap['primary'].toString();
+                      } else if (imagesMap.containsKey('medium')) {
+                        imageUrl = imagesMap['medium'].toString();
+                      } else if (imagesMap.containsKey('thumbnail')) {
+                        imageUrl = imagesMap['thumbnail'].toString();
+                      } else if (imagesMap.containsKey('small')) {
+                        imageUrl = imagesMap['small'].toString();
+                      } else if (imagesMap.isNotEmpty) {
+                        // Just take the first value as a fallback
+                        imageUrl = imagesMap.values.first.toString();
+                      }
+                    } else if (item['images'] != null) {
+                      imageUrl = item['images'].toString();
                     }
-                  } else if (item['images'] != null) {
-                    imageUrl = item['images'].toString();
                   }
                 }
                 final double price = item['price'] != null 
@@ -1156,20 +1695,7 @@ class _CartsScreenState extends State<CartsScreen> {
                             AspectRatio(
                               aspectRatio: 1.2,
                               child: imageUrl.isNotEmpty
-                                ? FadeInImage.assetNetwork(
-                                    placeholder: 'assets/images/placeholder.txt',
-                                    image: ApiService.cleanImageUrl(imageUrl),
-                                    fit: BoxFit.cover,
-                                    imageErrorBuilder: (context, error, stackTrace) {
-                                      print("Error loading product image: $error");
-                                      print("Original URL: $imageUrl");
-                                      print("Cleaned URL: ${ApiService.cleanImageUrl(imageUrl)}");
-                                      return Container(
-                                        color: Colors.grey[200],
-                                        child: Icon(Icons.image_not_supported, size: 48),
-                                      );
-                                    },
-                                  )
+                                ? _buildKrogerProductImage(imageUrl, upc)
                                 : Container(
                                     color: Colors.grey[200],
                                     child: Icon(Icons.image_not_supported, size: 48),
@@ -1310,6 +1836,25 @@ class _CartsScreenState extends State<CartsScreen> {
                           onPressed: () => _searchStoreForItems(storeName),
                         ),
                       ),
+                      SizedBox(height: 12),
+                      // View External Kroger Cart button
+                      if (storeName == 'Kroger')
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            icon: Icon(Icons.shopping_cart_outlined),
+                            label: Text("VIEW KROGER WEBSITE CART"),
+                            style: OutlinedButton.styleFrom(
+                              padding: EdgeInsets.symmetric(vertical: 18),
+                              foregroundColor: Colors.deepOrange,
+                              side: BorderSide(color: Colors.deepOrange),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                            onPressed: () => openKrogerExternalCart(context),
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -1342,20 +1887,34 @@ class _CartsScreenState extends State<CartsScreen> {
           }
         ),
         actions: [
+          // View Kroger external cart button
+          IconButton(
+            icon: Icon(Icons.shopping_cart_outlined),
+            tooltip: "View Kroger External Cart",
+            onPressed: () async {
+              // Use the helper function to open Kroger external cart
+              await openKrogerExternalCart(context);
+            },
+          ),
           IconButton(
             icon: Icon(Icons.refresh),
             tooltip: "Refresh Cart",
-            onPressed: () {
+            onPressed: () async {
               // Refresh the cart screen
               setState(() {
                 _isLoading = true;
+                _statusMessage = 'Refreshing cart...';
               });
-              
+
               // Process any local items again
-              _processLocalItemsIfNeeded();
-              
+              await _processLocalItemsIfNeeded();
+
+              // Load Kroger cart
+              await _loadKrogerCart();
+
               setState(() {
                 _isLoading = false;
+                _statusMessage = '';
               });
             },
           ),

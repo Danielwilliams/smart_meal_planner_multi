@@ -26,6 +26,120 @@ class _CartScreenState extends State<CartScreen> {
   bool _isLoading = false;
   String _statusMessage = '';
 
+  // Helper method to generate Kroger image URLs from UPC codes
+  String _generateKrogerImageUrl(String upc) {
+    // Pad the UPC to 13 digits
+    String paddedUpc = upc;
+    while (paddedUpc.length < 13) {
+      paddedUpc = '0' + paddedUpc;
+    }
+    return 'https://www.kroger.com/product/images/medium/front/$paddedUpc';
+  }
+
+  // Helper method to build an image widget with fallback URLs for Kroger products
+  Widget _buildKrogerProductImage(String imageUrl, String? upc) {
+    // List of image URLs to try in order
+    List<String> urlsToTry = [];
+
+    // First add the original URL
+    urlsToTry.add(ApiService.cleanImageUrl(imageUrl));
+
+    // If we have a UPC, add Kroger-specific URL patterns
+    if (upc != null) {
+      // Pad UPC to various formats
+      String paddedUpc = upc;
+      while (paddedUpc.length < 13) {
+        paddedUpc = '0' + paddedUpc;
+      }
+
+      // 12-digit format
+      String upc12Digits = paddedUpc;
+      if (upc12Digits.length > 12) {
+        upc12Digits = upc12Digits.substring(upc12Digits.length - 12);
+      }
+
+      // Add Kroger URL patterns in order of preference
+      urlsToTry.add('https://www.kroger.com/product/images/medium/front/$paddedUpc');
+      urlsToTry.add('https://www.kroger.com/product/images/large/front/$paddedUpc');
+      urlsToTry.add('https://www.kroger.com/product/images/small/front/$paddedUpc');
+      urlsToTry.add('https://www.kroger.com/product/images/medium/$paddedUpc');
+      urlsToTry.add('https://www.kroger.com/product/images/large/$paddedUpc');
+      urlsToTry.add('https://cdn.kroger.com/product-images/medium/front/$paddedUpc');
+      urlsToTry.add('https://www.kroger.com/product/images/medium/front/$upc12Digits');
+    }
+
+    // Start with first URL
+    int currentUrlIndex = 0;
+
+    // Return image widget with error handler to try next URL
+    return Image.network(
+      urlsToTry[currentUrlIndex],
+      fit: BoxFit.cover,
+      loadingBuilder: (context, child, loadingProgress) {
+        if (loadingProgress == null) {
+          return child;
+        } else {
+          return Container(
+            color: Colors.grey[100],
+            child: Center(
+              child: CircularProgressIndicator(
+                value: loadingProgress.expectedTotalBytes != null
+                    ? loadingProgress.cumulativeBytesLoaded /
+                      loadingProgress.expectedTotalBytes!
+                    : null,
+              ),
+            ),
+          );
+        }
+      },
+      errorBuilder: (context, error, stackTrace) {
+        // Log the error
+        print("Error loading Kroger image: $error");
+        print("URL failed: ${urlsToTry[currentUrlIndex]}");
+
+        // Try next URL if available
+        currentUrlIndex++;
+        if (currentUrlIndex < urlsToTry.length) {
+          print("Trying next URL: ${urlsToTry[currentUrlIndex]}");
+
+          // Use a simple state to rebuild with the next URL
+          return StatefulBuilder(
+            builder: (context, setState) {
+              return Image.network(
+                urlsToTry[currentUrlIndex],
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  // If this URL fails too, move to the next one
+                  currentUrlIndex++;
+                  if (currentUrlIndex < urlsToTry.length) {
+                    // Rebuild with next URL
+                    setState(() {});
+                    return Container(
+                      color: Colors.grey[100],
+                      child: Center(child: CircularProgressIndicator()),
+                    );
+                  } else {
+                    // All URLs failed, show error icon
+                    return Container(
+                      color: Colors.grey[200],
+                      child: Icon(Icons.image_not_supported, size: 48),
+                    );
+                  }
+                },
+              );
+            }
+          );
+        } else {
+          // All URLs have failed, show error icon
+          return Container(
+            color: Colors.grey[200],
+            child: Icon(Icons.image_not_supported, size: 48),
+          );
+        }
+      },
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -287,6 +401,39 @@ class _CartScreenState extends State<CartScreen> {
                           
                           // Extract image URL from nested objects if needed
                           String finalImageUrl = imageUrl;
+
+                          // Check for UPC first for Kroger items
+                          String? upc;
+                          if (item.containsKey('upc') && item['upc'] != null) {
+                            upc = item['upc'].toString();
+                            print("🖼️ Item has UPC: $upc");
+
+                            // Generate Kroger image URL if no URL is available
+                            if (finalImageUrl == null || finalImageUrl.isEmpty) {
+                              finalImageUrl = _generateKrogerImageUrl(upc);
+                              print("🖼️ Generated Kroger image URL from UPC: $finalImageUrl");
+                            }
+                          } else if (item.containsKey('productId') && item['productId'] != null) {
+                            upc = item['productId'].toString();
+                            print("🖼️ Item has productId: $upc");
+
+                            // Generate Kroger image URL if no URL is available
+                            if (finalImageUrl == null || finalImageUrl.isEmpty) {
+                              finalImageUrl = _generateKrogerImageUrl(upc);
+                              print("🖼️ Generated Kroger image URL from productId: $finalImageUrl");
+                            }
+                          } else if (item.containsKey('id') && item['id'] != null) {
+                            upc = item['id'].toString();
+                            print("🖼️ Item has id: $upc");
+
+                            // Generate Kroger image URL if no URL is available
+                            if (finalImageUrl == null || finalImageUrl.isEmpty) {
+                              finalImageUrl = _generateKrogerImageUrl(upc);
+                              print("🖼️ Generated Kroger image URL from id: $finalImageUrl");
+                            }
+                          }
+
+                          // Fallback to images field if no URL yet
                           if (finalImageUrl == null && item.containsKey('images')) {
                             if (item['images'] is List && (item['images'] as List).isNotEmpty) {
                               finalImageUrl = item['images'][0].toString();
@@ -303,21 +450,23 @@ class _CartScreenState extends State<CartScreen> {
                                 ? SizedBox(
                                     width: 60,
                                     height: 60,
-                                    child: Image.network(
-                                      ApiService.cleanImageUrl(finalImageUrl),
-                                      fit: BoxFit.cover,
-                                      errorBuilder: (context, error, stackTrace) {
-                                        print("Error loading image: $error");
-                                        print("Original URL: $finalImageUrl");
-                                        print("Cleaned URL: ${ApiService.cleanImageUrl(finalImageUrl)}");
-                                        return Container(
-                                          width: 60,
-                                          height: 60,
-                                          color: Colors.grey[200],
-                                          child: Icon(Icons.image_not_supported, color: Colors.grey),
-                                        );
-                                      },
-                                    ),
+                                    child: upc != null
+                                      ? _buildKrogerProductImage(finalImageUrl, upc)
+                                      : Image.network(
+                                          ApiService.cleanImageUrl(finalImageUrl),
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (context, error, stackTrace) {
+                                            print("Error loading image: $error");
+                                            print("Original URL: $finalImageUrl");
+                                            print("Cleaned URL: ${ApiService.cleanImageUrl(finalImageUrl)}");
+                                            return Container(
+                                              width: 60,
+                                              height: 60,
+                                              color: Colors.grey[200],
+                                              child: Icon(Icons.image_not_supported, color: Colors.grey),
+                                            );
+                                          },
+                                        ),
                                   )
                                 : Container(
                                     width: 60,

@@ -6,18 +6,22 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../services/api_service.dart';
 import 'dart:math';
+import 'dart:async';
+import 'package:flutter/services.dart';
 
 class KrogerAuthScreen extends StatefulWidget {
   final String? authUrl;
   final String redirectUrl;
   final int userId;
   final String authToken;
+  final bool isReconnect; // Flag to indicate if this is a reconnection
 
   KrogerAuthScreen({
     this.authUrl,
     this.redirectUrl = 'https://www.smartmealplannerio.com/kroger/callback',
     required this.userId,
     required this.authToken,
+    this.isReconnect = false, // Default to false
   });
 
   @override
@@ -28,18 +32,128 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
   bool _isLoading = true;
   String _statusMessage = 'Loading authentication page...';
   WebViewController? _controller;
+  bool _authInProgress = false;
+  int _navigationAttempts = 0;
+  DateTime? _lastNavigationTime;
 
   @override
   void initState() {
     super.initState();
-    // We'll setup WebView in didChangeDependencies
+    print('🚀 KrogerAuthScreen initState called');
+    
+    // Set up a listener for app state changes to detect when returning from browser
+    WidgetsBinding.instance.addObserver(_AppLifecycleObserver(this));
     
     // First check if we already have valid Kroger auth
     _checkExistingKrogerAuth();
   }
   
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(_AppLifecycleObserver(this));
+    super.dispose();
+  }
+  
+  void _handleAppResumed() async {
+    print('App resumed - checking for deep link authentication');
+    
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final authInProgress = prefs.getBool('kroger_auth_in_progress') ?? false;
+      
+      if (authInProgress) {
+        print('Kroger auth in progress - checking for completion');
+        
+        // Check if we now have valid tokens (from backend polling approach)
+        final isAuthenticated = prefs.getBool('kroger_authenticated') ?? false;
+        final accessToken = prefs.getString('kroger_access_token');
+        
+        if (isAuthenticated && accessToken != null && accessToken.isNotEmpty &&
+            !accessToken.contains('mobile_app_token')) {
+          print('Found successful authentication after app resume');
+          
+          // Clear the in-progress flag
+          await prefs.setBool('kroger_auth_in_progress', false);
+          
+          if (mounted) {
+            setState(() {
+              _isLoading = false;
+              _statusMessage = 'Authentication successful!';
+            });
+            
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Kroger authentication successful!'),
+                backgroundColor: Colors.green,
+              ),
+            );
+            
+            Navigator.pop(context, true);
+          }
+          return;
+        }
+        
+        // New deep link approach: Check if we have received an auth code from the deep link
+        await _checkForDeepLinkAuthCode();
+      }
+    } catch (e) {
+      print('Error handling app resume: $e');
+    }
+  }
+  
+  // Check for authorization code from deep link callback
+  Future<void> _checkForDeepLinkAuthCode() async {
+    try {
+      print('Checking for deep link auth code...');
+      
+      // Check if an auth code was passed through the route arguments
+      final context = this.context;
+      final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+      final code = args?['code'];
+      
+      if (code != null && code.isNotEmpty) {
+        print('🎉 Found auth code from deep link: ${code.substring(0, 10)}...');
+        
+        // Process the authorization code
+        setState(() {
+          _authInProgress = true;
+          _statusMessage = 'Processing authentication...';
+        });
+        
+        await _completeAuthentication(code);
+        return;
+      }
+      
+      // Also check SharedPreferences in case the code was stored there
+      final prefs = await SharedPreferences.getInstance();
+      final storedCode = prefs.getString('kroger_auth_code');
+      
+      if (storedCode != null && storedCode.isNotEmpty) {
+        print('🎉 Found stored auth code: ${storedCode.substring(0, 10)}...');
+        
+        // Clear the stored code
+        await prefs.remove('kroger_auth_code');
+        
+        // Process the authorization code
+        setState(() {
+          _authInProgress = true;
+          _statusMessage = 'Processing authentication...';
+        });
+        
+        await _completeAuthentication(storedCode);
+        return;
+      }
+      
+      print('No auth code found in deep link or storage');
+      
+    } catch (e) {
+      print('Error checking for deep link auth code: $e');
+    }
+  }
+  
   // Check for existing Kroger authentication
   Future<void> _checkExistingKrogerAuth() async {
+    print('🔍 Checking for existing Kroger authentication');
     setState(() {
       _statusMessage = 'Checking for existing authentication...';
     });
@@ -138,21 +252,97 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
     }
   }
   
-  // Direct authentication method to bypass API calls entirely
+  // Monitor backend for authentication completion when using external browser
+  void _monitorBackendForAuthCompletion() async {
+    print('🔍 Starting backend polling for authentication completion');
+    
+    setState(() {
+      _statusMessage = 'Complete authentication in your browser, then return to the app';
+    });
+    
+    // Poll the backend every 3 seconds to check if auth completed
+    for (int i = 0; i < 40; i++) { // Check for up to 2 minutes
+      await Future.delayed(Duration(seconds: 3));
+      
+      if (!mounted) return;
+      
+      try {
+        print('📡 Polling backend for auth status (attempt ${i + 1}/40)');
+        
+        // Check if Kroger auth is valid by verifying with backend
+        final result = await ApiService.verifyKrogerAuth(
+          widget.userId,
+          widget.authToken
+        );
+        
+        if (result == true) {
+          print('✅ Backend confirms successful Kroger authentication');
+          
+          // Authentication successful on backend
+          setState(() {
+            _isLoading = false;
+            _statusMessage = 'Authentication successful!';
+          });
+          
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Kroger authentication successful!'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+          
+          Navigator.pop(context, true);
+          return;
+        }
+      } catch (e) {
+        print('Error polling backend for auth completion: $e');
+      }
+      
+      // Update status message to show progress
+      if (mounted) {
+        setState(() {
+          _statusMessage = 'Waiting for authentication completion... (${i + 1}/40)';
+        });
+      }
+    }
+    
+    // Timeout - authentication didn't complete
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+        _statusMessage = 'Authentication timed out. Please try again.';
+      });
+      
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Authentication timed out. Please make sure you completed the login in your browser.'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 5),
+          ),
+        );
+      }
+    }
+  }
+
+  // Direct authentication method using external browser with deep linking
   void _directAuth() async {
     final clientId = "smartmealplannerio-243261243034247652497361364a447078555731455949714a464f61656e5a676b444e552e42796961517a4f4576367156464b3564774c3039777a614700745159802496692";
-    // Use the exact same redirect URI as the web app - this is the critical change
-    final redirectUri = "https://www.smartmealplannerio.com/kroger/callback";
+    
+    // Use the registered mobile deep link redirect URI
+    final redirectUri = "smartmealplanner://kroger-auth";
+    
     // Match scope exactly from web app - order is important
     final scope = "product.compact cart.basic:write";
     final responseType = "code";
     final state = DateTime.now().millisecondsSinceEpoch.toString();
     
-    // Build URL in exact same format as web app - keep parameter order consistent with web app
-    // First scope, then response_type, then client_id, then redirect_uri, then state
+    // Build URL for external browser authentication
     final directUrl = "https://api.kroger.com/v1/connect/oauth2/authorize?scope=${Uri.encodeComponent(scope)}&response_type=$responseType&client_id=$clientId&redirect_uri=${Uri.encodeComponent(redirectUri)}&state=$state";
     
-    print("Directly opening Kroger authentication URL: ${directUrl.substring(0, min(directUrl.length, 80))}...");
+    print("Opening Kroger authentication in external browser: ${directUrl.substring(0, min(directUrl.length, 80))}...");
     print("Full URL: $directUrl");
     
     // Save that we're attempting authentication to SharedPreferences
@@ -166,6 +356,9 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
     
     // Try to open in external browser directly
     await _launchExternalBrowser(directUrl);
+    
+    // Start monitoring for deep link callback
+    _monitorForDeepLinkCallback();
   }
 
   @override
@@ -176,19 +369,20 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
   }
 
   void _setupWebView() {
+    print('🎯 Setting up external browser authentication (skipping WebView)');
     setState(() {
-      _statusMessage = 'Preparing Kroger authentication...';
+      _statusMessage = 'Opening authentication in your browser...';
       _isLoading = true;
     });
 
-    // Generate our own OAuth URL directly
-    print("Generating direct OAuth URL for WebView");
+    // Skip WebView entirely and go straight to external browser
+    _directAuth();
+    return;
     
     // Use the exact same URL parameters as the web app
     final clientId = "smartmealplannerio-243261243034247652497361364a447078555731455949714a464f61656e5a676b444e552e42796961517a4f4576367156464b3564774c3039777a614700745159802496692";
     
-    // For a mobile app, we need a URI scheme that can redirect back to our app
-    // Use the exact URI scheme defined in AndroidManifest.xml
+    // Use the registered mobile deep link redirect URI
     final redirectUri = "smartmealplanner://kroger-auth";
     
     // Make sure we request the product and cart scopes
@@ -216,7 +410,21 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
   }
   
   void _initializeWebView(String url) {
-    _controller = WebViewController()
+    print('🔧 Initializing WebView with URL: ${url.substring(0, min(url.length, 100))}...');
+    
+    // Set a global timeout for the entire authentication process
+    Timer(Duration(minutes: 5), () {
+      if (mounted && !_authInProgress && _isLoading) {
+        print('🕐 Authentication timeout reached');
+        setState(() {
+          _isLoading = false;
+          _statusMessage = 'Authentication timed out. Please try the external browser option.';
+        });
+      }
+    });
+    
+    try {
+      _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setNavigationDelegate(
         NavigationDelegate(
@@ -226,38 +434,124 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
             });
           },
           onPageStarted: (String url) {
+            print('🚀 Page started loading: $url');
             setState(() {
               _isLoading = true;
               _statusMessage = 'Loading...';
             });
-          },
-          onPageFinished: (String url) {
-            setState(() {
-              _isLoading = false;
+            
+            // Set a timeout for loading to prevent infinite spinner
+            Future.delayed(Duration(seconds: 30), () {
+              if (mounted && _isLoading) {
+                print('⏰ Page loading timeout reached for: $url');
+                setState(() {
+                  _isLoading = false;
+                  _statusMessage = 'Page loading timed out. Try refreshing or use the external browser option.';
+                });
+              }
             });
           },
-          onNavigationRequest: (NavigationRequest request) {
-            print('Navigating to: ${request.url}');
+          onPageFinished: (String url) {
+            print('📄 Page finished loading: $url');
+            setState(() {
+              _isLoading = false;
+              _statusMessage = 'Please complete the authentication process.';
+            });
             
-            // Check if we've reached the redirect URL or a URL containing the authorization code
-            if (request.url.startsWith('smartmealplanner://') || 
-                request.url.contains('code=') ||
-                request.url.contains('kroger/callback') ||
-                request.url.contains('auth-callback') ||
-                request.url.contains('smartmealplannerio.com/kroger')) {
-              print('Detected auth callback URL: ${request.url}');
-              
-              // Extract authentication code from URL
-              Uri uri = Uri.parse(request.url);
-              String? code = uri.queryParameters['code'];
-              
-              if (code != null) {
-                print('Found authorization code: ${code.substring(0, min(code.length, 10))}...');
-                _completeAuthentication(code);
-                return NavigationDecision.prevent;
-              }
+            // Check if this page contains auth results
+            if (_authInProgress) {
+              print('Auth already in progress, skipping page finished check');
+              return;
             }
             
+            // Check for auth completion in finished URLs (especially for fragment-based codes)
+            if (url.contains('smartmealplannerio.com/kroger/callback') && 
+                url.contains('code=')) {
+              print('🔍 Checking finished page for auth code: $url');
+              _extractCodeFromUrl(url);
+            }
+            // Also check for direct Kroger signin-redirect URLs
+            else if (url.contains('api.kroger.com/v1/connect/auth/signin-redirect') && 
+                     url.contains('code=')) {
+              print('🔍 Checking Kroger signin-redirect page for auth code: $url');
+              _extractCodeFromUrl(url);
+            }
+          },
+          onNavigationRequest: (NavigationRequest request) {
+            print('🔄 Navigation requested to: ${request.url}');
+            
+            // Circuit breaker: prevent too many rapid navigations
+            final now = DateTime.now();
+            if (_lastNavigationTime != null && 
+                now.difference(_lastNavigationTime!).inSeconds < 2) {
+              _navigationAttempts++;
+              if (_navigationAttempts > 10) {
+                print('🛑 Too many rapid navigation attempts, preventing infinite loop');
+                setState(() {
+                  _statusMessage = 'Navigation loop detected. Please try the external browser option.';
+                  _isLoading = false;
+                });
+                return NavigationDecision.prevent;
+              }
+            } else {
+              _navigationAttempts = 0;
+            }
+            _lastNavigationTime = now;
+            
+            // Log detailed URL analysis
+            if (request.url.contains('code=')) {
+              print('📋 URL contains code parameter');
+            }
+            if (request.url.contains('kroger')) {
+              print('📋 URL contains kroger');
+            }
+            if (request.url.contains('callback')) {
+              print('📋 URL contains callback');
+            }
+            if (request.url.contains('smartmealplannerio.com')) {
+              print('📋 URL contains smartmealplannerio.com');
+            }
+            
+            // Prevent multiple authentication attempts
+            if (_authInProgress) {
+              print('Authentication already in progress, preventing navigation to: ${request.url}');
+              return NavigationDecision.prevent;
+            }
+            
+            // Check for custom scheme URLs (all variants)
+            if (request.url.startsWith('smartmealplanner://') || 
+                request.url.startsWith('smartmealplannerIO://') || 
+                request.url.startsWith('smartmealplannerio://')) {
+              print('Custom scheme detected - handling URL: ${request.url}');
+              _handleCustomSchemeUrl(request.url);
+              return NavigationDecision.prevent;
+            }
+            
+            // Check for callback URLs with authorization codes - be more specific about what constitutes a callback
+            if (request.url.contains('smartmealplannerio.com/kroger/callback') && 
+                request.url.contains('code=')) {
+              print('✅ Callback URL with code detected: ${request.url}');
+              _extractCodeFromUrl(request.url);
+              return NavigationDecision.prevent;
+            }
+            
+            // Also check for direct Kroger signin-redirect URLs with codes
+            if (request.url.contains('api.kroger.com/v1/connect/auth/signin-redirect') && 
+                request.url.contains('code=')) {
+              print('✅ Kroger signin-redirect URL with code detected: ${request.url}');
+              _extractCodeFromUrl(request.url);
+              return NavigationDecision.prevent;
+            }
+            
+            // Check for any other callback patterns but be more restrictive
+            if ((request.url.contains('kroger') && request.url.contains('callback')) && 
+                request.url.contains('code=')) {
+              print('✅ Generic Kroger callback URL with code detected: ${request.url}');
+              _extractCodeFromUrl(request.url);
+              return NavigationDecision.prevent;
+            }
+            
+            // Allow normal navigation for auth pages
             return NavigationDecision.navigate;
           },
           onWebResourceError: (WebResourceError error) {
@@ -269,9 +563,95 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
         ),
       )
       ..loadRequest(Uri.parse(url));
+      
+      print('✅ WebView controller initialized and request loaded');
+    } catch (e) {
+      print('❌ Error initializing WebView: $e');
+      setState(() {
+        _isLoading = false;
+        _statusMessage = 'Failed to initialize authentication. Please try the external browser option.';
+      });
+    }
+  }
+
+  void _extractCodeFromUrl(String url) {
+    if (_authInProgress) {
+      print('🚫 Auth already in progress, skipping code extraction');
+      return;
+    }
+    
+    try {
+      print('🔎 Attempting to extract code from URL: ${url.substring(0, min(url.length, 100))}...');
+      
+      Uri uri = Uri.parse(url);
+      String? code;
+      String? state;
+      
+      // Check for code in query parameters first
+      code = uri.queryParameters['code'];
+      state = uri.queryParameters['state'];
+      print('🔍 Query parameters check: ${code != null ? "FOUND" : "NOT FOUND"}');
+      if (state != null) {
+        print('🔍 State parameter: ${state.substring(0, min(state.length, 10))}...');
+      }
+      
+      // If no code in query params, check fragment (after #) - Kroger often uses fragments
+      if (code == null && uri.fragment.isNotEmpty) {
+        print('🔍 Checking fragment: ${uri.fragment}');
+        final fragmentParams = Uri.splitQueryString(uri.fragment);
+        code = fragmentParams['code'];
+        state = fragmentParams['state'] ?? state;
+        print('🔍 Fragment parameters check: ${code != null ? "FOUND" : "NOT FOUND"}');
+      }
+      
+      // Additional check - sometimes the code is in a different format
+      if (code == null) {
+        // Check if the URL itself contains code= pattern
+        final codeMatch = RegExp(r'code=([^&\s#]+)').firstMatch(url);
+        if (codeMatch != null) {
+          code = Uri.decodeComponent(codeMatch.group(1) ?? '');
+          print('🔍 Regex pattern check: FOUND');
+        } else {
+          print('🔍 Regex pattern check: NOT FOUND');
+        }
+      }
+      
+      // Validate the code looks legitimate (not empty, reasonable length)
+      if (code != null && code.isNotEmpty && code.length > 10) {
+        print('✅ Successfully extracted auth code: ${code.substring(0, min(code.length, 10))}...');
+        
+        // Set auth in progress immediately to prevent duplicate attempts
+        _authInProgress = true;
+        _completeAuthentication(code);
+      } else {
+        print('❌ No valid authorization code found in URL');
+        print('   Full URL: $url');
+        print('   Query params: ${uri.queryParameters}');
+        print('   Fragment: ${uri.fragment}');
+        
+        // If this looks like it should have had a code but didn't, show an error
+        if (url.contains('callback') || url.contains('signin-redirect')) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Authentication callback received but no authorization code found'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      print('❌ Error extracting code from URL: $e');
+    }
   }
 
   Future<void> _completeAuthentication(String code) async {
+    if (_authInProgress) {
+      print('Authentication already in progress, ignoring duplicate attempt');
+      return;
+    }
+    
+    print('🔐 Starting authentication completion process...');
+    _authInProgress = true;
     setState(() {
       _isLoading = true;
       _statusMessage = 'Completing authentication...';
@@ -280,14 +660,15 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
     try {
       print('Completing authentication with code: ${code.substring(0, min(code.length, 10))}...');
       
-      // WebApp-Style Approach: Match the web app's auth_callback format exactly
+      // Match web app's exact 3-step authentication process
       bool success = false;
       Map<String, dynamic> result = {};
       
+      // Step 1: Try POST /kroger/process-code (web app's primary method)
       try {
-        print('WebApp-Style: Using Kroger auth-callback with web-style format');
+        print('Step 1: Trying POST /kroger/process-code');
         
-        final url = Uri.parse("${ApiService.baseUrl}/kroger/auth-callback");
+        final url = Uri.parse("${ApiService.baseUrl}/kroger/process-code");
         final response = await http.post(
           url,
           headers: {"Content-Type": "application/json"},
@@ -297,82 +678,113 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
           }),
         );
         
-        print('WebApp-Style auth response status: ${response.statusCode}');
+        print('POST process-code response status: ${response.statusCode}');
+        print('POST process-code response body: ${response.body}');
         
         if (response.statusCode >= 200 && response.statusCode < 300) {
           try {
             final apiResult = jsonDecode(response.body);
-            if (apiResult != null) {
-              print('WebApp-Style succeeded, using API result');
-              
-              // Check for access_token in result
-              if (apiResult.containsKey('access_token')) {
-                print('Found access_token in WebApp-Style response');
-                result = apiResult;
-                success = true;
-              }
+            if (apiResult != null && apiResult.containsKey('access_token')) {
+              print('POST process-code succeeded!');
+              result = apiResult;
+              success = true;
             }
           } catch (parseError) {
-            print('Error parsing WebApp-Style response: $parseError');
+            print('Error parsing POST process-code response: $parseError');
           }
         }
-      } catch (webStyleError) {
-        print('Error with WebApp-Style approach: $webStyleError');
+      } catch (error) {
+        print('Error with POST process-code approach: $error');
       }
       
-      // Mobile-Style Approach: Include user_id in the request if the WebApp-Style failed
+      // Step 2: Try GET /kroger/process-code (web app's fallback)
       if (!success) {
         try {
-          print('Mobile-Style: Using Kroger auth-callback with user_id');
+          print('Step 2: Trying GET /kroger/process-code');
           
-          final url = Uri.parse("${ApiService.baseUrl}/kroger/auth-callback");
-          final response = await http.post(
-            url,
-            headers: {"Content-Type": "application/json"},
-            body: jsonEncode({
-              "user_id": widget.userId,
-              "code": code,
-              "redirect_uri": "smartmealplanner://kroger-auth"
-            }),
-          );
+          final queryParams = {
+            'code': code,
+            'redirect_uri': 'smartmealplanner://kroger-auth'
+          };
+          final uri = Uri.parse("${ApiService.baseUrl}/kroger/process-code")
+              .replace(queryParameters: queryParams);
           
-          print('Mobile-Style auth response status: ${response.statusCode}');
+          final response = await http.get(uri);
+          
+          print('GET process-code response status: ${response.statusCode}');
+          print('GET process-code response body: ${response.body}');
           
           if (response.statusCode >= 200 && response.statusCode < 300) {
             try {
               final apiResult = jsonDecode(response.body);
-              if (apiResult != null) {
-                print('Mobile-Style succeeded, using API result');
-                
-                // Check for access_token in result
-                if (apiResult.containsKey('access_token')) {
-                  print('Found access_token in Mobile-Style response');
-                  result = apiResult;
-                  success = true;
-                }
+              if (apiResult != null && apiResult.containsKey('access_token')) {
+                print('GET process-code succeeded!');
+                result = apiResult;
+                success = true;
               }
             } catch (parseError) {
-              print('Error parsing Mobile-Style response: $parseError');
+              print('Error parsing GET process-code response: $parseError');
             }
           }
-        } catch (mobileStyleError) {
-          print('Error with Mobile-Style approach: $mobileStyleError');
+        } catch (error) {
+          print('Error with GET process-code approach: $error');
         }
       }
       
-      // API Service Approach: Use the standard method if the direct approaches failed
+      // Step 3: Try POST /kroger/auth-callback with form data (web app's last fallback)
       if (!success) {
         try {
-          print('API Service Approach: Using standard ApiService.completeKrogerAuth');
+          print('Step 3: Trying POST /kroger/auth-callback with form data');
+          
+          final url = Uri.parse("${ApiService.baseUrl}/kroger/auth-callback");
+          final formData = {
+            'code': code,
+            'redirect_uri': 'smartmealplanner://kroger-auth',
+            'grant_type': 'authorization_code'
+          };
+          
+          final response = await http.post(
+            url,
+            headers: {"Content-Type": "application/x-www-form-urlencoded"},
+            body: formData.entries
+                .map((e) => '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}')
+                .join('&'),
+          );
+          
+          print('POST auth-callback response status: ${response.statusCode}');
+          print('POST auth-callback response body: ${response.body}');
+          
+          if (response.statusCode >= 200 && response.statusCode < 300) {
+            try {
+              final apiResult = jsonDecode(response.body);
+              if (apiResult != null && apiResult.containsKey('access_token')) {
+                print('POST auth-callback succeeded!');
+                result = apiResult;
+                success = true;
+              }
+            } catch (parseError) {
+              print('Error parsing POST auth-callback response: $parseError');
+            }
+          }
+        } catch (error) {
+          print('Error with POST auth-callback approach: $error');
+        }
+      }
+      
+      
+      // Final fallback: API Service approach
+      if (!success) {
+        try {
+          print('Final fallback: Using ApiService.completeKrogerAuth');
           final apiResult = await ApiService.completeKrogerAuth(
             widget.userId,
             widget.authToken,
             code,
-            "smartmealplanner://kroger-auth",
+            "https://www.smartmealplannerio.com/kroger/callback",
           );
           
           if (apiResult != null && apiResult.containsKey('access_token')) {
-            print('API Service approach succeeded, using its result');
+            print('API Service approach succeeded!');
             result = apiResult;
             success = true;
           }
@@ -394,23 +806,24 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
             
         print('Using real tokens - access: ${accessToken.substring(0, min(accessToken.length, 10))}...');
       } else {
-        // Create failsafe tokens to ensure the app continues to work
-        accessToken = "mobile_app_token_${DateTime.now().millisecondsSinceEpoch}";
-        refreshToken = "mobile_app_refresh_${DateTime.now().millisecondsSinceEpoch}";
+        // Authentication failed - don't create dummy tokens, return error
+        print('❌ All authentication approaches failed');
         
-        print('Using failsafe tokens due to auth endpoint failures');
+        setState(() {
+          _isLoading = false;
+        });
         
-        // Add to result for consistency
-        result['access_token'] = accessToken;
-        result['refresh_token'] = refreshToken;
-        result['kroger_authenticated'] = true;
-        result['kroger_connected'] = true;
-        result['auth_completed'] = true;
-        result['has_cart_scope'] = true;
-        result['auth_timestamp'] = DateTime.now().toIso8601String();
+        _authInProgress = false; // Reset flag on failure
         
-        // This ensures success=true for the remainder of the function
-        success = true;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Authentication failed. Please try again."),
+            backgroundColor: Colors.red,
+          )
+        );
+        
+        // Return early without saving invalid tokens
+        return;
       }
       
       // Save to SharedPreferences first (most critical step)
@@ -481,58 +894,28 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
       // Return with success
       Navigator.pop(context, true);
     } catch (e) {
-      print('Error completing authentication: $e');
+      print('❌ Error completing authentication: $e');
+      print('Error type: ${e.runtimeType}');
+      print('Stack trace: ${StackTrace.current}');
       
-      // Even on error, save authentication data to ensure app functionality
-      try {
-        final prefs = await SharedPreferences.getInstance();
-        
-        // Save as successful despite the error
-        await prefs.setBool('kroger_authenticated', true);
-        await prefs.setBool('kroger_connected', true);
-        await prefs.setString('kroger_auth_code', code);
-        
-        // Create failsafe tokens 
-        final failsafeAccessToken = "mobile_app_token_${DateTime.now().millisecondsSinceEpoch}";
-        final failsafeRefreshToken = "mobile_app_refresh_${DateTime.now().millisecondsSinceEpoch}";
-        
-        await prefs.setString('kroger_access_token', failsafeAccessToken);
-        await prefs.setString('kroger_refresh_token', failsafeRefreshToken);
-        
-        // Set default store ID
-        await prefs.setString('kroger_location_id', '02100328');
-        await prefs.setString('kroger_store_location', '02100328');
-        await prefs.setBool('kroger_store_selected', true);
-        
-        print('Saved failsafe auth state to SharedPreferences despite error');
-        
-        // Also attempt to update tokens in database
-        await ApiService.updateKrogerTokens(
-          userId: widget.userId,
-          authToken: widget.authToken,
-          accessToken: failsafeAccessToken,
-          refreshToken: failsafeRefreshToken,
-        );
-      } catch (storageError) {
-        print('Error saving failsafe auth state: $storageError');
-      }
+      _authInProgress = false; // Reset flag on error
       
+      // Authentication failed completely - show error with details
       setState(() {
         _isLoading = false;
-        _statusMessage = 'Authentication successful (with error recovery)';
+        _statusMessage = '';
       });
       
-      // Show success message instead of error for better user experience
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Kroger authentication successful!'),
-          backgroundColor: Colors.green,
-          duration: Duration(seconds: 3),
-        ),
+          content: Text("Authentication failed: ${e.toString()}"),
+          backgroundColor: Colors.red,
+          duration: Duration(seconds: 5),
+        )
       );
       
-      // Return with success despite the error
-      Navigator.pop(context, true);
+      // Return with failure
+      Navigator.pop(context, false);
     }
   }
   
@@ -587,22 +970,18 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
       prefs.setBool('kroger_connected', true);
       prefs.setString('kroger_auth_code', code);
       
-      // Create a fallback token if needed
-      String accessToken = "mobile_app_token_${DateTime.now().millisecondsSinceEpoch}";
-      String refreshToken = "mobile_app_refresh_${DateTime.now().millisecondsSinceEpoch}";
-      
-      // Use real tokens if available in result
-      if (result != null) {
-        if (result.containsKey('access_token')) {
-          accessToken = result['access_token'].toString();
-          print("Using real Kroger access token from result");
-        }
-        
-        if (result.containsKey('refresh_token')) {
-          refreshToken = result['refresh_token'].toString();
-          print("Using real Kroger refresh token from result");
-        }
+      // Only proceed if we have real tokens from the result
+      if (result == null || !result.containsKey('access_token')) {
+        print("❌ No real tokens available, cannot save authentication state");
+        return;
       }
+      
+      String accessToken = result['access_token'].toString();
+      String refreshToken = result.containsKey('refresh_token') 
+          ? result['refresh_token'].toString()
+          : "refresh_${DateTime.now().millisecondsSinceEpoch}";
+      
+      print("Using real Kroger access token from result");
       
       // Save tokens
       prefs.setString('kroger_access_token', accessToken);
@@ -725,38 +1104,207 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
     }
   }
 
+  void _resetAndRetry() {
+    print('🔄 Resetting authentication state and retrying');
+    setState(() {
+      _authInProgress = false;
+      _navigationAttempts = 0;
+      _lastNavigationTime = null;
+      _isLoading = true;
+      _statusMessage = 'Resetting authentication...';
+    });
+    
+    // Clear any stored auth flags
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.setBool('kroger_auth_in_progress', false);
+    });
+    
+    // Restart the WebView setup process
+    _setupWebView();
+  }
+
+  void _handleCustomSchemeUrl(String url) {
+    print('Handling custom scheme URL: $url');
+    
+    if (_authInProgress) {
+      print('Authentication already in progress, ignoring custom scheme URL');
+      return;
+    }
+    
+    try {
+      Uri uri = Uri.parse(url);
+      String? code;
+      
+      // Check for code in query parameters first
+      code = uri.queryParameters['code'];
+      
+      // If no code in query params, check for code in fragment (after #)
+      if (code == null && uri.fragment.isNotEmpty) {
+        final fragmentParams = Uri.splitQueryString(uri.fragment);
+        code = fragmentParams['code'];
+      }
+      
+      if (code != null) {
+        print('Found authorization code in custom scheme URL: ${code.substring(0, min(code.length, 10))}...');
+        _completeAuthentication(code);
+      } else {
+        print('No authorization code found in custom scheme URL');
+        print('Query parameters: ${uri.queryParameters}');
+        print('Fragment: ${uri.fragment}');
+        if (uri.fragment.isNotEmpty) {
+          print('Fragment parameters: ${Uri.splitQueryString(uri.fragment)}');
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("No authorization code received from Kroger"),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    } catch (e) {
+      print('Error parsing custom scheme URL: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Error processing Kroger callback: $e"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  // Monitor for deep link callback instead of backend polling
+  void _monitorForDeepLinkCallback() {
+    print('🔗 Starting deep link monitoring for Kroger auth callback');
+    
+    setState(() {
+      _statusMessage = 'Waiting for authentication completion...';
+    });
+    
+    // Set up periodic checking for deep link handling
+    // Since we don't have uni_links, we'll monitor for when the app resumes
+    // and check if authentication completed via the existing _handleAppResumed method
+    
+    // Set a timeout for the entire authentication process
+    Timer(Duration(minutes: 10), () {
+      if (mounted && _isLoading && !_authInProgress) {
+        print('🕐 Deep link monitoring timeout reached');
+        setState(() {
+          _isLoading = false;
+          _statusMessage = 'Authentication timed out. Please try again.';
+        });
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Authentication timed out. Please try again.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    });
+    
+    // Note: The actual deep link handling happens in main.dart route handling
+    // and _handleAppResumed when the app comes back to foreground
+    print('Deep link monitoring setup complete - waiting for callback');
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Kroger Authentication'),
+        title: Text(widget.isReconnect ? 'Reconnect Kroger Account' : 'Kroger Authentication'),
         leading: IconButton(
           icon: Icon(Icons.close),
           onPressed: () => Navigator.pop(context, false),
         ),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.open_in_browser),
+            tooltip: 'Open in external browser',
+            onPressed: () => _directAuth(),
+          ),
+        ],
       ),
-      body: Stack(
-        children: [
-          if (_controller != null) WebViewWidget(controller: _controller!),
-          if (_isLoading)
-            Container(
-              color: Colors.black54,
-              child: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
+      body: Container(
+        color: Colors.black54,
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+                SizedBox(height: 24),
+                Text(
+                  _statusMessage,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                SizedBox(height: 32),
+                if (_statusMessage.contains('browser'))
+                  Column(
+                    children: [
+                      Icon(
+                        Icons.open_in_browser,
+                        color: Colors.white,
+                        size: 48,
+                      ),
+                      SizedBox(height: 16),
+                      Text(
+                        'Complete the authentication in your browser, then return to this app.',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 14,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                SizedBox(height: 32),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    CircularProgressIndicator(),
-                    SizedBox(height: 16),
-                    Text(
-                      _statusMessage,
-                      style: TextStyle(color: Colors.white),
+                    ElevatedButton(
+                      onPressed: () => _directAuth(),
+                      child: Text('Retry Browser'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue,
+                        foregroundColor: Colors.white,
+                      ),
+                    ),
+                    ElevatedButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: Text('Cancel'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.grey,
+                        foregroundColor: Colors.white,
+                      ),
                     ),
                   ],
                 ),
-              ),
+              ],
             ),
-        ],
+          ),
+        ),
       ),
     );
+  }
+}
+
+class _AppLifecycleObserver extends WidgetsBindingObserver {
+  final _KrogerAuthScreenState _authScreen;
+  
+  _AppLifecycleObserver(this._authScreen);
+  
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _authScreen._handleAppResumed();
+    }
   }
 }
