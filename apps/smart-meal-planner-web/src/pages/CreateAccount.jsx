@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { 
   Box, Typography, TextField, Button, Card, CardContent, Alert,
   RadioGroup, Radio, FormControlLabel, FormControl, FormLabel,
@@ -36,6 +36,15 @@ function CreateAccount() {
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [showVerificationMessage, setShowVerificationMessage] = useState(false);
+  
+  console.log('CreateAccount render - showVerificationMessage:', showVerificationMessage);
+  
+  // Debug effect to monitor state changes
+  useEffect(() => {
+    if (showVerificationMessage) {
+      console.log('Verification message effect triggered - message should stay visible');
+    }
+  }, [showVerificationMessage]);
   
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -99,6 +108,8 @@ function CreateAccount() {
       const response = await apiService.signUp(signupPayload);
       
       console.log('Signup response:', response);
+      console.log('Signup response type:', typeof response);
+      console.log('Subscription plan:', subscriptionPlan);
       
       // Handle both direct response and response.data patterns
       if (response) {
@@ -107,10 +118,12 @@ function CreateAccount() {
           ? response.data.message || "Account created successfully!"
           : response.message || "Account created successfully!";
         
+        console.log('Setting success message:', message);
         setSuccessMessage(message);
         
         // If we have subscription parameters, log in and redirect to subscription
         if (subscriptionPlan) {
+          console.log('Has subscription plan, handling subscription flow');
           try {
             // Log in with the new credentials
             const loginResponse = await login({
@@ -159,6 +172,9 @@ function CreateAccount() {
       }
     } catch (err) {
       console.error('Signup error:', err);
+      console.log('Error response:', err.response);
+      console.log('Error message:', err.message);
+      
       if (err.response && err.response.data && err.response.data.detail) {
         setError(err.response.data.detail);
       } else {

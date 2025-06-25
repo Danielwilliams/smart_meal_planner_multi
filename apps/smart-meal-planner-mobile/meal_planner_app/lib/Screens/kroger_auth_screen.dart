@@ -8,6 +8,7 @@ import '../services/api_service.dart';
 import 'dart:math';
 import 'dart:async';
 import 'package:flutter/services.dart';
+import 'package:app_links/app_links.dart';
 
 class KrogerAuthScreen extends StatefulWidget {
   final String? authUrl;
@@ -58,36 +59,39 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
     super.dispose();
   }
   
-  // Initialize deep link handling
-  Future<void> _initDeepLinks() async {
+  // Check for initial intent data (deep link)
+  Future<void> _checkInitialIntent() async {
     try {
-      print('🔗 Initializing deep link listener...');
+      print('🔗 Checking for initial intent data...');
       
-      // Check for initial link when app is launched
-      final initialLink = await _appLinks.getInitialAppLink();
-      if (initialLink != null) {
-        print('📱 App launched with deep link: $initialLink');
-        _handleDeepLink(initialLink);
+      // For now, let's use a simpler approach - check SharedPreferences for a stored deep link
+      final prefs = await SharedPreferences.getInstance();
+      final deepLinkUrl = prefs.getString('pending_deep_link');
+      
+      if (deepLinkUrl != null && deepLinkUrl.isNotEmpty) {
+        print('📱 Found pending deep link: $deepLinkUrl');
+        
+        // Parse the URL
+        try {
+          final uri = Uri.parse(deepLinkUrl);
+          _handleDeepLinkUri(uri);
+          
+          // Clear the stored deep link
+          await prefs.remove('pending_deep_link');
+        } catch (e) {
+          print('❌ Error parsing deep link URL: $e');
+        }
+      } else {
+        print('🤷 No pending deep link found');
       }
-      
-      // Listen for incoming deep links while app is running
-      _linkSubscription = _appLinks.uriLinkStream.listen(
-        (Uri uri) {
-          print('📱 Received deep link: $uri');
-          _handleDeepLink(uri);
-        },
-        onError: (err) {
-          print('❌ Deep link error: $err');
-        },
-      );
     } catch (e) {
-      print('❌ Error initializing deep links: $e');
+      print('❌ Error checking initial intent: $e');
     }
   }
   
-  // Handle incoming deep link
-  void _handleDeepLink(Uri uri) {
-    print('🔗 Processing deep link: $uri');
+  // Handle incoming deep link URI
+  void _handleDeepLinkUri(Uri uri) {
+    print('🔗 Processing deep link URI: $uri');
     
     // Check if this is a Kroger auth callback
     if (uri.scheme == 'smartmealplanner' && uri.host == 'kroger-auth') {
@@ -113,12 +117,14 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
         }
       } else {
         print('❌ No auth code found in deep link');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('No authorization code found in deep link'),
-            backgroundColor: Colors.orange,
-          ),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('No authorization code found in deep link'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
       }
     } else {
       print('🤷 Deep link not for Kroger auth: ${uri.scheme}://${uri.host}');
@@ -1287,23 +1293,23 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Manual Auth Code'),
+        title: Text('Manual Deep Link'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('Paste the authorization code from the deep link URL:'),
+            Text('Paste the complete deep link URL:'),
             SizedBox(height: 16),
             TextField(
               controller: controller,
               decoration: InputDecoration(
-                hintText: 'e.g., i30ZlgktrFaNRdvVXZiyiNs2nHwPmPHea8eu-EwE',
+                hintText: 'smartmealplanner://kroger-auth?code=...&state=...',
                 border: OutlineInputBorder(),
               ),
-              maxLines: 3,
+              maxLines: 4,
             ),
             SizedBox(height: 8),
             Text(
-              'Extract the "code" parameter from the deep link URL you saw in the browser.',
+              'Paste the complete URL that should have opened the app.',
               style: TextStyle(fontSize: 12, color: Colors.grey),
             ),
           ],
@@ -1316,13 +1322,33 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
-              _manuallyProcessAuthCode(controller.text.trim());
+              _manuallyProcessDeepLink(controller.text.trim());
             },
             child: Text('Process'),
           ),
         ],
       ),
     );
+  }
+  
+  // Manually process deep link URL
+  void _manuallyProcessDeepLink(String url) {
+    if (url.isNotEmpty) {
+      print('🔧 Manually processing deep link: $url');
+      
+      try {
+        final uri = Uri.parse(url);
+        _handleDeepLinkUri(uri);
+      } catch (e) {
+        print('❌ Error parsing manual deep link: $e');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Invalid deep link URL: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   // Monitor for deep link callback instead of backend polling
@@ -1441,10 +1467,10 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
                   ],
                 ),
                 SizedBox(height: 16),
-                // Debug button for manual auth code processing
+                // Debug button for manual deep link processing
                 ElevatedButton(
                   onPressed: () => _showManualAuthCodeDialog(),
-                  child: Text('Manual Auth Code'),
+                  child: Text('Manual Deep Link'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.orange,
                     foregroundColor: Colors.white,
