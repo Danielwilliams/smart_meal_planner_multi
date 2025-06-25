@@ -38,10 +38,17 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
   DateTime? _lastNavigationTime;
   static const MethodChannel _platform = MethodChannel('com.example.meal_planner_app/intent');
 
+  late AppLinks _appLinks;
+  StreamSubscription<Uri>? _linkSubscription;
+
   @override
   void initState() {
     super.initState();
     print('🚀 KrogerAuthScreen initState called');
+    
+    // Initialize app_links package
+    _appLinks = AppLinks();
+    _initializeDeepLinkListener();
     
     // Set up a listener for app state changes to detect when returning from browser
     WidgetsBinding.instance.addObserver(_AppLifecycleObserver(this));
@@ -55,16 +62,45 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
   
   @override
   void dispose() {
+    _linkSubscription?.cancel();
     WidgetsBinding.instance.removeObserver(_AppLifecycleObserver(this));
     super.dispose();
   }
   
-  // Check for initial intent data (deep link)
+  // Initialize deep link listener using app_links package
+  Future<void> _initializeDeepLinkListener() async {
+    try {
+      print('🔗 Initializing deep link listener...');
+      
+      // Check for initial deep link
+      final initialLink = await _appLinks.getInitialLink();
+      if (initialLink != null) {
+        print('📱 Found initial deep link: $initialLink');
+        _handleDeepLinkUri(initialLink);
+      }
+      
+      // Listen for incoming deep links
+      _linkSubscription = _appLinks.linkStream.listen(
+        (Uri uri) {
+          print('📱 Received deep link: $uri');
+          _handleDeepLinkUri(uri);
+        },
+        onError: (err) {
+          print('❌ Deep link error: $err');
+        },
+      );
+      
+    } catch (e) {
+      print('❌ Error initializing deep link listener: $e');
+    }
+  }
+  
+  // Check for initial intent data (deep link) - fallback method
   Future<void> _checkInitialIntent() async {
     try {
-      print('🔗 Checking for initial intent data...');
+      print('🔗 Checking for initial intent data (fallback)...');
       
-      // For now, let's use a simpler approach - check SharedPreferences for a stored deep link
+      // Check SharedPreferences for a stored deep link as fallback
       final prefs = await SharedPreferences.getInstance();
       final deepLinkUrl = prefs.getString('pending_deep_link');
       

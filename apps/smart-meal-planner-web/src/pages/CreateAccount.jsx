@@ -24,6 +24,14 @@ function CreateAccount() {
   const paymentProvider = query.get('provider') || 'stripe';
   const discountCode = query.get('discount');
   
+  console.log('URL parameters:', {
+    subscriptionPlan,
+    paymentProvider,
+    discountCode,
+    fullURL: window.location.href,
+    searchParams: window.location.search
+  });
+  
   // Form state
   const [formData, setFormData] = useState({
     email: '',
@@ -124,6 +132,7 @@ function CreateAccount() {
         // If we have subscription parameters, log in and redirect to subscription
         if (subscriptionPlan) {
           console.log('Has subscription plan, handling subscription flow');
+          console.log('Taking subscription path - will attempt login');
           try {
             // Log in with the new credentials
             const loginResponse = await login({
@@ -162,6 +171,7 @@ function CreateAccount() {
           }
         } else {
           // Regular signup without subscription - show verification message
+          console.log('No subscription plan - taking verification message path');
           console.log('Setting verification message to true');
           setSuccessMessage(''); // Clear any success message
           setShowVerificationMessage(true);
