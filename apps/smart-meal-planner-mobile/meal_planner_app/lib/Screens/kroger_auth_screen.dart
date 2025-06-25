@@ -73,14 +73,14 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
       print('🔗 Initializing deep link listener...');
       
       // Check for initial deep link
-      final initialLink = await _appLinks.getInitialLink();
+      final initialLink = await _appLinks.getInitialAppLink();
       if (initialLink != null) {
         print('📱 Found initial deep link: $initialLink');
         _handleDeepLinkUri(initialLink);
       }
       
       // Listen for incoming deep links
-      _linkSubscription = _appLinks.linkStream.listen(
+      _linkSubscription = _appLinks.uriLinkStream.listen(
         (Uri uri) {
           print('📱 Received deep link: $uri');
           _handleDeepLinkUri(uri);
