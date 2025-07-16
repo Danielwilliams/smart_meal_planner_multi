@@ -1095,7 +1095,8 @@ async def create_recipe(
             'diet_tags': json.dumps(recipe_data.get('diet_tags', [])) if recipe_data.get('diet_tags') else None,
             'metadata': json.dumps(recipe_data.get('metadata', {})) if recipe_data.get('metadata') else None,
             'instructions': json.dumps(recipe_data.get('instructions', [])) if recipe_data.get('instructions') else None,
-            'date_scraped': datetime.now()  # Add the required date_scraped field
+            'date_scraped': datetime.now(),  # Add the required date_scraped field
+            'date_processed': datetime.now()  # Add the required date_processed field
         }
         
         # Build the INSERT query
