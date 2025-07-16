@@ -1077,6 +1077,8 @@ async def create_recipe(
             raise HTTPException(status_code=400, detail="Recipe title is required")
         
         # Prepare the recipe data for insertion
+        from datetime import datetime
+        
         insert_data = {
             'title': title,
             'source': recipe_data.get('source', 'Manual Entry'),
@@ -1092,7 +1094,8 @@ async def create_recipe(
             'component_type': recipe_data.get('component_type'),
             'diet_tags': json.dumps(recipe_data.get('diet_tags', [])) if recipe_data.get('diet_tags') else None,
             'metadata': json.dumps(recipe_data.get('metadata', {})) if recipe_data.get('metadata') else None,
-            'instructions': json.dumps(recipe_data.get('instructions', [])) if recipe_data.get('instructions') else None
+            'instructions': json.dumps(recipe_data.get('instructions', [])) if recipe_data.get('instructions') else None,
+            'date_scraped': datetime.now()  # Add the required date_scraped field
         }
         
         # Build the INSERT query
