@@ -1051,9 +1051,14 @@ async def get_all_recipe_tags(
         if conn:
             conn.close()
 
+async def get_current_user(request: Request):
+    """Helper function to get current user from request"""
+    return await get_user_from_token(request)
+
 @router.post("/create-recipe")
 async def create_recipe(
-    recipe_data: Dict[str, Any]
+    recipe_data: Dict[str, Any],
+    current_user = Depends(get_current_user)
 ):
     """
     Create a new recipe in the scraped_recipes table

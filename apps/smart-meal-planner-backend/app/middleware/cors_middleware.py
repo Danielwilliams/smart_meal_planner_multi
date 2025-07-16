@@ -28,6 +28,7 @@ def setup_cors_middleware(app: FastAPI) -> None:
         "https://api.smartmealplannerio.com",
         "https://smartmealplannerio.com",
         "https://smart-meal-planner-multi.vercel.app",
+        "*"  # Temporarily allow all origins for debugging
     ]
     
     logger.info("Setting up enhanced CORS middleware to allow direct frontend requests")
