@@ -2089,6 +2089,8 @@ class ApiService {
         endpoint = "/kroger/search";
       } else if (storeName.toLowerCase() == 'walmart') {
         endpoint = "/walmart/search";
+      } else if (storeName.toLowerCase() == 'instacart') {
+        endpoint = "/instacart/search";
       }
 
       print("🔍 Searching for items in $storeName using endpoint: $endpoint");
@@ -2101,9 +2103,9 @@ class ApiService {
       if (result != null && result is Map) {
         final processedResult = _toStringDynamicMap(result);
 
-        // Enhanced debug logging for Kroger search results
-        if (storeName.toLowerCase() == 'kroger') {
-          print("🔍 Got Kroger search results: ${processedResult.keys.join(', ')}");
+        // Enhanced debug logging for store search results
+        if (storeName.toLowerCase() == 'kroger' || storeName.toLowerCase() == 'instacart') {
+          print("🔍 Got $storeName search results: ${processedResult.keys.join(', ')}");
 
           // Check if we have results
           if (processedResult.containsKey('results') &&
@@ -2414,6 +2416,194 @@ class ApiService {
     }
   }
   
+  // Get detailed recipe information
+  static Future<Map<String, dynamic>?> getRecipeDetails({
+    required int userId,
+    required String authToken,
+    required int recipeId,
+  }) async {
+    try {
+      final result = await _get("/scraped-recipes/$recipeId", authToken);
+      if (result != null && result is Map) {
+        final Map<String, dynamic> safeResult = _toStringDynamicMap(result);
+        return safeResult;
+      }
+      return null;
+    } catch (e) {
+      print("Error getting recipe details: $e");
+      return null;
+    }
+  }
+
+  // Rate a recipe (simple rating submission matching backend API)
+  static Future<Map<String, dynamic>> rateRecipe({
+    required int userId,
+    required String authToken,
+    required int recipeId,
+    required double rating,
+  }) async {
+    try {
+      // Use correct field name and data type to match backend API
+      final result = await _post("/ratings/recipes/$recipeId/rate", {
+        "rating_score": rating.round(), // Convert to int and use correct field name
+      }, authToken);
+      
+      if (result != null) {
+        return {
+          "success": true,
+          "data": result,
+        };
+      }
+      return {
+        "success": false,
+        "message": "Failed to submit rating",
+      };
+    } catch (e) {
+      print("Error rating recipe: $e");
+      return {
+        "success": false,
+        "message": "Error rating recipe: $e",
+      };
+    }
+  }
+
+  // Submit comprehensive rating for a recipe (matching backend API structure)
+  static Future<Map<String, dynamic>> submitComprehensiveRating({
+    required int userId,
+    required String authToken,
+    required int recipeId,
+    required double ratingScore,
+    String? feedbackText,
+    bool? madeRecipe,
+    bool? wouldMakeAgain,
+    double? difficultyRating,
+    double? timeAccuracy,
+    Map<String, double>? ratingAspects,
+  }) async {
+    try {
+      // Build the comprehensive rating data structure (matching backend Pydantic models)
+      Map<String, dynamic> ratingData = {
+        "rating_score": ratingScore.round(), // Convert to int as backend expects
+      };
+
+      // Add optional fields if provided
+      if (feedbackText != null && feedbackText.isNotEmpty) {
+        ratingData["feedback_text"] = feedbackText;
+      }
+      
+      if (madeRecipe != null) {
+        ratingData["made_recipe"] = madeRecipe;
+      }
+      
+      if (wouldMakeAgain != null) {
+        ratingData["would_make_again"] = wouldMakeAgain;
+      }
+      
+      if (difficultyRating != null && difficultyRating > 0) {
+        ratingData["difficulty_rating"] = difficultyRating.round(); // Convert to int
+      }
+      
+      if (timeAccuracy != null && timeAccuracy > 0) {
+        ratingData["time_accuracy"] = timeAccuracy.round(); // Convert to int
+      }
+      
+      // Add rating aspects if provided and any have values > 0
+      // Structure as nested object to match backend RatingAspects model
+      if (ratingAspects != null && ratingAspects.isNotEmpty) {
+        Map<String, int> filteredAspects = {};
+        ratingAspects.forEach((key, value) {
+          if (value > 0) {
+            filteredAspects[key] = value.round(); // Convert to int
+          }
+        });
+        
+        if (filteredAspects.isNotEmpty) {
+          ratingData["rating_aspects"] = filteredAspects;
+        }
+      }
+
+      print("📊 Submitting comprehensive rating: $ratingData");
+
+      final result = await _post("/ratings/recipes/$recipeId/rate", ratingData, authToken);
+      
+      if (result != null) {
+        return {
+          "success": true,
+          "data": result,
+          "message": "Rating submitted successfully!",
+        };
+      }
+      return {
+        "success": false,
+        "message": "Failed to submit rating",
+      };
+    } catch (e) {
+      print("Error submitting comprehensive rating: $e");
+      return {
+        "success": false,
+        "message": "Error submitting rating: $e",
+      };
+    }
+  }
+
+  // Get recipe rating information (aggregated ratings + user's rating)
+  static Future<Map<String, dynamic>?> getRecipeRating({
+    required int userId,
+    required String authToken,
+    required int recipeId,
+  }) async {
+    try {
+      // Get aggregated ratings for the recipe (public endpoint)
+      final aggregatedResult = await _get("/ratings/recipes/$recipeId/ratings", authToken);
+      
+      // Get user's personal rating for the recipe (authenticated endpoint)
+      final userRatingResult = await _get("/ratings/recipes/$recipeId/my-rating", authToken);
+      
+      if (aggregatedResult != null && aggregatedResult is Map) {
+        Map<String, dynamic> combined = _toStringDynamicMap(aggregatedResult);
+        
+        // Add user's rating to the combined result if available
+        if (userRatingResult != null && userRatingResult is Map) {
+          combined['user_rating'] = _toStringDynamicMap(userRatingResult);
+        }
+        
+        return combined;
+      }
+      return null;
+    } catch (e) {
+      print("Error getting recipe rating: $e");
+      return null;
+    }
+  }
+
+  // Save a custom menu
+  static Future<Map<String, dynamic>?> saveCustomMenu({
+    required int userId,
+    required String authToken,
+    required Map<String, dynamic> menuData,
+  }) async {
+    try {
+      final result = await _post("/custom-menu/", menuData, authToken);
+      if (result != null) {
+        return {
+          "success": true,
+          "data": result,
+          "message": "Custom menu saved successfully",
+        };
+      }
+      return {
+        "success": false,
+        "message": "Failed to save custom menu",
+      };
+    } catch (e) {
+      print("Error saving custom menu: $e");
+      return {
+        "success": false,
+        "message": "Error saving custom menu: $e",
+      };
+    }
+  }
+
   // Search recipes 
   static Future<Map<String, dynamic>> searchRecipes({
     required int userId,

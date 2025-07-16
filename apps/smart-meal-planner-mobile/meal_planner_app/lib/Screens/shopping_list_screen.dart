@@ -1087,23 +1087,9 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> with SingleTick
         return;
       }
 
-      // Check if we're adding to Instacart
+      // Check if we're adding to Instacart - use same cart flow as Kroger
       if (_selectedStore == 'Instacart') {
-        // For Instacart, we need to show the retailer selector
-        setState(() {
-          _isLoading = false;
-        });
-
-        // Convert ingredients to list of ingredient names
-        List<String> ingredientNames = ingredients.map((item) {
-          String name = item['name'] ?? 'Unknown item';
-          if (item['quantity'] != null && item['quantity'].toString().isNotEmpty) {
-            name = "$name: ${item['quantity']} ${item['unit'] ?? ''}".trim();
-          }
-          return name;
-        }).toList();
-
-        // Store this in the cart state for immediate access
+        // Store items in the cart state (same as Kroger flow)
         final cartState = Provider.of<CartState>(context, listen: false);
         List<Map<String, dynamic>> cartItems = ingredients.map((item) {
           String displayText = item['name'] ?? 'Unknown item';
@@ -1122,16 +1108,35 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> with SingleTick
 
         cartState.addItemsToCart('Instacart', cartItems);
 
-        // Show snackbar and prompt for Instacart retailer
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Select an Instacart retailer for ${ingredientNames.length} items from $mealTitle"),
-            duration: Duration(seconds: 3),
-          )
-        );
+        // Debug print to verify items were added
+        cartState.printCartState();
 
-        // Show the Instacart retailer selector
-        _showInstacartDialog();
+        // Show success message with VIEW CART action (same as Kroger)
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("Added ${cartItems.length} items from $mealTitle to $_selectedStore cart"),
+              action: SnackBarAction(
+                label: 'VIEW CART',
+                onPressed: () {
+                  Navigator.pushNamed(
+                    context,
+                    '/carts',
+                    arguments: {
+                      'userId': widget.userId,
+                      'authToken': validToken, // Use the refreshed token
+                      'selectedStore': _selectedStore,
+                    }
+                  );
+                },
+              ),
+            )
+          );
+        }
+        
+        setState(() {
+          _isLoading = false;
+        });
         return;
       }
 
@@ -1232,7 +1237,8 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> with SingleTick
               // Store selection with dropdown
               Padding(
                 padding: const EdgeInsets.only(bottom: 16.0),
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       "Selected Store: ",
@@ -1241,69 +1247,86 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> with SingleTick
                         fontSize: 16,
                       ),
                     ),
-                    Expanded(
-                      child: Row(
-                        children: [
-                          // Kroger button
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              onPressed: () {
-                                setState(() {
-                                  _selectedStore = 'Kroger';
-                                });
-                              },
-                              icon: Icon(
-                                Icons.shopping_basket,
-                                size: 16,
-                                color: _selectedStore == 'Kroger' ? Colors.white : Colors.grey,
-                              ),
-                              label: Text('Kroger'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: _selectedStore == 'Kroger'
-                                    ? Theme.of(context).primaryColor
-                                    : Colors.grey[200],
-                                foregroundColor: _selectedStore == 'Kroger'
-                                    ? Colors.white
-                                    : Colors.black87,
-                                padding: EdgeInsets.symmetric(horizontal: 8, vertical: 0),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
+                    SizedBox(height: 8),
+                    Row(
+                      children: [
+                        // Kroger button
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              setState(() {
+                                _selectedStore = 'Kroger';
+                              });
+                            },
+                            icon: Icon(
+                              Icons.shopping_basket,
+                              size: 16,
+                              color: _selectedStore == 'Kroger' ? Colors.white : Colors.grey,
+                            ),
+                            label: Text('Kroger'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: _selectedStore == 'Kroger'
+                                  ? Theme.of(context).primaryColor
+                                  : Colors.grey[200],
+                              foregroundColor: _selectedStore == 'Kroger'
+                                  ? Colors.white
+                                  : Colors.black87,
+                              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(4),
                               ),
                             ),
                           ),
-                          SizedBox(width: 8),
-                          // Instacart button
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              onPressed: () {
-                                setState(() {
-                                  _selectedStore = 'Instacart';
-                                });
-                                _showInstacartDialog();
-                              },
-                              icon: Image.asset(
-                                'assets/instacart/Instacart_Carrot.png',
-                                height: 16,
-                                width: 16,
-                                color: _selectedStore == 'Instacart' ? Colors.white : null,
-                              ),
-                              label: Text('Instacart'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: _selectedStore == 'Instacart'
-                                    ? Colors.green
-                                    : Colors.grey[200],
-                                foregroundColor: _selectedStore == 'Instacart'
-                                    ? Colors.white
-                                    : Colors.black87,
-                                padding: EdgeInsets.symmetric(horizontal: 8, vertical: 0),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
+                        ),
+                        SizedBox(width: 8),
+                        // Instacart button
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              setState(() {
+                                _selectedStore = 'Instacart';
+                              });
+                            },
+                            icon: Image.asset(
+                              'assets/instacart/Instacart_Carrot.png',
+                              height: 16,
+                              width: 16,
+                              color: _selectedStore == 'Instacart' ? Colors.white : null,
+                            ),
+                            label: Text('Instacart'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: _selectedStore == 'Instacart'
+                                  ? Colors.green
+                                  : Colors.grey[200],
+                              foregroundColor: _selectedStore == 'Instacart'
+                                  ? Colors.white
+                                  : Colors.black87,
+                              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(4),
                               ),
                             ),
                           ),
-                        ],
+                        ),
+                      ],
+                    ),
+                    
+                    // Compare Stores button
+                    SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: _showCompareStoresDialog,
+                        icon: Icon(Icons.compare_arrows, size: 18),
+                        label: Text('Compare Stores'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.orange,
+                          foregroundColor: Colors.white,
+                          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
                       ),
                     ),
                   ],
@@ -1490,16 +1513,69 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> with SingleTick
                                   );
                                 }).toList(),
                                 
-                                // Add to cart button
+                                // Store selection buttons
                                 Padding(
                                   padding: const EdgeInsets.all(8.0),
-                                  child: ElevatedButton.icon(
-                                    onPressed: () => _addMealToCart(mealTitle, ingredients),
-                                    icon: Icon(Icons.add_shopping_cart),
-                                    label: Text("Add All to Cart"),
-                                    style: ElevatedButton.styleFrom(
-                                      padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                                    ),
+                                  child: Column(
+                                    children: [
+                                      Text(
+                                        "Add to Cart:",
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 16,
+                                        ),
+                                      ),
+                                      SizedBox(height: 8),
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                        children: [
+                                          // Kroger button
+                                          Expanded(
+                                            child: ElevatedButton.icon(
+                                              onPressed: () async {
+                                                _selectedStore = 'Kroger';
+                                                await _addMealToCart(mealTitle, ingredients);
+                                              },
+                                              icon: Image.asset(
+                                                'assets/kroger/kroger-logo.png',
+                                                height: 20,
+                                                width: 20,
+                                                errorBuilder: (context, error, stackTrace) => Icon(Icons.store, size: 20),
+                                              ),
+                                              label: Text("Kroger"),
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: Color(0xFF0078D4),
+                                                foregroundColor: Colors.white,
+                                                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                              ),
+                                            ),
+                                          ),
+                                          SizedBox(width: 8),
+                                          // Instacart button
+                                          Expanded(
+                                            child: ElevatedButton.icon(
+                                              onPressed: () async {
+                                                _selectedStore = 'Instacart';
+                                                await _addMealToCart(mealTitle, ingredients);
+                                              },
+                                              icon: Image.asset(
+                                                'assets/instacart/Instacart_Carrot.png',
+                                                height: 20,
+                                                width: 20,
+                                                color: Colors.white,
+                                                errorBuilder: (context, error, stackTrace) => Icon(Icons.store, size: 20),
+                                              ),
+                                              label: Text("Instacart"),
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: Color(0xFF43B02A),
+                                                foregroundColor: Colors.white,
+                                                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ],
@@ -1938,6 +2014,46 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> with SingleTick
               },
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  // Show compare stores dialog
+  void _showCompareStoresDialog() {
+    // Get only checked ingredients from the current shopping list
+    List<String> checkedIngredients = [];
+    _categorizedItems.values.forEach((categoryItems) {
+      categoryItems.forEach((item) {
+        if (item['checked'] == true) {
+          final name = item['name'] ?? 'Unknown item';
+          if (!checkedIngredients.contains(name)) {
+            checkedIngredients.add(name);
+          }
+        }
+      });
+    });
+
+    if (checkedIngredients.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No items selected to compare. Please check some items first.'))
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        child: Container(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.8,
+            maxWidth: MediaQuery.of(context).size.width * 0.95,
+          ),
+          child: _CompareStoresDialogContent(
+            ingredients: checkedIngredients,
+            userId: widget.userId,
+            authToken: widget.authToken,
+          ),
         ),
       ),
     );
@@ -2850,5 +2966,424 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> with SingleTick
         _isLoading = false;
       });
     }
+  }
+}
+
+// Widget for compare stores dialog content
+class _CompareStoresDialogContent extends StatefulWidget {
+  final List<String> ingredients;
+  final int userId;
+  final String authToken;
+
+  const _CompareStoresDialogContent({
+    required this.ingredients,
+    required this.userId,
+    required this.authToken,
+  });
+
+  @override
+  _CompareStoresDialogContentState createState() => _CompareStoresDialogContentState();
+}
+
+class _CompareStoresDialogContentState extends State<_CompareStoresDialogContent> {
+  bool _isLoading = true;
+  Map<String, Map<String, List<dynamic>>> _storeResults = {
+    'Kroger': {},
+    'Instacart': {},
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    _loadComparisonData();
+  }
+
+  Future<void> _loadComparisonData() async {
+    setState(() => _isLoading = true);
+
+    try {
+      // Search each ingredient separately in both stores
+      for (String ingredient in widget.ingredients) {
+        // Search Kroger for this ingredient
+        try {
+          final krogerResult = await ApiService.searchStoreItems(
+            userId: widget.userId,
+            authToken: widget.authToken,
+            storeName: 'Kroger',
+            ingredients: [ingredient],
+          );
+          if (krogerResult != null && krogerResult.containsKey('results')) {
+            final results = krogerResult['results'] as List<dynamic>? ?? [];
+            // Take only top 2 results
+            _storeResults['Kroger']![ingredient] = results.take(2).toList();
+          } else {
+            _storeResults['Kroger']![ingredient] = [];
+          }
+        } catch (e) {
+          print('Error searching Kroger for $ingredient: $e');
+          _storeResults['Kroger']![ingredient] = [];
+        }
+
+        // Search Instacart for this ingredient (requires retailer)
+        try {
+          // For simplicity, try to get a default retailer or use a common one
+          // You might want to get user's preferred retailer or use zip code here
+          final instacartResults = await _searchInstacartWithDefaultRetailer(ingredient);
+          _storeResults['Instacart']![ingredient] = instacartResults.take(2).toList();
+        } catch (e) {
+          print('Error searching Instacart for $ingredient: $e');
+          _storeResults['Instacart']![ingredient] = [];
+        }
+      }
+    } catch (e) {
+      print('Error loading store comparison data: $e');
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  // Helper method to search Instacart with a default retailer
+  Future<List<Map<String, dynamic>>> _searchInstacartWithDefaultRetailer(String ingredient) async {
+    try {
+      // Get user's zip code from preferences or use default
+      final prefs = await SharedPreferences.getInstance();
+      String zipCode = prefs.getString('zipCode') ?? '80538'; // Default to Loveland, CO
+      
+      print('🛒 Searching Instacart for $ingredient with zip: $zipCode');
+      
+      // Get nearby retailers
+      final retailers = await InstacartService.getNearbyRetailers(widget.authToken, zipCode);
+      print('🛒 Found ${retailers.length} retailers for zip code: $zipCode');
+      
+      if (retailers.isNotEmpty) {
+        // Try multiple retailers if the first one fails
+        for (var retailer in retailers.take(3)) { // Try up to 3 retailers
+          try {
+            final retailerId = retailer['id'] ?? retailer['retailer_id'];
+            final retailerName = retailer['name'] ?? 'Unknown Store';
+            
+            print('🛒 Trying retailer: $retailerName (ID: $retailerId)');
+            
+            // Search for products
+            final results = await InstacartService.searchProducts(
+              widget.authToken,
+              retailerId,
+              [ingredient]
+            );
+            
+            print('🛒 Found ${results.length} Instacart results for $ingredient from $retailerName');
+            
+            if (results.isNotEmpty) {
+              return results;
+            } else {
+              print('🛒 No results from $retailerName, trying next retailer...');
+            }
+          } catch (retailerError) {
+            print('🛒 Error searching retailer ${retailer['name']}: $retailerError');
+            continue; // Try next retailer
+          }
+        }
+        
+        print('🛒 No results found from any retailer for: $ingredient');
+        return [];
+      } else {
+        print('🛒 No Instacart retailers found for zip code: $zipCode');
+        
+        // As a fallback, try with common test zip codes
+        final fallbackZips = ['10001', '90210', '60601']; // NYC, Beverly Hills, Chicago
+        for (String fallbackZip in fallbackZips) {
+          print('🛒 Trying fallback zip code: $fallbackZip');
+          try {
+            final fallbackRetailers = await InstacartService.getNearbyRetailers(widget.authToken, fallbackZip);
+            if (fallbackRetailers.isNotEmpty) {
+              final retailer = fallbackRetailers.first;
+              final retailerId = retailer['id'] ?? retailer['retailer_id'];
+              
+              print('🛒 Using fallback retailer: ${retailer['name']} (ID: $retailerId)');
+              
+              final results = await InstacartService.searchProducts(
+                widget.authToken,
+                retailerId,
+                [ingredient]
+              );
+              
+              if (results.isNotEmpty) {
+                print('🛒 Found ${results.length} results using fallback zip: $fallbackZip');
+                return results;
+              }
+            }
+          } catch (e) {
+            print('🛒 Fallback zip $fallbackZip failed: $e');
+          }
+        }
+        
+        return [];
+      }
+    } catch (e) {
+      print('🛒 Error in Instacart search: $e');
+      return [];
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        // Header
+        Container(
+          padding: EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.orange,
+            borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(8),
+              topRight: Radius.circular(8),
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.compare_arrows, color: Colors.white),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Compare Selected Items',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              Text(
+                '${widget.ingredients.length} items',
+                style: TextStyle(color: Colors.white70, fontSize: 14),
+              ),
+              SizedBox(width: 8),
+              IconButton(
+                icon: Icon(Icons.close, color: Colors.white),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+            ],
+          ),
+        ),
+
+        // Content
+        Expanded(
+          child: _isLoading
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      CircularProgressIndicator(),
+                      SizedBox(height: 16),
+                      Text('Searching stores for your items...'),
+                    ],
+                  ),
+                )
+              : SingleChildScrollView(
+                  padding: EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Per-ingredient comparisons
+                      ...widget.ingredients.map((ingredient) {
+                        return _buildIngredientComparison(ingredient);
+                      }).toList(),
+
+                      SizedBox(height: 20),
+                      
+                      // Action buttons
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              icon: Icon(Icons.shopping_cart),
+                              label: Text('Shop Kroger'),
+                              onPressed: () => _navigateToStore('Kroger'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.blue,
+                                foregroundColor: Colors.white,
+                              ),
+                            ),
+                          ),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              icon: Image.asset(
+                                'assets/instacart/Instacart_Carrot.png',
+                                height: 16,
+                                width: 16,
+                                color: Colors.white,
+                              ),
+                              label: Text('Shop Instacart'),
+                              onPressed: () => _navigateToStore('Instacart'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.green,
+                                foregroundColor: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildIngredientComparison(String ingredient) {
+    final krogerItems = _storeResults['Kroger']?[ingredient] ?? [];
+    final instacartItems = _storeResults['Instacart']?[ingredient] ?? [];
+    
+    return Card(
+      margin: EdgeInsets.only(bottom: 16),
+      child: Padding(
+        padding: EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Ingredient name
+            Text(
+              ingredient,
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).primaryColor,
+              ),
+            ),
+            SizedBox(height: 12),
+            
+            // Side-by-side comparison
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Kroger column
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.shopping_basket, size: 16, color: Colors.blue),
+                          SizedBox(width: 4),
+                          Text(
+                            'Kroger',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue,
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 8),
+                      if (krogerItems.isEmpty)
+                        Text(
+                          'No items found',
+                          style: TextStyle(
+                            color: Colors.grey[600],
+                            fontStyle: FontStyle.italic,
+                          ),
+                        )
+                      else
+                        ...krogerItems.map((item) => _buildCompactItemCard(item, Colors.blue)).toList(),
+                    ],
+                  ),
+                ),
+                
+                SizedBox(width: 16),
+                
+                // Instacart column
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Image.asset(
+                            'assets/instacart/Instacart_Carrot.png',
+                            height: 16,
+                            width: 16,
+                          ),
+                          SizedBox(width: 4),
+                          Text(
+                            'Instacart',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.green,
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 8),
+                      if (instacartItems.isEmpty)
+                        Text(
+                          'No items found',
+                          style: TextStyle(
+                            color: Colors.grey[600],
+                            fontStyle: FontStyle.italic,
+                          ),
+                        )
+                      else
+                        ...instacartItems.map((item) => _buildCompactItemCard(item, Colors.green)).toList(),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCompactItemCard(Map<String, dynamic> item, Color accentColor) {
+    final price = item['price'] ?? 0.0;
+    final priceStr = price > 0 ? '\$${price.toStringAsFixed(2)}' : 'N/A';
+    
+    return Container(
+      margin: EdgeInsets.only(bottom: 8),
+      padding: EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        border: Border.all(color: accentColor.withOpacity(0.3)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            item['name'] ?? 'Unknown Item',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          SizedBox(height: 4),
+          Text(
+            priceStr,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: accentColor,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _navigateToStore(String store) {
+    Navigator.of(context).pop();
+    Navigator.pushNamed(
+      context,
+      '/carts',
+      arguments: {
+        'userId': widget.userId,
+        'authToken': widget.authToken,
+        'selectedStore': store,
+      },
+    );
   }
 }

@@ -240,16 +240,59 @@ class InstacartService {
 
       if (response.statusCode == 200) {
         final responseData = json.decode(response.body);
+        print("Raw Instacart search response type: ${responseData.runtimeType}");
+        print("Raw Instacart search response: $responseData");
 
-        if (responseData is Map && responseData.containsKey('results')) {
-          print("Got ${(responseData['results'] as List).length} search results");
-          return List<Map<String, dynamic>>.from(responseData['results']);
+        // Handle different possible response formats
+        if (responseData is Map) {
+          print("Response keys: ${responseData.keys.toList()}");
+          
+          if (responseData.containsKey('results')) {
+            final results = responseData['results'];
+            if (results is List) {
+              print("Got ${results.length} search results from 'results' key");
+              return List<Map<String, dynamic>>.from(results);
+            }
+          } else if (responseData.containsKey('data')) {
+            final data = responseData['data'];
+            if (data is List) {
+              print("Got ${data.length} search results from 'data' key");
+              return List<Map<String, dynamic>>.from(data);
+            }
+          } else if (responseData.containsKey('products')) {
+            final products = responseData['products'];
+            if (products is List) {
+              print("Got ${products.length} search results from 'products' key");
+              return List<Map<String, dynamic>>.from(products);
+            }
+          } else if (responseData.containsKey('items')) {
+            final items = responseData['items'];
+            if (items is List) {
+              print("Got ${items.length} search results from 'items' key");
+              return List<Map<String, dynamic>>.from(items);
+            }
+          } else {
+            // If no specific key found, check if the whole response might be structured differently
+            print("No expected results key found. Available keys: ${responseData.keys.toList()}");
+            
+            // Look for any array-like values in the response
+            for (var key in responseData.keys) {
+              if (responseData[key] is List && (responseData[key] as List).isNotEmpty) {
+                print("Found list data in '$key' key with ${(responseData[key] as List).length} items");
+                return List<Map<String, dynamic>>.from(responseData[key]);
+              }
+            }
+          }
         } else if (responseData is List) {
-          print("Got ${responseData.length} search results");
+          print("Got ${responseData.length} search results (direct list)");
           return List<Map<String, dynamic>>.from(responseData);
         }
+        
+        print("Could not extract results from response format");
+        return [];
       } else {
-        print("Error response: ${response.body}");
+        print("Error response status: ${response.statusCode}");
+        print("Error response body: ${response.body}");
       }
 
       print("Failed to search products: ${response.statusCode}");

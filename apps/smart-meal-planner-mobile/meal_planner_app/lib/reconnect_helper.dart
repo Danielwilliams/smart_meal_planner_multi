@@ -122,10 +122,10 @@ Future<void> showKrogerReconnectDialog({
 // Function to open Kroger cart in external browser
 Future<void> openKrogerExternalCart(BuildContext context) async {
   try {
-    // Try a more generic URL first - the homepage may redirect to cart
-    final Uri url = Uri.parse('https://www.kroger.com');
+    // Go directly to the cart page
+    final Uri url = Uri.parse('https://www.kroger.com/cart');
     
-    print("Attempting to open Kroger homepage URL: $url");
+    print("Attempting to open Kroger cart URL: $url");
     
     // Try a simpler approach with just one launch mode
     try {
@@ -138,7 +138,7 @@ Future<void> openKrogerExternalCart(BuildContext context) async {
         // Success!
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text("Opening Kroger website... Navigate to cart from there."),
+            content: Text("Opening Kroger cart page..."),
             duration: Duration(seconds: 3),
           ),
         );
@@ -163,9 +163,8 @@ Future<void> openKrogerExternalCart(BuildContext context) async {
               Text("Please follow these steps:"),
               SizedBox(height: 8),
               Text("1. Open your web browser"),
-              Text("2. Go to www.kroger.com"),
-              Text("3. Log in to your account"),
-              Text("4. Click on the cart icon"),
+              Text("2. Go to www.kroger.com/cart"),
+              Text("3. Log in to your account if needed"),
               SizedBox(height: 12),
               Text("Your items should appear in your Kroger cart after they're processed."),
             ],
@@ -185,7 +184,7 @@ Future<void> openKrogerExternalCart(BuildContext context) async {
     print("Error opening Kroger external cart: $e");
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text("Error opening Kroger website. Try visiting www.kroger.com in your browser."),
+        content: Text("Error opening Kroger cart. Try visiting www.kroger.com/cart in your browser."),
         backgroundColor: Colors.red,
         duration: Duration(seconds: 5),
       ),

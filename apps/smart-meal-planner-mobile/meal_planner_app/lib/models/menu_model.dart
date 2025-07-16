@@ -13,6 +13,10 @@ class Recipe {
   final List<String>? tags;
   final bool? isSaved;
   final double? rating;
+  final double? averageRating;
+  final int? ratingCount;
+  final String? difficulty;
+  final String? notes;
   final String? prepTime;
   final String? cookTime;
   final int? servings;
@@ -29,6 +33,10 @@ class Recipe {
     this.tags,
     this.isSaved = false,
     this.rating,
+    this.averageRating,
+    this.ratingCount,
+    this.difficulty,
+    this.notes,
     this.prepTime,
     this.cookTime,
     this.servings,
@@ -48,6 +56,10 @@ class Recipe {
       'tags': tags,
       'isSaved': isSaved,
       'rating': rating,
+      'averageRating': averageRating,
+      'ratingCount': ratingCount,
+      'difficulty': difficulty,
+      'notes': notes,
       'prepTime': prepTime,
       'cookTime': cookTime,
       'servings': servings,
@@ -255,10 +267,19 @@ class Recipe {
       tags: tags,
       isSaved: safeBool(json['is_saved']) ?? false,
       rating: safeDouble(json['rating']),
+      averageRating: safeDouble(json['average_rating']) ?? safeDouble(json['averageRating']),
+      ratingCount: safeInt(json['rating_count']) ?? safeInt(json['ratingCount']),
+      difficulty: safeString(json['difficulty']) ?? safeString(json['difficulty_level']),
+      notes: safeString(json['notes']) ?? safeString(json['description']),
       prepTime: safeString(json['prep_time']) ?? safeString(json['prepTime']),
       cookTime: safeString(json['cook_time']) ?? safeString(json['cookTime']) ?? safeString(json['total_time']),
       servings: safeInt(json['servings']),
     );
+  }
+
+  // Factory method for creating Recipe from Map (alias for fromJson)
+  factory Recipe.fromMap(Map<String, dynamic> map) {
+    return Recipe.fromJson(map);
   }
 }
 

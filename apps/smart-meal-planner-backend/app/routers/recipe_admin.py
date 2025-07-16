@@ -6,7 +6,7 @@ import uuid
 import logging
 import boto3
 from botocore.exceptions import ClientError
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request
 from fastapi.responses import JSONResponse
 from psycopg2.extras import RealDictCursor
 from typing import List, Optional, Dict, Any
@@ -1047,6 +1047,96 @@ async def get_all_recipe_tags(
     except Exception as e:
         logger.error(f"Error fetching all recipe tags: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error fetching all recipe tags: {str(e)}")
+    finally:
+        if conn:
+            conn.close()
+
+@router.post("/create-recipe")
+async def create_recipe(
+    recipe_data: Dict[str, Any]
+):
+    """
+    Create a new recipe in the scraped_recipes table
+    """
+    conn = None
+    try:
+        # Log the incoming recipe data
+        logger.info(f"Creating new recipe with data: {recipe_data}")
+        
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Extract recipe fields
+        title = recipe_data.get('title')
+        if not title:
+            raise HTTPException(status_code=400, detail="Recipe title is required")
+        
+        # Prepare the recipe data for insertion
+        insert_data = {
+            'title': title,
+            'source': recipe_data.get('source', 'Manual Entry'),
+            'source_url': recipe_data.get('source_url'),
+            'complexity': recipe_data.get('complexity', 'medium'),
+            'cuisine': recipe_data.get('cuisine'),
+            'image_url': recipe_data.get('image_url'),
+            'prep_time': recipe_data.get('prep_time'),
+            'cook_time': recipe_data.get('cook_time'),
+            'total_time': recipe_data.get('total_time'),
+            'servings': recipe_data.get('servings', 4),
+            'is_verified': recipe_data.get('is_verified', True),
+            'component_type': recipe_data.get('component_type'),
+            'diet_tags': json.dumps(recipe_data.get('diet_tags', [])) if recipe_data.get('diet_tags') else None,
+            'metadata': json.dumps(recipe_data.get('metadata', {})) if recipe_data.get('metadata') else None,
+            'instructions': json.dumps(recipe_data.get('instructions', [])) if recipe_data.get('instructions') else None
+        }
+        
+        # Build the INSERT query
+        columns = []
+        values = []
+        placeholders = []
+        
+        for key, value in insert_data.items():
+            if value is not None:
+                columns.append(key)
+                values.append(value)
+                placeholders.append('%s')
+        
+        insert_query = f"""
+            INSERT INTO scraped_recipes ({', '.join(columns)})
+            VALUES ({', '.join(placeholders)})
+            RETURNING id, title, complexity, cuisine
+        """
+        
+        logger.info(f"Executing query: {insert_query}")
+        logger.info(f"With values: {values}")
+        
+        cursor.execute(insert_query, values)
+        created_recipe = cursor.fetchone()
+        
+        if not created_recipe:
+            raise HTTPException(status_code=500, detail="Failed to create recipe")
+        
+        # Commit the transaction
+        conn.commit()
+        
+        logger.info(f"Recipe created successfully with ID: {created_recipe['id']}")
+        
+        return {
+            "success": True,
+            "recipe_id": created_recipe['id'],
+            "recipe": created_recipe,
+            "message": "Recipe created successfully"
+        }
+        
+    except HTTPException:
+        if conn:
+            conn.rollback()
+        raise
+    except Exception as e:
+        logger.error(f"Error creating recipe: {str(e)}", exc_info=True)
+        if conn:
+            conn.rollback()
+        raise HTTPException(status_code=500, detail=f"Error creating recipe: {str(e)}")
     finally:
         if conn:
             conn.close()

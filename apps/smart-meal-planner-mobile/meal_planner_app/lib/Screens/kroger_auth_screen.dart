@@ -161,7 +161,12 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
           _statusMessage = 'Processing authentication from deep link...';
         });
         
-        _completeAuthentication(code);
+        // Process authentication asynchronously to avoid blocking
+        _completeAuthentication(code).then((_) {
+          print('🎉 Deep link authentication processing completed');
+        }).catchError((error) {
+          print('❌ Deep link authentication failed: $error');
+        });
       } else {
         print('❌ No auth code found in deep link');
         if (mounted) {
@@ -186,12 +191,18 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
       final authInProgress = prefs.getBool('kroger_auth_in_progress') ?? false;
       
       print('Auth in progress: $authInProgress');
+      print('Already processed auth code: ${_processedAuthCode?.substring(0, 10) ?? 'none'}...');
       
       if (authInProgress) {
         print('Kroger auth in progress - checking for completion');
         
-        // First priority: Check if we have received an auth code from the deep link
-        await _checkForDeepLinkAuthCode();
+        // Only check for auth code if we haven't already processed one via deep link
+        if (_processedAuthCode == null) {
+          print('No auth code processed yet, checking for deep link auth code');
+          await _checkForDeepLinkAuthCode();
+        } else {
+          print('Auth code already processed via deep link, skipping duplicate check');
+        }
         
         // Fallback: Check if we now have valid tokens (from backend polling approach)
         final isAuthenticated = prefs.getBool('kroger_authenticated') ?? false;
@@ -824,7 +835,10 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
         final url = Uri.parse("${ApiService.baseUrl}/kroger/process-code");
         final response = await http.post(
           url,
-          headers: {"Content-Type": "application/json"},
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer ${widget.authToken}",
+          },
           body: jsonEncode({
             "code": code,
             "redirect_uri": "smartmealplanner://kroger-auth"
@@ -837,7 +851,10 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
         if (response.statusCode >= 200 && response.statusCode < 300) {
           try {
             final apiResult = jsonDecode(response.body);
-            if (apiResult != null && apiResult.containsKey('access_token')) {
+            if (apiResult != null && (
+                apiResult.containsKey('access_token') || 
+                (apiResult['success'] == true && apiResult.containsKey('has_access_token'))
+            )) {
               print('POST process-code succeeded!');
               result = apiResult;
               success = true;
@@ -862,7 +879,12 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
           final uri = Uri.parse("${ApiService.baseUrl}/kroger/process-code")
               .replace(queryParameters: queryParams);
           
-          final response = await http.get(uri);
+          final response = await http.get(
+            uri,
+            headers: {
+              "Authorization": "Bearer ${widget.authToken}",
+            },
+          );
           
           print('GET process-code response status: ${response.statusCode}');
           print('GET process-code response body: ${response.body}');
@@ -898,7 +920,10 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
           
           final response = await http.post(
             url,
-            headers: {"Content-Type": "application/x-www-form-urlencoded"},
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded",
+              "Authorization": "Bearer ${widget.authToken}",
+            },
             body: formData.entries
                 .map((e) => '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}')
                 .join('&'),
@@ -950,14 +975,51 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
       String accessToken;
       String refreshToken;
       
-      if (success && result.containsKey('access_token')) {
-        // Use the real tokens from the successful API call
-        accessToken = result['access_token'].toString();
-        refreshToken = result.containsKey('refresh_token') 
-            ? result['refresh_token'].toString() 
-            : "refresh_${DateTime.now().millisecondsSinceEpoch}";
-            
-        print('Using real tokens - access: ${accessToken.substring(0, min(accessToken.length, 10))}...');
+      if (success) {
+        if (result.containsKey('access_token')) {
+          // Use the real tokens from the successful API call
+          accessToken = result['access_token'].toString();
+          refreshToken = result.containsKey('refresh_token') 
+              ? result['refresh_token'].toString() 
+              : "refresh_${DateTime.now().millisecondsSinceEpoch}";
+              
+          print('Using real tokens - access: ${accessToken.substring(0, min(accessToken.length, 10))}...');
+        } else if (result['success'] == true && result.containsKey('has_access_token')) {
+          // Backend says tokens were saved but didn't return them
+          // Don't overwrite the real tokens in the database!
+          print('Backend confirmed real tokens saved to database');
+          
+          // Mark authentication as complete and exit early
+          setState(() {
+            _isLoading = false;
+            _statusMessage = 'Authentication successful!';
+          });
+          
+          // Clear auth in progress flag
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setBool('kroger_auth_in_progress', false);
+          await prefs.setBool('kroger_authenticated', true);
+          await prefs.setBool('kroger_connected', true);
+          await prefs.setString('kroger_auth_timestamp', DateTime.now().toIso8601String());
+          
+          _authInProgress = false;
+          
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Kroger authentication successful!'),
+                backgroundColor: Colors.green,
+              ),
+            );
+            Navigator.pop(context, true);
+          }
+          return; // Exit early - don't process further
+        } else {
+          // Fallback case
+          accessToken = "mobile_app_token_${DateTime.now().millisecondsSinceEpoch}";
+          refreshToken = "mobile_refresh_token_${DateTime.now().millisecondsSinceEpoch}";
+          print('Using fallback tokens');
+        }
       } else {
         // Authentication failed - don't create dummy tokens, return error
         print('❌ All authentication approaches failed');
@@ -1003,16 +1065,22 @@ class _KrogerAuthScreenState extends State<KrogerAuthScreen> {
       // Set default store location
       await _selectDefaultStoreLocation();
       
-      // Use the enhanced token update method to save tokens to the database in multiple ways
-      print('Updating Kroger tokens in database...');
-      final tokenUpdateSuccess = await ApiService.updateKrogerTokens(
-        userId: widget.userId,
-        authToken: widget.authToken,
-        accessToken: accessToken,
-        refreshToken: refreshToken,
-      );
+      // Only update database if we have placeholder tokens 
+      // (Real tokens were already saved by the backend)
+      bool shouldUpdateDatabase = accessToken.startsWith('mobile_app_token_');
       
-      print('Token update success: $tokenUpdateSuccess');
+      if (shouldUpdateDatabase) {
+        print('Updating placeholder tokens in database...');
+        final tokenUpdateSuccess = await ApiService.updateKrogerTokens(
+          userId: widget.userId,
+          authToken: widget.authToken,
+          accessToken: accessToken,
+          refreshToken: refreshToken,
+        );
+        print('Token update success: $tokenUpdateSuccess');
+      } else {
+        print('Real tokens already saved by backend, skipping database update');
+      }
       
       // Also directly update preferences with additional auth flags as a backup
       try {

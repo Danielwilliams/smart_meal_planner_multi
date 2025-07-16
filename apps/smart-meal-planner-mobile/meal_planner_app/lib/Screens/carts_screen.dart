@@ -598,13 +598,10 @@ class _CartsScreenState extends State<CartsScreen> {
             _statusMessage = '';
           });
 
-          // Add items to local cart anyway
-          _addItemsToLocalCart(storeName, itemsToAdd);
-
-          // Show timeout message with instructions
+          // Show timeout message
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text("Operation timed out. Items added to local cart only."),
+              content: Text("Operation timed out. Please try again."),
               backgroundColor: Colors.orange,
               duration: Duration(seconds: 5),
               action: SnackBarAction(
@@ -629,14 +626,21 @@ class _CartsScreenState extends State<CartsScreen> {
         return;
       }
 
-      if (result != null && result['success'] == true) {
+      if (result != null && (result['success'] == true || result['success'] == 'true')) {
+        print("✅ Successfully added items to Kroger cart: $result");
+        
         // Clear selections
         setState(() {
           _selectedResults[storeName]!.clear();
         });
 
         // Refresh cart
-        await _loadKrogerCart();
+        try {
+          await _loadKrogerCart();
+          print("✅ Cart refreshed successfully");
+        } catch (loadError) {
+          print("❌ Error refreshing cart after successful add: $loadError");
+        }
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -645,6 +649,8 @@ class _CartsScreenState extends State<CartsScreen> {
           )
         );
       } else {
+        print("❌ Failed to add items to Kroger cart. Response: $result");
+        
         // Check if we need to reconnect - using a type-safe approach
         bool needsReconnect = false;
         String? reconnectMessage;
@@ -711,16 +717,14 @@ class _CartsScreenState extends State<CartsScreen> {
           );
         }
         else {
-          // General error, but still add to local cart
-          _addItemsToLocalCart(storeName, itemsToAdd);
-
+          // General error - do not add to local cart
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
                 result is Map && (result.containsKey('error') || result.containsKey('message'))
                 ? "Error: ${result.containsKey('error') ? result['error'] : result.containsKey('message') ? result['message'] : ''}"
-                : "Failed to add items to Kroger's servers. Items added to local cart only."),
-              backgroundColor: Colors.orange,
+                : "Failed to add items to Kroger cart. Please try again."),
+              backgroundColor: Colors.red,
               action: SnackBarAction(
                 label: 'View on Web',
                 onPressed: () => openKrogerExternalCart(context),
@@ -732,27 +736,11 @@ class _CartsScreenState extends State<CartsScreen> {
     } catch (e) {
       print("Error adding to cart: $e");
 
-      // Add to local cart anyway on error
-      final cartState = Provider.of<CartState>(context, listen: false);
-      List<Map<String, dynamic>> itemsToAdd = [];
-
-      for (var index in _selectedResults[storeName]!) {
-        if (_searchResults[storeName] != null &&
-            index >= 0 &&
-            index < _searchResults[storeName]!.length) {
-          final item = _searchResults[storeName]![index];
-          itemsToAdd.add(Map<String, dynamic>.from(item));
-        }
-      }
-
-      if (itemsToAdd.isNotEmpty) {
-        _addItemsToLocalCart(storeName, itemsToAdd);
-      }
-
+      // Do not add to local cart - only show error message
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text("Error adding to Kroger's servers. Items added to local cart only."),
-          backgroundColor: Colors.orange,
+          content: Text("Error adding to Kroger cart: ${e.toString()}"),
+          backgroundColor: Colors.red,
           action: SnackBarAction(
             label: 'View on Web',
             onPressed: () => openKrogerExternalCart(context),
@@ -1100,9 +1088,20 @@ class _CartsScreenState extends State<CartsScreen> {
               ),
           ],
         ),
-        trailing: IconButton(
-          icon: Icon(Icons.delete, color: Colors.red),
-          onPressed: () => _removeItem(storeName, item),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              icon: Icon(Icons.compare_arrows, color: Colors.blue),
+              onPressed: () => _showCompareDialog(ingredient, item, storeName),
+              tooltip: 'Compare Prices',
+            ),
+            IconButton(
+              icon: Icon(Icons.delete, color: Colors.red),
+              onPressed: () => _removeItem(storeName, item),
+              tooltip: 'Remove Item',
+            ),
+          ],
         ),
       ),
     );
@@ -1780,6 +1779,25 @@ class _CartsScreenState extends State<CartsScreen> {
                 style: TextStyle(fontSize: 16, color: Colors.grey[700]),
               ),
               SizedBox(height: 24),
+              // View Kroger Website Cart button
+              if (storeName == 'Kroger')
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    icon: Icon(Icons.shopping_cart_outlined),
+                    label: Text("VIEW KROGER WEBSITE CART"),
+                    style: OutlinedButton.styleFrom(
+                      padding: EdgeInsets.symmetric(vertical: 18),
+                      foregroundColor: Colors.deepOrange,
+                      side: BorderSide(color: Colors.deepOrange),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    onPressed: () => openKrogerExternalCart(context),
+                  ),
+                ),
+              if (storeName == 'Kroger') SizedBox(height: 12),
               ElevatedButton.icon(
                 icon: Icon(Icons.format_list_bulleted),
                 label: Text("Go to Shopping List"),
@@ -1837,24 +1855,6 @@ class _CartsScreenState extends State<CartsScreen> {
                         ),
                       ),
                       SizedBox(height: 12),
-                      // View External Kroger Cart button
-                      if (storeName == 'Kroger')
-                        SizedBox(
-                          width: double.infinity,
-                          child: OutlinedButton.icon(
-                            icon: Icon(Icons.shopping_cart_outlined),
-                            label: Text("VIEW KROGER WEBSITE CART"),
-                            style: OutlinedButton.styleFrom(
-                              padding: EdgeInsets.symmetric(vertical: 18),
-                              foregroundColor: Colors.deepOrange,
-                              side: BorderSide(color: Colors.deepOrange),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                            ),
-                            onPressed: () => openKrogerExternalCart(context),
-                          ),
-                        ),
                     ],
                   ),
                 ),
@@ -2016,6 +2016,342 @@ class _CartsScreenState extends State<CartsScreen> {
             ),
         ],
       ),
+      ),
+    );
+  }
+
+  // Show compare prices dialog for a specific cart item
+  Future<void> _showCompareDialog(String ingredient, Map<String, dynamic> currentItem, String currentStore) async {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return Dialog(
+          child: Container(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.8,
+              maxWidth: MediaQuery.of(context).size.width * 0.95,
+            ),
+            child: _ComparisonDialogContent(
+              ingredient: ingredient,
+              currentItem: currentItem,
+              currentStore: currentStore,
+              userId: widget.userId,
+              authToken: widget.authToken,
+              onReplaceItem: (String newStore, Map<String, dynamic> newItem) {
+                _replaceCartItem(currentStore, currentItem, newStore, newItem);
+                Navigator.of(context).pop();
+              },
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // Replace a cart item with a selected alternative
+  void _replaceCartItem(String oldStore, Map<String, dynamic> oldItem, String newStore, Map<String, dynamic> newItem) {
+    final cartState = Provider.of<CartState>(context, listen: false);
+    
+    // Remove old item
+    cartState.removeItemFromCart(oldStore, oldItem);
+    
+    // Add new item
+    cartState.addItemToCart(newStore, newItem);
+    
+    // Show success message
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Replaced ${oldItem['name'] ?? 'item'} with ${newItem['name']} in $newStore cart'),
+        backgroundColor: Colors.green,
+      ),
+    );
+  }
+}
+
+// Stateful widget for the comparison dialog content
+class _ComparisonDialogContent extends StatefulWidget {
+  final String ingredient;
+  final Map<String, dynamic> currentItem;
+  final String currentStore;
+  final int userId;
+  final String authToken;
+  final Function(String store, Map<String, dynamic> item) onReplaceItem;
+
+  const _ComparisonDialogContent({
+    required this.ingredient,
+    required this.currentItem,
+    required this.currentStore,
+    required this.userId,
+    required this.authToken,
+    required this.onReplaceItem,
+  });
+
+  @override
+  _ComparisonDialogContentState createState() => _ComparisonDialogContentState();
+}
+
+class _ComparisonDialogContentState extends State<_ComparisonDialogContent> {
+  bool _isLoading = true;
+  Map<String, List<dynamic>> _compareResults = {
+    'Kroger': [],
+    'Instacart': [],
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    _loadComparisonData();
+  }
+
+  Future<void> _loadComparisonData() async {
+    setState(() => _isLoading = true);
+
+    try {
+      // Search Kroger
+      if (widget.currentStore != 'Kroger') {
+        final krogerResults = await ApiService.searchStoreItems(
+          userId: widget.userId,
+          authToken: widget.authToken,
+          storeName: 'Kroger',
+          ingredients: [widget.ingredient],
+        );
+        if (krogerResults != null && krogerResults.containsKey('results')) {
+          final results = krogerResults['results'] as List<dynamic>? ?? [];
+          _compareResults['Kroger'] = results.take(5).toList();
+        }
+      }
+
+      // Search Instacart
+      if (widget.currentStore != 'Instacart') {
+        try {
+          final instacartResults = await ApiService.searchStoreItems(
+            userId: widget.userId,
+            authToken: widget.authToken,
+            storeName: 'Instacart',
+            ingredients: [widget.ingredient],
+          );
+          if (instacartResults != null && instacartResults.containsKey('results')) {
+            final results = instacartResults['results'] as List<dynamic>? ?? [];
+            _compareResults['Instacart'] = results.take(5).toList();
+          }
+        } catch (e) {
+          print('Instacart search not available or failed: $e');
+          _compareResults['Instacart'] = [];
+        }
+      }
+    } catch (e) {
+      print('Error loading comparison data: $e');
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        // Header
+        Container(
+          padding: EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Theme.of(context).primaryColor,
+            borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(8),
+              topRight: Radius.circular(8),
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.compare_arrows, color: Colors.white),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Compare Prices: ${widget.ingredient}',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              IconButton(
+                icon: Icon(Icons.close, color: Colors.white),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+            ],
+          ),
+        ),
+
+        // Content
+        Expanded(
+          child: _isLoading
+              ? Center(child: CircularProgressIndicator())
+              : SingleChildScrollView(
+                  padding: EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Current item
+                      _buildCurrentItemCard(),
+                      SizedBox(height: 16),
+
+                      // Alternative stores
+                      ..._compareResults.entries.map((entry) {
+                        final store = entry.key;
+                        final results = entry.value;
+                        
+                        if (results.isEmpty) return SizedBox.shrink();
+                        
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '$store Alternatives',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Theme.of(context).primaryColor,
+                              ),
+                            ),
+                            SizedBox(height: 8),
+                            ...results.map((item) => _buildComparisonItemCard(store, item)).toList(),
+                            SizedBox(height: 16),
+                          ],
+                        );
+                      }).toList(),
+
+                      if (_compareResults.values.every((list) => list.isEmpty))
+                        Card(
+                          child: Padding(
+                            padding: EdgeInsets.all(16),
+                            child: Column(
+                              children: [
+                                Icon(Icons.search_off, size: 48, color: Colors.grey),
+                                SizedBox(height: 8),
+                                Text(
+                                  'No alternatives found',
+                                  style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+                                ),
+                                Text(
+                                  'This item may not be available at other stores or have similar alternatives.',
+                                  style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCurrentItemCard() {
+    final price = widget.currentItem['price'] ?? 0.0;
+    final priceStr = price > 0 ? '\$${price.toStringAsFixed(2)}' : 'Price not available';
+    
+    return Card(
+      color: Colors.blue[50],
+      child: Padding(
+        padding: EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.shopping_cart, color: Colors.blue),
+                SizedBox(width: 8),
+                Text(
+                  'Current Selection (${widget.currentStore})',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.blue[800],
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 8),
+            Text(
+              widget.currentItem['name'] ?? widget.ingredient,
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+            ),
+            Text(
+              priceStr,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).primaryColor,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildComparisonItemCard(String store, Map<String, dynamic> item) {
+    final price = item['price'] ?? 0.0;
+    final priceStr = price > 0 ? '\$${price.toStringAsFixed(2)}' : 'Price not available';
+    final currentPrice = widget.currentItem['price'] ?? 0.0;
+    final savings = currentPrice > 0 && price > 0 ? currentPrice - price : 0.0;
+    
+    return Card(
+      margin: EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        leading: item['imageUrl'] != null
+            ? Container(
+                width: 50,
+                height: 50,
+                child: Image.network(
+                  ApiService.cleanImageUrl(item['imageUrl']),
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Container(
+                    color: Colors.grey[200],
+                    child: Icon(Icons.fastfood, color: Colors.grey),
+                  ),
+                ),
+              )
+            : Container(
+                width: 50,
+                height: 50,
+                color: Colors.grey[200],
+                child: Icon(Icons.fastfood, color: Colors.grey),
+              ),
+        title: Text(
+          item['name'] ?? 'Unknown Item',
+          style: TextStyle(fontSize: 14),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              priceStr,
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).primaryColor,
+              ),
+            ),
+            if (savings > 0)
+              Text(
+                'Save \$${savings.toStringAsFixed(2)}',
+                style: TextStyle(
+                  color: Colors.green,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+              ),
+          ],
+        ),
+        trailing: ElevatedButton(
+          onPressed: () => widget.onReplaceItem(store, item),
+          child: Text('Use This'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: savings > 0 ? Colors.green : null,
+          ),
+        ),
       ),
     );
   }
