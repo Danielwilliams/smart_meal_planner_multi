@@ -76,7 +76,10 @@ const RecipeSaveDialog = ({
         recipe_name: recipeTitle,
         day_number: dayNumber,
         meal_time: mealTime,
-        notes: notes
+        notes: notes,
+        // Add scraped_recipe_id for the alt endpoint
+        scraped_recipe_id: generateRecipeId(),
+        recipe_source: 'menu'
       };
       
       console.log('Saving recipe:', saveData);

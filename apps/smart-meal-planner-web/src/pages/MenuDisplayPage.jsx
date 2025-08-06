@@ -970,10 +970,11 @@ function MenuDisplayPage() {
                           mealTime={meal.meal_time}
                           recipeTitle={meal.title}
                           isSaved={(() => {
+                            // Check if this menu recipe is saved (with debug logging)
                             const isMenuSaved = savedRecipes.some(
-                              saved => saved.menu_id === menu.menu_id && 
-                                       saved.meal_time === meal.meal_time &&
-                                       saved.day_number === day.dayNumber
+                              saved => (saved.menu_id === menu.menu_id || saved.menu_id === String(menu.menu_id)) && 
+                                       (saved.meal_time === meal.meal_time || saved.meal_time === String(meal.meal_time)) &&
+                                       (saved.day_number === day.dayNumber || saved.day_number === String(day.dayNumber))
                             );
                             console.log('🐛 DEBUG: Checking if saved:', {
                               menuId: menu.menu_id,
@@ -981,7 +982,10 @@ function MenuDisplayPage() {
                               dayNumber: day.dayNumber,
                               isMenuSaved,
                               savedRecipesCount: savedRecipes.length,
-                              matchingRecipes: savedRecipes.filter(s => s.menu_id === menu.menu_id)
+                              matchingRecipes: savedRecipes.filter(s => 
+                                (s.menu_id === menu.menu_id || s.menu_id === String(menu.menu_id))
+                              ),
+                              sampleSavedRecipe: savedRecipes[0]
                             });
                             return isMenuSaved;
                           })()}
