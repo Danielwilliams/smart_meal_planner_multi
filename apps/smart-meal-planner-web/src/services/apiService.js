@@ -534,6 +534,21 @@ const apiService = {
     }
   },
 
+  async deleteMenu(menuId) {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axiosInstance.delete(`/menu/${menuId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      return response.data;
+    } catch (err) {
+      console.error("Error deleting menu:", err.response?.data || err.message);
+      throw err;
+    }
+  },
+
   getMenuDetails: async (menuId) => {
     try {
       console.log(`Fetching menu details for ID: ${menuId}`);

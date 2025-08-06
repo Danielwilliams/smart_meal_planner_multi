@@ -25,7 +25,8 @@ import {
   FavoriteBorder as FavoriteBorderIcon,
   Share as ShareIcon,
   Person as PersonIcon,
-  ShoppingCart as ShoppingCartIcon
+  ShoppingCart as ShoppingCartIcon,
+  Delete as DeleteIcon
 } from '@mui/icons-material';
 
 // Local Imports
@@ -652,6 +653,43 @@ function MenuDisplayPage() {
     } catch (err) {
       console.error('Error updating nickname:', err);
       setError('Failed to update nickname');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Delete menu handler
+  const handleDeleteMenu = async (menuId) => {
+    if (!window.confirm('Are you sure you want to delete this menu? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      
+      await apiService.deleteMenu(menuId);
+      
+      // Refresh menu history
+      const history = await apiService.getMenuHistory(user.userId);
+      setMenuHistory(history);
+      
+      // If deleted menu was selected, select the latest menu
+      if (selectedMenuId === menuId) {
+        if (history && history.length > 0) {
+          const latestMenu = await apiService.getLatestMenu(user.userId);
+          setMenu(latestMenu);
+          setSelectedMenuId(latestMenu.menu_id);
+        } else {
+          setMenu(null);
+          setSelectedMenuId(null);
+        }
+      }
+      
+      setSnackbarMessage('Menu deleted successfully');
+      setSnackbarOpen(true);
+    } catch (err) {
+      console.error('Error deleting menu:', err);
+      setError('Failed to delete menu. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -1434,6 +1472,16 @@ function MenuDisplayPage() {
                           sx={{ ml: 1 }}
                         >
                           <EditIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteMenu(menuItem.menu_id);
+                          }}
+                          sx={{ ml: 0.5, color: 'error.main' }}
+                        >
+                          <DeleteIcon fontSize="small" />
                         </IconButton>
                       </>
                     )}

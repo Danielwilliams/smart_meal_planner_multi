@@ -3557,3 +3557,121 @@ async def get_concurrency_debug_info():
         logger.error(f"Error getting concurrency debug info: {str(e)}")
         return {"error": str(e)}
 
+@router.delete("/{menu_id}")
+async def delete_menu(
+    menu_id: int,
+    user = Depends(get_user_from_token)
+):
+    """Delete a menu and all related data (saved recipes, sharing records)"""
+    with get_db_cursor(dict_cursor=True) as (cursor, conn):
+        try:
+            user_id = user.get('user_id')
+            org_id = user.get('organization_id')
+            role = user.get('role', '')
+            
+            # First, check if the menu exists and get ownership info
+            cursor.execute("""
+                SELECT id, user_id, for_client_id, shared_with_organization
+                FROM menus
+                WHERE id = %s
+            """, (menu_id,))
+            
+            menu = cursor.fetchone()
+            
+            if not menu:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Menu not found"
+                )
+            
+            # Check permissions
+            # User can delete if:
+            # 1. They are the menu owner
+            # 2. They are an organization owner and the menu is shared with organization
+            # 3. They are an organization owner and the menu was created for a client in their org
+            can_delete = False
+            
+            if menu['user_id'] == user_id:
+                can_delete = True
+            elif role == 'owner' and org_id:
+                # Check if menu is shared with organization
+                if menu['shared_with_organization']:
+                    cursor.execute("""
+                        SELECT 1 FROM user_profiles
+                        WHERE id = %s AND organization_id = %s
+                    """, (menu['user_id'], org_id))
+                    if cursor.fetchone():
+                        can_delete = True
+                
+                # Check if menu was created for a client in their organization
+                if menu['for_client_id']:
+                    cursor.execute("""
+                        SELECT 1 FROM user_profiles
+                        WHERE id = %s AND organization_id = %s
+                    """, (menu['for_client_id'], org_id))
+                    if cursor.fetchone():
+                        can_delete = True
+            
+            if not can_delete:
+                raise HTTPException(
+                    status_code=403,
+                    detail="You don't have permission to delete this menu"
+                )
+            
+            # Start transaction for safe deletion
+            # Delete in order of dependencies
+            
+            # 1. Delete shared_menus records
+            cursor.execute("""
+                DELETE FROM shared_menus
+                WHERE menu_id = %s
+            """, (menu_id,))
+            shared_deleted = cursor.rowcount
+            
+            # 2. Delete saved_recipes records
+            cursor.execute("""
+                DELETE FROM saved_recipes
+                WHERE menu_id = %s
+            """, (menu_id,))
+            recipes_deleted = cursor.rowcount
+            
+            # 3. Delete the menu itself
+            cursor.execute("""
+                DELETE FROM menus
+                WHERE id = %s
+                RETURNING id, nickname
+            """, (menu_id,))
+            
+            deleted_menu = cursor.fetchone()
+            
+            if not deleted_menu:
+                conn.rollback()
+                raise HTTPException(
+                    status_code=500,
+                    detail="Failed to delete menu"
+                )
+            
+            # Commit the transaction
+            conn.commit()
+            
+            logger.info(f"Menu {menu_id} deleted successfully by user {user_id}. "
+                       f"Cascade deleted: {shared_deleted} shares, {recipes_deleted} saved recipes")
+            
+            return {
+                "message": "Menu deleted successfully",
+                "menu_id": deleted_menu['id'],
+                "menu_nickname": deleted_menu['nickname'],
+                "cascade_deleted": {
+                    "shared_menus": shared_deleted,
+                    "saved_recipes": recipes_deleted
+                }
+            }
+            
+        except HTTPException:
+            conn.rollback()
+            raise
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Error deleting menu {menu_id}: {str(e)}", exc_info=True)
+            raise HTTPException(status_code=500, detail=str(e))
+
