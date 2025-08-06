@@ -76,16 +76,13 @@ const RecipeSaveDialog = ({
         recipe_name: recipeTitle,
         day_number: dayNumber,
         meal_time: mealTime,
-        notes: notes,
-        // Add scraped_recipe_id for the alt endpoint
-        scraped_recipe_id: generateRecipeId(),
-        recipe_source: 'menu'
+        notes: notes
       };
       
       console.log('Saving recipe:', saveData);
       
-      // Use the working endpoint instead of the failing one
-      const response = await fetch(`${API_BASE_URL}/saved-recipes-alt/scraped`, {
+      // Use the proper menu recipe endpoint
+      const response = await fetch(`${API_BASE_URL}/saved-recipes/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
