@@ -81,7 +81,13 @@ const QuickRating = ({
           {label}:
         </Typography>
         <Tooltip title="Click to rate this saved recipe">
-          <Box>
+          <Box 
+            onClick={(e) => {
+              console.log('🐛 DEBUG: QuickRating Box clicked');
+              console.log('🐛 DEBUG: Event target:', e.target);
+              console.log('🐛 DEBUG: Event current target:', e.currentTarget);
+            }}
+          >
             <StarRating
               value={currentRating}
               onChange={loading ? null : handleRatingChange}
