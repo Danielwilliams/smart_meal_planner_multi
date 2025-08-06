@@ -193,6 +193,9 @@ function MenuDisplayPage() {
     const fetchSavedRecipes = async () => {
       try {
         const saved = await apiService.getSavedRecipes();
+        console.log('🐛 DEBUG: Fetched saved recipes:', saved);
+        console.log('🐛 DEBUG: Number of saved recipes:', saved.length);
+        console.log('🐛 DEBUG: Sample saved recipe:', saved[0]);
         setSavedRecipes(saved);
       } catch (err) {
         console.error('Failed to fetch saved recipes', err);
@@ -966,11 +969,22 @@ function MenuDisplayPage() {
                           dayNumber={day.dayNumber}
                           mealTime={meal.meal_time}
                           recipeTitle={meal.title}
-                          isSaved={savedRecipes.some(
-                            saved => saved.menu_id === menu.menu_id && 
-                                     saved.meal_time === meal.meal_time &&
-                                     saved.day_number === day.dayNumber
-                          )}
+                          isSaved={(() => {
+                            const isMenuSaved = savedRecipes.some(
+                              saved => saved.menu_id === menu.menu_id && 
+                                       saved.meal_time === meal.meal_time &&
+                                       saved.day_number === day.dayNumber
+                            );
+                            console.log('🐛 DEBUG: Checking if saved:', {
+                              menuId: menu.menu_id,
+                              mealTime: meal.meal_time, 
+                              dayNumber: day.dayNumber,
+                              isMenuSaved,
+                              savedRecipesCount: savedRecipes.length,
+                              matchingRecipes: savedRecipes.filter(s => s.menu_id === menu.menu_id)
+                            });
+                            return isMenuSaved;
+                          })()}
                           savedId={savedRecipes.find(
                             saved => saved.menu_id === menu.menu_id && 
                                      saved.recipe_id === `${menu.menu_id}-${day.dayNumber}-${meal.meal_time}` && 
