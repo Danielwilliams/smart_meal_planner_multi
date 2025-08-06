@@ -976,29 +976,35 @@ function MenuDisplayPage() {
                                      saved.recipe_id === `${menu.menu_id}-${day.dayNumber}-${meal.meal_time}` && 
                                      saved.meal_time === meal.meal_time
                           )?.id}
-                          onSaveSuccess={(result) => {
-                            if (result.isSaved) {
-                              // Add the new saved recipe to the state
-                              setSavedRecipes(prev => [
-                                ...prev,
-                                {
-                                  id: result.savedId,
-                                  menu_id: result.menuId,
-                                  recipe_id: result.recipeId,
-                                  meal_time: result.mealTime,
-                                  recipe_name: result.recipeTitle,
-                                  day_number: day.dayNumber
-                                }
-                              ]);
-                            } else {
-                              // Remove the unsaved recipe from state
-                              setSavedRecipes(prev => 
-                                prev.filter(item => 
-                                  !(item.menu_id === result.menuId && 
-                                    item.recipe_id === result.recipeId && 
-                                    item.meal_time === result.mealTime)
-                                )
-                              );
+                          onSaveSuccess={async (result) => {
+                            // Reload saved recipes from server to ensure correct state
+                            try {
+                              const saved = await apiService.getSavedRecipes();
+                              setSavedRecipes(saved);
+                            } catch (err) {
+                              console.error('Failed to refresh saved recipes', err);
+                              // Fallback to manual state update if reload fails
+                              if (result.isSaved) {
+                                setSavedRecipes(prev => [
+                                  ...prev,
+                                  {
+                                    id: result.savedId,
+                                    menu_id: result.menuId,
+                                    recipe_id: result.recipeId,
+                                    meal_time: result.mealTime,
+                                    recipe_name: result.recipeTitle,
+                                    day_number: day.dayNumber
+                                  }
+                                ]);
+                              } else {
+                                setSavedRecipes(prev => 
+                                  prev.filter(item => 
+                                    !(item.menu_id === result.menuId && 
+                                      item.recipe_id === result.recipeId && 
+                                      item.meal_time === result.mealTime)
+                                  )
+                                );
+                              }
                             }
                           }}
                         />
