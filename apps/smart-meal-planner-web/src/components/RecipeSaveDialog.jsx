@@ -81,7 +81,8 @@ const RecipeSaveDialog = ({
       
       console.log('Saving recipe:', saveData);
       
-      const response = await fetch(`${API_BASE_URL}/saved-recipes/`, {
+      // Use the working endpoint instead of the failing one
+      const response = await fetch(`${API_BASE_URL}/saved-recipes-alt/scraped`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
