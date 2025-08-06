@@ -210,6 +210,34 @@ function ClientPreferencesPage() {
     other: ''
   });
 
+  // Carb cycling preferences state for client management
+  const [carbCyclingEnabled, setCarbCyclingEnabled] = useState(false);
+  
+  const [carbCyclingConfig, setCarbCyclingConfig] = useState({
+    pattern: '3-1-3',
+    high_carb_grams: 200,
+    moderate_carb_grams: 100,
+    low_carb_grams: 50,
+    no_carb_grams: 20,
+    weekly_schedule: {
+      monday: 'high',
+      tuesday: 'low',
+      wednesday: 'high',
+      thursday: 'moderate',
+      friday: 'high',
+      saturday: 'low',
+      sunday: 'low'
+    },
+    sync_with_workouts: false,
+    workout_days: [],
+    custom_pattern: false,
+    goals: {
+      primary: 'fat_loss',
+      secondary: 'maintain_muscle'
+    },
+    notes: ''
+  });
+
   // Fetch client data and preferences
   useEffect(() => {
     const fetchClientData = async () => {
@@ -317,6 +345,15 @@ function ClientPreferencesPage() {
           if (clientPrefs.otherProteins || clientPrefs.other_proteins) {
             setOtherProteins(clientPrefs.otherProteins || clientPrefs.other_proteins);
           }
+          
+          // Load carb cycling preferences with null checking
+          if (clientPrefs.carb_cycling_enabled !== undefined) {
+            setCarbCyclingEnabled(clientPrefs.carb_cycling_enabled);
+          }
+          
+          if (clientPrefs.carb_cycling_config && typeof clientPrefs.carb_cycling_config === 'object' && Object.keys(clientPrefs.carb_cycling_config).length > 0) {
+            setCarbCyclingConfig(prev => ({ ...prev, ...clientPrefs.carb_cycling_config }));
+          }
         } else {
           // Client has no existing preferences - load organization defaults
           try {
@@ -413,6 +450,15 @@ function ClientPreferencesPage() {
                 
                 if (orgDefaults.otherProteins) {
                   setOtherProteins(orgDefaults.otherProteins);
+                }
+                
+                // Load carb cycling defaults from organization
+                if (orgDefaults.carb_cycling_enabled !== undefined) {
+                  setCarbCyclingEnabled(orgDefaults.carb_cycling_enabled);
+                }
+                
+                if (orgDefaults.carb_cycling_config && typeof orgDefaults.carb_cycling_config === 'object' && Object.keys(orgDefaults.carb_cycling_config).length > 0) {
+                  setCarbCyclingConfig(prev => ({ ...prev, ...orgDefaults.carb_cycling_config }));
                 }
                 
                 console.log('Organization defaults applied successfully');
@@ -565,6 +611,9 @@ function ClientPreferencesPage() {
         prepPreferences: prepPreferences,
         preferredProteins: preferredProteins,
         otherProteins: otherProteins,
+        // Carb cycling preferences
+        carbCyclingEnabled: carbCyclingEnabled,
+        carbCyclingConfig: carbCyclingConfig,
         
         // Legacy snake_case for backward compatibility
         diet_type: selectedDietTypes,
@@ -586,6 +635,9 @@ function ClientPreferencesPage() {
         prep_preferences: prepPreferences,
         preferred_proteins: preferredProteins,
         other_proteins: otherProteins,
+        // Carb cycling preferences (snake_case for backward compatibility)
+        carb_cycling_enabled: carbCyclingEnabled,
+        carb_cycling_config: carbCyclingConfig,
         kroger_username: preferences.krogerUsername,
         kroger_password: preferences.krogerPassword
       };
@@ -637,6 +689,10 @@ function ClientPreferencesPage() {
           setPreferredProteins={setPreferredProteins}
           otherProteins={otherProteins}
           setOtherProteins={setOtherProteins}
+          carbCyclingEnabled={carbCyclingEnabled}
+          setCarbCyclingEnabled={setCarbCyclingEnabled}
+          carbCyclingConfig={carbCyclingConfig}
+          setCarbCyclingConfig={setCarbCyclingConfig}
           loading={saving}
           message={success}
           error={error}

@@ -43,6 +43,28 @@ const PreferencesForm = ({
   setPreferredProteins,
   otherProteins = { meat: '', seafood: '', vegetarian_vegan: '', other: '' },
   setOtherProteins,
+  // Carb cycling props
+  carbCyclingEnabled = false,
+  setCarbCyclingEnabled,
+  carbCyclingConfig = {
+    pattern: '3-1-3',
+    high_carb_grams: 200,
+    moderate_carb_grams: 100,
+    low_carb_grams: 50,
+    no_carb_grams: 20,
+    weekly_schedule: {
+      monday: 'high',
+      tuesday: 'low',
+      wednesday: 'high',
+      thursday: 'moderate',
+      friday: 'high',
+      saturday: 'low',
+      sunday: 'low'
+    },
+    goals: { primary: 'fat_loss', secondary: 'maintain_muscle' },
+    notes: ''
+  },
+  setCarbCyclingConfig,
   loading,
   message,
   error,
@@ -742,6 +764,207 @@ const PreferencesForm = ({
             </Grid>
           ))}
         </Grid>
+      </Box>
+
+      <Divider sx={{ my: 3 }} />
+
+      {/* Carb Cycling Preferences */}
+      <Box sx={{ mt: 3, mb: 2 }}>
+        <Typography variant="subtitle1" gutterBottom>
+          Carb Cycling Preferences
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Systematically vary your carbohydrate intake throughout the week to optimize fat loss, performance, and metabolic flexibility.
+        </Typography>
+        
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={carbCyclingEnabled}
+              onChange={(e) => setCarbCyclingEnabled && setCarbCyclingEnabled(e.target.checked)}
+            />
+          }
+          label="Enable Carb Cycling"
+          sx={{ mb: 2 }}
+        />
+
+        {carbCyclingEnabled && (
+          <Box sx={{ pl: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 2 }}>
+            {/* Carb Cycling Pattern */}
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="subtitle2" gutterBottom>
+                Carb Cycling Pattern
+              </Typography>
+              <FormControl fullWidth sx={{ mb: 2 }}>
+                <Select
+                  value={carbCyclingConfig.pattern}
+                  onChange={(e) => {
+                    if (setCarbCyclingConfig) {
+                      setCarbCyclingConfig(prev => ({
+                        ...prev,
+                        pattern: e.target.value,
+                        custom_pattern: e.target.value === 'custom'
+                      }));
+                    }
+                  }}
+                >
+                  <MenuItem value="3-1-3">3 High, 1 Moderate, 3 Low carb days</MenuItem>
+                  <MenuItem value="2-2-3">2 High, 2 Moderate, 3 Low carb days</MenuItem>
+                  <MenuItem value="4-0-3">4 High, 0 Moderate, 3 Low carb days</MenuItem>
+                  <MenuItem value="5-0-2">5 High, 0 Moderate, 2 Low carb days</MenuItem>
+                  <MenuItem value="custom">Create your own custom pattern</MenuItem>
+                </Select>
+                <FormHelperText>
+                  Choose a pre-set pattern or create your own custom schedule
+                </FormHelperText>
+              </FormControl>
+            </Box>
+
+            {/* Carb Targets */}
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="subtitle2" gutterBottom>
+                Daily Carb Targets (grams)
+              </Typography>
+              <Grid container spacing={2}>
+                <Grid item xs={6} sm={3}>
+                  <TextField
+                    label="High Carb Days"
+                    type="number"
+                    value={carbCyclingConfig.high_carb_grams}
+                    onChange={(e) => setCarbCyclingConfig && setCarbCyclingConfig(prev => ({
+                      ...prev,
+                      high_carb_grams: parseInt(e.target.value) || 200
+                    }))}
+                    InputProps={{
+                      inputProps: { min: 100, max: 400 }
+                    }}
+                    helperText="150-300g typical"
+                    fullWidth
+                  />
+                </Grid>
+                <Grid item xs={6} sm={3}>
+                  <TextField
+                    label="Moderate Carb Days"
+                    type="number"
+                    value={carbCyclingConfig.moderate_carb_grams}
+                    onChange={(e) => setCarbCyclingConfig && setCarbCyclingConfig(prev => ({
+                      ...prev,
+                      moderate_carb_grams: parseInt(e.target.value) || 100
+                    }))}
+                    InputProps={{
+                      inputProps: { min: 50, max: 200 }
+                    }}
+                    helperText="75-150g typical"
+                    fullWidth
+                  />
+                </Grid>
+                <Grid item xs={6} sm={3}>
+                  <TextField
+                    label="Low Carb Days"
+                    type="number"
+                    value={carbCyclingConfig.low_carb_grams}
+                    onChange={(e) => setCarbCyclingConfig && setCarbCyclingConfig(prev => ({
+                      ...prev,
+                      low_carb_grams: parseInt(e.target.value) || 50
+                    }))}
+                    InputProps={{
+                      inputProps: { min: 20, max: 100 }
+                    }}
+                    helperText="25-75g typical"
+                    fullWidth
+                  />
+                </Grid>
+                <Grid item xs={6} sm={3}>
+                  <TextField
+                    label="No Carb Days"
+                    type="number"
+                    value={carbCyclingConfig.no_carb_grams}
+                    onChange={(e) => setCarbCyclingConfig && setCarbCyclingConfig(prev => ({
+                      ...prev,
+                      no_carb_grams: parseInt(e.target.value) || 20
+                    }))}
+                    InputProps={{
+                      inputProps: { min: 0, max: 30 }
+                    }}
+                    helperText="<25g advanced"
+                    fullWidth
+                  />
+                </Grid>
+              </Grid>
+            </Box>
+
+            {/* Weekly Schedule */}
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="subtitle2" gutterBottom>
+                Weekly Carb Schedule
+              </Typography>
+              <Grid container spacing={2}>
+                {Object.entries(carbCyclingConfig.weekly_schedule).map(([day, carbLevel]) => (
+                  <Grid item xs={12} sm={6} md={4} key={day}>
+                    <FormControl fullWidth>
+                      <InputLabel>{day.charAt(0).toUpperCase() + day.slice(1)}</InputLabel>
+                      <Select
+                        value={carbLevel}
+                        label={day.charAt(0).toUpperCase() + day.slice(1)}
+                        onChange={(e) => setCarbCyclingConfig && setCarbCyclingConfig(prev => ({
+                          ...prev,
+                          weekly_schedule: {
+                            ...prev.weekly_schedule,
+                            [day]: e.target.value
+                          }
+                        }))}
+                      >
+                        <MenuItem value="high">High ({carbCyclingConfig.high_carb_grams}g)</MenuItem>
+                        <MenuItem value="moderate">Moderate ({carbCyclingConfig.moderate_carb_grams}g)</MenuItem>
+                        <MenuItem value="low">Low ({carbCyclingConfig.low_carb_grams}g)</MenuItem>
+                        <MenuItem value="no_carb">No Carb ({carbCyclingConfig.no_carb_grams}g)</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                ))}
+              </Grid>
+            </Box>
+
+            {/* Goals */}
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="subtitle2" gutterBottom>
+                Primary Goal
+              </Typography>
+              <RadioGroup
+                row
+                value={carbCyclingConfig.goals?.primary || 'fat_loss'}
+                onChange={(e) => setCarbCyclingConfig && setCarbCyclingConfig(prev => ({
+                  ...prev,
+                  goals: {
+                    ...prev.goals,
+                    primary: e.target.value
+                  }
+                }))}
+              >
+                <FormControlLabel value="fat_loss" control={<Radio />} label="Fat Loss" />
+                <FormControlLabel value="muscle_gain" control={<Radio />} label="Muscle Gain" />
+                <FormControlLabel value="performance" control={<Radio />} label="Performance" />
+                <FormControlLabel value="maintenance" control={<Radio />} label="Maintenance" />
+              </RadioGroup>
+            </Box>
+
+            {/* Notes */}
+            <Box sx={{ mb: 2 }}>
+              <TextField
+                label="Notes"
+                multiline
+                rows={2}
+                value={carbCyclingConfig.notes || ''}
+                onChange={(e) => setCarbCyclingConfig && setCarbCyclingConfig(prev => ({
+                  ...prev,
+                  notes: e.target.value
+                }))}
+                placeholder="Add any notes about your carb cycling approach..."
+                fullWidth
+              />
+            </Box>
+          </Box>
+        )}
       </Box>
 
       <Divider sx={{ my: 3 }} />
