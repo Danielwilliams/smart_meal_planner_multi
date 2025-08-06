@@ -3889,6 +3889,20 @@ const apiService = {
       console.error('Get recommended recipes error:', error);
       throw error;
     }
+  },
+
+  // Quick Rating for Saved Recipes
+  async updateQuickRating(savedRecipeId, rating) {
+    try {
+      const response = await axiosInstance.post(
+        `/ratings/saved-recipes/${savedRecipeId}/quick-rate`,
+        { quick_rating: rating }
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Update quick rating error:', error);
+      throw error;
+    }
   }
 }; // Close the apiService object here
 

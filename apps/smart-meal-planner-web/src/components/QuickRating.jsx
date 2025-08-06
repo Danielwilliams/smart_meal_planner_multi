@@ -32,12 +32,9 @@ const QuickRating = ({
         return;
       }
 
-      const response = await apiService.post(
-        `/ratings/saved-recipes/${savedRecipeId}/quick-rate`,
-        { quick_rating: newRating }
-      );
+      const response = await apiService.updateQuickRating(savedRecipeId, newRating);
 
-      if (response.data.success) {
+      if (response.success) {
         setSnackbarMessage('Rating updated!');
         setSnackbarOpen(true);
         
