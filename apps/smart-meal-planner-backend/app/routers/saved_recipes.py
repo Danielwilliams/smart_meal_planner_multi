@@ -176,24 +176,85 @@ async def add_saved_recipe(
             else:
                 recipe_source = 'menu'
         
-        # Save the recipe with all available data
-        saved_id = save_recipe(
-            user_id=user_id,
-            menu_id=req.menu_id,
-            recipe_id=req.recipe_id,
-            recipe_name=req.recipe_name,
-            day_number=req.day_number,
-            meal_time=req.meal_time,
-            notes=req.notes,
-            macros=req.macros,
-            ingredients=req.ingredients,
-            instructions=req.instructions,
-            complexity_level=req.complexity_level,
-            appliance_used=req.appliance_used,
-            servings=req.servings,
-            scraped_recipe_id=req.scraped_recipe_id,
-            recipe_source=recipe_source
-        )
+        # Save the recipe using direct connection pattern (avoiding context manager)
+        conn = get_db_connection()
+        try:
+            with conn.cursor() as cur:
+                # Check if already saved
+                if recipe_source == 'scraped':
+                    # For scraped recipes
+                    cur.execute("""
+                        SELECT id FROM saved_recipes
+                        WHERE user_id = %s AND scraped_recipe_id = %s
+                    """, (user_id, req.scraped_recipe_id))
+                elif req.recipe_id and req.menu_id:
+                    # For regular menu recipes with recipe_id
+                    cur.execute("""
+                        SELECT id FROM saved_recipes
+                        WHERE user_id = %s AND menu_id = %s AND recipe_id = %s AND meal_time = %s
+                    """, (user_id, req.menu_id, req.recipe_id, req.meal_time))
+                elif req.menu_id:
+                    # For entire menu
+                    cur.execute("""
+                        SELECT id FROM saved_recipes
+                        WHERE user_id = %s AND menu_id = %s AND recipe_id IS NULL
+                    """, (user_id, req.menu_id))
+                elif req.scraped_recipe_id:
+                    # Backup check for scraped recipes without recipe_source
+                    cur.execute("""
+                        SELECT id FROM saved_recipes
+                        WHERE user_id = %s AND scraped_recipe_id = %s
+                    """, (user_id, req.scraped_recipe_id))
+                else:
+                    logger.warning("No valid identifiers provided for recipe checking")
+                    
+                existing = cur.fetchone()
+                
+                # Convert complex objects to JSON
+                import json
+                macros_json = json.dumps(req.macros) if req.macros else None
+                ingredients_json = json.dumps(req.ingredients) if req.ingredients else None
+                instructions_json = json.dumps(req.instructions) if req.instructions else None
+                
+                if existing:
+                    # Update if already exists
+                    saved_id = existing[0]
+                    cur.execute("""
+                        UPDATE saved_recipes SET
+                        recipe_name = COALESCE(%s, recipe_name),
+                        day_number = COALESCE(%s, day_number),
+                        notes = COALESCE(%s, notes),
+                        macros = COALESCE(%s, macros),
+                        ingredients = COALESCE(%s, ingredients),
+                        instructions = COALESCE(%s, instructions),
+                        complexity_level = COALESCE(%s, complexity_level),
+                        appliance_used = COALESCE(%s, appliance_used),
+                        servings = COALESCE(%s, servings)
+                        WHERE id = %s
+                        RETURNING id
+                    """, (
+                        req.recipe_name, req.day_number, req.notes, macros_json, ingredients_json, 
+                        instructions_json, req.complexity_level, req.appliance_used, req.servings, saved_id
+                    ))
+                else:
+                    # Insert new saved recipe
+                    cur.execute("""
+                        INSERT INTO saved_recipes (
+                            user_id, menu_id, recipe_id, recipe_name, day_number,
+                            meal_time, notes, macros, ingredients, instructions,
+                            complexity_level, appliance_used, servings, scraped_recipe_id, recipe_source
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        RETURNING id
+                    """, (
+                        user_id, req.menu_id, req.recipe_id, req.recipe_name, req.day_number,
+                        req.meal_time, req.notes, macros_json, ingredients_json, instructions_json,
+                        req.complexity_level, req.appliance_used, req.servings, req.scraped_recipe_id, recipe_source
+                    ))
+                
+                saved_id = cur.fetchone()[0]
+                conn.commit()
+        finally:
+            conn.close()
         
         if saved_id:
             return {
