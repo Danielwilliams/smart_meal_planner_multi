@@ -24,6 +24,7 @@ const QuickRating = ({
   const handleRatingChange = async (newRating) => {
     console.log('🐛 DEBUG: handleRatingChange called with rating:', newRating);
     console.log('🐛 DEBUG: savedRecipeId:', savedRecipeId);
+    alert(`handleRatingChange called with rating: ${newRating}, savedRecipeId: ${savedRecipeId}`);
     
     try {
       setLoading(true);
@@ -38,12 +39,15 @@ const QuickRating = ({
         setError('Please log in to rate recipes');
         setSnackbarMessage('Please log in to rate recipes');
         setSnackbarOpen(true);
+        alert('No authentication token found!');
         return;
       }
 
       console.log('🐛 DEBUG: Calling apiService.updateQuickRating...');
+      alert('About to call apiService.updateQuickRating...');
       const response = await apiService.updateQuickRating(savedRecipeId, newRating);
       console.log('🐛 DEBUG: Response received:', response);
+      alert(`API Response: ${JSON.stringify(response)}`);
 
       if (response && (response.success || response.status === 'success')) {
         console.log('🐛 DEBUG: Rating update successful');
@@ -65,6 +69,7 @@ const QuickRating = ({
     } catch (err) {
       console.error('🐛 DEBUG: Error updating quick rating:', err);
       console.error('🐛 DEBUG: Error response:', err.response);
+      alert(`ERROR: ${err.message || 'Unknown error'}`);
       const errorMessage = err.response?.data?.detail || err.message || 'Failed to update rating';
       setError(errorMessage);
       setSnackbarMessage(`Error: ${errorMessage}`);
