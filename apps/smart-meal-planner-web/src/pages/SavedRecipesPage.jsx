@@ -358,7 +358,6 @@ const SavedRecipesPage = () => {
                     savedRecipeId={recipe.id}
                     currentRating={recipe.quick_rating || 0}
                     onRatingUpdate={(newRating) => {
-                      console.log('🐛 DEBUG: SavedRecipesPage onRatingUpdate called with:', newRating);
                       setSavedRecipes(prev => 
                         prev.map(r => 
                           r.id === recipe.id 
@@ -368,10 +367,6 @@ const SavedRecipesPage = () => {
                       );
                     }}
                   />
-                  {/* Debug info */}
-                  <div style={{fontSize: '10px', color: 'gray'}}>
-                    Debug: savedRecipeId={recipe.id}, currentRating={recipe.quick_rating || 0}
-                  </div>
                 </Box>
               </CardContent>
 

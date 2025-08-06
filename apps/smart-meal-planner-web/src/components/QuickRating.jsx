@@ -22,35 +22,23 @@ const QuickRating = ({
   const [error, setError] = useState('');
 
   const handleRatingChange = async (newRating) => {
-    console.log('🐛 DEBUG: handleRatingChange called with rating:', newRating);
-    console.log('🐛 DEBUG: savedRecipeId:', savedRecipeId);
-    alert(`handleRatingChange called with rating: ${newRating}, savedRecipeId: ${savedRecipeId}`);
-    
     try {
       setLoading(true);
       setError('');
 
       const token = localStorage.getItem('token');
       const access_token = localStorage.getItem('access_token');
-      console.log('🐛 DEBUG: token exists:', !!token);
-      console.log('🐛 DEBUG: access_token exists:', !!access_token);
       
       if (!token && !access_token) {
         setError('Please log in to rate recipes');
         setSnackbarMessage('Please log in to rate recipes');
         setSnackbarOpen(true);
-        alert('No authentication token found!');
         return;
       }
 
-      console.log('🐛 DEBUG: Calling apiService.updateQuickRating...');
-      alert('About to call apiService.updateQuickRating...');
       const response = await apiService.updateQuickRating(savedRecipeId, newRating);
-      console.log('🐛 DEBUG: Response received:', response);
-      alert(`API Response: ${JSON.stringify(response)}`);
 
       if (response && (response.success || response.status === 'success')) {
-        console.log('🐛 DEBUG: Rating update successful');
         setSnackbarMessage('Rating updated!');
         setSnackbarOpen(true);
         
@@ -58,7 +46,6 @@ const QuickRating = ({
           onRatingUpdate(newRating);
         }
       } else {
-        console.log('🐛 DEBUG: Unexpected response format:', response);
         setSnackbarMessage('Rating may have been updated');
         setSnackbarOpen(true);
         
@@ -67,9 +54,7 @@ const QuickRating = ({
         }
       }
     } catch (err) {
-      console.error('🐛 DEBUG: Error updating quick rating:', err);
-      console.error('🐛 DEBUG: Error response:', err.response);
-      alert(`ERROR: ${err.message || 'Unknown error'}`);
+      console.error('Error updating quick rating:', err);
       const errorMessage = err.response?.data?.detail || err.message || 'Failed to update rating';
       setError(errorMessage);
       setSnackbarMessage(`Error: ${errorMessage}`);
@@ -86,15 +71,7 @@ const QuickRating = ({
           {label}:
         </Typography>
         <Tooltip title="Click to rate this saved recipe">
-          <Box 
-            onClick={(e) => {
-              console.log('🐛 DEBUG: QuickRating Box clicked');
-              console.log('🐛 DEBUG: Event target:', e.target);
-              console.log('🐛 DEBUG: Event current target:', e.currentTarget);
-              alert('QuickRating Box was clicked!');
-            }}
-            sx={{ border: '1px dashed red' }}
-          >
+          <Box>
             <StarRating
               value={currentRating}
               onChange={loading ? null : handleRatingChange}

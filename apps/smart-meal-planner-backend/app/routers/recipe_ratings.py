@@ -152,6 +152,10 @@ class MenuRating(BaseModel):
     practicality: Optional[int] = Field(None, ge=1, le=5)
     feedback_text: Optional[str] = Field(None, max_length=1000)
 
+class SavedRecipeQuickRating(BaseModel):
+    quick_rating: int = Field(..., ge=1, le=5)
+    notes: Optional[str] = None
+
 # Create isolated database connection for ratings to avoid pool conflicts
 def get_rating_db_connection():
     """Get a direct database connection for rating operations only"""
@@ -627,3 +631,112 @@ async def get_recommended_recipes(
     except Exception as e:
         logger.error(f"Error getting recommendations: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to get recommendations: {str(e)}")
+
+# Saved Recipe Quick Rating
+@router.post("/saved-recipes/{saved_recipe_id}/quick-rate")
+async def quick_rate_saved_recipe(
+    saved_recipe_id: int,
+    rating: SavedRecipeQuickRating,
+    request: Request
+):
+    """Quick rate a saved recipe (simplified rating)"""
+    logger.info(f"=== QUICK RATE SAVED RECIPE ===")
+    logger.info(f"Saved recipe ID: {saved_recipe_id}")
+    logger.info(f"Rating: {rating.quick_rating}")
+    
+    # Use simplified auth
+    user = await get_rating_user_from_token(request)
+    
+    # Check if user is authenticated
+    if not user:
+        logger.error("Authentication required to quick rate")
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required"
+        )
+    
+    user_id = user.get('user_id')
+    logger.info(f"Quick rating authenticated for user {user_id}, saved recipe {saved_recipe_id}")
+    
+    try:
+        # Verify ownership and get recipe details
+        saved_recipe = execute_rating_query("""
+            SELECT id, scraped_recipe_id, recipe_id, notes
+            FROM saved_recipes
+            WHERE id = %s AND user_id = %s
+        """, (saved_recipe_id, user_id), fetch_one=True)
+        
+        if not saved_recipe:
+            logger.error(f"Saved recipe {saved_recipe_id} not found for user {user_id}")
+            raise HTTPException(status_code=404, detail="Saved recipe not found")
+        
+        logger.info(f"Found saved recipe: scraped_recipe_id={saved_recipe['scraped_recipe_id']}, recipe_id={saved_recipe['recipe_id']}")
+        
+        # Update quick rating
+        updated = execute_rating_query("""
+            UPDATE saved_recipes
+            SET quick_rating = %s,
+                notes = COALESCE(%s, notes)
+            WHERE id = %s
+            RETURNING *
+        """, (rating.quick_rating, rating.notes, saved_recipe_id), fetch_one=True)
+        
+        logger.info(f"Updated saved recipe quick rating to {rating.quick_rating}")
+        
+        # Also create/update a full rating if there's a linked recipe
+        recipe_id = saved_recipe['scraped_recipe_id'] or saved_recipe['recipe_id']
+        if recipe_id:
+            logger.info(f"Creating/updating full rating for recipe {recipe_id}")
+            
+            # Check if rating already exists
+            existing_rating = execute_rating_query("""
+                SELECT id FROM recipe_interactions 
+                WHERE user_id = %s AND recipe_id = %s 
+                AND rating_score IS NOT NULL
+            """, (user_id, recipe_id), fetch_one=True)
+            
+            if existing_rating:
+                # Update existing rating
+                execute_rating_query("""
+                    UPDATE recipe_interactions 
+                    SET rating_score = %s,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s
+                """, (rating.quick_rating, existing_rating['id']))
+                interaction_id = existing_rating['id']
+            else:
+                # Insert new rating
+                new_rating = execute_rating_query("""
+                    INSERT INTO recipe_interactions 
+                    (user_id, recipe_id, interaction_type, rating_score, timestamp, updated_at)
+                    VALUES (%s, %s, 'rating', %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    RETURNING id
+                """, (user_id, recipe_id, rating.quick_rating), fetch_one=True)
+                interaction_id = new_rating['id']
+            
+            # Link the rating to the saved recipe
+            execute_rating_query("""
+                UPDATE saved_recipes
+                SET rating_id = %s
+                WHERE id = %s
+            """, (interaction_id, saved_recipe_id))
+            
+            logger.info(f"Linked rating {interaction_id} to saved recipe {saved_recipe_id}")
+        
+        result = {
+            "success": True,
+            "status": "success",
+            "saved_recipe": dict(updated) if updated else None,
+            "message": "Quick rating saved successfully"
+        }
+        
+        logger.info(f"Quick rate success: {result}")
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error saving quick rating: {str(e)}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Failed to save rating: {str(e)}")

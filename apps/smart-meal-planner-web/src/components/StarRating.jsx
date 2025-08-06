@@ -48,19 +48,9 @@ const StarRating = ({
   
   // Handle star click
   const handleStarClick = (starIndex) => {
-    console.log('🐛 DEBUG: StarRating handleStarClick called with starIndex:', starIndex);
-    console.log('🐛 DEBUG: isInteractive:', isInteractive);
-    console.log('🐛 DEBUG: readOnly:', readOnly);
-    console.log('🐛 DEBUG: onChange exists:', !!onChange);
-    console.log('🐛 DEBUG: onChange type:', typeof onChange);
-    
-    if (!isInteractive) {
-      console.log('🐛 DEBUG: StarRating click ignored - not interactive');
-      return;
-    }
+    if (!isInteractive) return;
     
     const newValue = starIndex + 1;
-    console.log('🐛 DEBUG: StarRating calling onChange with newValue:', newValue);
     onChange(newValue);
   };
   
@@ -103,13 +93,7 @@ const StarRating = ({
                 color: `${color}.dark`
               } : {}
             }}
-            onClick={(e) => {
-              console.log('🐛 DEBUG: Star Box clicked, index:', index);
-              alert(`Star ${index + 1} was clicked!`);
-              e.preventDefault();
-              e.stopPropagation();
-              handleStarClick(index);
-            }}
+            onClick={() => handleStarClick(index)}
             onMouseEnter={() => handleStarHover(index)}
           >
             {getStarIcon(index)}
