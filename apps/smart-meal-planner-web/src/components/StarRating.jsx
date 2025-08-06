@@ -105,6 +105,7 @@ const StarRating = ({
             }}
             onClick={(e) => {
               console.log('🐛 DEBUG: Star Box clicked, index:', index);
+              alert(`Star ${index + 1} was clicked!`);
               e.preventDefault();
               e.stopPropagation();
               handleStarClick(index);

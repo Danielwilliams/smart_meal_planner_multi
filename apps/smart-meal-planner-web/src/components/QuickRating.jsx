@@ -86,7 +86,9 @@ const QuickRating = ({
               console.log('🐛 DEBUG: QuickRating Box clicked');
               console.log('🐛 DEBUG: Event target:', e.target);
               console.log('🐛 DEBUG: Event current target:', e.currentTarget);
+              alert('QuickRating Box was clicked!');
             }}
+            sx={{ border: '1px dashed red' }}
           >
             <StarRating
               value={currentRating}
