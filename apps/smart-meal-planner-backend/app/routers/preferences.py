@@ -39,7 +39,9 @@ def get_user_preferences(id: int):
                     time_constraints,
                     prep_preferences,
                     preferred_proteins,
-                    other_proteins
+                    other_proteins,
+                    carb_cycling_enabled,
+                    carb_cycling_config
                 FROM user_profiles
                 WHERE id = %s
             """, (id,))
@@ -166,6 +168,44 @@ def get_user_preferences(id: int):
                         "seafood": "",
                         "vegetarian_vegan": "",
                         "other": ""
+                    },
+                    "carb_cycling_enabled": False,
+                    "carb_cycling_config": {
+                        "pattern": "3-1-3",
+                        "high_carb_grams": 200,
+                        "moderate_carb_grams": 100,
+                        "low_carb_grams": 50,
+                        "no_carb_grams": 20,
+                        "weekly_schedule": {
+                            "monday": "high",
+                            "tuesday": "low", 
+                            "wednesday": "high",
+                            "thursday": "moderate",
+                            "friday": "high",
+                            "saturday": "low",
+                            "sunday": "low"
+                        },
+                        "sync_with_workouts": False,
+                        "workout_days": [],
+                        "custom_pattern": False,
+                        "pattern_options": [
+                            {"name": "3-1-3", "description": "3 High, 1 Moderate, 3 Low carb days"},
+                            {"name": "2-2-3", "description": "2 High, 2 Moderate, 3 Low carb days"},
+                            {"name": "4-0-3", "description": "4 High, 0 Moderate, 3 Low carb days"},
+                            {"name": "5-0-2", "description": "5 High, 0 Moderate, 2 Low carb days"},
+                            {"name": "custom", "description": "Create your own custom pattern"}
+                        ],
+                        "carb_ranges": {
+                            "high": {"min": 150, "max": 300, "description": "High carb days (workout/active days)"},
+                            "moderate": {"min": 75, "max": 150, "description": "Moderate carb days (light activity)"},
+                            "low": {"min": 25, "max": 75, "description": "Low carb days (rest days)"},
+                            "no_carb": {"min": 0, "max": 25, "description": "Very low carb days (advanced)"}
+                        },
+                        "goals": {
+                            "primary": "fat_loss",
+                            "secondary": "maintain_muscle"
+                        },
+                        "notes": ""
                     }
                 }
 
@@ -255,7 +295,8 @@ def get_user_preferences(id: int):
                     "minimal-dishes": False
                 }
 
-            if preferences['preferred_proteins'] is None:
+            # Handle preferred proteins - check for None, empty dict, or missing keys
+            if preferences['preferred_proteins'] is None or preferences['preferred_proteins'] == {} or not isinstance(preferences['preferred_proteins'], dict):
                 preferences['preferred_proteins'] = {
                     "meat": {
                         "chicken": False,
@@ -290,13 +331,86 @@ def get_user_preferences(id: int):
                         "quinoa": False
                     }
                 }
+            else:
+                # Ensure all categories exist in the preferred_proteins object
+                default_categories = {
+                    "meat": {
+                        "chicken": False, "beef": False, "pork": False, "turkey": False, "lamb": False, "bison": False
+                    },
+                    "seafood": {
+                        "salmon": False, "tuna": False, "cod": False, "shrimp": False, "crab": False, "mussels": False
+                    },
+                    "vegetarian_vegan": {
+                        "tofu": False, "tempeh": False, "seitan": False, "lentils": False, "chickpeas": False, "black_beans": False
+                    },
+                    "other": {
+                        "eggs": False, "dairy_milk": False, "dairy_yogurt": False, "protein_powder_whey": False, "protein_powder_pea": False, "quinoa": False
+                    }
+                }
+                
+                for category, default_proteins in default_categories.items():
+                    if category not in preferences['preferred_proteins'] or not isinstance(preferences['preferred_proteins'][category], dict):
+                        preferences['preferred_proteins'][category] = default_proteins
+                    else:
+                        # Ensure all proteins in category exist
+                        for protein, default_value in default_proteins.items():
+                            if protein not in preferences['preferred_proteins'][category]:
+                                preferences['preferred_proteins'][category][protein] = default_value
 
-            if preferences['other_proteins'] is None:
+            if preferences['other_proteins'] is None or preferences['other_proteins'] == {} or not isinstance(preferences['other_proteins'], dict):
                 preferences['other_proteins'] = {
                     "meat": "",
                     "seafood": "",
                     "vegetarian_vegan": "",
                     "other": ""
+                }
+            else:
+                # Ensure all categories exist in other_proteins
+                for category in ["meat", "seafood", "vegetarian_vegan", "other"]:
+                    if category not in preferences['other_proteins']:
+                        preferences['other_proteins'][category] = ""
+
+            # Handle carb cycling preferences defaults - robust null checking
+            if preferences['carb_cycling_enabled'] is None:
+                preferences['carb_cycling_enabled'] = False
+
+            if preferences['carb_cycling_config'] is None or preferences['carb_cycling_config'] == {} or not isinstance(preferences['carb_cycling_config'], dict):
+                preferences['carb_cycling_config'] = {
+                    "pattern": "3-1-3",
+                    "high_carb_grams": 200,
+                    "moderate_carb_grams": 100,
+                    "low_carb_grams": 50,
+                    "no_carb_grams": 20,
+                    "weekly_schedule": {
+                        "monday": "high",
+                        "tuesday": "low",
+                        "wednesday": "high",
+                        "thursday": "moderate",
+                        "friday": "high",
+                        "saturday": "low",
+                        "sunday": "low"
+                    },
+                    "sync_with_workouts": False,
+                    "workout_days": [],
+                    "custom_pattern": False,
+                    "pattern_options": [
+                        {"name": "3-1-3", "description": "3 High, 1 Moderate, 3 Low carb days"},
+                        {"name": "2-2-3", "description": "2 High, 2 Moderate, 3 Low carb days"},
+                        {"name": "4-0-3", "description": "4 High, 0 Moderate, 3 Low carb days"},
+                        {"name": "5-0-2", "description": "5 High, 0 Moderate, 2 Low carb days"},
+                        {"name": "custom", "description": "Create your own custom pattern"}
+                    ],
+                    "carb_ranges": {
+                        "high": {"min": 150, "max": 300, "description": "High carb days (workout/active days)"},
+                        "moderate": {"min": 75, "max": 150, "description": "Moderate carb days (light activity)"},
+                        "low": {"min": 25, "max": 75, "description": "Low carb days (rest days)"},
+                        "no_carb": {"min": 0, "max": 25, "description": "Very low carb days (advanced)"}
+                    },
+                    "goals": {
+                        "primary": "fat_loss",
+                        "secondary": "maintain_muscle"
+                    },
+                    "notes": ""
                 }
 
             return preferences
@@ -427,6 +541,27 @@ async def update_preferences(id: int, preferences: PreferencesUpdate):
             if other_proteins_data is not None:
                 update_fields.append("other_proteins = %s::jsonb")
                 params.append(json.dumps(other_proteins_data))
+
+            # Handle carb cycling preferences - both camelCase and snake_case
+            carb_cycling_enabled_data = None
+            if hasattr(preferences, 'carbCyclingEnabled') and preferences.carbCyclingEnabled is not None:
+                carb_cycling_enabled_data = preferences.carbCyclingEnabled
+            elif hasattr(preferences, 'carb_cycling_enabled') and preferences.carb_cycling_enabled is not None:
+                carb_cycling_enabled_data = preferences.carb_cycling_enabled
+                
+            if carb_cycling_enabled_data is not None:
+                update_fields.append("carb_cycling_enabled = %s")
+                params.append(carb_cycling_enabled_data)
+
+            carb_cycling_config_data = None
+            if hasattr(preferences, 'carbCyclingConfig') and preferences.carbCyclingConfig is not None:
+                carb_cycling_config_data = preferences.carbCyclingConfig
+            elif hasattr(preferences, 'carb_cycling_config') and preferences.carb_cycling_config is not None:
+                carb_cycling_config_data = preferences.carb_cycling_config
+                
+            if carb_cycling_config_data is not None:
+                update_fields.append("carb_cycling_config = %s::jsonb")
+                params.append(json.dumps(carb_cycling_config_data))
 
             # Add id to params
             params.append(id)

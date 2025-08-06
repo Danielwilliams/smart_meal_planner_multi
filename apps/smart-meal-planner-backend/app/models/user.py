@@ -110,6 +110,12 @@ class PreferencesUpdate(BaseModel):
     # Other proteins (custom text for each category)
     otherProteins: Optional[Dict[str, str]] = None
     other_proteins: Optional[Dict[str, str]] = None  # Alias for otherProteins
+    
+    # Carb cycling preferences
+    carbCyclingEnabled: Optional[bool] = None
+    carb_cycling_enabled: Optional[bool] = None  # Alias for carbCyclingEnabled
+    carbCyclingConfig: Optional[Dict[str, Any]] = None
+    carb_cycling_config: Optional[Dict[str, Any]] = None  # Alias for carbCyclingConfig
 
 
 class GenerateMenuRequest(BaseModel):
