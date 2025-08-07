@@ -127,7 +127,10 @@ const UserProfilePage = () => {
     );
   }
 
-  const hasRatings = analytics && analytics.preferences && analytics.preferences.total_ratings > 0;
+  // Show journey section if user has at least 1 rating, or always show with progressive content
+  const userRatingCount = analytics?.preferences?.total_ratings || 0;
+  const hasRatings = userRatingCount > 0;
+  const showJourneySection = true; // Always show the journey section with appropriate content
 
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
@@ -152,40 +155,58 @@ const UserProfilePage = () => {
 
       <Grid container spacing={4}>
         {/* Your Food Journey - Analytics Section */}
-        {hasRatings ? (
-          <Grid item xs={12}>
-            <Paper sx={{ p: 3, mb: 3 }}>
-              <Typography variant="h5" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <TrendingUpIcon color="primary" />
-                Your Food Journey
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                Insights from your recipe ratings and cooking adventures
-              </Typography>
-              
-              <UserPreferencesAnalytics userId={user?.userId} compact={false} />
-            </Paper>
-          </Grid>
-        ) : (
-          <Grid item xs={12}>
-            <Paper sx={{ p: 3, mb: 3, textAlign: 'center' }}>
-              <RestaurantIcon sx={{ fontSize: 60, color: 'text.secondary', mb: 2 }} />
-              <Typography variant="h6" gutterBottom>
-                Start Your Food Journey
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                Rate some recipes to unlock personalized insights and recommendations!
-              </Typography>
-              <Button 
-                variant="contained" 
-                onClick={() => navigate('/recipes')}
-                startIcon={<MenuBookIcon />}
-              >
-                Browse Recipes
-              </Button>
-            </Paper>
-          </Grid>
-        )}
+        <Grid item xs={12}>
+          <Paper sx={{ p: 3, mb: 3 }}>
+            <Typography variant="h5" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <TrendingUpIcon color="primary" />
+              Your Food Journey
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+              {hasRatings 
+                ? `Insights from your ${userRatingCount} recipe rating${userRatingCount > 1 ? 's' : ''} and cooking adventures`
+                : 'Discover your food preferences and get personalized recommendations'
+              }
+            </Typography>
+            
+            {/* Always show analytics component - it will handle different states */}
+            <UserPreferencesAnalytics 
+              userId={user?.userId} 
+              compact={false} 
+              showDemo={!hasRatings}
+              ratingCount={userRatingCount}
+            />
+            
+            {/* Enhanced call-to-action for users with few or no ratings */}
+            {userRatingCount < 5 && (
+              <Box sx={{ mt: 3, p: 2, bgcolor: 'background.default', borderRadius: 1 }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  {userRatingCount === 0 
+                    ? '🌟 Start building your food profile!'
+                    : `🌟 You're on your way! Rate ${5 - userRatingCount} more recipes for better insights.`
+                  }
+                </Typography>
+                <Box sx={{ mt: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                  <Button 
+                    variant="contained" 
+                    size="small"
+                    onClick={() => navigate('/recipes')}
+                    startIcon={<MenuBookIcon />}
+                  >
+                    Browse Recipes
+                  </Button>
+                  <Button 
+                    variant="outlined" 
+                    size="small"
+                    onClick={() => navigate('/saved-recipes')}
+                    startIcon={<StarIcon />}
+                  >
+                    Rate Saved Recipes
+                  </Button>
+                </Box>
+              </Box>
+            )}
+          </Paper>
+        </Grid>
 
         {/* Personalized Recommendations */}
         {recommendations.length > 0 && (

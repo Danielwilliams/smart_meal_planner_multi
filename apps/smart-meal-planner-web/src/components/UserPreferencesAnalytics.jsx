@@ -27,9 +27,10 @@ import {
 import { useAuth } from '../context/AuthContext';
 import apiService from '../services/apiService';
 
-const UserPreferencesAnalytics = ({ userId, compact = false }) => {
+const UserPreferencesAnalytics = ({ userId, compact = false, showDemo = false, ratingCount = 0 }) => {
   const [preferences, setPreferences] = useState(null);
   const [insights, setInsights] = useState(null);
+  const [communityTrends, setCommunityTrends] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [expanded, setExpanded] = useState(!compact);
@@ -44,6 +45,8 @@ const UserPreferencesAnalytics = ({ userId, compact = false }) => {
       setLoading(false);
       setError('User not found');
     }
+    // Always load community trends as fallback
+    loadCommunityTrends();
   }, [userId, user]);
 
   const targetUserId = userId || user?.userId;
@@ -96,6 +99,19 @@ const UserPreferencesAnalytics = ({ userId, compact = false }) => {
     }
   };
 
+  const loadCommunityTrends = async () => {
+    try {
+      console.log('Loading community trends');
+      const response = await apiService.get('/analytics/trends/cuisine-popularity?limit=10');
+      if (response.data) {
+        setCommunityTrends(response.data);
+      }
+    } catch (err) {
+      console.error('Error loading community trends:', err);
+      // Community trends are optional fallback
+    }
+  };
+
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" py={1}>
@@ -112,10 +128,10 @@ const UserPreferencesAnalytics = ({ userId, compact = false }) => {
     );
   }
 
-  if (!preferences || preferences.total_ratings === 0) {
-    // Don't render anything if no ratings - this will prevent the spinner from showing
-    return null;
-  }
+  // Show progressive content based on rating count
+  const showFullAnalytics = preferences && preferences.total_ratings >= 5;
+  const showBasicAnalytics = preferences && preferences.total_ratings >= 1;
+  const showDemoContent = showDemo || (!preferences || preferences.total_ratings === 0);
 
   const renderCompactView = () => (
     <Card sx={{ mb: 2 }}>
@@ -159,6 +175,104 @@ const UserPreferencesAnalytics = ({ userId, compact = false }) => {
         )}
       </CardContent>
     </Card>
+  );
+
+  const renderDemoView = () => (
+    <Grid container spacing={3}>
+      {/* What to Expect Card */}
+      <Grid item xs={12} md={4}>
+        <Card variant="outlined" sx={{ height: '100%' }}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <AnalyticsIcon color="primary" />
+              What to Expect
+            </Typography>
+            <Typography variant="body2" paragraph>
+              As you rate recipes, we'll learn your preferences:
+            </Typography>
+            <List dense>
+              <ListItem>
+                <ListItemText primary="• Favorite cuisines & flavors" />
+              </ListItem>
+              <ListItem>
+                <ListItemText primary="• Preferred cooking times" />
+              </ListItem>
+              <ListItem>
+                <ListItemText primary="• Complexity preferences" />
+              </ListItem>
+              <ListItem>
+                <ListItemText primary="• Dietary patterns" />
+              </ListItem>
+            </List>
+          </CardContent>
+        </Card>
+      </Grid>
+
+      {/* Community Trends Card */}
+      <Grid item xs={12} md={4}>
+        <Card variant="outlined" sx={{ height: '100%' }}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <TrendingUpIcon color="primary" />
+              Popular Right Now
+            </Typography>
+            {communityTrends?.popular_cuisines ? (
+              <>
+                <Typography variant="body2" gutterBottom>
+                  Top cuisines in our community:
+                </Typography>
+                <Box display="flex" gap={1} flexWrap="wrap" mt={1}>
+                  {communityTrends.popular_cuisines.slice(0, 5).map((item) => (
+                    <Chip 
+                      key={item.cuisine} 
+                      label={`${item.cuisine} (${item.rating_count})`} 
+                      size="small" 
+                      variant="outlined"
+                    />
+                  ))}
+                </Box>
+              </>
+            ) : (
+              <Typography variant="body2" color="text.secondary">
+                Loading community trends...
+              </Typography>
+            )}
+          </CardContent>
+        </Card>
+      </Grid>
+
+      {/* Getting Started Card */}
+      <Grid item xs={12} md={4}>
+        <Card variant="outlined" sx={{ height: '100%', bgcolor: 'primary.light', color: 'primary.contrastText' }}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom>
+              Ready to Start?
+            </Typography>
+            <Typography variant="body2" paragraph>
+              Rate just 5 recipes to unlock your personalized food journey!
+            </Typography>
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
+                {ratingCount}/5
+              </Typography>
+              <LinearProgress 
+                variant="determinate" 
+                value={(ratingCount / 5) * 100} 
+                sx={{ 
+                  mt: 1, 
+                  height: 8, 
+                  borderRadius: 4,
+                  bgcolor: 'primary.dark',
+                  '& .MuiLinearProgress-bar': {
+                    bgcolor: 'common.white'
+                  }
+                }}
+              />
+            </Box>
+          </CardContent>
+        </Card>
+      </Grid>
+    </Grid>
   );
 
   const renderFullView = () => (
@@ -341,10 +455,87 @@ const UserPreferencesAnalytics = ({ userId, compact = false }) => {
     </Paper>
   );
 
+  // Decide what to render based on rating count and state
+  if (showDemoContent) {
+    return renderDemoView();
+  }
+
   if (compact && !expanded) {
     return renderCompactView();
   }
 
+  // For users with 1-4 ratings, show a simplified view with available data
+  if (showBasicAnalytics && !showFullAnalytics) {
+    return (
+      <Paper sx={{ p: 3 }}>
+        <Grid container spacing={3}>
+          {/* Basic Stats */}
+          <Grid item xs={12} md={6}>
+            <Card variant="outlined">
+              <CardContent>
+                <Typography variant="h6" gutterBottom>Your Progress</Typography>
+                <Box mb={2}>
+                  <Typography variant="body2" color="text.secondary">
+                    Recipes Rated: {preferences.total_ratings}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Average Rating: {preferences.average_rating.toFixed(1)}/5
+                  </Typography>
+                </Box>
+                <Typography variant="body2" color="primary" gutterBottom>
+                  Rate {5 - preferences.total_ratings} more recipes for full insights!
+                </Typography>
+                <LinearProgress 
+                  variant="determinate" 
+                  value={(preferences.total_ratings / 5) * 100} 
+                  sx={{ mt: 1 }}
+                />
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* Early Insights */}
+          <Grid item xs={12} md={6}>
+            <Card variant="outlined">
+              <CardContent>
+                <Typography variant="h6" gutterBottom>Early Insights</Typography>
+                {preferences.cuisine_preferences.top_cuisines.length > 0 && (
+                  <>
+                    <Typography variant="body2" gutterBottom>
+                      Cuisines you've enjoyed:
+                    </Typography>
+                    <Box display="flex" gap={1} flexWrap="wrap">
+                      {preferences.cuisine_preferences.top_cuisines.map((cuisine) => (
+                        <Chip key={cuisine} label={cuisine} size="small" color="primary" />
+                      ))}
+                    </Box>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* Community comparison */}
+          {communityTrends && (
+            <Grid item xs={12}>
+              <Card variant="outlined">
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    How You Compare
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    See how your preferences align with our community as you rate more recipes.
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+          )}
+        </Grid>
+      </Paper>
+    );
+  }
+
+  // Full analytics for 5+ ratings
   return (
     <>
       {compact && renderCompactView()}
