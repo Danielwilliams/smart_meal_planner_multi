@@ -771,8 +771,10 @@ CRITICAL SELF-VALIDATION REQUIREMENTS - CHECK BEFORE RESPONDING:
 2. Confirm ALL required meal times are included each day: {req.meal_times if hasattr(req, 'meal_times') else 'breakfast, lunch, dinner'}
 3. 🚨 ABSOLUTELY NO REPEATED TITLES: Each meal title must be UNIQUE across ALL {req.duration_days} days
    - Do NOT use the same meal title on different days
-   - Do NOT use the same snack title multiple times
-   - Check every title against all other days before finalizing
+   - Do NOT use the same snack title multiple times  
+   - Do NOT use the same title for both meals and snacks
+   - Check every title against all other days AND within the same day before finalizing
+   - If you create "Spicy Black Bean Dip" once, NEVER create it again anywhere
 4. NEVER use these previously used meal titles: {', '.join(sorted(used_meal_titles)[:30]) if used_meal_titles else 'None'}{'...' if len(used_meal_titles) > 30 else ''}
 5. AVOID reusing primary ingredients from recent menus: {', '.join(sorted(used_primary_ingredients)[:15]) if used_primary_ingredients else 'None'}{'...' if len(used_primary_ingredients) > 15 else ''}
 6. Respect time constraints with 25% flexibility buffer
@@ -846,6 +848,7 @@ LEVERAGE THIS: User has actively saved recipes - use this as strong signals for 
 - DO NOT reuse primary ingredients as main components
 - CREATE COMPLETELY NEW AND DIFFERENT meals for maximum variety
 - Be creative with cuisines, cooking methods, and ingredient combinations
+- 🚨 CRITICAL: Each meal and snack title must be 100% UNIQUE - no duplicates within the same day or across days
 
 ### Quality Requirements
 - Ensure variety: NO repeated meal titles across all {req.duration_days} days
@@ -1480,6 +1483,9 @@ def generate_meal_plan_legacy(req: GenerateMealPlanRequest, job_id: str = None):
             1. NEVER EVER use these disliked ingredients: {', '.join(disliked_ingredients) if disliked_ingredients else 'None'}
             2. Check EVERY ingredient against the disliked list before including it
             3. If an ingredient is disliked, find a complete substitute - do not use it at all
+            4. 🚨 NEVER CREATE DUPLICATE MEAL TITLES - Every single meal and snack must have a COMPLETELY UNIQUE title
+            5. 🚨 NO MEAL TITLE CAN APPEAR MORE THAN ONCE in the entire day's plan
+            6. 🚨 CREATE ORIGINAL TITLES that have never been used before in any previous menu
             
             CRITICAL: You MUST generate meals for ALL meal times specified by the user, including breakfast, lunch, dinner, and snacks if requested.
             
@@ -1675,20 +1681,29 @@ LEVERAGE THIS: User has actively saved recipes - use this as strong signals for 
                             if issues:
                                 logger.warning(f"Validation issues in day {day_number}: {issues}")
                                 
-                                # Check for CRITICAL issues (disliked ingredients) vs minor issues
-                                critical_issues = [issue for issue in issues if 'disliked ingredient' in issue.lower()]
-                                minor_issues = [issue for issue in issues if 'disliked ingredient' not in issue.lower()]
+                                # Check for CRITICAL issues (disliked ingredients, duplicates) vs minor issues
+                                critical_issues = [issue for issue in issues if 
+                                                 'disliked ingredient' in issue.lower() or 
+                                                 'DUPLICATE IN SAME DAY' in issue or 
+                                                 'has been used before' in issue.lower()]
+                                minor_issues = [issue for issue in issues if 
+                                              'disliked ingredient' not in issue.lower() and 
+                                              'DUPLICATE IN SAME DAY' not in issue and 
+                                              'has been used before' not in issue.lower()]
                                 
                                 if critical_issues:
-                                    # ALWAYS retry for disliked ingredients - these are unacceptable
-                                    logger.error(f"CRITICAL: Disliked ingredient violations found: {critical_issues}")
+                                    # ALWAYS retry for critical issues - these are unacceptable
+                                    logger.error(f"CRITICAL: Validation violations found: {critical_issues}")
                                     if attempt < MAX_RETRIES - 1:
                                         user_prompt += f"\n\n### CRITICAL VALIDATION ERRORS - MUST FIX:\n" + "\n".join([f"- {issue}" for issue in critical_issues])
-                                        user_prompt += f"\n\nREMINDER: ABSOLUTELY NO disliked ingredients: {', '.join(disliked_ingredients)}"
+                                        if 'disliked ingredient' in str(critical_issues).lower():
+                                            user_prompt += f"\n\nREMINDER: ABSOLUTELY NO disliked ingredients: {', '.join(disliked_ingredients)}"
+                                        if 'DUPLICATE' in str(critical_issues) or 'has been used before' in str(critical_issues).lower():
+                                            user_prompt += f"\n\n🚨 ABSOLUTELY NO DUPLICATE TITLES: Create completely unique meal names that have never been used before."
                                         continue
                                     else:
-                                        # Last attempt failed - this is unacceptable for disliked ingredients
-                                        raise HTTPException(500, f"Failed to generate menu without disliked ingredients after {MAX_RETRIES} attempts: {critical_issues}")
+                                        # Last attempt failed - this is unacceptable for critical issues
+                                        raise HTTPException(500, f"Failed to generate valid menu after {MAX_RETRIES} attempts: {critical_issues}")
                                 
                                 elif minor_issues and attempt < MAX_RETRIES - 1:
                                     # Only retry minor issues (time constraints, repeated titles) on early attempts  
