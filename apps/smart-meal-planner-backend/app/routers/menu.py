@@ -376,6 +376,172 @@ def fix_common_issues(day_json: Dict[str, Any], day_number: int, servings_per_me
     
     return day_json
 
+def smart_duplicate_cleanup(day_json: Dict[str, Any], used_meal_titles: Set[str], day_number: int) -> Dict[str, Any]:
+    """
+    Intelligent cleanup of duplicate titles when AI fails to generate unique names.
+    Creates genuinely different meal alternatives rather than just renaming duplicates.
+    """
+    logger.info(f"Starting smart duplicate cleanup for day {day_number}")
+    
+    # Define intelligent meal alternatives for common duplicate patterns
+    meal_alternatives = {
+        # Protein-based alternatives
+        'chicken': ['turkey', 'pork', 'beef', 'salmon', 'cod'],
+        'beef': ['pork', 'turkey', 'chicken', 'salmon'],
+        'pork': ['beef', 'turkey', 'chicken', 'cod'],
+        'turkey': ['chicken', 'pork', 'beef', 'salmon'],
+        'salmon': ['cod', 'chicken', 'turkey', 'beef'],
+        'cod': ['salmon', 'chicken', 'turkey', 'pork'],
+        
+        # Cooking method alternatives
+        'grilled': ['baked', 'pan-seared', 'roasted', 'air-fried'],
+        'baked': ['grilled', 'roasted', 'pan-seared', 'braised'],
+        'roasted': ['baked', 'grilled', 'braised', 'sautéed'],
+        'fried': ['baked', 'grilled', 'roasted', 'steamed'],
+        
+        # Cuisine style alternatives
+        'spicy': ['smoky', 'garlicky', 'herbed', 'tangy'],
+        'smoky': ['spicy', 'garlicky', 'savory', 'herbed'],
+        'garlicky': ['herbed', 'smoky', 'spicy', 'tangy'],
+    }
+    
+    # Track titles within this day to avoid same-day duplicates
+    day_titles = set()
+    all_meals = []
+    
+    # Collect all meals and snacks
+    for meal in day_json.get("meals", []):
+        all_meals.append(('meal', meal))
+    for snack in day_json.get("snacks", []):
+        all_meals.append(('snack', snack))
+    
+    # Process each meal/snack and fix duplicates
+    for meal_type, meal in all_meals:
+        original_title = meal.get("title", "").strip()
+        
+        # Check if this title is a duplicate (same day or previous days)
+        title_lower = original_title.lower()
+        is_duplicate = (title_lower in day_titles or 
+                       original_title in used_meal_titles or
+                       title_lower in [t.lower() for t in used_meal_titles])
+        
+        if is_duplicate:
+            logger.warning(f"Fixing duplicate title: '{original_title}'")
+            new_title = generate_alternative_meal(original_title, day_titles, used_meal_titles, meal_alternatives)
+            meal["title"] = new_title
+            logger.info(f"Replaced duplicate '{original_title}' with '{new_title}'")
+        
+        # Add to day titles set (use lower case for comparison)
+        day_titles.add(meal.get("title", "").lower())
+    
+    logger.info(f"Smart duplicate cleanup completed for day {day_number}")
+    return day_json
+
+def generate_alternative_meal(original_title: str, day_titles: Set[str], used_titles: Set[str], alternatives: Dict[str, List[str]]) -> str:
+    """Generate an intelligent alternative meal title that's genuinely different"""
+    
+    # Split title into words for intelligent replacement
+    words = original_title.lower().split()
+    
+    # Try to find and replace key components
+    for i, word in enumerate(words):
+        if word in alternatives:
+            for alt in alternatives[word]:
+                # Create new title with alternative
+                new_words = words.copy()
+                new_words[i] = alt
+                new_title = ' '.join(new_words).title()
+                
+                # Check if this new title is unique
+                if (new_title not in used_titles and 
+                    new_title.lower() not in day_titles and
+                    new_title.lower() not in [t.lower() for t in used_titles]):
+                    return new_title
+    
+    # If intelligent replacement fails, use method-based alternatives
+    method_alternatives = [
+        ("Spicy", "Smoky"), ("Smoky", "Garlicky"), ("Garlicky", "Herbed"),
+        ("Grilled", "Baked"), ("Baked", "Roasted"), ("Roasted", "Pan-Seared"),
+        ("Chicken", "Turkey"), ("Turkey", "Pork"), ("Pork", "Beef"),
+        ("Beef", "Salmon"), ("Salmon", "Cod"),
+        ("Tacos", "Bowl"), ("Bowl", "Salad"), ("Salad", "Wrap"),
+        ("Wrap", "Sandwich"), ("Sandwich", "Skewers")
+    ]
+    
+    for old_word, new_word in method_alternatives:
+        if old_word.lower() in original_title.lower():
+            new_title = original_title.replace(old_word, new_word)
+            if (new_title not in used_titles and 
+                new_title.lower() not in day_titles and
+                new_title.lower() not in [t.lower() for t in used_titles]):
+                return new_title
+    
+    # Last resort: add descriptive prefix
+    prefixes = ["Savory", "Hearty", "Fresh", "Crispy", "Tender", "Zesty", "Rich", "Light"]
+    for prefix in prefixes:
+        new_title = f"{prefix} {original_title}"
+        if (new_title not in used_titles and 
+            new_title.lower() not in day_titles and
+            new_title.lower() not in [t.lower() for t in used_titles]):
+            return new_title
+    
+    # Final fallback: use meal type + number
+    import random
+    backup_meals = [
+        "Mediterranean Power Bowl", "Asian Fusion Stir-Fry", "Southwest Protein Pack",
+        "Italian Herb Medley", "Greek Style Feast", "BBQ Fusion Plate",
+        "Moroccan Spice Bowl", "Thai-Inspired Dish", "Mexican Fiesta Plate"
+    ]
+    
+    for backup in backup_meals:
+        if (backup not in used_titles and 
+            backup.lower() not in day_titles and
+            backup.lower() not in [t.lower() for t in used_titles]):
+            return backup
+    
+    # Ultimate fallback - should rarely be reached
+    return f"Alternative Meal {random.randint(100, 999)}"
+
+def auto_fix_duplicates(day_json: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Auto-fix duplicate titles within a single day's meal plan.
+    This is a lightweight version for single-request generation.
+    """
+    if not day_json or "meals" not in day_json:
+        return day_json
+    
+    day_titles = set()
+    
+    # Process meals
+    for meal in day_json.get("meals", []):
+        title = meal.get("title", "").strip()
+        if title:
+            title_lower = title.lower()
+            if title_lower in day_titles:
+                # Generate a quick alternative
+                alternatives = ["Alternative", "Variation", "Style", "Twist", "Version"]
+                import random
+                new_title = f"{random.choice(alternatives)} {title}"
+                meal["title"] = new_title
+                logger.info(f"Auto-fixed same-day duplicate: '{title}' → '{new_title}'")
+            day_titles.add(title_lower)
+    
+    # Process snacks
+    for snack in day_json.get("snacks", []):
+        title = snack.get("title", "").strip()
+        if title:
+            title_lower = title.lower()
+            if title_lower in day_titles:
+                # Generate a quick alternative
+                alternatives = ["Quick", "Simple", "Easy", "Light", "Mini"]
+                import random
+                new_title = f"{random.choice(alternatives)} {title}"
+                snack["title"] = new_title
+                logger.info(f"Auto-fixed same-day duplicate snack: '{title}' → '{new_title}'")
+            day_titles.add(title_lower)
+    
+    return day_json
+
 router = APIRouter(prefix="/menu", tags=["Menu"])
 
 # OpenAI initialization with error handling
@@ -1740,8 +1906,15 @@ LEVERAGE THIS: User has actively saved recipes - use this as strong signals for 
                                             user_prompt += f"\nDO NOT just rename - create entirely different recipes with different ingredients and cooking methods."
                                         continue
                                     else:
-                                        # Last attempt failed - this is unacceptable for critical issues
-                                        raise HTTPException(500, f"Failed to generate valid menu after {MAX_RETRIES} attempts: {critical_issues}")
+                                        # Last attempt failed - implement smart fallback for duplicates
+                                        if any('DUPLICATE' in issue for issue in critical_issues):
+                                            logger.warning(f"AI persistently generating duplicates. Attempting smart fallback cleanup...")
+                                            day_json = smart_duplicate_cleanup(day_json, used_meal_titles, day_number)
+                                            logger.info(f"Smart duplicate cleanup completed for day {day_number}")
+                                            # Continue with the cleaned-up version instead of failing
+                                        else:
+                                            # Non-duplicate critical issues (like disliked ingredients) are still unacceptable
+                                            raise HTTPException(500, f"Failed to generate valid menu after {MAX_RETRIES} attempts: {critical_issues}")
                                 
                                 elif minor_issues and attempt < MAX_RETRIES - 1:
                                     # Only retry minor issues (time constraints, missing meals) on early attempts  
