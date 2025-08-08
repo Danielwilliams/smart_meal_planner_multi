@@ -11,6 +11,21 @@ import openai
 
 # Feature flag for optimized generation method
 USE_OPTIMIZED_GENERATION = False  # TEMPORARY: Disabled due to token limit issues - single request too large
+
+# Smart generation strategy based on meal plan length
+def should_use_single_request(duration_days: int, meal_count_per_day: int) -> bool:
+    """Determine if we should use single request based on plan complexity"""
+    # Estimate token usage based on meals per day and duration
+    total_meals = duration_days * meal_count_per_day
+    
+    # Use single request for smaller plans that won't hit token limits
+    if duration_days <= 3:
+        return True
+    elif duration_days == 4 and meal_count_per_day <= 4:
+        return True
+    else:
+        # For 5-7 days or complex plans, use day-by-day to avoid token limits
+        return False
 from psycopg2.extras import RealDictCursor
 # Use the enhanced DB with specialized connection pools
 from ..db import get_db_connection, get_db_cursor
@@ -721,15 +736,21 @@ def generate_meal_plan_single_request(req: GenerateMealPlanRequest, job_id: str 
 CRITICAL SELF-VALIDATION REQUIREMENTS - CHECK BEFORE RESPONDING:
 1. Verify NO disliked ingredients are used: {', '.join(disliked_ingredients) if disliked_ingredients else 'None'}
 2. Confirm ALL required meal times are included each day: {req.meal_times if hasattr(req, 'meal_times') else 'breakfast, lunch, dinner'}
-3. Ensure NO meal titles repeat across the entire {req.duration_days}-day plan
-4. AVOID all previously used meal titles: {', '.join(sorted(used_meal_titles)[:20]) if used_meal_titles else 'None'}{'...' if len(used_meal_titles) > 20 else ''}
+3. 🚨 ABSOLUTELY NO REPEATED TITLES: Each meal title must be UNIQUE across ALL {req.duration_days} days
+   - Do NOT use the same meal title on different days
+   - Do NOT use the same snack title multiple times
+   - Check every title against all other days before finalizing
+4. NEVER use these previously used meal titles: {', '.join(sorted(used_meal_titles)[:30]) if used_meal_titles else 'None'}{'...' if len(used_meal_titles) > 30 else ''}
 5. AVOID reusing primary ingredients from recent menus: {', '.join(sorted(used_primary_ingredients)[:15]) if used_primary_ingredients else 'None'}{'...' if len(used_primary_ingredients) > 15 else ''}
 6. Respect time constraints with 25% flexibility buffer
 7. Follow all dietary restrictions: {', '.join(dietary_restrictions) if dietary_restrictions else 'None'}
 8. PRIORITIZE preferred proteins when possible: {', '.join(preferred_proteins) if preferred_proteins else 'No specific protein preferences'}
-9. If any issues found, automatically correct them before responding
+9. VARIETY REQUIREMENTS:
+   - Every meal must have a UNIQUE title
+   - No meal title can appear more than once in the {req.duration_days}-day plan
+   - Create {req.duration_days * (len(selected_meal_times) + req.snacks_per_day)} completely different recipes
 
-VARIETY IS CRITICAL: Create completely new and different meals from the user's previous menus. Be creative and avoid repetition.
+CRITICAL: Before returning your response, scan through ALL meal titles and ensure ZERO duplicates.
 
 ONLY return a meal plan that passes ALL validation checks. Self-correct any issues during generation."""
         
@@ -978,11 +999,15 @@ IMPORTANT: Self-validate your response before finalizing. Ensure no disliked ing
 def generate_meal_plan_variety(req: GenerateMealPlanRequest, job_id: str = None):
     """Generate a meal plan - tries optimized method first, falls back to legacy if needed"""
 
-    if USE_OPTIMIZED_GENERATION:
+    # Smart decision on generation method based on plan complexity
+    meal_count_per_day = len(req.meal_times if hasattr(req, 'meal_times') else ['breakfast', 'lunch', 'dinner']) + req.snacks_per_day
+    use_single_request = should_use_single_request(req.duration_days, meal_count_per_day)
+    
+    if use_single_request:
         try:
-            logger.info(f"🚀 OPTIMIZATION: Attempting optimized single-request generation for user {req.user_id}")
+            logger.info(f"🚀 SMART STRATEGY: Using single-request generation for {req.duration_days}-day plan (user {req.user_id})")
             result = generate_meal_plan_single_request(req, job_id)
-            logger.info(f"✅ OPTIMIZATION: Single-request generation successful for user {req.user_id}")
+            logger.info(f"✅ Single-request generation successful for user {req.user_id}")
 
             # Import here to avoid circular imports
             from ..utils.snack_enhancer import enhance_meal_plan_snacks
@@ -1467,7 +1492,8 @@ BEHAVIORAL INSIGHTS:
             1. 🚫 ABSOLUTELY NO DISLIKED INGREDIENTS: {', '.join(disliked_ingredients) if disliked_ingredients else 'None'} 
             2. ⭐ PRIORITIZE PREFERRED PROTEINS: {', '.join(preferred_proteins) if preferred_proteins else 'No specific protein preferences'}
             3. FOLLOW ALL DIETARY RESTRICTIONS: {', '.join(dietary_restrictions) if dietary_restrictions else 'None'}
-            4. DO NOT repeat meal titles from this list: {', '.join(used_meal_titles) if used_meal_titles else 'None'}
+            4. 🚨 NEVER repeat these meal titles (from previous days + history): {', '.join(sorted(used_meal_titles)) if used_meal_titles else 'None'}
+               Total forbidden titles: {len(used_meal_titles)}
             5. DO NOT use primary ingredients that appeared in the last 3 days: {recent_ingredients_str}
             6. DO NOT use the same protein source more than once per day
             7. Include at least 3 distinct cuisines each day
@@ -1630,6 +1656,7 @@ BEHAVIORAL INSIGHTS:
                 
                 if title:
                     used_meal_titles.add(title)
+                    logger.info(f"📝 Day {day_number} - Added meal title to tracking: '{title}' (Total forbidden: {len(used_meal_titles)})")
                     if meal_time in used_by_meal_time:
                         used_by_meal_time[meal_time].add(title)
                 
@@ -1642,6 +1669,7 @@ BEHAVIORAL INSIGHTS:
                 title = snack.get("title", "").strip()
                 if title:
                     used_meal_titles.add(title)
+                    logger.info(f"📝 Day {day_number} - Added snack title to tracking: '{title}' (Total forbidden: {len(used_meal_titles)})")
             
             # Add the day's ingredients to the tracking list
             used_primary_ingredients.append((day_number, day_ingredients))
