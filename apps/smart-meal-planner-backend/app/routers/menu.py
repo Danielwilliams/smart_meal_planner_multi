@@ -739,10 +739,27 @@ def generate_meal_plan_single_request(req: GenerateMealPlanRequest, job_id: str 
         
         # 🚀 ADDED: Get learned user preferences from rating analytics
         personalization_insights = None
+        preference_shifts = None
+        saved_recipes_insights = None
         try:
             from ..ai.rating_analytics import rating_analytics
             personalization_insights = rating_analytics.get_personalization_insights(req.user_id)
             logger.info(f"🎯 Single-request: Loaded personalization insights for user {req.user_id}: {personalization_insights['recommendation_confidence']} confidence")
+            
+            # 🆕 ADDED: Get recent preference shifts for dynamic learning
+            preference_shifts = rating_analytics.get_recent_preference_shifts(req.user_id)
+            if preference_shifts['shifts_detected']:
+                logger.info(f"🔄 Single-request: Detected {len(preference_shifts['significant_changes'])} recent preference shifts for user {req.user_id}")
+            else:
+                logger.info(f"📊 Single-request: No significant preference shifts detected for user {req.user_id}")
+            
+            # 🥗 ADDED: Get saved recipes insights for menu integration
+            saved_recipes_insights = rating_analytics.get_saved_recipes_insights(req.user_id)
+            if saved_recipes_insights['has_saved_recipes']:
+                logger.info(f"💾 Single-request: Found {saved_recipes_insights['total_saved']} saved recipes for user {req.user_id}")
+            else:
+                logger.info(f"📝 Single-request: No saved recipes found for user {req.user_id}")
+                
         except Exception as e:
             logger.warning(f"Failed to load personalization insights for single request: {e}")
         
@@ -787,6 +804,27 @@ CUISINE INTELLIGENCE (from {preferences['total_ratings']} ratings):
 • Recipe satisfaction: {preferences['behavioral_insights']['recipe_satisfaction']*100:.0f}% (would make again)
 
 USE THIS INTELLIGENCE to create meals the user will actually love and cook."""
+
+        # 🔄 ADDED: Include dynamic preference shifts if detected
+        if preference_shifts and preference_shifts['shifts_detected']:
+            system_prompt += f"""
+
+🔄 RECENT PREFERENCE CHANGES DETECTED (ADAPT ACCORDINGLY):
+{chr(10).join([f"• {change}" for change in preference_shifts['significant_changes']])}
+
+IMPORTANT: These are RECENT changes in user preferences. Adjust recommendations to reflect these evolving tastes while still maintaining variety."""
+
+        # 🥗 ADDED: Include saved recipes insights if available
+        if saved_recipes_insights and saved_recipes_insights['has_saved_recipes']:
+            system_prompt += f"""
+
+💾 SAVED RECIPES INTELLIGENCE ({saved_recipes_insights['total_saved']} recipes saved):
+{chr(10).join([f"• {suggestion}" for suggestion in saved_recipes_insights.get('ai_prompt_suggestions', [])])}
+
+INTEGRATION OPPORTUNITIES:
+{chr(10).join([f"• {opp['description']}" for opp in saved_recipes_insights.get('menu_integration_opportunities', [])])}
+
+LEVERAGE THIS: User has actively saved recipes - use this as strong signals for what they actually want to cook."""
 
         # Build comprehensive user prompt
         user_prompt = f"""Generate a complete {req.duration_days}-day meal plan that is self-validated and ready to use.
@@ -1410,10 +1448,27 @@ def generate_meal_plan_legacy(req: GenerateMealPlanRequest, job_id: str = None):
             
             # 🚀 ADDED: Get learned user preferences from rating analytics
             personalization_insights = None
+            preference_shifts = None
+            saved_recipes_insights = None
             try:
                 from ..ai.rating_analytics import rating_analytics
                 personalization_insights = rating_analytics.get_personalization_insights(req.user_id)
-                logger.info(f"🎯 Loaded personalization insights for user {req.user_id}: {personalization_insights['recommendation_confidence']} confidence")
+                logger.info(f"🎯 Legacy: Loaded personalization insights for user {req.user_id}: {personalization_insights['recommendation_confidence']} confidence")
+                
+                # 🆕 ADDED: Get recent preference shifts for dynamic learning
+                preference_shifts = rating_analytics.get_recent_preference_shifts(req.user_id)
+                if preference_shifts['shifts_detected']:
+                    logger.info(f"🔄 Legacy: Detected {len(preference_shifts['significant_changes'])} recent preference shifts for user {req.user_id}")
+                else:
+                    logger.info(f"📊 Legacy: No significant preference shifts detected for user {req.user_id}")
+                
+                # 🥗 ADDED: Get saved recipes insights for menu integration
+                saved_recipes_insights = rating_analytics.get_saved_recipes_insights(req.user_id)
+                if saved_recipes_insights['has_saved_recipes']:
+                    logger.info(f"💾 Legacy: Found {saved_recipes_insights['total_saved']} saved recipes for user {req.user_id}")
+                else:
+                    logger.info(f"📝 Legacy: No saved recipes found for user {req.user_id}")
+                    
             except Exception as e:
                 logger.warning(f"Failed to load personalization insights: {e}")
             
@@ -1458,6 +1513,27 @@ BEHAVIORAL INSIGHTS:
 • Cooking engagement: {preferences['behavioral_insights']['cooking_engagement']*100:.0f}% (recipes actually made)
 • Recipe satisfaction: {preferences['behavioral_insights']['recipe_satisfaction']*100:.0f}% (would make again)
 • Preferred time range: {preferences['time_preferences']['preferred_time_range']}"""
+
+            # 🔄 ADDED: Include dynamic preference shifts if detected
+            if preference_shifts and preference_shifts['shifts_detected']:
+                system_prompt += f"""
+
+🔄 RECENT PREFERENCE CHANGES DETECTED (ADAPT ACCORDINGLY):
+{chr(10).join([f"• {change}" for change in preference_shifts['significant_changes']])}
+
+IMPORTANT: These are RECENT changes in user preferences. Adjust recommendations to reflect these evolving tastes while still maintaining variety."""
+
+            # 🥗 ADDED: Include saved recipes insights if available
+            if saved_recipes_insights and saved_recipes_insights['has_saved_recipes']:
+                system_prompt += f"""
+
+💾 SAVED RECIPES INTELLIGENCE ({saved_recipes_insights['total_saved']} recipes saved):
+{chr(10).join([f"• {suggestion}" for suggestion in saved_recipes_insights.get('ai_prompt_suggestions', [])])}
+
+INTEGRATION OPPORTUNITIES:
+{chr(10).join([f"• {opp['description']}" for opp in saved_recipes_insights.get('menu_integration_opportunities', [])])}
+
+LEVERAGE THIS: User has actively saved recipes - use this as strong signals for what they actually want to cook."""
             
             # Create a more concise and structured user prompt
             user_prompt = f"""

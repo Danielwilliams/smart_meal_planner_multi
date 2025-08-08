@@ -427,6 +427,494 @@ class RatingAnalytics:
             'recommendation_confidence': 'high' if preferences['total_ratings'] >= 10 else 
                                        'medium' if preferences['total_ratings'] >= 5 else 'low'
         }
+    
+    def get_recent_preference_shifts(self, user_id: int, days: int = 30) -> Dict:
+        """
+        Detect recent changes in user preferences by comparing recent ratings vs historical patterns
+        """
+        logger.info(f"Analyzing preference shifts for user {user_id} over last {days} days")
+        
+        try:
+            # Get cutoff date for recent ratings
+            from datetime import datetime, timedelta
+            cutoff_date = datetime.now() - timedelta(days=days)
+            
+            # Get recent ratings
+            recent_ratings = self.execute_analytics_query("""
+                SELECT 
+                    ri.*,
+                    sr.title,
+                    sr.cuisine,
+                    sr.complexity,
+                    sr.prep_time,
+                    sr.cook_time,
+                    sr.total_time,
+                    sr.servings
+                FROM recipe_interactions ri
+                LEFT JOIN scraped_recipes sr ON ri.recipe_id = sr.id
+                WHERE ri.user_id = %s 
+                AND ri.rating_score IS NOT NULL
+                AND ri.updated_at >= %s
+                ORDER BY ri.updated_at DESC
+            """, (user_id, cutoff_date), fetch_all=True)
+            
+            # Get historical ratings (older than the cutoff)
+            historical_ratings = self.execute_analytics_query("""
+                SELECT 
+                    ri.*,
+                    sr.title,
+                    sr.cuisine,
+                    sr.complexity,
+                    sr.prep_time,
+                    sr.cook_time,
+                    sr.total_time,
+                    sr.servings
+                FROM recipe_interactions ri
+                LEFT JOIN scraped_recipes sr ON ri.recipe_id = sr.id
+                WHERE ri.user_id = %s 
+                AND ri.rating_score IS NOT NULL
+                AND ri.updated_at < %s
+                ORDER BY ri.updated_at DESC
+                LIMIT 50
+            """, (user_id, cutoff_date), fetch_all=True)
+            
+            if not recent_ratings or len(recent_ratings) < 3:
+                return {
+                    'shifts_detected': False,
+                    'reason': 'Insufficient recent ratings for comparison',
+                    'recent_count': len(recent_ratings),
+                    'historical_count': len(historical_ratings)
+                }
+            
+            if not historical_ratings or len(historical_ratings) < 5:
+                return {
+                    'shifts_detected': False,
+                    'reason': 'Insufficient historical data for comparison',
+                    'recent_count': len(recent_ratings),
+                    'historical_count': len(historical_ratings)
+                }
+            
+            # Analyze different types of shifts
+            shifts = {
+                'shifts_detected': False,
+                'recent_count': len(recent_ratings),
+                'historical_count': len(historical_ratings),
+                'cuisine_shifts': self._detect_cuisine_shifts(recent_ratings, historical_ratings),
+                'complexity_shifts': self._detect_complexity_shifts(recent_ratings, historical_ratings),
+                'satisfaction_trends': self._analyze_satisfaction_trends(recent_ratings, historical_ratings),
+                'new_interests': self._detect_new_cuisine_interests(recent_ratings, historical_ratings),
+                'time_preference_shifts': self._detect_time_preference_shifts(recent_ratings, historical_ratings)
+            }
+            
+            # Determine if any significant shifts were detected
+            significant_shifts = []
+            if shifts['cuisine_shifts']['significant_changes']:
+                significant_shifts.extend(shifts['cuisine_shifts']['changes'])
+            if shifts['complexity_shifts']['significant_change']:
+                significant_shifts.append(shifts['complexity_shifts']['description'])
+            if shifts['satisfaction_trends']['trend'] != 'stable':
+                significant_shifts.append(shifts['satisfaction_trends']['description'])
+            if shifts['new_interests']:
+                significant_shifts.extend([f"New interest in {cuisine}" for cuisine in shifts['new_interests']])
+            if shifts['time_preference_shifts']['significant_change']:
+                significant_shifts.append(shifts['time_preference_shifts']['description'])
+            
+            shifts['shifts_detected'] = len(significant_shifts) > 0
+            shifts['significant_changes'] = significant_shifts
+            
+            logger.info(f"Preference shifts analysis complete: {len(significant_shifts)} changes detected")
+            return shifts
+            
+        except Exception as e:
+            logger.error(f"Error analyzing preference shifts for user {user_id}: {str(e)}")
+            return {
+                'shifts_detected': False,
+                'reason': f'Error during analysis: {str(e)}',
+                'recent_count': 0,
+                'historical_count': 0
+            }
+    
+    def _detect_cuisine_shifts(self, recent_ratings: List, historical_ratings: List) -> Dict:
+        """Detect shifts in cuisine preferences"""
+        # Calculate cuisine averages for recent vs historical
+        recent_cuisine_scores = defaultdict(list)
+        historical_cuisine_scores = defaultdict(list)
+        
+        for rating in recent_ratings:
+            if rating['cuisine']:
+                recent_cuisine_scores[rating['cuisine']].append(rating['rating_score'])
+        
+        for rating in historical_ratings:
+            if rating['cuisine']:
+                historical_cuisine_scores[rating['cuisine']].append(rating['rating_score'])
+        
+        # Calculate average ratings for each cuisine in both periods
+        recent_avgs = {cuisine: statistics.mean(scores) for cuisine, scores in recent_cuisine_scores.items()}
+        historical_avgs = {cuisine: statistics.mean(scores) for cuisine, scores in historical_cuisine_scores.items() if len(scores) >= 2}
+        
+        # Look for significant changes (> 1.0 rating difference)
+        changes = []
+        for cuisine in recent_avgs:
+            if cuisine in historical_avgs:
+                diff = recent_avgs[cuisine] - historical_avgs[cuisine]
+                if abs(diff) > 1.0:  # Significant change threshold
+                    if diff > 0:
+                        changes.append(f"Increased interest in {cuisine} cuisine (+{diff:.1f} stars)")
+                    else:
+                        changes.append(f"Decreased interest in {cuisine} cuisine ({diff:.1f} stars)")
+        
+        return {
+            'significant_changes': len(changes) > 0,
+            'changes': changes,
+            'recent_cuisines': list(recent_avgs.keys()),
+            'trending_up': [c for c, diff in [(cuisine, recent_avgs[cuisine] - historical_avgs.get(cuisine, 0)) 
+                                             for cuisine in recent_avgs] if diff > 1.0],
+            'trending_down': [c for c, diff in [(cuisine, recent_avgs[cuisine] - historical_avgs.get(cuisine, 0)) 
+                                               for cuisine in recent_avgs] if diff < -1.0]
+        }
+    
+    def _detect_complexity_shifts(self, recent_ratings: List, historical_ratings: List) -> Dict:
+        """Detect changes in complexity preferences"""
+        recent_complexity = [r['difficulty_rating'] for r in recent_ratings if r.get('difficulty_rating')]
+        historical_complexity = [r['difficulty_rating'] for r in historical_ratings if r.get('difficulty_rating')]
+        
+        if not recent_complexity or not historical_complexity:
+            return {'significant_change': False, 'description': 'Insufficient complexity rating data'}
+        
+        recent_avg = statistics.mean(recent_complexity)
+        historical_avg = statistics.mean(historical_complexity)
+        diff = recent_avg - historical_avg
+        
+        if abs(diff) > 0.8:  # Significant change in difficulty preference
+            if diff > 0:
+                return {
+                    'significant_change': True,
+                    'description': f"Preferring more complex recipes recently (+{diff:.1f} difficulty)",
+                    'trend': 'more_complex'
+                }
+            else:
+                return {
+                    'significant_change': True,
+                    'description': f"Preferring simpler recipes recently ({diff:.1f} difficulty)",
+                    'trend': 'simpler'
+                }
+        
+        return {'significant_change': False, 'trend': 'stable'}
+    
+    def _analyze_satisfaction_trends(self, recent_ratings: List, historical_ratings: List) -> Dict:
+        """Analyze overall satisfaction trends"""
+        recent_scores = [r['rating_score'] for r in recent_ratings]
+        historical_scores = [r['rating_score'] for r in historical_ratings]
+        
+        recent_avg = statistics.mean(recent_scores)
+        historical_avg = statistics.mean(historical_scores)
+        diff = recent_avg - historical_avg
+        
+        if abs(diff) > 0.5:  # Significant satisfaction change
+            if diff > 0:
+                return {
+                    'trend': 'improving',
+                    'description': f"Rating satisfaction improving recently (+{diff:.1f} stars)",
+                    'recent_avg': recent_avg,
+                    'historical_avg': historical_avg
+                }
+            else:
+                return {
+                    'trend': 'declining',
+                    'description': f"Rating satisfaction declining recently ({diff:.1f} stars)",
+                    'recent_avg': recent_avg,
+                    'historical_avg': historical_avg
+                }
+        
+        return {
+            'trend': 'stable',
+            'description': 'Satisfaction levels remain stable',
+            'recent_avg': recent_avg,
+            'historical_avg': historical_avg
+        }
+    
+    def _detect_new_cuisine_interests(self, recent_ratings: List, historical_ratings: List) -> List[str]:
+        """Detect new cuisines the user has started trying and rating highly"""
+        recent_cuisines = set(r['cuisine'] for r in recent_ratings if r['cuisine'] and r['rating_score'] >= 4)
+        historical_cuisines = set(r['cuisine'] for r in historical_ratings if r['cuisine'])
+        
+        # Find cuisines that are new in recent period and highly rated
+        new_cuisines = recent_cuisines - historical_cuisines
+        return list(new_cuisines)
+    
+    def _detect_time_preference_shifts(self, recent_ratings: List, historical_ratings: List) -> Dict:
+        """Detect changes in time/convenience preferences"""
+        # Analyze prep time preferences
+        recent_times = [r['total_time'] for r in recent_ratings if r.get('total_time') and r['rating_score'] >= 4]
+        historical_times = [r['total_time'] for r in historical_ratings if r.get('total_time') and r['rating_score'] >= 4]
+        
+        if not recent_times or not historical_times or len(recent_times) < 3:
+            return {'significant_change': False, 'description': 'Insufficient time preference data'}
+        
+        recent_avg = statistics.mean(recent_times)
+        historical_avg = statistics.mean(historical_times)
+        diff = recent_avg - historical_avg
+        
+        if abs(diff) > 15:  # 15+ minute difference is significant
+            if diff > 0:
+                return {
+                    'significant_change': True,
+                    'description': f"Recently preferring longer cooking times (+{diff:.0f} min)",
+                    'trend': 'longer_times'
+                }
+            else:
+                return {
+                    'significant_change': True,
+                    'description': f"Recently preferring quicker meals ({diff:.0f} min)",
+                    'trend': 'quicker_meals'
+                }
+        
+        return {'significant_change': False, 'trend': 'stable'}
+    
+    def get_saved_recipes_insights(self, user_id: int) -> Dict:
+        """
+        Analyze user's saved recipes to provide insights for menu generation
+        """
+        logger.info(f"Analyzing saved recipes for user {user_id}")
+        
+        try:
+            # Get saved recipes with full details
+            saved_recipes = self.execute_analytics_query("""
+                SELECT 
+                    sr.recipe_name,
+                    sr.recipe_source,
+                    sr.ingredients,
+                    sr.instructions,
+                    sr.macros,
+                    sr.complexity_level,
+                    sr.appliance_used,
+                    sr.servings,
+                    sr.prep_time,
+                    sr.created_at,
+                    sr.notes,
+                    -- Get cuisine info from scraped_recipes if available
+                    scr.cuisine,
+                    scr.title as original_title
+                FROM saved_recipes sr
+                LEFT JOIN scraped_recipes scr ON sr.scraped_recipe_id = scr.id
+                WHERE sr.user_id = %s
+                ORDER BY sr.created_at DESC
+            """, (user_id,), fetch_all=True)
+            
+            if not saved_recipes:
+                return {
+                    'has_saved_recipes': False,
+                    'total_saved': 0,
+                    'insights': [],
+                    'recommendations': []
+                }
+            
+            # Analyze saved recipe patterns
+            insights = {
+                'has_saved_recipes': True,
+                'total_saved': len(saved_recipes),
+                'recent_saves': len([r for r in saved_recipes if self._is_recent(r['created_at'], days=30)]),
+                'cuisine_patterns': self._analyze_saved_recipe_cuisines(saved_recipes),
+                'complexity_patterns': self._analyze_saved_recipe_complexity(saved_recipes),
+                'ingredient_patterns': self._analyze_saved_recipe_ingredients(saved_recipes),
+                'time_patterns': self._analyze_saved_recipe_timing(saved_recipes),
+                'recipe_suggestions': self._generate_similar_recipe_suggestions(saved_recipes),
+                'menu_integration_opportunities': self._identify_menu_integration_opportunities(saved_recipes)
+            }
+            
+            # Generate AI prompt suggestions based on saved recipes
+            ai_suggestions = []
+            
+            # Cuisine preferences from saved recipes
+            if insights['cuisine_patterns']['top_cuisines']:
+                ai_suggestions.append(f"User saves recipes from: {', '.join(insights['cuisine_patterns']['top_cuisines'][:3])}")
+            
+            # Complexity preferences
+            if insights['complexity_patterns']['preferred_complexity']:
+                ai_suggestions.append(f"User prefers {insights['complexity_patterns']['preferred_complexity']} complexity recipes")
+            
+            # Timing preferences  
+            if insights['time_patterns']['preferred_prep_time_range']:
+                ai_suggestions.append(f"User saves recipes with {insights['time_patterns']['preferred_prep_time_range']} prep time")
+            
+            # Recent activity
+            if insights['recent_saves'] > 0:
+                ai_suggestions.append(f"User has saved {insights['recent_saves']} recipes recently - showing active interest")
+            
+            insights['ai_prompt_suggestions'] = ai_suggestions
+            
+            logger.info(f"Saved recipes analysis complete: {insights['total_saved']} saved recipes, {len(ai_suggestions)} insights")
+            return insights
+            
+        except Exception as e:
+            logger.error(f"Error analyzing saved recipes for user {user_id}: {str(e)}")
+            return {
+                'has_saved_recipes': False,
+                'total_saved': 0,
+                'error': str(e)
+            }
+    
+    def _is_recent(self, date_str, days: int = 30) -> bool:
+        """Check if a date is within the last N days"""
+        try:
+            from datetime import datetime, timedelta
+            if isinstance(date_str, str):
+                date_obj = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+            else:
+                date_obj = date_str
+            cutoff = datetime.now().replace(tzinfo=None) - timedelta(days=days)
+            return date_obj.replace(tzinfo=None) > cutoff
+        except:
+            return False
+    
+    def _analyze_saved_recipe_cuisines(self, saved_recipes: List) -> Dict:
+        """Analyze cuisine patterns in saved recipes"""
+        cuisines = [r['cuisine'] for r in saved_recipes if r.get('cuisine')]
+        cuisine_counts = Counter(cuisines)
+        
+        return {
+            'top_cuisines': [cuisine for cuisine, count in cuisine_counts.most_common(5)],
+            'cuisine_diversity': len(set(cuisines)),
+            'cuisine_distribution': dict(cuisine_counts.most_common(10))
+        }
+    
+    def _analyze_saved_recipe_complexity(self, saved_recipes: List) -> Dict:
+        """Analyze complexity patterns in saved recipes"""
+        complexities = [r['complexity_level'] for r in saved_recipes if r.get('complexity_level')]
+        complexity_counts = Counter(complexities)
+        
+        # Map complexity to preference
+        preferred = complexity_counts.most_common(1)[0][0] if complexity_counts else None
+        
+        return {
+            'preferred_complexity': preferred,
+            'complexity_distribution': dict(complexity_counts),
+            'variety_in_complexity': len(set(complexities))
+        }
+    
+    def _analyze_saved_recipe_ingredients(self, saved_recipes: List) -> Dict:
+        """Analyze ingredient patterns in saved recipes"""
+        all_ingredients = []
+        
+        for recipe in saved_recipes:
+            if recipe.get('ingredients') and isinstance(recipe['ingredients'], list):
+                for ingredient in recipe['ingredients']:
+                    if isinstance(ingredient, dict) and 'name' in ingredient:
+                        all_ingredients.append(ingredient['name'].lower())
+                    elif isinstance(ingredient, str):
+                        all_ingredients.append(ingredient.lower())
+        
+        ingredient_counts = Counter(all_ingredients)
+        
+        return {
+            'common_ingredients': [ing for ing, count in ingredient_counts.most_common(10)],
+            'total_unique_ingredients': len(set(all_ingredients)),
+            'ingredient_frequency': dict(ingredient_counts.most_common(15))
+        }
+    
+    def _analyze_saved_recipe_timing(self, saved_recipes: List) -> Dict:
+        """Analyze timing patterns in saved recipes"""
+        prep_times = [r['prep_time'] for r in saved_recipes if r.get('prep_time') and r['prep_time'] > 0]
+        
+        if not prep_times:
+            return {'preferred_prep_time_range': 'unknown'}
+        
+        avg_prep_time = statistics.mean(prep_times)
+        
+        if avg_prep_time <= 20:
+            time_range = 'quick (≤20 min)'
+        elif avg_prep_time <= 45:
+            time_range = 'moderate (20-45 min)'
+        else:
+            time_range = 'longer (45+ min)'
+        
+        return {
+            'preferred_prep_time_range': time_range,
+            'average_prep_time': avg_prep_time,
+            'prep_time_distribution': {
+                'quick': len([t for t in prep_times if t <= 20]),
+                'moderate': len([t for t in prep_times if 20 < t <= 45]),
+                'longer': len([t for t in prep_times if t > 45])
+            }
+        }
+    
+    def _generate_similar_recipe_suggestions(self, saved_recipes: List) -> List[str]:
+        """Generate suggestions for similar recipes based on saved patterns"""
+        suggestions = []
+        
+        # Analyze common ingredients
+        all_ingredients = []
+        for recipe in saved_recipes:
+            if recipe.get('ingredients'):
+                for ingredient in recipe['ingredients']:
+                    if isinstance(ingredient, dict) and 'name' in ingredient:
+                        all_ingredients.append(ingredient['name'])
+        
+        common_ingredients = [ing for ing, count in Counter(all_ingredients).most_common(5)]
+        
+        if common_ingredients:
+            suggestions.append(f"Consider recipes featuring: {', '.join(common_ingredients[:3])}")
+        
+        # Analyze recipe names for patterns
+        recipe_names = [r['recipe_name'] for r in saved_recipes if r.get('recipe_name')]
+        
+        # Look for common cooking methods or recipe types
+        cooking_methods = []
+        for name in recipe_names:
+            name_lower = name.lower()
+            if 'stir fry' in name_lower or 'stir-fry' in name_lower:
+                cooking_methods.append('stir-fry')
+            elif 'roasted' in name_lower or 'roast' in name_lower:
+                cooking_methods.append('roasted')
+            elif 'grilled' in name_lower:
+                cooking_methods.append('grilled')
+            elif 'pasta' in name_lower:
+                cooking_methods.append('pasta')
+            elif 'soup' in name_lower:
+                cooking_methods.append('soup')
+        
+        common_methods = [method for method, count in Counter(cooking_methods).most_common(3)]
+        if common_methods:
+            suggestions.append(f"User enjoys {', '.join(common_methods)} style recipes")
+        
+        return suggestions
+    
+    def _identify_menu_integration_opportunities(self, saved_recipes: List) -> List[Dict]:
+        """Identify opportunities to integrate saved recipes into menu generation"""
+        opportunities = []
+        
+        # Recent saves that could be directly included
+        recent_recipes = [r for r in saved_recipes if self._is_recent(r['created_at'], days=60)]
+        
+        if recent_recipes:
+            opportunities.append({
+                'type': 'direct_inclusion',
+                'description': f'Include {len(recent_recipes)} recently saved recipes directly in menus',
+                'recipes': [r['recipe_name'] for r in recent_recipes[:5]],
+                'priority': 'high'
+            })
+        
+        # Highly saved ingredients for new recipe generation
+        ingredient_patterns = self._analyze_saved_recipe_ingredients(saved_recipes)
+        if ingredient_patterns['common_ingredients']:
+            opportunities.append({
+                'type': 'ingredient_based_generation',
+                'description': f"Generate new recipes using user's favorite ingredients",
+                'ingredients': ingredient_patterns['common_ingredients'][:5],
+                'priority': 'medium'
+            })
+        
+        # Cuisine expansion based on saved patterns
+        cuisine_patterns = self._analyze_saved_recipe_cuisines(saved_recipes)
+        if cuisine_patterns['top_cuisines']:
+            opportunities.append({
+                'type': 'cuisine_expansion',
+                'description': f"Explore variations within preferred cuisines",
+                'cuisines': cuisine_patterns['top_cuisines'][:3],
+                'priority': 'medium'
+            })
+        
+        return opportunities
 
 # Global analytics instance
 rating_analytics = RatingAnalytics()
