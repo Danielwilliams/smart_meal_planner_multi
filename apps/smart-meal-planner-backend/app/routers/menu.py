@@ -182,6 +182,33 @@ def convert_new_schema_to_old(day_json, required_meal_times, snacks_per_day=0):
     day_json["meals"] = meals
     return day_json
 
+def detect_duplicates_for_regeneration(day_json: Dict[str, Any]) -> List[str]:
+    """Detect duplicate titles that need regeneration, not just renaming"""
+    seen_titles = set()
+    duplicate_titles = []
+    
+    # Check meals
+    if 'meals' in day_json:
+        for meal in day_json['meals']:
+            title = meal.get('title', '').strip()
+            if title:
+                if title in seen_titles:
+                    if title not in duplicate_titles:
+                        duplicate_titles.append(title)
+                seen_titles.add(title)
+    
+    # Check snacks
+    if 'snacks' in day_json:
+        for snack in day_json['snacks']:
+            title = snack.get('title', '').strip()
+            if title:
+                if title in seen_titles:
+                    if title not in duplicate_titles:
+                        duplicate_titles.append(title)
+                seen_titles.add(title)
+    
+    return duplicate_titles
+
 def validate_meal_plan(
     day_json: Dict[str, Any],
     dietary_restrictions: List[str],
@@ -996,6 +1023,10 @@ IMPORTANT: Self-validate your response before finalizing. Ensure no disliked ing
 
         final_plan = meal_plan_data["meal_plan"]
         grocery_list = meal_plan_data.get("grocery_list", {})
+        
+        # 🔧 ADDED: Auto-fix duplicates in all days
+        for i, day in enumerate(final_plan.get("days", [])):
+            final_plan["days"][i] = auto_fix_duplicates(day)
 
         # Update progress
         if job_id:
@@ -1665,6 +1696,11 @@ LEVERAGE THIS: User has actively saved recipes - use this as strong signals for 
 
                             if 'meals' not in day_json or 'dayNumber' not in day_json:
                                 raise ValueError("JSON missing required keys")
+                            
+                            # 🔍 ADDED: Detect duplicates that need regeneration
+                            duplicate_titles = detect_duplicates_for_regeneration(day_json)
+                            if duplicate_titles:
+                                logger.warning(f"Detected duplicate titles requiring regeneration: {duplicate_titles}")
 
                             # Check for issues with the meal plan, including required meal times
                             issues = validate_meal_plan(
@@ -1699,14 +1735,16 @@ LEVERAGE THIS: User has actively saved recipes - use this as strong signals for 
                                         if 'disliked ingredient' in str(critical_issues).lower():
                                             user_prompt += f"\n\nREMINDER: ABSOLUTELY NO disliked ingredients: {', '.join(disliked_ingredients)}"
                                         if 'DUPLICATE' in str(critical_issues) or 'has been used before' in str(critical_issues).lower():
-                                            user_prompt += f"\n\n🚨 ABSOLUTELY NO DUPLICATE TITLES: Create completely unique meal names that have never been used before."
+                                            user_prompt += f"\n\n🚨 DUPLICATE TITLES DETECTED: You created these duplicate meal titles: {duplicate_titles if 'duplicate_titles' in locals() else 'multiple duplicates'}"
+                                            user_prompt += f"\n🚨 ABSOLUTELY NO DUPLICATE TITLES: Create completely DIFFERENT meals with unique names that have never been used before."
+                                            user_prompt += f"\nDO NOT just rename - create entirely different recipes with different ingredients and cooking methods."
                                         continue
                                     else:
                                         # Last attempt failed - this is unacceptable for critical issues
                                         raise HTTPException(500, f"Failed to generate valid menu after {MAX_RETRIES} attempts: {critical_issues}")
                                 
                                 elif minor_issues and attempt < MAX_RETRIES - 1:
-                                    # Only retry minor issues (time constraints, repeated titles) on early attempts  
+                                    # Only retry minor issues (time constraints, missing meals) on early attempts  
                                     serious_minor_issues = [issue for issue in minor_issues if ('repeated' in issue.lower() or 'missing' in issue.lower())]
                                     if serious_minor_issues:
                                         user_prompt += f"\n\n### Validation Feedback\nPlease fix these issues:\n" + "\n".join([f"- {issue}" for issue in serious_minor_issues])
