@@ -706,6 +706,15 @@ def generate_meal_plan_single_request(req: GenerateMealPlanRequest, job_id: str 
         else:
             recent_history_text = "- No previous menus found"
         
+        # 🚀 ADDED: Get learned user preferences from rating analytics
+        personalization_insights = None
+        try:
+            from ..ai.rating_analytics import rating_analytics
+            personalization_insights = rating_analytics.get_personalization_insights(req.user_id)
+            logger.info(f"🎯 Single-request: Loaded personalization insights for user {req.user_id}: {personalization_insights['recommendation_confidence']} confidence")
+        except Exception as e:
+            logger.warning(f"Failed to load personalization insights for single request: {e}")
+        
         # Build comprehensive system prompt for self-validation
         system_prompt = f"""You are an advanced meal planning assistant that creates complete, self-validated meal plans.
 
@@ -723,6 +732,24 @@ CRITICAL SELF-VALIDATION REQUIREMENTS - CHECK BEFORE RESPONDING:
 VARIETY IS CRITICAL: Create completely new and different meals from the user's previous menus. Be creative and avoid repetition.
 
 ONLY return a meal plan that passes ALL validation checks. Self-correct any issues during generation."""
+        
+        # 🎯 ADDED: Include learned personalization insights in single request prompt
+        if personalization_insights and personalization_insights['ai_prompt_suggestions']:
+            ai_suggestions = personalization_insights['ai_prompt_suggestions']
+            confidence = personalization_insights['recommendation_confidence']
+            preferences = personalization_insights['preferences']
+            
+            system_prompt += f"""
+
+🧠 LEARNED USER PREFERENCES ({confidence.upper()} CONFIDENCE):
+{chr(10).join([f"• {suggestion}" for suggestion in ai_suggestions])}
+
+CUISINE INTELLIGENCE (from {preferences['total_ratings']} ratings):
+• Preferred cuisines: {', '.join(preferences['cuisine_preferences']['top_cuisines'][:3]) if preferences['cuisine_preferences']['top_cuisines'] else 'Still learning'}
+• Cooking engagement: {preferences['behavioral_insights']['cooking_engagement']*100:.0f}% (actually makes recipes)
+• Recipe satisfaction: {preferences['behavioral_insights']['recipe_satisfaction']*100:.0f}% (would make again)
+
+USE THIS INTELLIGENCE to create meals the user will actually love and cook."""
 
         # Build comprehensive user prompt
         user_prompt = f"""Generate a complete {req.duration_days}-day meal plan that is self-validated and ready to use.
@@ -1340,6 +1367,15 @@ def generate_meal_plan_legacy(req: GenerateMealPlanRequest, job_id: str = None):
             
             recent_ingredients_str = ", ".join(recent_ingredients) if recent_ingredients else "None"
             
+            # 🚀 ADDED: Get learned user preferences from rating analytics
+            personalization_insights = None
+            try:
+                from ..ai.rating_analytics import rating_analytics
+                personalization_insights = rating_analytics.get_personalization_insights(req.user_id)
+                logger.info(f"🎯 Loaded personalization insights for user {req.user_id}: {personalization_insights['recommendation_confidence']} confidence")
+            except Exception as e:
+                logger.warning(f"Failed to load personalization insights: {e}")
+            
             # Create a more structured system prompt
             system_prompt = f"""You are an advanced meal planning assistant that creates detailed, nutritionally balanced meal plans.
             Your task is to generate meal plans with precise cooking instructions while strictly adhering to user preferences.
@@ -1361,6 +1397,26 @@ def generate_meal_plan_legacy(req: GenerateMealPlanRequest, job_id: str = None):
             Respect both dietary restrictions and detailed preferences to create personalized and practical meal plans.
             
             REMINDER: Absolutely NO disliked ingredients: {', '.join(disliked_ingredients) if disliked_ingredients else 'None'}"""
+            
+            # 🎯 ADDED: Include learned personalization insights in the prompt
+            if personalization_insights and personalization_insights['ai_prompt_suggestions']:
+                ai_suggestions = personalization_insights['ai_prompt_suggestions']
+                confidence = personalization_insights['recommendation_confidence']
+                preferences = personalization_insights['preferences']
+                
+                system_prompt += f"""
+
+🧠 LEARNED USER PREFERENCES ({confidence.upper()} CONFIDENCE):
+{chr(10).join([f"• {suggestion}" for suggestion in ai_suggestions])}
+
+CUISINE INTELLIGENCE (from {preferences['total_ratings']} ratings):
+• Preferred cuisines: {', '.join(preferences['cuisine_preferences']['top_cuisines'][:3]) if preferences['cuisine_preferences']['top_cuisines'] else 'Still learning'}
+• Cuisine diversity: {preferences['cuisine_preferences']['diversity_score']} different cuisines tried
+
+BEHAVIORAL INSIGHTS:
+• Cooking engagement: {preferences['behavioral_insights']['cooking_engagement']*100:.0f}% (recipes actually made)
+• Recipe satisfaction: {preferences['behavioral_insights']['recipe_satisfaction']*100:.0f}% (would make again)
+• Preferred time range: {preferences['time_preferences']['preferred_time_range']}"""
             
             # Create a more concise and structured user prompt
             user_prompt = f"""
