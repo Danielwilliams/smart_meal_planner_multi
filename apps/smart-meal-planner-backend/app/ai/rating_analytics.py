@@ -84,12 +84,8 @@ class RatingAnalytics:
                     sr.prep_time,
                     sr.cook_time,
                     sr.total_time,
-                    sr.servings,
-                    sr.ingredients,
-                    sr.categories,
-                    sr.diet_tags,
-                    sr.flavor_profile,
-                    sr.spice_level
+                    sr.servings
+                    -- Removed non-existent columns: ingredients, categories, diet_tags, flavor_profile, spice_level
                 FROM recipe_interactions ri
                 LEFT JOIN scraped_recipes sr ON ri.recipe_id = sr.id
                 WHERE ri.user_id = %s 
@@ -257,16 +253,18 @@ class RatingAnalytics:
         low_rated_ingredients = []
         
         for rating in ratings:
-            if rating['ingredients'] and rating['rating_score']:
-                try:
-                    ingredients = rating['ingredients'] if isinstance(rating['ingredients'], list) else []
-                    
-                    if rating['rating_score'] >= 4:
-                        high_rated_ingredients.extend(ingredients)
-                    elif rating['rating_score'] <= 2:
-                        low_rated_ingredients.extend(ingredients)
-                except:
-                    continue
+            # Skip - ingredients column doesn't exist in scraped_recipes
+            # if rating.get('ingredients') and rating['rating_score']:
+            #     try:
+            #         ingredients = rating['ingredients'] if isinstance(rating['ingredients'], list) else []
+            #         
+            #         if rating['rating_score'] >= 4:
+            #             high_rated_ingredients.extend(ingredients)
+            #         elif rating['rating_score'] <= 2:
+            #             low_rated_ingredients.extend(ingredients)
+            #     except:
+            #         continue
+            pass
         
         # Count ingredient frequencies
         liked_ingredients = Counter(high_rated_ingredients)
@@ -283,15 +281,17 @@ class RatingAnalytics:
         diet_scores = defaultdict(list)
         
         for rating in ratings:
-            if rating['diet_tags'] and rating['rating_score']:
-                try:
-                    diet_tags = rating['diet_tags'] if isinstance(rating['diet_tags'], dict) else {}
-                    
-                    for diet_type, applicable in diet_tags.items():
-                        if applicable:
-                            diet_scores[diet_type].append(rating['rating_score'])
-                except:
-                    continue
+            # Skip - diet_tags column doesn't exist in scraped_recipes
+            # if rating.get('diet_tags') and rating['rating_score']:
+            #     try:
+            #         diet_tags = rating['diet_tags'] if isinstance(rating['diet_tags'], dict) else {}
+            #         
+            #         for diet_type, applicable in diet_tags.items():
+            #             if applicable:
+            #                 diet_scores[diet_type].append(rating['rating_score'])
+            #     except:
+            #         continue
+            pass
         
         diet_preferences = {}
         for diet_type, scores in diet_scores.items():
@@ -311,18 +311,20 @@ class RatingAnalytics:
         spice_tolerance = []
         
         for rating in ratings:
-            if rating['flavor_profile'] and rating['rating_score']:
-                try:
-                    flavors = rating['flavor_profile'] if isinstance(rating['flavor_profile'], dict) else {}
-                    
-                    for flavor, intensity in flavors.items():
-                        if intensity > 0:
-                            flavor_scores[flavor].append(rating['rating_score'])
-                except:
-                    continue
-            
-            if rating['spice_level'] and rating['rating_score'] >= 4:
-                spice_tolerance.append(rating['spice_level'])
+            # Skip - flavor_profile and spice_level columns don't exist in scraped_recipes
+            # if rating.get('flavor_profile') and rating['rating_score']:
+            #     try:
+            #         flavors = rating['flavor_profile'] if isinstance(rating['flavor_profile'], dict) else {}
+            #         
+            #         for flavor, intensity in flavors.items():
+            #             if intensity > 0:
+            #                 flavor_scores[flavor].append(rating['rating_score'])
+            #     except:
+            #         continue
+            # 
+            # if rating.get('spice_level') and rating['rating_score'] >= 4:
+            #     spice_tolerance.append(rating['spice_level'])
+            pass
         
         flavor_preferences = {}
         for flavor, scores in flavor_scores.items():

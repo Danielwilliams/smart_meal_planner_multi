@@ -195,6 +195,22 @@ def validate_meal_plan(
     """Validate that the meal plan meets all requirements"""
     issues = []
     
+    # CRITICAL: Check for duplicate titles within this day's plan first
+    day_titles = set()
+    for meal in day_json.get("meals", []):
+        title = meal.get("title", "").strip()
+        if title:
+            if title in day_titles:
+                issues.append(f"🚨 DUPLICATE IN SAME DAY: '{title}' appears multiple times")
+            day_titles.add(title)
+    
+    for snack in day_json.get("snacks", []):
+        title = snack.get("title", "").strip()
+        if title:
+            if title in day_titles:
+                issues.append(f"🚨 DUPLICATE IN SAME DAY: '{title}' appears multiple times")
+            day_titles.add(title)
+    
     # Check for disliked ingredients
     for meal in day_json.get("meals", []):
         for ingredient in meal.get("ingredients", []):
