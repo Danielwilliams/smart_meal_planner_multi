@@ -743,6 +743,10 @@ class RatingAnalytics:
             
             insights['ai_prompt_suggestions'] = ai_suggestions
             
+            # 🍽️ NEW: Format actual saved recipes as AI examples
+            insights['recipe_examples'] = self._format_saved_recipes_for_ai(saved_recipes)
+            insights['direct_use_recipes'] = self._select_recipes_for_direct_use(saved_recipes)
+            
             logger.info(f"Saved recipes analysis complete: {insights['total_saved']} saved recipes, {len(ai_suggestions)} insights")
             return insights
             
@@ -915,6 +919,144 @@ class RatingAnalytics:
             })
         
         return opportunities
+    
+    def _format_saved_recipes_for_ai(self, saved_recipes: List) -> Dict:
+        """
+        Format saved recipes as examples for AI to use as inspiration
+        """
+        if not saved_recipes:
+            return {'examples': [], 'formatted_examples': ''}
+        
+        # Select the most relevant recipes (recent + diverse)
+        recent_recipes = [r for r in saved_recipes if self._is_recent(r['created_at'], days=60)][:8]
+        if len(recent_recipes) < 5:
+            # Add some older recipes if we don't have enough recent ones
+            older_recipes = [r for r in saved_recipes if not self._is_recent(r['created_at'], days=60)][:5]
+            recent_recipes.extend(older_recipes)
+        
+        formatted_examples = []
+        for recipe in recent_recipes[:8]:  # Limit to 8 examples to keep token usage reasonable
+            try:
+                # Parse ingredients if they're in JSON format
+                ingredients_list = []
+                if recipe['ingredients']:
+                    if isinstance(recipe['ingredients'], str):
+                        import json
+                        ingredients_data = json.loads(recipe['ingredients'])
+                    else:
+                        ingredients_data = recipe['ingredients']
+                    
+                    # Extract ingredient names
+                    if isinstance(ingredients_data, list):
+                        for ing in ingredients_data:
+                            if isinstance(ing, dict):
+                                ingredients_list.append(ing.get('name', str(ing)))
+                            else:
+                                ingredients_list.append(str(ing))
+                
+                # Format as AI example
+                example = {
+                    'title': recipe['recipe_name'] or recipe.get('original_title', 'Saved Recipe'),
+                    'cuisine': recipe.get('cuisine', 'Unknown'),
+                    'complexity': recipe.get('complexity_level', 'medium'),
+                    'prep_time': recipe.get('prep_time', 'unknown'),
+                    'servings': recipe.get('servings', 4),
+                    'main_ingredients': ingredients_list[:8],  # Top 8 ingredients
+                    'appliance': recipe.get('appliance_used'),
+                    'notes': recipe.get('notes', ''),
+                    'source': 'user_saved'
+                }
+                formatted_examples.append(example)
+                
+            except Exception as e:
+                logger.warning(f"Error formatting saved recipe: {str(e)}")
+                continue
+        
+        # Create formatted text for AI prompt
+        ai_prompt_text = ""
+        if formatted_examples:
+            ai_prompt_text = "USER'S SAVED RECIPES (use as inspiration):\n"
+            for i, example in enumerate(formatted_examples, 1):
+                ai_prompt_text += f"{i}. **{example['title']}** ({example['cuisine']} cuisine)\n"
+                ai_prompt_text += f"   • Complexity: {example['complexity']}\n"
+                if example['prep_time'] != 'unknown':
+                    ai_prompt_text += f"   • Prep time: {example['prep_time']} min\n"
+                if example['main_ingredients']:
+                    ingredients_str = ', '.join(example['main_ingredients'])
+                    ai_prompt_text += f"   • Key ingredients: {ingredients_str}\n"
+                if example['appliance']:
+                    ai_prompt_text += f"   • Uses: {example['appliance']}\n"
+                ai_prompt_text += "\n"
+        
+        return {
+            'examples': formatted_examples,
+            'formatted_examples': ai_prompt_text,
+            'count': len(formatted_examples)
+        }
+    
+    def _select_recipes_for_direct_use(self, saved_recipes: List) -> Dict:
+        """
+        Select saved recipes that can be used directly in meal plans
+        """
+        if not saved_recipes:
+            return {'direct_recipes': [], 'suggestions': ''}
+        
+        # Select recipes that are well-suited for direct inclusion
+        suitable_recipes = []
+        for recipe in saved_recipes[:15]:  # Check most recent 15
+            # Criteria for direct use: has clear ingredients, reasonable complexity
+            if (recipe['ingredients'] and 
+                recipe['recipe_name'] and
+                recipe.get('complexity_level') in ['easy', 'medium', 'complex', None]):
+                
+                try:
+                    # Parse ingredients to ensure they're usable
+                    if isinstance(recipe['ingredients'], str):
+                        import json
+                        ingredients_data = json.loads(recipe['ingredients'])
+                    else:
+                        ingredients_data = recipe['ingredients']
+                    
+                    if ingredients_data and len(ingredients_data) >= 3:  # At least 3 ingredients
+                        suitable_recipes.append({
+                            'title': recipe['recipe_name'],
+                            'cuisine': recipe.get('cuisine', 'American'),
+                            'complexity': recipe.get('complexity_level', 'medium'),
+                            'prep_time': recipe.get('prep_time', 30),
+                            'servings': recipe.get('servings', 4),
+                            'appliance': recipe.get('appliance_used'),
+                            'ingredients': ingredients_data,
+                            'instructions': recipe.get('instructions'),
+                            'macros': recipe.get('macros'),
+                            'notes': recipe.get('notes', ''),
+                            'created_at': recipe['created_at']
+                        })
+                        
+                except Exception as e:
+                    logger.warning(f"Error processing recipe for direct use: {str(e)}")
+                    continue
+        
+        # Sort by recency and limit
+        suitable_recipes = sorted(suitable_recipes, 
+                                key=lambda x: x['created_at'], reverse=True)[:5]
+        
+        # Create suggestions text
+        suggestions = ""
+        if suitable_recipes:
+            suggestions = f"DIRECT RECIPE SUGGESTIONS ({len(suitable_recipes)} available):\n"
+            suggestions += "• Include 1-2 of these saved recipes directly in the meal plan\n"
+            suggestions += "• User has actively saved these - high likelihood they'll actually cook them\n"
+            recipe_names = [r['title'] for r in suitable_recipes]
+            suggestions += f"• Available: {', '.join(recipe_names[:3])}"
+            if len(recipe_names) > 3:
+                suggestions += f" and {len(recipe_names)-3} more"
+            suggestions += "\n"
+        
+        return {
+            'direct_recipes': suitable_recipes,
+            'suggestions': suggestions,
+            'count': len(suitable_recipes)
+        }
 
 # Global analytics instance
 rating_analytics = RatingAnalytics()

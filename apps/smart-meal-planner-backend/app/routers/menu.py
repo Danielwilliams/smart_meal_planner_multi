@@ -1009,17 +1009,21 @@ USE THIS INTELLIGENCE to create meals the user will actually love and cook."""
 
 IMPORTANT: These are RECENT changes in user preferences. Adjust recommendations to reflect these evolving tastes while still maintaining variety."""
 
-        # 🥗 ADDED: Include saved recipes insights if available
+        # 🥗 ENHANCED: Include saved recipes with actual recipe examples
         if saved_recipes_insights and saved_recipes_insights['has_saved_recipes']:
             system_prompt += f"""
 
 💾 SAVED RECIPES INTELLIGENCE ({saved_recipes_insights['total_saved']} recipes saved):
 {chr(10).join([f"• {suggestion}" for suggestion in saved_recipes_insights.get('ai_prompt_suggestions', [])])}
 
+{saved_recipes_insights.get('recipe_examples', {}).get('formatted_examples', '')}
+
+{saved_recipes_insights.get('direct_use_recipes', {}).get('suggestions', '')}
+
 INTEGRATION OPPORTUNITIES:
 {chr(10).join([f"• {opp['description']}" for opp in saved_recipes_insights.get('menu_integration_opportunities', [])])}
 
-LEVERAGE THIS: User has actively saved recipes - use this as strong signals for what they actually want to cook."""
+LEVERAGE THIS: User has actively saved recipes - use these as templates and inspiration for generating similar meals they'll actually want to cook."""
 
         # Build comprehensive user prompt
         user_prompt = f"""Generate a complete {req.duration_days}-day meal plan that is self-validated and ready to use.
@@ -1726,17 +1730,21 @@ BEHAVIORAL INSIGHTS:
 
 IMPORTANT: These are RECENT changes in user preferences. Adjust recommendations to reflect these evolving tastes while still maintaining variety."""
 
-            # 🥗 ADDED: Include saved recipes insights if available
+            # 🥗 ENHANCED: Include saved recipes with actual recipe examples
             if saved_recipes_insights and saved_recipes_insights['has_saved_recipes']:
                 system_prompt += f"""
 
 💾 SAVED RECIPES INTELLIGENCE ({saved_recipes_insights['total_saved']} recipes saved):
 {chr(10).join([f"• {suggestion}" for suggestion in saved_recipes_insights.get('ai_prompt_suggestions', [])])}
 
+{saved_recipes_insights.get('recipe_examples', {}).get('formatted_examples', '')}
+
+{saved_recipes_insights.get('direct_use_recipes', {}).get('suggestions', '')}
+
 INTEGRATION OPPORTUNITIES:
 {chr(10).join([f"• {opp['description']}" for opp in saved_recipes_insights.get('menu_integration_opportunities', [])])}
 
-LEVERAGE THIS: User has actively saved recipes - use this as strong signals for what they actually want to cook."""
+LEVERAGE THIS: User has actively saved recipes - use these as templates and inspiration for generating similar meals they'll actually want to cook."""
             
             # Create a more concise and structured user prompt
             user_prompt = f"""
