@@ -26,6 +26,8 @@ async def get_scraped_recipes(
     """
     Get scraped recipes with optional filtering
     """
+    conn = None
+    cursor = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -136,12 +138,22 @@ async def get_scraped_recipes(
         logger.error(f"Error in get_scraped_recipes: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error fetching recipes: {str(e)}")
     finally:
-        cursor.close()
-        conn.close()
+        if cursor:
+            try:
+                cursor.close()
+            except:
+                pass
+        if conn:
+            try:
+                conn.close()
+            except:
+                pass
 
 @router.get("/count")
 async def get_recipe_count(user = Depends(get_user_from_token)):
     """Get the total number of scraped recipes"""
+    conn = None
+    cursor = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -153,8 +165,16 @@ async def get_recipe_count(user = Depends(get_user_from_token)):
         logger.error(f"Error in get_recipe_count: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error counting recipes: {str(e)}")
     finally:
-        cursor.close()
-        conn.close()
+        if cursor:
+            try:
+                cursor.close()
+            except:
+                pass
+        if conn:
+            try:
+                conn.close()
+            except:
+                pass
 
 @router.get("/{recipe_id}")
 async def get_scraped_recipe_by_id(
@@ -162,6 +182,8 @@ async def get_scraped_recipe_by_id(
     user = Depends(get_user_from_token)
 ):
     """Get a specific scraped recipe by ID"""
+    conn = None
+    cursor = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -229,5 +251,13 @@ async def get_scraped_recipe_by_id(
         logger.error(f"Error in get_scraped_recipe_by_id: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error fetching recipe: {str(e)}")
     finally:
-        cursor.close()
-        conn.close()
+        if cursor:
+            try:
+                cursor.close()
+            except:
+                pass
+        if conn:
+            try:
+                conn.close()
+            except:
+                pass
