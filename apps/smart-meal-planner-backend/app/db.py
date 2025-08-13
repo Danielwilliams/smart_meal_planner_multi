@@ -81,29 +81,15 @@ def get_db_connection():
     global _active_connections, _total_connections, _peak_connections, connection_pool
 
     try:
-        # Check if thread already has a connection assigned
+        # Temporarily disable thread-local connection reuse to prevent closed connection issues
+        # Always clear any existing thread-local connection to force fresh connections
         if hasattr(thread_local, 'connection') and thread_local.connection is not None:
-            # Verify the connection is still valid before using it
             try:
-                # Test if the connection is still alive
-                if thread_local.connection.closed:
-                    logger.warning("Thread-local connection was marked as closed - creating a new one")
-                    thread_local.connection = None
-                else:
-                    # Do a simple test query to verify the connection is still good
-                    with thread_local.connection.cursor() as test_cursor:
-                        test_cursor.execute("SELECT 1")
-                        test_cursor.fetchone()
-                        logger.debug("Reusing existing thread-local connection - verified active")
-                        return thread_local.connection
-            except Exception as e:
-                # Connection is not usable - clean it up and get a new one
-                logger.warning(f"Thread-local connection test failed: {str(e)} - creating a new one")
-                try:
+                if not thread_local.connection.closed:
                     thread_local.connection.close()
-                except:
-                    pass
-                thread_local.connection = None
+            except:
+                pass
+            thread_local.connection = None
 
         # Get connection from pool if available
         if connection_pool:
@@ -116,8 +102,8 @@ def get_db_connection():
                 _total_connections += 1
                 _peak_connections = max(_peak_connections, _active_connections)
 
-                # Store connection in thread-local storage for potential reuse
-                thread_local.connection = conn
+                # Don't store in thread-local to avoid closed connection issues
+                # thread_local.connection = conn
 
                 # Log connection stats periodically
                 if _total_connections % 100 == 0 or _active_connections > 50:
@@ -145,7 +131,8 @@ def get_db_connection():
                             if connection_pool:
                                 # Try again with the new pool
                                 conn = connection_pool.getconn(key=id(threading.current_thread()))
-                                thread_local.connection = conn
+                                # Don't store in thread-local to avoid issues
+                                # thread_local.connection = conn
                                 _active_connections += 1
                                 _total_connections += 1
                                 return conn
