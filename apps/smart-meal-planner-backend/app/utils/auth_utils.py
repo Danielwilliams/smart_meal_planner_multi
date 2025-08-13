@@ -108,7 +108,7 @@ async def get_user_organization_role(user_id: int):
             # Check if user has admin account_type in the system
             cur.execute("""
                 SELECT account_type FROM user_profiles
-                WHERE user_id = %s
+                WHERE id = %s
             """, (user_id,))
             user_record = cur.fetchone()
 
