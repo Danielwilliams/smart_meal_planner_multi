@@ -93,69 +93,74 @@ def get_db_connection():
 
         # Get connection from pool if available
         if connection_pool:
-            try:
-                # Get connection from pool
-                conn = connection_pool.getconn(key=id(threading.current_thread()))
-
-                # Update connection tracking
-                _active_connections += 1
-                _total_connections += 1
-                _peak_connections = max(_peak_connections, _active_connections)
-
-                # Don't store in thread-local to avoid closed connection issues
-                # thread_local.connection = conn
-
-                # Log connection stats periodically
-                if _total_connections % 100 == 0 or _active_connections > 50:
-                    logger.warning(f"Connection stats: active={_active_connections}, peak={_peak_connections}, total={_total_connections}")
-
-                # Make sure connection is in a clean state
+            max_retries = 3
+            for attempt in range(max_retries):
                 try:
-                    conn.rollback()
-                except Exception as e:
-                    logger.warning(f"Could not rollback connection: {str(e)}")
-
-                return conn
-            except Exception as pool_error:
-                if "connection pool exhausted" in str(pool_error):
-                    logger.critical(f"CONNECTION POOL EXHAUSTED! Active connections: {_active_connections}")
-                    # Try to emergency close all connections and recreate pool
+                    # Get connection from pool
+                    conn = connection_pool.getconn(key=id(threading.current_thread()))
+                    
+                    # Validate connection is actually open and working
+                    if conn.closed:
+                        logger.warning(f"Pool returned closed connection, attempt {attempt + 1}")
+                        # Return the bad connection and try again
+                        try:
+                            connection_pool.putconn(conn, close=True)
+                        except:
+                            pass
+                        continue
+                    
+                    # Test the connection with a simple query
                     try:
-                        if connection_pool:
-                            connection_pool.closeall()
-                            logger.critical("Emergency connection pool reset executed")
-                            _active_connections = 0
+                        with conn.cursor() as test_cur:
+                            test_cur.execute("SELECT 1")
+                            test_cur.fetchone()
+                    except Exception as e:
+                        logger.warning(f"Connection failed test query: {str(e)}, attempt {attempt + 1}")
+                        # Return the bad connection and try again
+                        try:
+                            connection_pool.putconn(conn, close=True)
+                        except:
+                            pass
+                        continue
 
-                            # Recreate the pool
-                            connection_pool = create_connection_pool()
-                            if connection_pool:
-                                # Try again with the new pool
-                                conn = connection_pool.getconn(key=id(threading.current_thread()))
-                                # Don't store in thread-local to avoid issues
-                                # thread_local.connection = conn
-                                _active_connections += 1
-                                _total_connections += 1
-                                return conn
-                    except Exception as reset_error:
-                        logger.error(f"Failed to reset connection pool: {str(reset_error)}")
+                    # Update connection tracking
+                    _active_connections += 1
+                    _total_connections += 1
+                    _peak_connections = max(_peak_connections, _active_connections)
 
-                # If pool error handling failed, fall through to direct connection
-                logger.error(f"Pool connection failed: {str(pool_error)}")
+                    # Log connection stats periodically
+                    if _total_connections % 100 == 0 or _active_connections > 50:
+                        logger.warning(f"Connection stats: active={_active_connections}, peak={_peak_connections}, total={_total_connections}")
 
-        # Direct connection as fallback when pool is unavailable or exhausted
-        logger.warning("Creating direct connection (pool unavailable or exhausted)")
+                    # Make sure connection is in a clean state
+                    try:
+                        conn.rollback()
+                    except Exception as e:
+                        logger.warning(f"Could not rollback connection: {str(e)}")
+
+                    return conn
+                except Exception as pool_error:
+                    logger.warning(f"Pool connection attempt {attempt + 1} failed: {str(pool_error)}")
+                    continue
+                    
+            # All pool attempts failed, log and fall through to direct connection
+            logger.error("All pool connection attempts failed, falling back to direct connection")
+            
+        # Pool is unavailable or all attempts failed - create direct connection
+        logger.warning("Creating direct connection (pool unavailable or all attempts failed)")
         conn = psycopg2.connect(
             dbname=DB_NAME,
             user=DB_USER,
             password=DB_PASSWORD,
             host=DB_HOST,
-            port=DB_PORT
+            port=DB_PORT,
+            connect_timeout=10
         )
-        # Set statement timeout even for direct connections
+        # Set statement timeout for direct connections
         with conn.cursor() as cursor:
             cursor.execute("SET statement_timeout = 30000")  # 30 seconds
         return conn
-
+    
     except Exception as e:
         logger.error(f"Failed to connect to database: {str(e)}")
         raise HTTPException(status_code=500, detail="Database connection error")
