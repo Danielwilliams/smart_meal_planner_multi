@@ -1254,7 +1254,6 @@ IMPORTANT: Self-validate your response before finalizing. Ensure no disliked ing
             }, force_db_update=True)
         raise HTTPException(500, f"Generation failed: {str(e)}")
 
-@router.post("/generate")
 async def _run_agent_pipeline(req: GenerateMealPlanRequest, job_id: str = None) -> dict:
     """Fetch prefs and run the 3-stage agent pipeline. Returns result dict."""
     from ..ai.pipeline_orchestrator import run_pipeline
