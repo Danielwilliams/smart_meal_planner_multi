@@ -664,3 +664,64 @@ def get_saved_recipe_by_id(user_id, saved_id):
     except Exception as e:
         logger.error(f"Error getting saved recipe by ID: {str(e)}")
         return None
+
+# ---------------------------------------------------------------------------
+# Agent pipeline helpers
+# ---------------------------------------------------------------------------
+
+def get_recent_ingredients(user_id: int, days: int = 3) -> list:
+    """Return distinct ingredient names used by this user in the last N days.
+
+    Used by the skeleton agent to build the ingredient cooldown blocklist.
+    Returns an empty list if the table doesn't exist yet or on any error.
+    """
+    try:
+        with get_db_cursor(dict_cursor=False, autocommit=True) as (cur, conn):
+            cur.execute(
+                """
+                SELECT DISTINCT ingredient_name
+                FROM ingredient_usage_log
+                WHERE user_id = %s
+                  AND used_on_date >= CURRENT_DATE - INTERVAL '%s days'
+                ORDER BY ingredient_name
+                """,
+                (user_id, days),
+            )
+            rows = cur.fetchall()
+            return [r[0] for r in rows] if rows else []
+    except Exception as exc:
+        logger.warning("get_recent_ingredients failed for user %s: %s", user_id, exc)
+        return []
+
+
+def bulk_insert_ingredient_usage(user_id: int, menu_id, rows: list) -> None:
+    """Bulk-insert ingredient usage rows and prune entries older than 14 days.
+
+    Each item in rows: (user_id, menu_id, ingredient_name, used_on_date, meal_time)
+    This is a convenience wrapper; the orchestrator also calls the same SQL directly
+    when it has an open cursor.
+    """
+    if not rows:
+        return
+    try:
+        with get_db_cursor(dict_cursor=False) as (cur, conn):
+            cur.executemany(
+                """
+                INSERT INTO ingredient_usage_log
+                    (user_id, menu_id, ingredient_name, used_on_date, meal_time)
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT DO NOTHING
+                """,
+                rows,
+            )
+            cur.execute(
+                """
+                DELETE FROM ingredient_usage_log
+                WHERE user_id = %s
+                  AND used_on_date < CURRENT_DATE - INTERVAL '14 days'
+                """,
+                (user_id,),
+            )
+            conn.commit()
+    except Exception as exc:
+        logger.warning("bulk_insert_ingredient_usage failed for user %s: %s", user_id, exc)

@@ -856,7 +856,8 @@ def generate_meal_plan_single_request(req: GenerateMealPlanRequest, job_id: str 
                        dietary_restrictions, disliked_ingredients, snacks_per_day,
                        flavor_preferences, spice_level, recipe_type_preferences,
                        meal_time_preferences, time_constraints, prep_preferences,
-                       preferred_proteins, other_proteins
+                       preferred_proteins, other_proteins,
+                       carb_cycling_enabled, carb_cycling_config, diet_type
                 FROM user_profiles WHERE id = %s
             """, (preference_user_id,))
             
@@ -1254,8 +1255,57 @@ IMPORTANT: Self-validate your response before finalizing. Ensure no disliked ing
         raise HTTPException(500, f"Generation failed: {str(e)}")
 
 @router.post("/generate")
+async def _run_agent_pipeline(req: GenerateMealPlanRequest, job_id: str = None) -> dict:
+    """Fetch prefs and run the 3-stage agent pipeline. Returns result dict."""
+    from ..ai.pipeline_orchestrator import run_pipeline
+
+    preference_user_id = req.for_client_id if req.for_client_id else req.user_id
+
+    with get_db_cursor(dict_cursor=True) as (cursor, conn):
+        cursor.execute("""
+            SELECT recipe_type, macro_protein, macro_carbs, macro_fat, calorie_goal,
+                   appliances, prep_complexity, servings_per_meal, meal_times,
+                   dietary_restrictions, disliked_ingredients, snacks_per_day,
+                   flavor_preferences, spice_level, recipe_type_preferences,
+                   meal_time_preferences, time_constraints, prep_preferences,
+                   preferred_proteins, other_proteins,
+                   carb_cycling_enabled, carb_cycling_config, diet_type
+            FROM user_profiles WHERE id = %s
+        """, (preference_user_id,))
+        prefs = cursor.fetchone()
+        if not prefs:
+            raise HTTPException(404, f"User {preference_user_id} not found")
+
+        result = await run_pipeline(
+            req=req,
+            prefs=dict(prefs),
+            cursor=cursor,
+            conn=conn,
+            user_id=preference_user_id,
+            job_id=job_id,
+        )
+    return result
+
+
 def generate_meal_plan_variety(req: GenerateMealPlanRequest, job_id: str = None):
     """Generate a meal plan - tries optimized method first, falls back to legacy if needed"""
+
+    # ---- Multi-agent pipeline (feature flag) ----
+    if os.getenv("USE_AGENT_PIPELINE", "false").lower() == "true":
+        try:
+            logger.info("🤖 PIPELINE: Using 3-stage agent pipeline for user %s", req.user_id)
+            result = asyncio.run(_run_agent_pipeline(req, job_id))
+            from ..utils.snack_enhancer import enhance_meal_plan_snacks
+            return enhance_meal_plan_snacks(result)
+        except Exception as exc:
+            logger.error("❌ PIPELINE: Agent pipeline failed, falling back to legacy: %s", exc)
+            import traceback
+            logger.error(traceback.format_exc())
+            if job_id:
+                batch_update_job_status(job_id, {
+                    "progress": 5,
+                    "message": "Pipeline failed, retrying with standard method..."
+                }, force_db_update=False)
 
     # Smart decision on generation method based on plan complexity
     meal_count_per_day = len(req.meal_times if hasattr(req, 'meal_times') else ['breakfast', 'lunch', 'dinner']) + req.snacks_per_day
