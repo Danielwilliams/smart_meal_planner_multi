@@ -185,7 +185,6 @@ def _build_day_prompt(
             "cuisine": meal.get("cuisine", ""),
             "primary_protein": meal.get("primary_protein", ""),
             "meal_format": meal.get("meal_format", ""),
-            "flavor_profile": meal.get("flavor_profile", ""),
             "servings": servings,
             "max_prep_plus_cook_minutes": tc_mins,
             "calorie_target": snack_cal_each if is_snack else cal_split.get(mt, round(effective_calories / 3)),

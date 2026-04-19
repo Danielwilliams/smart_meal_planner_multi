@@ -180,7 +180,7 @@ def _build_prompts(
     # ---- system prompt ----
     system_lines = [
         "You are a meal plan skeleton generator. Your ONLY job is to assign metadata "
-        "(cuisine, protein, meal format, carb tier) to each meal slot. "
+        "(cuisine, primary protein, meal format) to each meal slot. "
         "Do NOT write full recipes, ingredients, or instructions — only the skeleton.",
         "",
         "CUISINE DIVERSITY RULES:",
@@ -194,6 +194,12 @@ def _build_prompts(
         "",
         "FORMAT VARIETY RULES:",
         "  • Never assign the same meal format on consecutive days for the same meal time.",
+        "  • meal_format MUST be appropriate for the meal_time — use only these options:",
+        "      breakfast → scramble, bowl, toast, oatmeal, frittata, wrap, pancakes, smoothie-bowl, yogurt-parfait",
+        "      lunch     → salad, wrap, bowl, sandwich, soup, stir-fry, tacos, plate",
+        "      dinner    → stir-fry, roasted, pasta, tacos, curry, grill, bake, one-pot, skillet",
+        "      snack     → dip-and-veg, smoothie, energy-bites, fruit-and-nut, yogurt-parfait",
+        "  • NEVER assign a breakfast format (e.g. yogurt-parfait, oatmeal) to lunch or dinner.",
     ]
 
     if carb_cycling_on:
@@ -235,7 +241,6 @@ def _build_prompts(
                 "cuisine": "ASSIGN",
                 "primary_protein": "ASSIGN",
                 "meal_format": "ASSIGN",
-                "flavor_profile": "ASSIGN",
             })
         if snacks_per_day > 0:
             for s in range(snacks_per_day):
@@ -244,7 +249,6 @@ def _build_prompts(
                     "cuisine": "ASSIGN",
                     "primary_protein": "ASSIGN",
                     "meal_format": "ASSIGN",
-                    "flavor_profile": "ASSIGN",
                 })
         day_blocks.append(day_entry)
 
