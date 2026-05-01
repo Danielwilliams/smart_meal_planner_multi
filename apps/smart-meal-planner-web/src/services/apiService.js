@@ -146,17 +146,21 @@ const apiService = {
   // Authentication Endpoints
   async login(payload) {
     try {
+      // SECURITY: Never log the actual password - only log sanitized data
       console.log('Sending login request with payload:', {
         email: payload.email,
         hasPassword: !!payload.password,
         hasCaptcha: !!payload.captchaToken
       });
 
-      const resp = await axiosInstance.post('/auth/login', {
+      // Create a clean payload object to prevent password exposure in dev tools
+      const loginPayload = {
         email: payload.email,
         password: payload.password,
-        captcha_token: payload.captchaToken  // Note: backend might expect snake_case
-      });
+        captcha_token: payload.captchaToken
+      };
+
+      const resp = await axiosInstance.post('/auth/login', loginPayload);
       
       console.log('Login Response Status:', resp.status);
       return resp.data;
@@ -259,7 +263,51 @@ const apiService = {
           prepComplexity: 50,
           snacksPerDay: 0,
           servings_per_meal: 1,
-          kroger_store_location: null
+          kroger_store_location: null,
+          preferred_proteins: {
+            meat: { 
+              chicken: false, 
+              beef: false, 
+              pork: false, 
+              turkey: false, 
+              lamb: false, 
+              bison: false, 
+              other: false 
+            },
+            seafood: { 
+              salmon: false, 
+              tuna: false, 
+              cod: false, 
+              shrimp: false, 
+              crab: false, 
+              mussels: false, 
+              other: false 
+            },
+            vegetarian_vegan: { 
+              tofu: false, 
+              tempeh: false, 
+              seitan: false, 
+              lentils: false, 
+              chickpeas: false, 
+              black_beans: false, 
+              other: false 
+            },
+            other: { 
+              eggs: false, 
+              dairy_milk: false, 
+              dairy_yogurt: false, 
+              protein_powder_whey: false, 
+              protein_powder_pea: false, 
+              quinoa: false, 
+              other: false 
+            }
+          },
+          other_proteins: { 
+            meat: '', 
+            seafood: '', 
+            vegetarian_vegan: '', 
+            other: '' 
+          }
         };
       }
       throw err;
@@ -482,6 +530,21 @@ const apiService = {
       return response.data;
     } catch (err) {
       console.error("Error updating menu nickname:", err.response?.data || err.message);
+      throw err;
+    }
+  },
+
+  async deleteMenu(menuId) {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axiosInstance.delete(`/menu/${menuId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      return response.data;
+    } catch (err) {
+      console.error("Error deleting menu:", err.response?.data || err.message);
       throw err;
     }
   },
@@ -2057,7 +2120,7 @@ const apiService = {
         // Use URLSearchParams for proper OAuth 2.0 format
         const params = new URLSearchParams();
         params.append('code', code);
-        params.append('redirect_uri', 'https://smart-meal-planner-multi.vercel.app/kroger/callback');
+        params.append('redirect_uri', 'https://smartmealplannerio.com/kroger/callback');
         params.append('grant_type', 'authorization_code');
         params.append('state', 'from-frontend');
         
@@ -2104,7 +2167,7 @@ const apiService = {
           
           const resp = await axiosInstance.post('/kroger/process-code', {
             code,
-            redirect_uri: 'https://smart-meal-planner-multi.vercel.app/kroger/callback',
+            redirect_uri: 'https://smartmealplannerio.com/kroger/callback',
             grant_type: 'authorization_code'
           });
           
@@ -2137,7 +2200,7 @@ const apiService = {
             const resp = await axiosInstance.get('/kroger/auth-callback', {
               params: { 
                 code,
-                redirect_uri: 'https://smart-meal-planner-multi.vercel.app/kroger/callback',
+                redirect_uri: 'https://smartmealplannerio.com/kroger/callback',
                 grant_type: 'authorization_code',
                 state: 'from-frontend' 
               },
@@ -2254,7 +2317,7 @@ const apiService = {
       try {
         const response = await axiosInstance.post('/kroger/process-code', {
           code,
-          redirect_uri: redirectUri || 'https://smart-meal-planner-multi.vercel.app/kroger/callback'
+          redirect_uri: redirectUri || 'https://smartmealplannerio.com/kroger/callback'
         });
         
         console.log("Code processing response:", response.data);
@@ -2270,7 +2333,7 @@ const apiService = {
           const formData = new FormData();
           formData.append('grant_type', 'authorization_code');
           formData.append('code', code);
-          formData.append('redirect_uri', redirectUri || 'https://smart-meal-planner-multi.vercel.app/kroger/callback');
+          formData.append('redirect_uri', redirectUri || 'https://smartmealplannerio.com/kroger/callback');
           formData.append('client_id', 'smartmealplannerio-243261243034247652497361364a447078555731455949714a464f61656e5a676b444e552e42796961517a4f4576367156464b3564774c3039777a614700745159802496692');
           
           // Make the direct request to Kroger OAuth token endpoint
@@ -2291,7 +2354,7 @@ const apiService = {
             
             const params = new URLSearchParams();
             params.append('code', code);
-            params.append('redirect_uri', redirectUri || 'https://smart-meal-planner-multi.vercel.app/kroger/callback');
+            params.append('redirect_uri', redirectUri || 'https://smartmealplannerio.com/kroger/callback');
             params.append('state', 'from-frontend');
             
             const authResponse = await axiosInstance.post('/kroger/process-auth', params, {
@@ -3711,6 +3774,133 @@ const apiService = {
       return response.data;
     } catch (error) {
       console.error('PATCH request error:', error);
+      throw error;
+    }
+  },
+
+  // Rating API methods
+  async rateRecipe(recipeId, ratingData) {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axiosInstance.post(`/ratings/recipes/${recipeId}/rate`, ratingData, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Rate recipe error:', error);
+      throw error;
+    }
+  },
+
+  async getRecipeRatings(recipeId) {
+    try {
+      const response = await axiosInstance.get(`/ratings/recipes/${recipeId}/ratings`);
+      return response.data;
+    } catch (error) {
+      console.error('Get recipe ratings error:', error);
+      throw error;
+    }
+  },
+
+  async getMyRecipeRating(recipeId) {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axiosInstance.get(`/ratings/recipes/${recipeId}/my-rating`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Get my recipe rating error:', error);
+      throw error;
+    }
+  },
+
+  async rateMenu(menuId, ratingData) {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axiosInstance.post(`/ratings/menus/${menuId}/rate`, ratingData, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Rate menu error:', error);
+      throw error;
+    }
+  },
+
+  async getMenuRatings(menuId) {
+    try {
+      const response = await axiosInstance.get(`/ratings/menus/${menuId}/ratings`);
+      return response.data;
+    } catch (error) {
+      console.error('Get menu ratings error:', error);
+      throw error;
+    }
+  },
+
+  async quickRateSavedRecipe(savedRecipeId, rating) {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axiosInstance.post(`/ratings/saved-recipes/${savedRecipeId}/quick-rate`, {
+        quick_rating: rating
+      }, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Quick rate saved recipe error:', error);
+      throw error;
+    }
+  },
+
+  async getRatingPreferences() {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axiosInstance.get('/ratings/users/me/rating-preferences', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Get rating preferences error:', error);
+      throw error;
+    }
+  },
+
+  async getRecommendedRecipes(limit = 10) {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axiosInstance.get(`/ratings/recipes/recommended?limit=${limit}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Get recommended recipes error:', error);
+      throw error;
+    }
+  },
+
+  // Quick Rating for Saved Recipes
+  async updateQuickRating(savedRecipeId, rating) {
+    try {
+      const response = await axiosInstance.post(
+        `/ratings/saved-recipes/${savedRecipeId}/quick-rate`,
+        { quick_rating: rating }
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Update quick rating error:', error);
       throw error;
     }
   }

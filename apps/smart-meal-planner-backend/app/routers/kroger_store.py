@@ -249,12 +249,28 @@ async def add_to_kroger_cart(
         credentials = get_user_kroger_credentials(user_id)
         logger.info(f"Credentials from DB: {credentials}")
         
-        # Get location ID - try from credentials then default
-        location_id = credentials.get('store_location_id')
+        # Try to get location_id from request first, then credentials, then default
+        location_id = None
+
+        # Check if location_id was provided in the request (this should take precedence)
+        try:
+            req_data = req.dict()
+            if req_data.get('location_id'):
+                logger.info(f"Using location_id from request: {req_data.get('location_id')}")
+                location_id = req_data.get('location_id')
+        except Exception as loc_err:
+            logger.error(f"Error extracting location_id from request: {loc_err}")
+
+        # If no location_id in request, try from credentials
         if not location_id:
-            logger.warning(f"No store location ID for user {user_id}, using default")
-            # Default store if not found
-            location_id = "62000044"  # Use your store ID
+            location_id = credentials.get('store_location_id')
+            if location_id:
+                logger.info(f"Using location_id from database: {location_id}")
+            else:
+                logger.warning(f"No store location ID for user {user_id}, using default")
+                # Default store if not found
+                location_id = "62000044"  # Use your store ID
+                logger.info(f"Using default location_id: {location_id}")
             
         # Check if we have an access token in the DB or request
         access_token = credentials.get('access_token')

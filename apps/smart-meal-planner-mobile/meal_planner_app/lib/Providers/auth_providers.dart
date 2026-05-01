@@ -11,7 +11,7 @@ class AuthProvider extends ChangeNotifier {
   String? _userEmail;
   String? _accountType;
   bool _isOrganization = false;
-  
+
   // For debugging - allow direct inspection of raw account info
   Map<String, dynamic> _lastAccountResponse = {};
 
@@ -22,10 +22,10 @@ class AuthProvider extends ChangeNotifier {
   String? get userEmail => _userEmail;
   String? get accountType => _accountType;
   bool get isOrganization => _isOrganization;
-  
+
   // For debugging - allow access to the last account info response
   Map<String, dynamic> get lastAccountResponse => _lastAccountResponse;
-  
+
   // For debugging - provide methods to override account type
   void overrideAccountType(String type, bool isOrg) {
     _accountType = type;
@@ -41,10 +41,50 @@ class AuthProvider extends ChangeNotifier {
   AuthProvider() {
     _loadFromPrefs();
   }
-  
+
   // Getters for last credentials (would be properly secured in production)
   String? get lastEmail => _lastEmail;
   String? get lastPassword => _lastPassword;
+
+  // Check if token is expired and refresh if needed
+  Future<bool> refreshTokenIfNeeded() async {
+    print("⚙️ Checking if token needs refresh");
+    if (_authToken == null) {
+      print("No auth token exists - needs login");
+      return false;
+    }
+
+    try {
+      // Use JwtDecoder to check if token is expired
+      bool isExpired = JwtDecoder.isExpired(_authToken!);
+      print("Token expired check: $isExpired");
+
+      if (isExpired) {
+        print("🔄 Token has expired, attempting to refresh");
+
+        // If we have stored credentials, try to login again
+        if (_lastEmail != null && _lastPassword != null) {
+          print("Attempting to re-login with stored credentials");
+          return await login(_lastEmail!, _lastPassword!);
+        } else {
+          print("No stored credentials for automatic refresh");
+          return false;
+        }
+      }
+
+      // Token is still valid
+      return true;
+    } catch (e) {
+      print("Error checking token expiration: $e");
+      return false;
+    }
+  }
+
+  // Get valid auth token (refreshing if needed)
+  Future<String?> getValidToken() async {
+    await refreshTokenIfNeeded();
+    return _authToken;
+  }
 
   // Load auth data from SharedPreferences
   Future<void> _loadFromPrefs() async {
@@ -331,25 +371,25 @@ class AuthProvider extends ChangeNotifier {
   Future<bool> login(String email, String password) async {
     try {
       final result = await ApiService.login(email, password);
-      
+
       if (result != null && result["access_token"] != null) {
         _authToken = result["access_token"];
         _userId = ApiService.getUserIdFromToken(_authToken!);
-        
+
         if (_userId == null) {
           // Failed to extract user ID from token
           return false;
         }
-        
+
         // Extract user information
         if (result["user"] != null) {
           _userName = result["user"]["name"];
           _userEmail = result["user"]["email"];
-          
+
           // CRITICAL DEBUGGING: Print the entire login result
           print("==== FULL LOGIN USER OBJECT ====");
           print("User object keys: ${result["user"].keys.join(', ')}");
-            
+
           // Print all potential account type fields in user
           final userFields = ['account_type', 'accountType', 'type', 'role', 'userType'];
           for (String field in userFields) {
@@ -358,7 +398,7 @@ class AuthProvider extends ChangeNotifier {
             }
           }
           print("===============================");
-          
+
           // Look for account type in various fields
           final userTypeFields = ['account_type', 'accountType', 'type', 'role', 'userType'];
           for (String field in userTypeFields) {
@@ -368,11 +408,11 @@ class AuthProvider extends ChangeNotifier {
               break;
             }
           }
-          
+
           // CRITICAL: Detailed check for organization type
           print("🔍 Organization Detection: Checking account type '$_accountType'");
           _isOrganization = _accountType?.toLowerCase() == 'organization';
-          
+
           // If we don't have an account type yet, check for it in various places
           if (_accountType == null || _accountType!.isEmpty) {
             // Try to get account type from user object
@@ -382,7 +422,7 @@ class AuthProvider extends ChangeNotifier {
               _isOrganization = _accountType?.toLowerCase() == 'organization';
             }
           }
-          
+
           // Also check for explicit organization flag in user object
           if (result["user"].containsKey("is_organization")) {
             bool isOrgFlag = result["user"]["is_organization"] == true;
@@ -394,38 +434,38 @@ class AuthProvider extends ChangeNotifier {
               }
             }
           }
-          
+
           // Final organization status after all checks
           print("🔔 RESULT OF ORGANIZATION CHECKS: isOrganization=$_isOrganization, accountType=$_accountType");
         } else {
           _userEmail = email;
         }
-        
+
         // CRITICAL ORGANIZATION DETECTION DURING LOGIN
         print("\n🔥🔥🔥 CHECKING ORGANIZATION STATUS AT LOGIN TIME 🔥🔥🔥");
         print("LOGIN RESPONSE STRUCTURE: ${result.keys.toList()}");
-        
+
         // DUMP THE ENTIRE LOGIN RESPONSE FOR DEBUGGING
         print("========= COMPLETE LOGIN RESPONSE DUMP =========");
         result.forEach((key, value) {
           print("$key: $value ${value?.runtimeType}");
         });
         print("==============================================");
-        
+
         // If account_type is at the top level
         if (result["account_type"] != null) {
           _accountType = result["account_type"].toString();
           print("Found account_type at top level: '$_accountType'");
-          
+
           // DIRECTLY CHECK against all possible organization-related strings
           final acctTypeLC = _accountType?.toLowerCase() ?? '';
-          _isOrganization = acctTypeLC == 'organization' || 
-                           acctTypeLC == 'org' || 
+          _isOrganization = acctTypeLC == 'organization' ||
+                           acctTypeLC == 'org' ||
                            acctTypeLC.contains('organization');
-          
+
           print("Account type check result: $_isOrganization");
         }
-        
+
         // Additional check for organization flag at top level
         if (result.containsKey("is_organization")) {
           bool isOrgFlag = result["is_organization"] == true;
@@ -437,12 +477,12 @@ class AuthProvider extends ChangeNotifier {
             }
           }
         }
-        
+
         // Check user field for organization indicators
         if (result.containsKey("user") && result["user"] is Map) {
           final user = result["user"] as Map;
           print("Checking user object for organization indicators: ${user.keys.toList()}");
-          
+
           // Check account_type in user
           if (user.containsKey("account_type")) {
             String userAccountType = user["account_type"].toString();
@@ -452,7 +492,7 @@ class AuthProvider extends ChangeNotifier {
               _accountType = 'organization';
             }
           }
-          
+
           // Check is_organization flag in user
           if (user.containsKey("is_organization")) {
             bool userIsOrg = user["is_organization"] == true;
@@ -462,7 +502,7 @@ class AuthProvider extends ChangeNotifier {
               _accountType = 'organization';
             }
           }
-          
+
           // Check for organization_id in user - indicates a CLIENT account, not an organization account
           if (user.containsKey("organization_id") && user["organization_id"] != null) {
             print("User has organization_id: ${user["organization_id"]} - This indicates a CLIENT account (not an organization)");
@@ -470,7 +510,7 @@ class AuthProvider extends ChangeNotifier {
             _accountType = 'client';
           }
         }
-        
+
         // Check for organization_id at top level - indicates a CLIENT account, not an organization
         if (result.containsKey("organization_id") && result["organization_id"] != null) {
           print("Found organization_id at top level: ${result["organization_id"]} - This indicates a CLIENT account");
@@ -489,31 +529,31 @@ class AuthProvider extends ChangeNotifier {
             }
           }
         });
-        
+
         // No longer forcing organization status
         // _isOrganization = true;
         // _accountType = 'organization';
         // print("⚠️ FORCING ORGANIZATION STATUS FOR TESTING ⚠️");
         print("🔍 Using actual account type detection");
-        
+
         print("\n🔔 LOGIN ORGANIZATION DETECTION RESULT: 🔔");
         print("isOrganization: $_isOrganization");
         print("accountType: $_accountType");
-        
+
         // Store credentials for auto-refresh (would be securely stored in production)
         _lastEmail = email;
         _lastPassword = password;
-        
+
         _isLoggedIn = true;
         await _saveToPrefs();
-        
+
         // After login, fetch and update complete user account info
         if (_userId != null && _authToken != null) {
           print("\n⚠️ RUNNING ADDITIONAL ORGANIZATION STATUS CHECK ⚠️");
           await _checkOrganizationStatus();
           print("✅ FINAL organization status after all checks: $_isOrganization (account type: $_accountType)");
         }
-        
+
         notifyListeners();
         return true;
       }

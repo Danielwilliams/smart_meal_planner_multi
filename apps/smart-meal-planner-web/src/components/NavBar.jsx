@@ -36,7 +36,8 @@ import {
   Settings as SettingsIcon,
   AdminPanelSettings as AdminIcon,
   Build as CustomizeIcon,
-  Help as HelpIcon
+  Support as SupportIcon,
+  Payment as PaymentIcon
 } from '@mui/icons-material';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -120,7 +121,8 @@ function NavBar() {
   const moreItems = [
     { text: 'Custom Menu', icon: <CustomizeIcon />, path: '/custom-menu-builder' },
     { text: 'Preferences', icon: <SettingsIcon />, path: '/preferences-page' },
-    { text: 'Support & Help', icon: <HelpIcon />, path: '/support' }
+    { text: 'Subscription', icon: <PaymentIcon />, path: '/subscription' },
+    { text: 'Support', icon: <SupportIcon />, path: '/support' }
   ];
 
   // Navigation items based on user type
@@ -129,7 +131,7 @@ function NavBar() {
       return [
         { text: 'Home', icon: <HomeIcon />, path: '/' },
         { text: 'Login', icon: <PersonIcon />, path: '/login' },
-        { text: 'Sign Up', icon: <PersonIcon />, path: '/signup' }
+        { text: 'Get Subscription', icon: <PaymentIcon />, path: '/subscription' }
       ];
     }
     
@@ -145,6 +147,7 @@ function NavBar() {
     // Items that will appear in both main nav and drawer
     const mainItems = [
       { text: 'Home', icon: <HomeIcon />, path: '/' },
+      { text: 'Your Food Journey', icon: <DashboardIcon />, path: '/profile' },
       { text: 'Menu', icon: <RestaurantIcon />, path: '/menu' },
       { text: 'Shopping List', icon: <ListIcon />, path: '/shopping-list' },
       { text: 'Cart', icon: <CartIcon />, path: '/cart' },
@@ -154,10 +157,18 @@ function NavBar() {
     
     const items = [...mainItems, ...moreItems];
     
-    if (isOrgAccount || user?.account_type === 'admin') {
+    if (isOrgAccount) {
       items.push(
         { text: 'Recipe Admin', icon: <AdminIcon />, path: '/recipe-admin' },
-        { text: 'Manage Organization', icon: <DashboardIcon />, path: '/organization/dashboard' }
+        { text: 'Manage Organization', icon: <DashboardIcon />, path: '/organization/dashboard' },
+        { text: 'User Management', icon: <PersonIcon />, path: '/organization/users' }
+      );
+    }
+    
+    if (user?.account_type === 'admin') {
+      items.push(
+        { text: 'Recipe Admin', icon: <AdminIcon />, path: '/recipe-admin' },
+        { text: 'System User Management', icon: <PersonIcon />, path: '/admin/users' }
       );
     }
     
@@ -290,15 +301,40 @@ function NavBar() {
                           )}
                           
                           {isOrgAccount && (
+                            <>
+                              <MenuItem 
+                                component={Link} 
+                                to="/organization/dashboard"
+                                onClick={() => setMoreMenuAnchorEl(null)}
+                              >
+                                <ListItemIcon>
+                                  <DashboardIcon fontSize="small" />
+                                </ListItemIcon>
+                                <ListItemText>Organization</ListItemText>
+                              </MenuItem>
+                              <MenuItem 
+                                component={Link} 
+                                to="/organization/users"
+                                onClick={() => setMoreMenuAnchorEl(null)}
+                              >
+                                <ListItemIcon>
+                                  <PersonIcon fontSize="small" />
+                                </ListItemIcon>
+                                <ListItemText>User Management</ListItemText>
+                              </MenuItem>
+                            </>
+                          )}
+                          
+                          {user?.account_type === 'admin' && (
                             <MenuItem 
                               component={Link} 
-                              to="/organization/dashboard"
+                              to="/admin/users"
                               onClick={() => setMoreMenuAnchorEl(null)}
                             >
                               <ListItemIcon>
-                                <DashboardIcon fontSize="small" />
+                                <PersonIcon fontSize="small" />
                               </ListItemIcon>
-                              <ListItemText>Organization</ListItemText>
+                              <ListItemText>System User Management</ListItemText>
                             </MenuItem>
                           )}
                         </Menu>
@@ -326,8 +362,8 @@ function NavBar() {
                   <Button color="inherit" component={Link} to="/login">
                     Login
                   </Button>
-                  <Button color="inherit" component={Link} to="/signup">
-                    Sign Up
+                  <Button color="inherit" component={Link} to="/subscription">
+                    Get Subscription
                   </Button>
                 </>
               )}
@@ -389,8 +425,12 @@ function NavBar() {
               </Box>
             </MenuItem>
             <Divider />
+            <MenuItem onClick={() => { handleMenuClose(); navigate('/profile'); }}>
+              <DashboardIcon sx={{ mr: 1 }} fontSize="small" />
+              Your Food Journey
+            </MenuItem>
             <MenuItem onClick={() => { handleMenuClose(); navigate('/preferences-page'); }}>
-              <PersonIcon sx={{ mr: 1 }} fontSize="small" />
+              <SettingsIcon sx={{ mr: 1 }} fontSize="small" />
               Profile Settings
             </MenuItem>
             {isOrgAccount && (

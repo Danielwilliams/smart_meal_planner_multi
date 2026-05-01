@@ -1,10 +1,14 @@
 # app/routers/ai_status.py
-from fastapi import APIRouter, Path
+from fastapi import APIRouter, Path, Depends, HTTPException
 import os
 from pathlib import Path as FilePath
 import logging
 import threading
+import time
+from typing import Dict, Any
 from ..ai.training_scheduler import should_train_model, train_if_needed
+from ..db import get_db_cursor, get_connection_stats, close_all_connections
+from ..utils.auth_middleware import get_user_from_token
 
 router = APIRouter(prefix="/ai", tags=["AI"])
 
@@ -108,3 +112,80 @@ async def trigger_model_training(force: bool = False):
             "status": "error",
             "message": str(e)
         }
+
+@router.get("/db-stats")
+async def get_db_connection_stats(user = Depends(get_user_from_token)):
+    """Get database connection statistics"""
+    # Check if user is authenticated
+    if not user:
+        logger.error("Authentication required for DB stats")
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required"
+        )
+
+    # Check if user is admin
+    is_admin = user.get('is_admin', False)
+    if not is_admin:
+        logger.error(f"User {user.get('user_id')} attempted to access DB stats but is not admin")
+        raise HTTPException(
+            status_code=403,
+            detail="Admin access required"
+        )
+
+    # Get connection stats
+    stats = get_connection_stats()
+
+    # Test a database query to verify connection
+    connection_test = "failed"
+    try:
+        with get_db_cursor(dict_cursor=True, autocommit=True) as (cur, conn):
+            cur.execute("SELECT 1 as test")
+            result = cur.fetchone()
+            if result and result['test'] == 1:
+                connection_test = "success"
+    except Exception as e:
+        connection_test = f"error: {str(e)}"
+
+    return {
+        "stats": stats,
+        "connection_test": connection_test,
+        "timestamp": time.time()
+    }
+
+@router.post("/reset-db-connections")
+async def reset_db_connections(user = Depends(get_user_from_token)):
+    """Reset all database connections"""
+    # Check if user is authenticated
+    if not user:
+        logger.error("Authentication required for DB connection reset")
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required"
+        )
+
+    # Check if user is admin
+    is_admin = user.get('is_admin', False)
+    if not is_admin:
+        logger.error(f"User {user.get('user_id')} attempted to reset DB connections but is not admin")
+        raise HTTPException(
+            status_code=403,
+            detail="Admin access required"
+        )
+
+    # Get stats before reset
+    before_stats = get_connection_stats()
+
+    # Reset connections
+    success = close_all_connections()
+    logger.info(f"Database connection pool reset: {success}")
+
+    # Get stats after reset
+    after_stats = get_connection_stats()
+
+    return {
+        "success": success,
+        "before": before_stats,
+        "after": after_stats,
+        "timestamp": time.time()
+    }

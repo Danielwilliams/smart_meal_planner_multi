@@ -28,6 +28,7 @@ import {
 import apiService from '../services/apiService';
 import { useAuth } from '../context/AuthContext';
 import MacroDefaults from '../components/MacroDefaults';
+import OnboardingWalkthrough from '../components/ImprovedOnboardingWalkthrough';
 
 
 function PreferencesPage() {
@@ -52,6 +53,7 @@ function PreferencesPage() {
       Paleo: false,
       'Low-Carb': false,
       'Low-Fat': false,
+      'Low-Sodium': false,
       'Gluten-Free': false,
       'Dairy-Free': false,
       Other: false
@@ -153,6 +155,93 @@ function PreferencesPage() {
     'quick-assembly': false,
     'one-pot': false,
     'minimal-dishes': false
+  });
+
+  const [preferredProteins, setPreferredProteins] = useState({
+    meat: {
+      chicken: false,
+      beef: false,
+      pork: false,
+      turkey: false,
+      lamb: false,
+      bison: false,
+      other: false
+    },
+    seafood: {
+      salmon: false,
+      tuna: false,
+      cod: false,
+      shrimp: false,
+      crab: false,
+      mussels: false,
+      other: false
+    },
+    vegetarian_vegan: {
+      tofu: false,
+      tempeh: false,
+      seitan: false,
+      lentils: false,
+      chickpeas: false,
+      black_beans: false,
+      other: false
+    },
+    other: {
+      eggs: false,
+      dairy_milk: false,
+      dairy_yogurt: false,
+      protein_powder_whey: false,
+      protein_powder_pea: false,
+      quinoa: false,
+      other: false
+    }
+  });
+
+  const [otherProteins, setOtherProteins] = useState({
+    meat: '',
+    seafood: '',
+    vegetarian_vegan: '',
+    other: ''
+  });
+
+  // Carb cycling preferences state
+  const [carbCyclingEnabled, setCarbCyclingEnabled] = useState(false);
+  
+  const [carbCyclingConfig, setCarbCyclingConfig] = useState({
+    pattern: '3-1-3',
+    high_carb_grams: 200,
+    moderate_carb_grams: 100,
+    low_carb_grams: 50,
+    no_carb_grams: 20,
+    weekly_schedule: {
+      monday: 'high',
+      tuesday: 'low',
+      wednesday: 'high',
+      thursday: 'moderate',
+      friday: 'high',
+      saturday: 'low',
+      sunday: 'low'
+    },
+    sync_with_workouts: false,
+    workout_days: [],
+    custom_pattern: false,
+    pattern_options: [
+      {name: '3-1-3', description: '3 High, 1 Moderate, 3 Low carb days'},
+      {name: '2-2-3', description: '2 High, 2 Moderate, 3 Low carb days'},
+      {name: '4-0-3', description: '4 High, 0 Moderate, 3 Low carb days'},
+      {name: '5-0-2', description: '5 High, 0 Moderate, 2 Low carb days'},
+      {name: 'custom', description: 'Create your own custom pattern'}
+    ],
+    carb_ranges: {
+      high: {min: 150, max: 300, description: 'High carb days (workout/active days)'},
+      moderate: {min: 75, max: 150, description: 'Moderate carb days (light activity)'},
+      low: {min: 25, max: 75, description: 'Low carb days (rest days)'},
+      no_carb: {min: 0, max: 25, description: 'Very low carb days (advanced)'}
+    },
+    goals: {
+      primary: 'fat_loss',
+      secondary: 'maintain_muscle'
+    },
+    notes: ''
   });
 
   const [loading, setLoading] = useState(true);
@@ -270,6 +359,30 @@ function PreferencesPage() {
       
       if (existingPreferences.prep_preferences) {
         setPrepPreferences(existingPreferences.prep_preferences);
+      }
+      
+      // Load preferred proteins with robust null checking
+      if (existingPreferences.preferred_proteins && typeof existingPreferences.preferred_proteins === 'object' && Object.keys(existingPreferences.preferred_proteins).length > 0) {
+        setPreferredProteins(existingPreferences.preferred_proteins);
+      }
+      
+      // Load other proteins with null checking
+      if (existingPreferences.other_proteins && typeof existingPreferences.other_proteins === 'object') {
+        setOtherProteins(existingPreferences.other_proteins);
+      }
+      
+      // Load carb cycling preferences with robust null checking
+      if (existingPreferences.carb_cycling_enabled !== undefined && existingPreferences.carb_cycling_enabled !== null) {
+        setCarbCyclingEnabled(existingPreferences.carb_cycling_enabled);
+      }
+      
+      if (existingPreferences.carb_cycling_config && 
+          typeof existingPreferences.carb_cycling_config === 'object' && 
+          Object.keys(existingPreferences.carb_cycling_config).length > 0) {
+        setCarbCyclingConfig(prevConfig => ({
+          ...prevConfig,
+          ...existingPreferences.carb_cycling_config
+        }));
       }
       
       // Log the loaded preferences for debugging
@@ -442,7 +555,12 @@ useEffect(() => {
         recipe_type_preferences: recipeTypePreferences,
         meal_time_preferences: mealTimePreferences,
         time_constraints: timeConstraints,
-        prep_preferences: prepPreferences
+        prep_preferences: prepPreferences,
+        preferred_proteins: preferredProteins,
+        other_proteins: otherProteins,
+        // Carb cycling preferences
+        carb_cycling_enabled: carbCyclingEnabled,
+        carb_cycling_config: carbCyclingConfig
       };
 
       await apiService.savePreferences(prefsToSave);
@@ -489,7 +607,7 @@ useEffect(() => {
         </Typography>
 
         {/* Diet Types */}
-        <Box sx={{ mt: 3, mb: 2 }}>
+        <Box sx={{ mt: 3, mb: 2 }} data-testid="diet-types-section">
           <Typography variant="subtitle1" gutterBottom>
             Diet Types
           </Typography>
@@ -534,7 +652,7 @@ useEffect(() => {
         </Box>
 
         {/* Recipe Types */}
-        <Box sx={{ mt: 3, mb: 2 }}>
+        <Box sx={{ mt: 3, mb: 2 }} data-testid="recipe-types-section">
           <Typography variant="subtitle1" gutterBottom>
             Recipe Types
           </Typography>
@@ -578,6 +696,212 @@ useEffect(() => {
           )}
         </Box>
 
+        <Divider sx={{ my: 3 }} />
+
+        {/* Preferred Proteins */}
+        <Box sx={{ mt: 3, mb: 2 }} data-testid="preferred-proteins-section">
+          <Typography variant="subtitle1" gutterBottom>
+            Preferred Proteins
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Select the protein sources you prefer to see in your meals
+          </Typography>
+          
+          {/* Meat Proteins */}
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="subtitle2" gutterBottom sx={{ color: 'primary.main' }}>
+              Meat
+            </Typography>
+            <Grid container spacing={2}>
+              {Object.entries(preferredProteins?.meat || {})
+                .sort(([a], [b]) => a === 'other' ? 1 : b === 'other' ? -1 : a.localeCompare(b))
+                .map(([protein, selected]) => (
+                <Grid item xs={6} sm={4} key={protein}>
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={selected}
+                        onChange={(e) => {
+                          setPreferredProteins(prev => ({
+                            ...prev,
+                            meat: {
+                              ...prev.meat,
+                              [protein]: e.target.checked
+                            }
+                          }));
+                        }}
+                      />
+                    }
+                    label={protein === 'other' ? 'Other' : protein.charAt(0).toUpperCase() + protein.slice(1)}
+                  />
+                </Grid>
+              ))}
+            </Grid>
+            {preferredProteins?.meat?.other && (
+              <TextField
+                fullWidth
+                margin="normal"
+                label="Other Meat Proteins"
+                value={otherProteins?.meat || ''}
+                onChange={(e) => {
+                  setOtherProteins(prev => ({
+                    ...prev,
+                    meat: e.target.value
+                  }));
+                }}
+                placeholder="e.g., venison, duck, rabbit"
+                helperText="Specify other meat proteins, separated by commas"
+              />
+            )}
+          </Box>
+
+          {/* Seafood Proteins */}
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="subtitle2" gutterBottom sx={{ color: 'primary.main' }}>
+              Seafood
+            </Typography>
+            <Grid container spacing={2}>
+              {Object.entries(preferredProteins?.seafood || {})
+                .sort(([a], [b]) => a === 'other' ? 1 : b === 'other' ? -1 : a.localeCompare(b))
+                .map(([protein, selected]) => (
+                <Grid item xs={6} sm={4} key={protein}>
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={selected}
+                        onChange={(e) => {
+                          setPreferredProteins(prev => ({
+                            ...prev,
+                            seafood: {
+                              ...prev.seafood,
+                              [protein]: e.target.checked
+                            }
+                          }));
+                        }}
+                      />
+                    }
+                    label={protein === 'other' ? 'Other' : protein.charAt(0).toUpperCase() + protein.slice(1)}
+                  />
+                </Grid>
+              ))}
+            </Grid>
+            {preferredProteins?.seafood?.other && (
+              <TextField
+                fullWidth
+                margin="normal"
+                label="Other Seafood Proteins"
+                value={otherProteins?.seafood || ''}
+                onChange={(e) => {
+                  setOtherProteins(prev => ({
+                    ...prev,
+                    seafood: e.target.value
+                  }));
+                }}
+                placeholder="e.g., lobster, scallops, mackerel"
+                helperText="Specify other seafood proteins, separated by commas"
+              />
+            )}
+          </Box>
+
+          {/* Vegetarian/Vegan Proteins */}
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="subtitle2" gutterBottom sx={{ color: 'primary.main' }}>
+              Vegetarian/Vegan
+            </Typography>
+            <Grid container spacing={2}>
+              {Object.entries(preferredProteins?.vegetarian_vegan || {})
+                .sort(([a], [b]) => a === 'other' ? 1 : b === 'other' ? -1 : a.localeCompare(b))
+                .map(([protein, selected]) => (
+                <Grid item xs={6} sm={4} key={protein}>
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={selected}
+                        onChange={(e) => {
+                          setPreferredProteins(prev => ({
+                            ...prev,
+                            vegetarian_vegan: {
+                              ...prev.vegetarian_vegan,
+                              [protein]: e.target.checked
+                            }
+                          }));
+                        }}
+                      />
+                    }
+                    label={protein === 'other' ? 'Other' : protein.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                  />
+                </Grid>
+              ))}
+            </Grid>
+            {preferredProteins?.vegetarian_vegan?.other && (
+              <TextField
+                fullWidth
+                margin="normal"
+                label="Other Vegetarian/Vegan Proteins"
+                value={otherProteins?.vegetarian_vegan || ''}
+                onChange={(e) => {
+                  setOtherProteins(prev => ({
+                    ...prev,
+                    vegetarian_vegan: e.target.value
+                  }));
+                }}
+                placeholder="e.g., hemp seeds, spirulina, nutritional yeast"
+                helperText="Specify other vegetarian/vegan proteins, separated by commas"
+              />
+            )}
+          </Box>
+
+          {/* Other Proteins */}
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="subtitle2" gutterBottom sx={{ color: 'primary.main' }}>
+              Other
+            </Typography>
+            <Grid container spacing={2}>
+              {Object.entries(preferredProteins?.other || {})
+                .sort(([a], [b]) => a === 'other' ? 1 : b === 'other' ? -1 : a.localeCompare(b))
+                .map(([protein, selected]) => (
+                <Grid item xs={6} sm={4} key={protein}>
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={selected}
+                        onChange={(e) => {
+                          setPreferredProteins(prev => ({
+                            ...prev,
+                            other: {
+                              ...prev.other,
+                              [protein]: e.target.checked
+                            }
+                          }));
+                        }}
+                      />
+                    }
+                    label={protein === 'other' ? 'Other' : protein.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                  />
+                </Grid>
+              ))}
+            </Grid>
+            {preferredProteins?.other?.other && (
+              <TextField
+                fullWidth
+                margin="normal"
+                label="Other Protein Sources"
+                value={otherProteins?.other || ''}
+                onChange={(e) => {
+                  setOtherProteins(prev => ({
+                    ...prev,
+                    other: e.target.value
+                  }));
+                }}
+                placeholder="e.g., cricket flour, algae, bone broth"
+                helperText="Specify other protein sources, separated by commas"
+              />
+            )}
+          </Box>
+        </Box>
+
+        <Divider sx={{ my: 3 }} />
+
         {/* Dietary Restrictions and Disliked Ingredients */}
         <TextField
           name="dietaryRestrictions"
@@ -589,20 +913,22 @@ useEffect(() => {
           helperText="Enter dietary restrictions, separated by commas"
         />
 
-        <TextField
-          name="dislikedIngredients"
-          label="Disliked Ingredients"
-          fullWidth
-          margin="normal"
-          value={preferences.dislikedIngredients}
-          onChange={handleChange}
-          helperText="Enter ingredients you dislike, separated by commas"
-        />
+        <Box data-testid="disliked-ingredients-section">
+          <TextField
+            name="dislikedIngredients"
+            label="Disliked Ingredients"
+            fullWidth
+            margin="normal"
+            value={preferences.dislikedIngredients}
+            onChange={handleChange}
+            helperText="Enter ingredients you dislike, separated by commas"
+          />
+        </Box>
 
         {/* Removed basic Meal Times section in favor of detailed Meal Schedule below */}
         
         {/* Meal Schedule (Enhanced) - Moved above servings per meal */}
-        <Box sx={{ mt: 3, mb: 2 }}>
+        <Box sx={{ mt: 3, mb: 2 }} data-testid="meal-schedule-section">
           <Typography variant="subtitle1" gutterBottom>
             Meal Schedule
           </Typography>
@@ -989,6 +1315,208 @@ useEffect(() => {
 
         {/* Meal Schedule section has been moved above Servings per Meal */}
 
+        <Divider sx={{ my: 3 }} />
+
+        {/* Carb Cycling Preferences */}
+        <Box sx={{ mt: 3, mb: 2 }}>
+          <Typography variant="subtitle1" gutterBottom>
+            Carb Cycling Preferences
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Systematically vary your carbohydrate intake throughout the week to optimize fat loss, performance, and metabolic flexibility.
+          </Typography>
+
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={carbCyclingEnabled}
+                onChange={(e) => setCarbCyclingEnabled(e.target.checked)}
+              />
+            }
+            label="Enable Carb Cycling"
+            sx={{ mb: 2 }}
+          />
+
+          {carbCyclingEnabled && (
+            <Box sx={{ pl: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 2 }}>
+              {/* Carb Cycling Pattern */}
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Carb Cycling Pattern
+                </Typography>
+                <FormControl fullWidth sx={{ mb: 2 }}>
+                  <Select
+                    value={carbCyclingConfig.pattern}
+                    onChange={(e) => {
+                      const newPattern = e.target.value;
+                      setCarbCyclingConfig(prev => ({
+                        ...prev,
+                        pattern: newPattern,
+                        custom_pattern: newPattern === 'custom'
+                      }));
+                    }}
+                  >
+                    {carbCyclingConfig.pattern_options.map((option) => (
+                      <MenuItem key={option.name} value={option.name}>
+                        {option.description}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                  <FormHelperText>
+                    Choose a pre-set pattern or create your own custom schedule
+                  </FormHelperText>
+                </FormControl>
+              </Box>
+
+              {/* Carb Targets */}
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Daily Carb Targets (grams)
+                </Typography>
+                <Grid container spacing={2}>
+                  <Grid item xs={6} sm={3}>
+                    <TextField
+                      label="High Carb Days"
+                      type="number"
+                      value={carbCyclingConfig.high_carb_grams}
+                      onChange={(e) => setCarbCyclingConfig(prev => ({
+                        ...prev,
+                        high_carb_grams: parseInt(e.target.value) || 200
+                      }))}
+                      InputProps={{
+                        inputProps: { min: 100, max: 400 }
+                      }}
+                      helperText="150-300g typical"
+                      fullWidth
+                    />
+                  </Grid>
+                  <Grid item xs={6} sm={3}>
+                    <TextField
+                      label="Moderate Carb Days"
+                      type="number"
+                      value={carbCyclingConfig.moderate_carb_grams}
+                      onChange={(e) => setCarbCyclingConfig(prev => ({
+                        ...prev,
+                        moderate_carb_grams: parseInt(e.target.value) || 100
+                      }))}
+                      InputProps={{
+                        inputProps: { min: 50, max: 200 }
+                      }}
+                      helperText="75-150g typical"
+                      fullWidth
+                    />
+                  </Grid>
+                  <Grid item xs={6} sm={3}>
+                    <TextField
+                      label="Low Carb Days"
+                      type="number"
+                      value={carbCyclingConfig.low_carb_grams}
+                      onChange={(e) => setCarbCyclingConfig(prev => ({
+                        ...prev,
+                        low_carb_grams: parseInt(e.target.value) || 50
+                      }))}
+                      InputProps={{
+                        inputProps: { min: 20, max: 100 }
+                      }}
+                      helperText="25-75g typical"
+                      fullWidth
+                    />
+                  </Grid>
+                  <Grid item xs={6} sm={3}>
+                    <TextField
+                      label="No Carb Days"
+                      type="number"
+                      value={carbCyclingConfig.no_carb_grams}
+                      onChange={(e) => setCarbCyclingConfig(prev => ({
+                        ...prev,
+                        no_carb_grams: parseInt(e.target.value) || 20
+                      }))}
+                      InputProps={{
+                        inputProps: { min: 0, max: 30 }
+                      }}
+                      helperText="<25g advanced"
+                      fullWidth
+                    />
+                  </Grid>
+                </Grid>
+              </Box>
+
+              {/* Weekly Schedule */}
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Weekly Carb Schedule
+                </Typography>
+                <Grid container spacing={2}>
+                  {Object.entries(carbCyclingConfig.weekly_schedule).map(([day, carbLevel]) => (
+                    <Grid item xs={12} sm={6} md={4} key={day}>
+                      <FormControl fullWidth>
+                        <InputLabel>{day.charAt(0).toUpperCase() + day.slice(1)}</InputLabel>
+                        <Select
+                          value={carbLevel}
+                          label={day.charAt(0).toUpperCase() + day.slice(1)}
+                          onChange={(e) => setCarbCyclingConfig(prev => ({
+                            ...prev,
+                            weekly_schedule: {
+                              ...prev.weekly_schedule,
+                              [day]: e.target.value
+                            }
+                          }))}
+                        >
+                          <MenuItem value="high">High ({carbCyclingConfig.high_carb_grams}g)</MenuItem>
+                          <MenuItem value="moderate">Moderate ({carbCyclingConfig.moderate_carb_grams}g)</MenuItem>
+                          <MenuItem value="low">Low ({carbCyclingConfig.low_carb_grams}g)</MenuItem>
+                          <MenuItem value="no_carb">No Carb ({carbCyclingConfig.no_carb_grams}g)</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                  ))}
+                </Grid>
+              </Box>
+
+              {/* Goals */}
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Primary Goal
+                </Typography>
+                <RadioGroup
+                  row
+                  value={carbCyclingConfig.goals.primary}
+                  onChange={(e) => setCarbCyclingConfig(prev => ({
+                    ...prev,
+                    goals: {
+                      ...prev.goals,
+                      primary: e.target.value
+                    }
+                  }))}
+                >
+                  <FormControlLabel value="fat_loss" control={<Radio />} label="Fat Loss" />
+                  <FormControlLabel value="muscle_gain" control={<Radio />} label="Muscle Gain" />
+                  <FormControlLabel value="performance" control={<Radio />} label="Performance" />
+                  <FormControlLabel value="maintenance" control={<Radio />} label="Maintenance" />
+                </RadioGroup>
+              </Box>
+
+              {/* Notes */}
+              <Box sx={{ mb: 2 }}>
+                <TextField
+                  label="Notes"
+                  multiline
+                  rows={2}
+                  value={carbCyclingConfig.notes}
+                  onChange={(e) => setCarbCyclingConfig(prev => ({
+                    ...prev,
+                    notes: e.target.value
+                  }))}
+                  placeholder="Add any notes about your carb cycling approach..."
+                  fullWidth
+                />
+              </Box>
+            </Box>
+          )}
+        </Box>
+
+        <Divider sx={{ my: 3 }} />
+
         {/* Kroger Integration Note */}
         <Box sx={{ mb: 3 }}>
           <Typography variant="subtitle1" gutterBottom>
@@ -1029,11 +1557,13 @@ useEffect(() => {
             color="primary"
             fullWidth
             onClick={handleSave}
+            data-testid="save-preferences-button"
           >
             Save Preferences
           </Button>
         </Box>
       </Paper>
+      <OnboardingWalkthrough />
     </Container>
   );
 }

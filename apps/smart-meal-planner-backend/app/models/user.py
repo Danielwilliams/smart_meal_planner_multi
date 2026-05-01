@@ -7,6 +7,12 @@ class UserProgress(BaseModel):
     has_preferences: Optional[bool] = None
     has_generated_menu: Optional[bool] = None
     has_shopping_list: Optional[bool] = None
+    # Walkthrough progress fields
+    walkthrough_preferences_completed: Optional[bool] = None
+    walkthrough_menu_completed: Optional[bool] = None
+    walkthrough_recipe_browser_completed: Optional[bool] = None
+    walkthrough_shopping_completed: Optional[bool] = None
+    walkthrough_completed: Optional[bool] = None
 
 class UserProfileResponse(BaseModel):
     id: int
@@ -68,9 +74,6 @@ class PreferencesUpdate(BaseModel):
     # Macro goals (nested object)
     macroGoals: Optional[Dict[str, Union[int, str]]] = None
     
-    # Kroger credentials are no longer stored directly
-    # Authentication now uses OAuth flow
-    
     # Advanced preferences (matching individual user model)
     flavorPreferences: Optional[Dict[str, bool]] = None
     spiceLevel: Optional[str] = None
@@ -78,6 +81,9 @@ class PreferencesUpdate(BaseModel):
     mealTimePreferences: Optional[Dict[str, bool]] = None
     timeConstraints: Optional[Dict[str, int]] = None
     prepPreferences: Optional[Dict[str, bool]] = None
+    
+    # Preferred proteins (nested object with categories)
+    preferredProteins: Optional[Dict[str, Dict[str, bool]]] = None
     
     # Legacy field mapping for backward compatibility
     diet_type: Optional[str] = None  # Will be converted from dietTypes
@@ -89,10 +95,6 @@ class PreferencesUpdate(BaseModel):
     macro_carbs: Optional[int] = None  # Will be extracted from macroGoals
     macro_fat: Optional[int] = None  # Will be extracted from macroGoals
     calorie_goal: Optional[int] = None  # Will be extracted from macroGoals
-    # Kroger credentials are no longer stored directly
-    # The following fields are kept as None for backward compatibility
-    kroger_username: Optional[str] = None
-    kroger_password: Optional[str] = None
     prep_complexity: Optional[int] = None  # Alias for prepComplexity
     servings_per_meal: Optional[int] = None  # Alias for servingsPerMeal
     snacks_per_day: Optional[int] = None  # Alias for snacksPerDay
@@ -102,6 +104,17 @@ class PreferencesUpdate(BaseModel):
     meal_time_preferences: Optional[Dict[str, bool]] = None  # Alias for mealTimePreferences
     time_constraints: Optional[Dict[str, int]] = None  # Alias for timeConstraints
     prep_preferences: Optional[Dict[str, bool]] = None  # Alias for prepPreferences
+    preferred_proteins: Optional[Dict[str, Dict[str, bool]]] = None  # Alias for preferredProteins
+    
+    # Other proteins (custom text for each category)
+    otherProteins: Optional[Dict[str, str]] = None
+    other_proteins: Optional[Dict[str, str]] = None  # Alias for otherProteins
+    
+    # Carb cycling preferences
+    carbCyclingEnabled: Optional[bool] = None
+    carb_cycling_enabled: Optional[bool] = None  # Alias for carbCyclingEnabled
+    carbCyclingConfig: Optional[Dict[str, Any]] = None
+    carb_cycling_config: Optional[Dict[str, Any]] = None  # Alias for carbCyclingConfig
 
 
 class GenerateMenuRequest(BaseModel):
@@ -266,6 +279,9 @@ class UserWithRole(BaseModel):
     profile_complete: bool
     organization_id: Optional[int] = None
     role: Optional[str] = None
+    is_active: bool = True
+    paused_at: Optional[datetime] = None
+    pause_reason: Optional[str] = None
 
 class ClientInvitation(BaseModel):
     email: str
@@ -725,3 +741,52 @@ class UserRecipeListItem(BaseModel):
     created_at: datetime
     created_by_user_id: Optional[int] = None
     created_by_organization_id: Optional[int] = None
+
+# User Management Models
+
+class UserManagementAction(BaseModel):
+    """Model for user management actions"""
+    action: str  # 'pause', 'unpause', 'delete'
+    reason: Optional[str] = None
+    send_notification: bool = True
+
+class UserManagementLog(BaseModel):
+    """Model for user management audit logs"""
+    id: int
+    user_id: int
+    action: str
+    performed_by: int
+    performed_at: datetime
+    reason: Optional[str] = None
+    metadata: Dict[str, Any] = {}
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
+
+class UserListFilter(BaseModel):
+    """Model for filtering user lists"""
+    organization_id: Optional[int] = None
+    is_active: Optional[bool] = None
+    is_paused: Optional[bool] = None
+    search_query: Optional[str] = None
+    role: Optional[str] = None
+    created_after: Optional[datetime] = None
+    created_before: Optional[datetime] = None
+    limit: int = Field(default=50, le=100)
+    offset: int = Field(default=0, ge=0)
+
+class UserListResponse(BaseModel):
+    """Model for user list response with pagination"""
+    users: List[UserWithRole]
+    total_count: int
+    limit: int
+    offset: int
+    has_more: bool
+
+class UserManagementPermissions(BaseModel):
+    """Model for user management permissions"""
+    can_pause_users: bool = False
+    can_delete_users: bool = False
+    can_restore_users: bool = False
+    can_view_all_users: bool = False
+    can_manage_org_users: bool = False
+    is_system_admin: bool = False

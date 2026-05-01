@@ -58,6 +58,7 @@ function ClientPreferencesPage() {
       Paleo: false,
       'Low-Carb': false,
       'Low-Fat': false,
+      'Low-Sodium': false,
       'Gluten-Free': false,
       'Dairy-Free': false,
       Other: false
@@ -161,6 +162,80 @@ function ClientPreferencesPage() {
     'minimal-dishes': false
   });
 
+  const [preferredProteins, setPreferredProteins] = useState({
+    meat: {
+      chicken: false,
+      beef: false,
+      pork: false,
+      turkey: false,
+      lamb: false,
+      bison: false,
+      other: false
+    },
+    seafood: {
+      salmon: false,
+      tuna: false,
+      cod: false,
+      shrimp: false,
+      crab: false,
+      mussels: false,
+      other: false
+    },
+    vegetarian_vegan: {
+      tofu: false,
+      tempeh: false,
+      seitan: false,
+      lentils: false,
+      chickpeas: false,
+      black_beans: false,
+      other: false
+    },
+    other: {
+      eggs: false,
+      dairy_milk: false,
+      dairy_yogurt: false,
+      protein_powder_whey: false,
+      protein_powder_pea: false,
+      quinoa: false,
+      other: false
+    }
+  });
+
+  const [otherProteins, setOtherProteins] = useState({
+    meat: '',
+    seafood: '',
+    vegetarian_vegan: '',
+    other: ''
+  });
+
+  // Carb cycling preferences state for client management
+  const [carbCyclingEnabled, setCarbCyclingEnabled] = useState(false);
+  
+  const [carbCyclingConfig, setCarbCyclingConfig] = useState({
+    pattern: '3-1-3',
+    high_carb_grams: 200,
+    moderate_carb_grams: 100,
+    low_carb_grams: 50,
+    no_carb_grams: 20,
+    weekly_schedule: {
+      monday: 'high',
+      tuesday: 'low',
+      wednesday: 'high',
+      thursday: 'moderate',
+      friday: 'high',
+      saturday: 'low',
+      sunday: 'low'
+    },
+    sync_with_workouts: false,
+    workout_days: [],
+    custom_pattern: false,
+    goals: {
+      primary: 'fat_loss',
+      secondary: 'maintain_muscle'
+    },
+    notes: ''
+  });
+
   // Fetch client data and preferences
   useEffect(() => {
     const fetchClientData = async () => {
@@ -258,6 +333,23 @@ function ClientPreferencesPage() {
           if (clientPrefs.prepPreferences || clientPrefs.prep_preferences) {
             setPrepPreferences(clientPrefs.prepPreferences || clientPrefs.prep_preferences);
           }
+          
+          if (clientPrefs.preferredProteins || clientPrefs.preferred_proteins) {
+            setPreferredProteins(clientPrefs.preferredProteins || clientPrefs.preferred_proteins);
+          }
+          
+          if (clientPrefs.otherProteins || clientPrefs.other_proteins) {
+            setOtherProteins(clientPrefs.otherProteins || clientPrefs.other_proteins);
+          }
+          
+          // Load carb cycling preferences with null checking
+          if (clientPrefs.carb_cycling_enabled !== undefined) {
+            setCarbCyclingEnabled(clientPrefs.carb_cycling_enabled);
+          }
+          
+          if (clientPrefs.carb_cycling_config && typeof clientPrefs.carb_cycling_config === 'object' && Object.keys(clientPrefs.carb_cycling_config).length > 0) {
+            setCarbCyclingConfig(prev => ({ ...prev, ...clientPrefs.carb_cycling_config }));
+          }
         } else {
           // Client has no existing preferences - load organization defaults
           try {
@@ -344,6 +436,23 @@ function ClientPreferencesPage() {
                 
                 if (orgDefaults.prepPreferences) {
                   setPrepPreferences(orgDefaults.prepPreferences);
+                }
+                
+                if (orgDefaults.preferredProteins) {
+                  setPreferredProteins(orgDefaults.preferredProteins);
+                }
+                
+                if (orgDefaults.otherProteins) {
+                  setOtherProteins(orgDefaults.otherProteins);
+                }
+                
+                // Load carb cycling defaults from organization
+                if (orgDefaults.carb_cycling_enabled !== undefined) {
+                  setCarbCyclingEnabled(orgDefaults.carb_cycling_enabled);
+                }
+                
+                if (orgDefaults.carb_cycling_config && typeof orgDefaults.carb_cycling_config === 'object' && Object.keys(orgDefaults.carb_cycling_config).length > 0) {
+                  setCarbCyclingConfig(prev => ({ ...prev, ...orgDefaults.carb_cycling_config }));
                 }
                 
                 console.log('Organization defaults applied successfully');
@@ -492,6 +601,11 @@ function ClientPreferencesPage() {
         mealTimePreferences: mealTimePreferences,
         timeConstraints: timeConstraints,
         prepPreferences: prepPreferences,
+        preferredProteins: preferredProteins,
+        otherProteins: otherProteins,
+        // Carb cycling preferences
+        carbCyclingEnabled: carbCyclingEnabled,
+        carbCyclingConfig: carbCyclingConfig,
         
         // Legacy snake_case for backward compatibility
         diet_type: selectedDietTypes,
@@ -511,6 +625,11 @@ function ClientPreferencesPage() {
         meal_time_preferences: mealTimePreferences,
         time_constraints: timeConstraints,
         prep_preferences: prepPreferences,
+        preferred_proteins: preferredProteins,
+        other_proteins: otherProteins,
+        // Carb cycling preferences (snake_case for backward compatibility)
+        carb_cycling_enabled: carbCyclingEnabled,
+        carb_cycling_config: carbCyclingConfig,
         kroger_username: preferences.krogerUsername,
         kroger_password: preferences.krogerPassword
       };
@@ -558,6 +677,14 @@ function ClientPreferencesPage() {
           setTimeConstraints={setTimeConstraints}
           prepPreferences={prepPreferences}
           setPrepPreferences={setPrepPreferences}
+          preferredProteins={preferredProteins}
+          setPreferredProteins={setPreferredProteins}
+          otherProteins={otherProteins}
+          setOtherProteins={setOtherProteins}
+          carbCyclingEnabled={carbCyclingEnabled}
+          setCarbCyclingEnabled={setCarbCyclingEnabled}
+          carbCyclingConfig={carbCyclingConfig}
+          setCarbCyclingConfig={setCarbCyclingConfig}
           loading={saving}
           message={success}
           error={error}

@@ -1,7 +1,7 @@
 # app/routers/organization_branding.py
 
 from fastapi import APIRouter, HTTPException, Depends, status
-from app.db import get_db_connection
+from app.db import get_db_cursor
 from app.models.branding import (
     OrganizationBranding, OrganizationBrandingUpdate, OrganizationBrandingResponse,
     BrandingPreviewRequest, BrandingPreviewResponse
@@ -18,24 +18,31 @@ logger = logging.getLogger(__name__)
 
 def get_user_organization_id(user_id: int) -> int:
     """Get the organization ID for a user, ensuring they are an organization owner"""
-    conn = get_db_connection()
     try:
-        with conn.cursor() as cur:
+        with get_db_cursor(dict_cursor=False, autocommit=True) as (cur, conn):
             # Check if user owns an organization
             cur.execute("""
-                SELECT id FROM organizations 
+                SELECT id FROM organizations
                 WHERE owner_id = %s
             """, (user_id,))
-            
+
             result = cur.fetchone()
             if not result:
+                logger.error(f"User {user_id} attempted to access organization branding but is not an owner")
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Access denied: User is not an organization owner"
                 )
+            logger.info(f"User {user_id} confirmed as owner of organization {result[0]}")
             return result[0]
-    finally:
-        conn.close()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error checking organization ownership: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Database error: {str(e)}"
+        )
 
 @router.get("/{organization_id}/branding", response_model=OrganizationBrandingResponse)
 async def get_organization_branding(
@@ -50,26 +57,64 @@ async def get_organization_branding(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied to this organization"
         )
-    
-    conn = get_db_connection()
+
     try:
-        with conn.cursor() as cur:
+        with get_db_cursor(dict_cursor=False, autocommit=True) as (cur, conn):
+            # First check if the branding_settings column exists
+            cur.execute("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name = 'organization_settings'
+                AND column_name = 'branding_settings'
+            """)
+
+            column_exists = cur.fetchone()
+            if not column_exists:
+                # Column doesn't exist - run migration
+                logger.warning("Branding settings column missing - attempting to add it")
+                try:
+                    cur.execute("ALTER TABLE organization_settings ADD COLUMN IF NOT EXISTS branding_settings JSONB DEFAULT '{}'")
+                    conn.commit()
+                    logger.info("Added branding_settings column")
+                except Exception as add_column_error:
+                    logger.error(f"Failed to add branding_settings column: {add_column_error}")
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail=f"Database schema issue: {str(add_column_error)}"
+                    )
+
+            # Now try to get the branding settings
             cur.execute("""
                 SELECT branding_settings, updated_at
                 FROM organization_settings
                 WHERE organization_id = %s
             """, (organization_id,))
-            
+
             result = cur.fetchone()
             if not result:
+                logger.warning(f"Organization settings not found for organization {organization_id}")
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="Organization settings not found"
                 )
             
+            # Handle JSON data properly
             branding_settings = result[0] or {}
             updated_at = result[1]
-            
+
+            # If branding_settings is a string, try to parse it
+            if isinstance(branding_settings, str):
+                try:
+                    branding_settings = json.loads(branding_settings)
+                except json.JSONDecodeError:
+                    logger.error(f"Invalid JSON in branding_settings: {branding_settings}")
+                    branding_settings = {}
+                except Exception as json_error:
+                    logger.error(f"Error parsing branding settings JSON: {str(json_error)}")
+                    branding_settings = {}
+
+            logger.info(f"Retrieved branding settings: {branding_settings}")
+
             # Ensure all required branding sections exist
             default_branding = {
                 "visual": {
@@ -101,7 +146,7 @@ async def get_organization_branding(
                     "customDomain": None
                 }
             }
-            
+
             # Merge with defaults to ensure all fields exist
             for section, default_values in default_branding.items():
                 if section not in branding_settings:
@@ -110,23 +155,23 @@ async def get_organization_branding(
                     for key, default_value in default_values.items():
                         if key not in branding_settings[section]:
                             branding_settings[section][key] = default_value
-            
+
+            logger.info(f"Returning branding with defaults merged: {type(branding_settings)}")
+
             return {
                 "organization_id": organization_id,
                 "branding": branding_settings,
                 "updated_at": updated_at
             }
-            
+
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error getting organization branding: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to get organization branding"
+            detail=f"Failed to get organization branding: {str(e)}"
         )
-    finally:
-        conn.close()
 
 @router.put("/{organization_id}/branding", response_model=OrganizationBrandingResponse)
 async def update_organization_branding(
@@ -143,11 +188,10 @@ async def update_organization_branding(
             detail="Access denied to this organization"
         )
     
-    conn = get_db_connection()
     try:
-        with conn.cursor() as cur:
+        with get_db_cursor(dict_cursor=False) as (cur, conn):
             # Get current branding settings
-            logger.error(f"Attempting to get branding for organization {organization_id}")
+            logger.info(f"Attempting to get branding for organization {organization_id}")
             
             # First check if the column exists
             cur.execute("""
@@ -157,15 +201,15 @@ async def update_organization_branding(
                 AND column_name = 'branding_settings'
             """)
             column_exists = cur.fetchone()
-            logger.error(f"Branding settings column exists: {column_exists is not None}")
+            logger.info(f"Branding settings column exists: {column_exists is not None}")
             
             if not column_exists:
                 # Column doesn't exist - run migration
-                logger.error("Branding settings column missing - attempting to add it")
+                logger.warning("Branding settings column missing - attempting to add it")
                 try:
                     cur.execute("ALTER TABLE organization_settings ADD COLUMN IF NOT EXISTS branding_settings JSONB DEFAULT '{}'")
                     conn.commit()
-                    logger.error("Added branding_settings column")
+                    logger.info("Added branding_settings column")
                 except Exception as add_column_error:
                     logger.error(f"Failed to add branding_settings column: {add_column_error}")
                     raise HTTPException(
@@ -187,12 +231,23 @@ async def update_organization_branding(
                 )
             
             current_branding = result[0] or {}
-            logger.error(f"Current branding settings: {current_branding}")
-            logger.error(f"Incoming branding data: {branding_data}")
+            logger.info(f"Current branding settings: {current_branding}")
+            logger.info(f"Incoming branding data: {branding_data}")
+            
+            # If current_branding is a string, try to parse it
+            if isinstance(current_branding, str):
+                try:
+                    current_branding = json.loads(current_branding)
+                except json.JSONDecodeError:
+                    logger.error(f"Invalid JSON in current_branding: {current_branding}")
+                    current_branding = {}
+                except Exception as json_error:
+                    logger.error(f"Error parsing current branding JSON: {str(json_error)}")
+                    current_branding = {}
             
             # Update only provided sections
             if branding_data.visual:
-                logger.error("Updating visual settings")
+                logger.info("Updating visual settings")
                 current_branding['visual'] = {
                     **current_branding.get('visual', {}),
                     **branding_data.visual.dict(exclude_unset=True)
@@ -217,7 +272,7 @@ async def update_organization_branding(
                 }
             
             # Update the database
-            logger.error(f"Final branding settings to save: {current_branding}")
+            logger.info(f"Final branding settings to save: {current_branding}")
             try:
                 cur.execute("""
                     UPDATE organization_settings 
@@ -225,7 +280,7 @@ async def update_organization_branding(
                     WHERE organization_id = %s
                     RETURNING branding_settings, updated_at
                 """, (json.dumps(current_branding), organization_id))
-                logger.error("Database update executed successfully")
+                logger.info("Database update executed successfully")
             except Exception as db_error:
                 logger.error(f"Database update failed: {db_error}")
                 raise HTTPException(
@@ -236,9 +291,17 @@ async def update_organization_branding(
             result = cur.fetchone()
             conn.commit()
             
+            # Handle returned result, could be string or dict
+            updated_branding = result[0]
+            if isinstance(updated_branding, str):
+                try:
+                    updated_branding = json.loads(updated_branding)
+                except:
+                    updated_branding = current_branding
+            
             return {
                 "organization_id": organization_id,
-                "branding": result[0],
+                "branding": updated_branding,
                 "updated_at": result[1]
             }
             
@@ -246,20 +309,16 @@ async def update_organization_branding(
         raise
     except Exception as e:
         logger.error(f"Error updating organization branding: {str(e)}")
-        conn.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to update organization branding"
+            detail=f"Failed to update organization branding: {str(e)}"
         )
-    finally:
-        conn.close()
 
 @router.get("/{organization_id}/branding/public")
 async def get_public_branding(organization_id: int):
     """Get public branding settings (no authentication required for client-facing pages)"""
-    conn = get_db_connection()
     try:
-        with conn.cursor() as cur:
+        with get_db_cursor(dict_cursor=False, autocommit=True) as (cur, conn):
             cur.execute("""
                 SELECT branding_settings
                 FROM organization_settings
@@ -282,6 +341,17 @@ async def get_public_branding(organization_id: int):
                 }
             
             branding_settings = result[0] or {}
+            
+            # If branding_settings is a string, try to parse it
+            if isinstance(branding_settings, str):
+                try:
+                    branding_settings = json.loads(branding_settings)
+                except json.JSONDecodeError:
+                    logger.error(f"Invalid JSON in public branding_settings: {branding_settings}")
+                    branding_settings = {}
+                except Exception as json_error:
+                    logger.error(f"Error parsing public branding settings JSON: {str(json_error)}")
+                    branding_settings = {}
             
             # Return only public-safe branding information
             public_branding = {
@@ -323,8 +393,6 @@ async def get_public_branding(organization_id: int):
                 "platformName": "Smart Meal Planner"
             }
         }
-    finally:
-        conn.close()
 
 @router.post("/{organization_id}/branding/preview", response_model=BrandingPreviewResponse)
 async def create_branding_preview(
@@ -377,9 +445,8 @@ async def reset_organization_branding(
             detail="Access denied to this organization"
         )
     
-    conn = get_db_connection()
     try:
-        with conn.cursor() as cur:
+        with get_db_cursor() as (cur, conn):
             default_branding = {
                 "visual": {
                     "primaryColor": "#4caf50",
@@ -423,10 +490,7 @@ async def reset_organization_branding(
             
     except Exception as e:
         logger.error(f"Error resetting organization branding: {str(e)}")
-        conn.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to reset organization branding"
+            detail=f"Failed to reset organization branding: {str(e)}"
         )
-    finally:
-        conn.close()

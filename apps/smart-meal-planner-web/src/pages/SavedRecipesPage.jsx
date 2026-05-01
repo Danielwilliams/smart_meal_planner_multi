@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import apiService from '../services/apiService';
+import QuickRating from '../components/QuickRating';
 
 // Material UI imports
 import { 
@@ -351,6 +352,22 @@ const SavedRecipesPage = () => {
                     <Typography variant="body2">{recipe.notes}</Typography>
                   </Box>
                 )}
+
+                <Box sx={{ mt: 2 }}>
+                  <QuickRating
+                    savedRecipeId={recipe.id}
+                    currentRating={recipe.quick_rating || 0}
+                    onRatingUpdate={(newRating) => {
+                      setSavedRecipes(prev => 
+                        prev.map(r => 
+                          r.id === recipe.id 
+                            ? { ...r, quick_rating: newRating }
+                            : r
+                        )
+                      );
+                    }}
+                  />
+                </Box>
               </CardContent>
 
               <Divider />

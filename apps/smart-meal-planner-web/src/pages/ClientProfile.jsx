@@ -254,10 +254,13 @@ function ClientProfile() {
       {/* Menus Tab */}
       {tabValue === 1 && (
         <>
-          <ClientMenuGenerator 
-            client={client} 
-            onMenuGenerated={handleMenuGenerated}
-          />
+          {/* Only show menu generator for organization accounts, not client accounts */}
+          {(!user.account_type || user.account_type !== 'client') && (
+            <ClientMenuGenerator
+              client={client}
+              onMenuGenerated={handleMenuGenerated}
+            />
+          )}
 
           <Typography variant="h6" gutterBottom>
             Client's Menus

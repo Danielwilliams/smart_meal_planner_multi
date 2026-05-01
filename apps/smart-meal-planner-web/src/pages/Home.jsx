@@ -9,15 +9,19 @@ import {
 } from '@mui/material';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import SubscriptionStatusBanner from '../components/SubscriptionStatusBanner';
 
 function Home() {
   const { user, isAuthenticated } = useAuth();
 
   return (
     <Container maxWidth="md">
+      <Box sx={{ mt: 4 }}>
+        <SubscriptionStatusBanner />
+      </Box>
       <Paper elevation={3} sx={{ 
         p: 4, 
-        mt: 4, 
+        mt: 2, 
         textAlign: 'center', 
         borderRadius: 2 
       }}>

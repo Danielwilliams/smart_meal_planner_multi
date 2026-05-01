@@ -123,52 +123,17 @@ export const OrganizationProvider = ({ children }) => {
               if (orgResponse.id) {
                 fetchOrganizationClients(orgResponse.id);
               } else {
-                // Try hardcoded org ID 7 as fallback
-                console.log('No organization ID found in response, trying hardcoded ID 7');
-                fetchOrganizationClients(7);
+                console.warn('No organization ID found in response');
+                setClients([]);
               }
             } else {
-              console.log('No organizations found for user, trying hardcoded org ID 7');
-              // Try hardcoded org ID as last resort
-              try {
-                const hardcodedOrgResponse = await apiService.getOrganizationDetails(7);
-                if (hardcodedOrgResponse && !hardcodedOrgResponse.error) {
-                  console.log('Successfully fetched hardcoded organization:', hardcodedOrgResponse);
-                  setOrganization(hardcodedOrgResponse);
-                  setIsOwner(true); // Assume ownership for hardcoded case
-                  
-                  // Fetch clients for hardcoded org
-                  fetchOrganizationClients(7);
-                  return;
-                }
-              } catch (hardcodedErr) {
-                console.error('Failed to fetch hardcoded organization:', hardcodedErr);
-              }
-              
+              console.log('No organizations found for user');
               setOrganization(null);
               setClients([]);
             }
           } catch (orgErr) {
             console.error('Failed to fetch organizations:', orgErr);
             setError('Failed to load organization data');
-            
-            // Try hardcoded org ID as fallback
-            try {
-              console.log('Trying hardcoded organization ID 7 after error');
-              const hardcodedOrgResponse = await apiService.getOrganizationDetails(7);
-              if (hardcodedOrgResponse && !hardcodedOrgResponse.error) {
-                console.log('Successfully fetched hardcoded organization after error:', hardcodedOrgResponse);
-                setOrganization(hardcodedOrgResponse);
-                setIsOwner(true); // Assume ownership for hardcoded case
-                
-                // Fetch clients for hardcoded org
-                fetchOrganizationClients(7);
-                return;
-              }
-            } catch (hardcodedErr) {
-              console.error('Failed to fetch hardcoded organization:', hardcodedErr);
-            }
-            
             setOrganization(null);
             setClients([]);
           }
@@ -192,7 +157,6 @@ export const OrganizationProvider = ({ children }) => {
         }
         
         try {
-          // Always try hardcoded org ID 7 as fallback if specified ID fails
           const clientsResponse = await apiService.getOrganizationClients(orgId);
           
           // Handle different response formats
@@ -222,30 +186,7 @@ export const OrganizationProvider = ({ children }) => {
           }
         } catch (clientErr) {
           console.error(`Error fetching clients for org ID ${orgId}:`, clientErr);
-          
-          // If primary org ID fails and it's not already 7, try the hardcoded ID 7
-          if (orgId !== 7) {
-            console.log('Trying fallback to hardcoded org ID 7 for clients');
-            try {
-              const fallbackResponse = await apiService.getOrganizationClients(7);
-              
-              if (fallbackResponse && fallbackResponse.clients && Array.isArray(fallbackResponse.clients)) {
-                console.log(`Found ${fallbackResponse.clients.length} clients with fallback ID`);
-                setClients(fallbackResponse.clients);
-              } else if (Array.isArray(fallbackResponse)) {
-                console.log(`Found ${fallbackResponse.length} clients with fallback ID`);
-                setClients(fallbackResponse);
-              } else {
-                console.warn('Unexpected format from fallback client fetch');
-                setClients([]);
-              }
-            } catch (fallbackErr) {
-              console.error('Fallback client fetch also failed:', fallbackErr);
-              setClients([]);
-            }
-          } else {
-            setClients([]);
-          }
+          setClients([]);
         }
       };
 

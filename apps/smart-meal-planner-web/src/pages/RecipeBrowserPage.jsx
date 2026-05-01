@@ -6,13 +6,15 @@ import {
 } from '@mui/material';
 import { useNavigate, Link } from 'react-router-dom';
 import SearchIcon from '@mui/icons-material/Search';
-import BookmarkBorderIcon from '@mui/icons-material/BookmarkBorder';
-import BookmarkIcon from '@mui/icons-material/Bookmark';
 import apiService from '../services/apiService';
 import { useAuth } from '../context/AuthContext';
 import Snackbar from '@mui/material/Snackbar';
 import Alert from '@mui/material/Alert';
 import RecipeTagsDisplay from '../components/RecipeTagsDisplay';
+import RateRecipeButton from '../components/RateRecipeButton';
+import RecipeRatingDisplay from '../components/RecipeRatingDisplay';
+import RecipeSaveButton from '../components/RecipeSaveButton';
+import OnboardingWalkthrough from '../components/ImprovedOnboardingWalkthrough';
 
 const RecipeBrowserPage = () => {
   const [recipes, setRecipes] = useState([]);
@@ -116,36 +118,6 @@ const RecipeBrowserPage = () => {
     setPage(value);
   };
 
-  const handleSaveRecipe = async (recipe, event) => {
-    event.stopPropagation();
-    event.preventDefault();
-    
-    try {
-      if (recipe.is_saved) {
-        // Unsave the recipe
-        await apiService.unsaveRecipe(recipe.saved_id);
-        
-        // Update local state
-        setRecipes(recipes.map(r => 
-          r.id === recipe.id ? {...r, is_saved: false, saved_id: null} : r
-        ));
-      } else {
-        // Save the recipe
-        const response = await apiService.saveRecipe({
-          scraped_recipe_id: recipe.id,
-          recipe_name: recipe.title
-        });
-        
-        // Update local state
-        setRecipes(recipes.map(r => 
-          r.id === recipe.id ? {...r, is_saved: true, saved_id: response.saved_id} : r
-        ));
-      }
-    } catch (err) {
-      console.error('Error saving/unsaving recipe:', err);
-      setError('Failed to save/unsave recipe. Please try again later.');
-    }
-  };
 
   const verifyRecipeCount = async () => {
     try {
@@ -202,7 +174,7 @@ const RecipeBrowserPage = () => {
 
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-      <Typography variant="h4" gutterBottom>
+      <Typography variant="h4" gutterBottom data-testid="recipe-browser-nav">
         Recipe Browser
       </Typography>
       
@@ -223,6 +195,7 @@ const RecipeBrowserPage = () => {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+              data-testid="recipe-search-bar"
               InputProps={{
                 endAdornment: (
                   <IconButton onClick={handleSearch}>
@@ -237,7 +210,7 @@ const RecipeBrowserPage = () => {
           </Grid>
           
           {/* Filters - stacked on mobile, side by side on desktop */}
-          <Grid item xs={12} sm={6} md={2}>
+          <Grid item xs={12} sm={6} md={2} data-testid="recipe-filters">
             <FormControl fullWidth>
               <InputLabel>Complexity</InputLabel>
               <Select
@@ -397,6 +370,7 @@ const RecipeBrowserPage = () => {
                   <Card 
                     component={Link} 
                     to={`/recipes/${recipe.id}`}
+                    data-testid="recipe-card"
                     sx={{ 
                       height: '100%', 
                       display: 'flex', 
@@ -479,6 +453,12 @@ const RecipeBrowserPage = () => {
                         {recipe.cook_time && `Cook: ${recipe.cook_time} mins`}
                       </Typography>
                     </CardContent>
+                    <Box sx={{ px: 2, pb: 1 }}>
+                      <RecipeRatingDisplay 
+                        recipeId={recipe.id} 
+                        compact={true}
+                      />
+                    </Box>
                     <CardActions sx={{ justifyContent: 'space-between' }}>
                       <Button 
                         component={Link}
@@ -487,13 +467,33 @@ const RecipeBrowserPage = () => {
                       >
                         View Details
                       </Button>
-                      <IconButton
-                        color="primary"
-                        onClick={(e) => handleSaveRecipe(recipe, e)}
-                        aria-label={recipe.is_saved ? "Unsave recipe" : "Save recipe"}
-                      >
-                        {recipe.is_saved ? <BookmarkIcon /> : <BookmarkBorderIcon />}
-                      </IconButton>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <RateRecipeButton
+                          recipeId={recipe.id}
+                          recipeTitle={recipe.title}
+                          variant="icon"
+                          size="small"
+                          data-testid="rate-recipe-button"
+                        />
+                        <RecipeSaveButton
+                          scraped={true}
+                          scrapedRecipeId={recipe.id}
+                          recipeTitle={recipe.title}
+                          isSaved={recipe.is_saved}
+                          savedId={recipe.saved_id}
+                          onSaveSuccess={(result) => {
+                            // Update local state when save/unsave happens
+                            setRecipes(recipes.map(r => 
+                              r.id === recipe.id ? {
+                                ...r, 
+                                is_saved: result.isSaved, 
+                                saved_id: result.isSaved ? result.savedId : null
+                              } : r
+                            ));
+                          }}
+                          data-testid="save-recipe-button"
+                        />
+                      </Box>
                     </CardActions>
                   </Card>
                 </Grid>
@@ -581,6 +581,7 @@ const RecipeBrowserPage = () => {
           {alertMessage}
         </Alert>
       </Snackbar>
+      <OnboardingWalkthrough />
     </Container>
   );
 }

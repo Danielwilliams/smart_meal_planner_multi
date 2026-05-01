@@ -5,7 +5,7 @@ import jwt
 import logging
 from psycopg2.extras import RealDictCursor
 from app.config import JWT_SECRET, JWT_ALGORITHM
-from app.db import get_db_connection
+from app.db import get_db_connection, get_db_cursor
 
 logger = logging.getLogger(__name__)
 
@@ -65,106 +65,137 @@ async def get_user_from_token(request: Request, use_cache=True):
 
 async def get_user_organization_role(user_id: int):
     """Get user's organization and role if any"""
-    conn = get_db_connection()
+    # Use isolated connection to prevent pool contamination during auth errors
+    conn = None
     try:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            # Check if user is an organization owner
-            cur.execute("""
-                SELECT id as organization_id FROM organizations 
-                WHERE owner_id = %s
-            """, (user_id,))
-            org_owner = cur.fetchone()
-            
-            if org_owner:
+        import psycopg2
+        from app.config import DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, DB_PORT
+        
+        # Create isolated connection specifically for auth
+        conn = psycopg2.connect(
+            dbname=DB_NAME,
+            user=DB_USER,
+            password=DB_PASSWORD,
+            host=DB_HOST,
+            port=DB_PORT,
+            connect_timeout=5
+        )
+        conn.autocommit = True
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Check if user is an organization owner
+        cur.execute("""
+            SELECT id as organization_id FROM organizations
+            WHERE owner_id = %s
+        """, (user_id,))
+        org_owner = cur.fetchone()
+
+        if org_owner:
+            return {
+                "organization_id": org_owner["organization_id"],
+                "role": "owner",
+                "is_admin": True
+            }
+
+        # Check if user is a client of any organization (including inactive)
+        cur.execute("""
+            SELECT organization_id, role, status FROM organization_clients
+            WHERE client_id = %s
+        """, (user_id,))
+        org_client = cur.fetchone()
+
+        if org_client:
+            if org_client["status"] == 'active':
                 return {
-                    "organization_id": org_owner["organization_id"],
-                    "role": "owner",
-                    "is_admin": True
+                    "organization_id": org_client["organization_id"],
+                    "role": org_client["role"],
+                    "is_admin": org_client["role"] == "admin",
+                    "client_status": "active"
                 }
-            
-            # Check if user is a client of any organization (including inactive)
-            cur.execute("""
-                SELECT organization_id, role, status FROM organization_clients
-                WHERE client_id = %s
-            """, (user_id,))
-            org_client = cur.fetchone()
-            
-            if org_client:
-                if org_client["status"] == 'active':
-                    return {
-                        "organization_id": org_client["organization_id"],
-                        "role": org_client["role"],
-                        "is_admin": org_client["role"] == "admin",
-                        "client_status": "active"
-                    }
-                else:
-                    # Return inactive status info for proper error handling
-                    return {
-                        "organization_id": org_client["organization_id"],
-                        "role": org_client["role"],
-                        "is_admin": False,
-                        "client_status": "inactive"
-                    }
-            
-            # Check if user has admin role in the system
-            cur.execute("""
-                SELECT role FROM users
-                WHERE id = %s
-            """, (user_id,))
-            user_record = cur.fetchone()
-            
-            is_admin = False
-            if user_record and user_record.get("role") == "admin":
-                is_admin = True
+            else:
+                # Return inactive status info for proper error handling
                 return {
-                    "organization_id": None,
-                    "role": "admin",
-                    "is_admin": True,
-                    "Role": "admin"  # Add Role field for frontend compatibility
+                    "organization_id": org_client["organization_id"],
+                    "role": org_client["role"],
+                    "is_admin": False,
+                    "client_status": "inactive"
                 }
-            
-            # User has no organizational affiliation
+
+        # Check if user has admin account_type in the system
+        cur.execute("""
+            SELECT account_type FROM user_profiles
+            WHERE id = %s
+        """, (user_id,))
+        user_record = cur.fetchone()
+
+        is_admin = False
+        if user_record and user_record.get("account_type") == "admin":
+            is_admin = True
             return {
                 "organization_id": None,
-                "role": None,
-                "is_admin": is_admin
+                "role": "admin",
+                "is_admin": True,
+                "Role": "admin"  # Add Role field for frontend compatibility
             }
+
+        # User has no organizational affiliation
+        return {
+            "organization_id": None,
+            "role": None,
+            "is_admin": is_admin
+        }
+    except Exception as e:
+        logger.error(f"Error in get_user_organization_role: {str(e)}")
+        # Return a minimal default set of permissions instead of raising
+        # This prevents authentication failures due to DB connection issues
+        return {
+            "organization_id": None,
+            "role": None,
+            "is_admin": False,
+            "error": f"Database error: {str(e)}"
+        }
     finally:
-        conn.close()
+        # Clean up isolated connection
+        if conn:
+            try:
+                conn.close()
+            except:
+                pass
         
 async def is_organization_admin(user_id: int) -> bool:
     """
     Check if a user is an organization admin (owner or admin role)
-    
+
     Args:
         user_id: The user ID to check
-        
+
     Returns:
         bool: True if the user is an organization admin, False otherwise
     """
-    conn = get_db_connection()
     try:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        with get_db_cursor(dict_cursor=True, autocommit=True) as (cur, conn):
             # Check if user is an organization owner
             cur.execute("""
-                SELECT id FROM organizations 
+                SELECT id FROM organizations
                 WHERE owner_id = %s
             """, (user_id,))
             org_owner = cur.fetchone()
-            
+
             if org_owner:
                 return True
-            
+
             # Check if user is an organization admin
             cur.execute("""
                 SELECT organization_id, role FROM organization_clients
                 WHERE client_id = %s AND role = 'admin' AND status = 'active'
             """, (user_id,))
             org_admin = cur.fetchone()
-            
+
             return org_admin is not None
-    finally:
-        conn.close()
+    except Exception as e:
+        logger.error(f"Error in is_organization_admin: {str(e)}")
+        # Always return False on error, as this is a security-related function
+        return False
 
 def admin_required(user = Depends(get_user_from_token)):
     """Middleware to require admin permissions"""

@@ -1,52 +1,431 @@
+"""
+Ultra-simplified database connection module.
+This version strips away all complexity to ensure reliable operation.
+"""
+
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from psycopg2 import pool
 from fastapi import HTTPException
 import logging
-from app.config import RECAPTCHA_SECRET_KEY, DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, DB_PORT
+import time
+import threading
+from contextlib import contextmanager
+from app.config import DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, DB_PORT
 
 # Set up logging
 logger = logging.getLogger(__name__)
 
+# Connection tracking variables
+_active_connections = 0
+_total_connections = 0
+_peak_connections = 0
+_last_reset_time = time.time()
+
+# Create a single connection pool with more capacity
+# Thread-local storage for tracking connections in each thread
+thread_local = threading.local()
+
+# Initialize thread-local storage
+thread_local.connection = None
+
+# Add connection age tracking
+_connection_creation_times = {}
+
+def is_connection_stale(conn_id, max_age_seconds=300):
+    """Check if a connection is older than max_age_seconds (default 5 minutes)"""
+    if conn_id not in _connection_creation_times:
+        return True
+    age = time.time() - _connection_creation_times[conn_id]
+    return age > max_age_seconds
+
+# Connection pool creation with retry logic
+def create_connection_pool():
+    """Create or recreate the connection pool with retries"""
+    global connection_pool
+    retry_count = 0
+    max_retries = 3
+
+    while retry_count < max_retries:
+        try:
+            connection_pool = pool.ThreadedConnectionPool(
+                minconn=10,     # Minimum connections
+                maxconn=100,    # Maximum connections - increased for high concurrency
+                dbname=DB_NAME,
+                user=DB_USER,
+                password=DB_PASSWORD,
+                host=DB_HOST,
+                port=DB_PORT
+            )
+            logger.info(f"Database connection pool created with 10-100 connections")
+            return connection_pool
+        except Exception as e:
+            retry_count += 1
+            logger.error(f"Failed to create database connection pool (attempt {retry_count}/{max_retries}): {str(e)}")
+            if retry_count < max_retries:
+                time.sleep(1)  # Wait before retrying
+            else:
+                logger.critical("Failed to create connection pool after maximum retries")
+                connection_pool = None
+                return None
+
+# Initialize the connection pool
+try:
+    connection_pool = create_connection_pool()
+except Exception as e:
+    logger.error(f"Failed to create database connection pool: {str(e)}")
+    connection_pool = None
+
 def get_db_connection():
-    """Get database connection using configuration settings"""
+    """Get a database connection from the pool or create a new one"""
+    global _active_connections, _total_connections, _peak_connections, connection_pool
+
     try:
-        logger.info(f"Attempting to connect to database at {DB_HOST}:{DB_PORT}")
+        # Temporarily disable thread-local connection reuse to prevent closed connection issues
+        # Always clear any existing thread-local connection to force fresh connections
+        if hasattr(thread_local, 'connection') and thread_local.connection is not None:
+            try:
+                if not thread_local.connection.closed:
+                    thread_local.connection.close()
+            except:
+                pass
+            thread_local.connection = None
+
+        # Get connection from pool if available
+        if connection_pool:
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    # Get connection from pool
+                    conn = connection_pool.getconn(key=id(threading.current_thread()))
+                    
+                    # Validate connection is actually open and working
+                    if conn.closed:
+                        logger.warning(f"Pool returned closed connection, attempt {attempt + 1}")
+                        # Return the bad connection and try again
+                        try:
+                            connection_pool.putconn(conn, close=True)
+                        except:
+                            pass
+                        continue
+                    
+                    # Test the connection with a simple query
+                    try:
+                        with conn.cursor() as test_cur:
+                            test_cur.execute("SELECT 1")
+                            test_cur.fetchone()
+                    except Exception as e:
+                        logger.warning(f"Connection failed test query: {str(e)}, attempt {attempt + 1}")
+                        # Return the bad connection and try again
+                        try:
+                            connection_pool.putconn(conn, close=True)
+                        except:
+                            pass
+                        continue
+
+                    # Update connection tracking
+                    _active_connections += 1
+                    _total_connections += 1
+                    _peak_connections = max(_peak_connections, _active_connections)
+
+                    # Log connection stats periodically
+                    if _total_connections % 100 == 0 or _active_connections > 50:
+                        logger.warning(f"Connection stats: active={_active_connections}, peak={_peak_connections}, total={_total_connections}")
+
+                    # Make sure connection is in a clean state
+                    try:
+                        conn.rollback()
+                    except Exception as e:
+                        logger.warning(f"Could not rollback connection: {str(e)}")
+
+                    return conn
+                except Exception as pool_error:
+                    logger.warning(f"Pool connection attempt {attempt + 1} failed: {str(pool_error)}")
+                    continue
+                    
+            # All pool attempts failed, log and fall through to direct connection
+            logger.error("All pool connection attempts failed, falling back to direct connection")
+            
+        # Pool is unavailable or all attempts failed - create direct connection
+        logger.warning("Creating direct connection (pool unavailable or all attempts failed)")
         conn = psycopg2.connect(
             dbname=DB_NAME,
             user=DB_USER,
             password=DB_PASSWORD,
             host=DB_HOST,
-            port=DB_PORT
+            port=DB_PORT,
+            connect_timeout=10
         )
+        # Set statement timeout for direct connections
+        with conn.cursor() as cursor:
+            cursor.execute("SET statement_timeout = 30000")  # 30 seconds
         return conn
-    except psycopg2.OperationalError as e:
-        logger.error(f"Failed to connect to database: {str(e)}")
-        logger.error(f"Database connection parameters: host={DB_HOST}, port={DB_PORT}, dbname={DB_NAME}, user={DB_USER}")
-        raise HTTPException(
-            status_code=500,
-            detail="Unable to connect to database. Please try again later."
-        )
+    
     except Exception as e:
-        logger.error(f"Unexpected error connecting to database: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail="An unexpected error occurred while connecting to database."
-        )
+        logger.error(f"Failed to connect to database: {str(e)}")
+        raise HTTPException(status_code=500, detail="Database connection error")
+
+@contextmanager
+def get_db_cursor(dict_cursor=True, autocommit=False, pool_type=None):
+    """Context manager for database connections and cursors"""
+    global _active_connections
+
+    conn = None
+    cursor = None
+    pooled = False
+    connection_returned = False
+    connection_owner = False
+
+    try:
+        # Always get a fresh connection for the cursor operation
+        # This is safer than reusing thread-local connections at this level
+        conn = get_db_connection()
+        connection_owner = True
+        pooled = connection_pool is not None
+
+        # Set autocommit if requested
+        if autocommit:
+            was_autocommit = conn.autocommit
+            conn.autocommit = True
+        else:
+            was_autocommit = None
+
+        # Create cursor
+        if dict_cursor:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+        else:
+            cursor = conn.cursor()
+
+        # Set statement timeout to prevent hanging queries (30 seconds)
+        try:
+            cursor.execute("SET statement_timeout = 30000")  # 30 seconds
+        except Exception as e:
+            logger.warning(f"Failed to set statement timeout: {str(e)}")
+
+        # Yield cursor and connection
+        yield cursor, conn
+
+    except Exception as e:
+        # Handle exceptions
+        logger.error(f"Database error: {str(e)}")
+        if conn:
+            try:
+                conn.rollback()
+                logger.info("Transaction rolled back")
+            except Exception as rb_e:
+                logger.error(f"Error during rollback: {str(rb_e)}")
+        raise
+
+    finally:
+        # Clean up resources
+        # Always close the cursor
+        if cursor:
+            try:
+                cursor.close()
+                logger.debug("Cursor closed")
+            except Exception as e:
+                logger.warning(f"Error closing cursor: {str(e)}")
+
+        # Reset autocommit if we changed it
+        if conn and was_autocommit is not None:
+            try:
+                conn.autocommit = was_autocommit
+            except Exception as e:
+                logger.warning(f"Error resetting autocommit: {str(e)}")
+
+        # Handle the connection based on ownership
+        if conn and connection_owner:
+            # We own the connection, so clean it up
+            if pooled and connection_pool:
+                try:
+                    # Clear thread local connection reference
+                    if hasattr(thread_local, 'connection') and thread_local.connection is conn:
+                        thread_local.connection = None
+
+                    # Return connection to pool
+                    connection_pool.putconn(conn, key=id(threading.current_thread()), close=False)
+                    connection_returned = True
+                    logger.debug("Connection returned to pool")
+
+                    # Decrement active connections count
+                    _active_connections -= 1
+                    if _active_connections < 0:  # Sanity check
+                        logger.warning("Active connections count went negative - resetting to 0")
+                        _active_connections = 0
+                except Exception as e:
+                    logger.warning(f"Error returning connection to pool: {str(e)}")
+            else:
+                # Direct connection - close it
+                try:
+                    conn.close()
+                    logger.debug("Direct connection closed")
+
+                    # Clear thread local connection reference
+                    if hasattr(thread_local, 'connection') and thread_local.connection is conn:
+                        thread_local.connection = None
+                except Exception as e:
+                    logger.warning(f"Error closing direct connection: {str(e)}")
+
+            # If we failed to return the pooled connection, log it and force cleanup
+            if pooled and not connection_returned:
+                logger.error("Connection was not returned to pool - possible connection leak!")
+                # Force decrement counter to avoid false alarms
+                _active_connections -= 1
+                if _active_connections < 0:  # Sanity check
+                    _active_connections = 0
+
+                # Try one more time to clean up the connection
+                try:
+                    if hasattr(thread_local, 'connection') and thread_local.connection is conn:
+                        thread_local.connection = None
+                    conn.close()
+                except:
+                    pass
+
+def close_all_connections():
+    """Close all connections in the pool"""
+    global _active_connections, _total_connections, _peak_connections, _last_reset_time, connection_pool
+
+    # Clear any thread-local connections first
+    if hasattr(thread_local, 'connection'):
+        try:
+            if thread_local.connection:
+                try:
+                    if not thread_local.connection.closed:
+                        thread_local.connection.close()
+                        logger.info("Closed thread-local connection")
+                except Exception as e:
+                    logger.warning(f"Error closing thread-local connection: {str(e)}")
+            thread_local.connection = None
+        except Exception as e:
+            logger.error(f"Error handling thread-local connection during closeall: {str(e)}")
+
+    # Try to clear thread-local storage for all active threads
+    try:
+        active_threads = threading.enumerate()
+        logger.info(f"Attempting to clear connections for {len(active_threads)} active threads")
+        for thread in active_threads:
+            thread_id = id(thread)
+            if hasattr(thread, 'connection'):
+                try:
+                    if thread.connection and not thread.connection.closed:
+                        thread.connection.close()
+                        logger.info(f"Closed connection for thread {thread_id}")
+                    thread.connection = None
+                except:
+                    pass
+    except Exception as e:
+        logger.warning(f"Error clearing thread connections: {str(e)}")
+
+    # Close the pool
+    if connection_pool:
+        try:
+            connection_pool.closeall()
+            logger.info("All database connections closed")
+
+            # Reset connection counters
+            _active_connections = 0
+            _total_connections = 0
+            _peak_connections = 0
+            _last_reset_time = time.time()
+
+            # Recreate the pool
+            connection_pool = create_connection_pool()
+            if connection_pool:
+                logger.info("Connection pool recreated after closeall")
+                return True
+            else:
+                logger.error("Failed to recreate connection pool after closeall")
+                return False
+        except Exception as e:
+            logger.error(f"Error closing all connections: {str(e)}")
+            return False
+    return False
+
+def get_connection_stats():
+    """Get current connection statistics for monitoring"""
+    return {
+        "active_connections": _active_connections,
+        "peak_connections": _peak_connections,
+        "total_connections": _total_connections,
+        "uptime_seconds": time.time() - _last_reset_time,
+        "pool_status": "active" if connection_pool else "unavailable"
+    }
+
+# Recipe interaction functions
+def track_recipe_interaction(user_id, recipe_id, interaction_type, rating=None):
+    """Record user interaction with a recipe"""
+    try:
+        logger.info(f"Tracking recipe interaction: user={user_id}, recipe={recipe_id}, type={interaction_type}")
+        with get_db_cursor(dict_cursor=False) as (cur, conn):
+            cur.execute("""
+                INSERT INTO recipe_interactions 
+                (user_id, recipe_id, interaction_type, rating, timestamp)
+                VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)
+                RETURNING id
+            """, (user_id, recipe_id, interaction_type, rating))
+            interaction_id = cur.fetchone()[0]
+            conn.commit()
+            logger.info(f"Recorded interaction with ID: {interaction_id}")
+            return interaction_id
+    except Exception as e:
+        logger.error(f"Error tracking recipe interaction: {str(e)}")
+        return None
+
+def is_recipe_saved(user_id, menu_id, recipe_id=None, meal_time=None):
+    """Check if a recipe is saved by the user"""
+    try:
+        logger.info(f"Checking if recipe is saved: user={user_id}, menu={menu_id}, recipe={recipe_id}")
+        with get_db_cursor(dict_cursor=False) as (cur, conn):
+            if recipe_id and meal_time:
+                cur.execute("""
+                    SELECT COUNT(*) FROM saved_recipes
+                    WHERE user_id = %s AND menu_id = %s AND recipe_id = %s AND meal_time = %s
+                """, (user_id, menu_id, recipe_id, meal_time))
+            else:
+                cur.execute("""
+                    SELECT COUNT(*) FROM saved_recipes
+                    WHERE user_id = %s AND menu_id = %s AND recipe_id IS NULL
+                """, (user_id, menu_id))
+                
+            count = cur.fetchone()[0]
+            logger.info(f"Recipe saved status: {bool(count)}")
+            return count > 0
+    except Exception as e:
+        logger.error(f"Error checking if recipe is saved: {str(e)}")
+        return False
+
+def get_saved_recipe_id(user_id, menu_id, recipe_id=None, meal_time=None):
+    """Get the saved_id for a recipe if it exists"""
+    try:
+        logger.info(f"Getting saved recipe ID: user={user_id}, menu={menu_id}, recipe={recipe_id}")
+        with get_db_cursor(dict_cursor=False) as (cur, conn):
+            if recipe_id and meal_time:
+                cur.execute("""
+                    SELECT id FROM saved_recipes
+                    WHERE user_id = %s AND menu_id = %s AND recipe_id = %s AND meal_time = %s
+                """, (user_id, menu_id, recipe_id, meal_time))
+            else:
+                cur.execute("""
+                    SELECT id FROM saved_recipes
+                    WHERE user_id = %s AND menu_id = %s AND recipe_id IS NULL
+                """, (user_id, menu_id))
+                
+            row = cur.fetchone()
+            return row[0] if row else None
+    except Exception as e:
+        logger.error(f"Error getting saved recipe ID: {str(e)}")
+        return None
 
 def save_recipe(user_id, menu_id=None, recipe_id=None, recipe_name=None, day_number=None, 
                meal_time=None, notes=None, macros=None, ingredients=None, 
                instructions=None, complexity_level=None, appliance_used=None, servings=None,
                scraped_recipe_id=None, recipe_source=None):
     """Save a recipe or entire menu to user's favorites with complete recipe data"""
-    conn = None
     try:
-        logger.info(f"Saving recipe: user={user_id}, menu={menu_id}, recipe={recipe_id}, meal_time={meal_time}, scraped_id={scraped_recipe_id}, source={recipe_source}")
-        logger.info(f"With ingredients: {ingredients}")
-        logger.info(f"With instructions: {instructions}")
-        logger.info(f"With macros: {macros}")
+        logger.info(f"Saving recipe: user={user_id}, menu={menu_id}, recipe={recipe_id}, meal_time={meal_time}")
         
-        conn = get_db_connection()
-        with conn.cursor() as cur:
+        with get_db_cursor() as (cur, conn):
             # Check if already saved
             if recipe_source == 'scraped':
                 # For scraped recipes
@@ -76,7 +455,6 @@ def save_recipe(user_id, menu_id=None, recipe_id=None, recipe_name=None, day_num
                 logger.warning("No valid identifiers provided for recipe checking")
                 
             existing = cur.fetchone()
-            logger.info(f"Existing saved recipe check: {existing}")
             
             # Convert complex objects to JSON
             import json
@@ -86,346 +464,264 @@ def save_recipe(user_id, menu_id=None, recipe_id=None, recipe_name=None, day_num
             
             if existing:
                 # Update if already exists
-                if recipe_source == 'scraped' or scraped_recipe_id:
-                    cur.execute("""
-                        UPDATE saved_recipes
-                        SET notes = %s, created_at = CURRENT_TIMESTAMP
-                        WHERE user_id = %s AND scraped_recipe_id = %s
-                        RETURNING id
-                    """, (notes, user_id, scraped_recipe_id))
-                elif recipe_id and menu_id:
-                    cur.execute("""
-                        UPDATE saved_recipes
-                        SET notes = %s, created_at = CURRENT_TIMESTAMP
-                        WHERE user_id = %s AND menu_id = %s AND recipe_id = %s AND meal_time = %s
-                        RETURNING id
-                    """, (notes, user_id, menu_id, recipe_id, meal_time))
-                else:
-                    cur.execute("""
-                        UPDATE saved_recipes
-                        SET notes = %s, created_at = CURRENT_TIMESTAMP
-                        WHERE user_id = %s AND menu_id = %s AND recipe_id IS NULL
-                        RETURNING id
-                    """, (notes, user_id, menu_id))
+                saved_id = existing[0]
+                cur.execute("""
+                    UPDATE saved_recipes SET
+                    recipe_name = COALESCE(%s, recipe_name),
+                    day_number = COALESCE(%s, day_number),
+                    notes = COALESCE(%s, notes),
+                    macros = COALESCE(%s, macros),
+                    ingredients = COALESCE(%s, ingredients),
+                    instructions = COALESCE(%s, instructions),
+                    complexity_level = COALESCE(%s, complexity_level),
+                    appliance_used = COALESCE(%s, appliance_used),
+                    servings = COALESCE(%s, servings)
+                    WHERE id = %s
+                    RETURNING id
+                """, (
+                    recipe_name, day_number, notes, macros_json, ingredients_json, 
+                    instructions_json, complexity_level, appliance_used, servings, saved_id
+                ))
             else:
                 # Insert new saved recipe
-                logger.info(f"Inserting new recipe with source: {recipe_source}")
-                
-                # Check if the saved_recipes table has all the columns we need
                 cur.execute("""
-                    SELECT column_name FROM information_schema.columns 
-                    WHERE table_name = 'saved_recipes'
-                """)
-                columns = [row[0] for row in cur.fetchall()]
-                
-                # Check if scraped_recipe_id exists in the table
-                if 'scraped_recipe_id' not in columns:
-                    # Add the column if it doesn't exist
-                    cur.execute("""
-                        ALTER TABLE saved_recipes 
-                        ADD COLUMN IF NOT EXISTS scraped_recipe_id INTEGER REFERENCES scraped_recipes(id) ON DELETE SET NULL,
-                        ADD COLUMN IF NOT EXISTS recipe_source VARCHAR(50),
-                        ADD COLUMN IF NOT EXISTS macros JSONB,
-                        ADD COLUMN IF NOT EXISTS ingredients JSONB,
-                        ADD COLUMN IF NOT EXISTS instructions JSONB,
-                        ADD COLUMN IF NOT EXISTS complexity_level VARCHAR(50),
-                        ADD COLUMN IF NOT EXISTS appliance_used VARCHAR(100),
-                        ADD COLUMN IF NOT EXISTS servings INTEGER
-                    """)
-                    logger.info("Added missing columns to saved_recipes table")
-                
-                # Determine if to use the full insert with all columns
-                has_extended_columns = all(col in columns for col in ['macros', 'ingredients', 'instructions'])
-                
-                if has_extended_columns or 'scraped_recipe_id' in columns:
-                    # Extended insert with all columns
-                    cur.execute("""
-                        INSERT INTO saved_recipes
-                        (user_id, menu_id, recipe_id, recipe_name, day_number, meal_time, 
-                         notes, macros, ingredients, instructions, complexity_level, 
-                         appliance_used, servings, scraped_recipe_id, recipe_source)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                        RETURNING id
-                    """, (user_id, menu_id, recipe_id, recipe_name, day_number, meal_time, 
-                          notes, macros_json, ingredients_json, instructions_json,
-                          complexity_level, appliance_used, servings, scraped_recipe_id, recipe_source))
-                else:
-                    # Basic insert with original columns only
-                    cur.execute("""
-                        INSERT INTO saved_recipes
-                        (user_id, menu_id, recipe_id, recipe_name, day_number, meal_time, notes)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s)
-                        RETURNING id
-                    """, (user_id, menu_id, recipe_id, recipe_name, day_number, meal_time, notes))
+                    INSERT INTO saved_recipes (
+                        user_id, menu_id, recipe_id, recipe_name, day_number,
+                        meal_time, notes, macros, ingredients, instructions,
+                        complexity_level, appliance_used, servings, scraped_recipe_id, recipe_source
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                """, (
+                    user_id, menu_id, recipe_id, recipe_name, day_number,
+                    meal_time, notes, macros_json, ingredients_json, instructions_json,
+                    complexity_level, appliance_used, servings, scraped_recipe_id, recipe_source
+                ))
             
             saved_id = cur.fetchone()[0]
-            logger.info(f"Successfully saved/updated recipe with ID: {saved_id}")
-            
-            # Check if recipe_interactions table exists and create it if it doesn't
-            try:
-                cur.execute("""
-                    SELECT EXISTS (
-                        SELECT FROM information_schema.tables 
-                        WHERE table_schema = 'public' AND table_name = 'recipe_interactions'
-                    )
-                """)
-                
-                if not cur.fetchone()[0]:
-                    logger.info("Creating recipe_interactions table on the fly")
-                    cur.execute("""
-                        CREATE TABLE IF NOT EXISTS recipe_interactions (
-                            id SERIAL PRIMARY KEY,
-                            user_id INTEGER NOT NULL,
-                            recipe_id INTEGER,
-                            interaction_type VARCHAR(50) NOT NULL,
-                            rating INTEGER,
-                            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                        )
-                    """)
-                
-                # Now try to log the interaction
-                try:
-                    cur.execute("""
-                        INSERT INTO recipe_interactions
-                        (user_id, recipe_id, interaction_type, timestamp)
-                        VALUES (%s, %s, 'saved', CURRENT_TIMESTAMP)
-                    """, (user_id, recipe_id or scraped_recipe_id or menu_id))
-                except Exception as e:
-                    logger.warning(f"Could not log recipe interaction: {e}")
-            except Exception as e:
-                logger.warning(f"Could not check/create recipe_interactions table: {e}")
-            
             conn.commit()
             return saved_id
     except Exception as e:
-        logger.error(f"Error saving recipe: {str(e)}", exc_info=True)
-        if conn:
-            conn.rollback()
+        logger.error(f"Error saving recipe: {str(e)}")
         return None
-    finally:
-        if conn:
-            conn.close()
 
 def unsave_recipe(user_id, saved_id=None, menu_id=None, recipe_id=None, meal_time=None, scraped_recipe_id=None):
-    """Remove a recipe from saved/favorites"""
-    conn = None
+    """Remove a saved recipe"""
     try:
-        logger.info(f"Unsaving recipe: user={user_id}, saved_id={saved_id}, menu={menu_id}, recipe={recipe_id}, scraped={scraped_recipe_id}")
-        conn = get_db_connection()
-        with conn.cursor() as cur:
+        logger.info(f"Unsaving recipe: user={user_id}, saved_id={saved_id}, menu={menu_id}, recipe={recipe_id}")
+        with get_db_cursor() as (cur, conn):
             if saved_id:
+                # Delete by direct ID
                 cur.execute("""
                     DELETE FROM saved_recipes
                     WHERE id = %s AND user_id = %s
-                    RETURNING id, recipe_id, menu_id, scraped_recipe_id
+                    RETURNING id
                 """, (saved_id, user_id))
             elif scraped_recipe_id:
+                # Delete by scraped recipe ID
                 cur.execute("""
                     DELETE FROM saved_recipes
                     WHERE user_id = %s AND scraped_recipe_id = %s
-                    RETURNING id, recipe_id, menu_id, scraped_recipe_id
+                    RETURNING id
                 """, (user_id, scraped_recipe_id))
-            elif recipe_id and meal_time:
+            elif recipe_id and menu_id and meal_time:
+                # Delete by recipe, menu and meal time
                 cur.execute("""
                     DELETE FROM saved_recipes
                     WHERE user_id = %s AND menu_id = %s AND recipe_id = %s AND meal_time = %s
-                    RETURNING id, recipe_id, menu_id, scraped_recipe_id
+                    RETURNING id
                 """, (user_id, menu_id, recipe_id, meal_time))
-            else:
+            elif menu_id:
+                # Delete entire menu
                 cur.execute("""
                     DELETE FROM saved_recipes
                     WHERE user_id = %s AND menu_id = %s AND recipe_id IS NULL
-                    RETURNING id, recipe_id, menu_id, scraped_recipe_id
+                    RETURNING id
                 """, (user_id, menu_id))
-            
-            result = cur.fetchone()
-            
-            if result:
-                # Handle the result with or without scraped_recipe_id
-                if len(result) >= 4:
-                    deleted_id, recipe_id_val, menu_id_val, scraped_id_val = result
-                else:
-                    deleted_id, recipe_id_val, menu_id_val = result
-                    scraped_id_val = None
+            else:
+                logger.warning("No valid identifiers provided for recipe deletion")
+                return False
                 
-                logger.info(f"Successfully removed saved recipe with ID: {deleted_id}")
-                
-                # Check if recipe_interactions table exists and create it if it doesn't
-                try:
-                    cur.execute("""
-                        SELECT EXISTS (
-                            SELECT FROM information_schema.tables 
-                            WHERE table_schema = 'public' AND table_name = 'recipe_interactions'
-                        )
-                    """)
-                    
-                    if not cur.fetchone()[0]:
-                        logger.info("Creating recipe_interactions table on the fly")
-                        cur.execute("""
-                            CREATE TABLE IF NOT EXISTS recipe_interactions (
-                                id SERIAL PRIMARY KEY,
-                                user_id INTEGER NOT NULL,
-                                recipe_id INTEGER,
-                                interaction_type VARCHAR(50) NOT NULL,
-                                rating INTEGER,
-                                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                            )
-                        """)
-                    
-                    # Now try to log the interaction
-                    reference_id = scraped_id_val or recipe_id_val or menu_id_val
-                    cur.execute("""
-                        INSERT INTO recipe_interactions
-                        (user_id, recipe_id, interaction_type, timestamp)
-                        VALUES (%s, %s, 'unsaved', CURRENT_TIMESTAMP)
-                    """, (user_id, reference_id))
-                except Exception as e:
-                    logger.warning(f"Could not log recipe interaction: {e}")
-                
-                conn.commit()
-                return True
-            
-            logger.info("No saved recipe found to remove")
-            return False
+            deleted = cur.fetchone()
+            conn.commit()
+            return deleted is not None
     except Exception as e:
-        logger.error(f"Error unsaving recipe: {str(e)}", exc_info=True)
-        if conn:
-            conn.rollback()
+        logger.error(f"Error unsaving recipe: {str(e)}")
         return False
-    finally:
-        if conn:
-            conn.close()
 
 def get_user_saved_recipes(user_id):
     """Get all saved recipes for a user"""
-    conn = None
-    try:
-        logger.info(f"Getting saved recipes for user: {user_id}")
-        conn = get_db_connection()
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("""
-                SELECT sr.*, m.nickname as menu_nickname, sc.image_url, sc.title as scraped_title,
-                       sc.complexity as scraped_complexity, sc.cuisine
-                FROM saved_recipes sr
-                LEFT JOIN menus m ON sr.menu_id = m.id
-                LEFT JOIN scraped_recipes sc ON sr.scraped_recipe_id = sc.id
-                WHERE sr.user_id = %s
-                ORDER BY sr.created_at DESC
-            """, (user_id,))
-            
-            results = cur.fetchall()
-            logger.info(f"Found {len(results)} saved recipes for user {user_id}")
-            return results
-    except Exception as e:
-        logger.error(f"Error getting saved recipes: {str(e)}", exc_info=True)
+    if not user_id:
+        logger.error("get_user_saved_recipes called with empty user_id")
         return []
-    finally:
-        if conn:
-            conn.close()
 
-def is_recipe_saved(user_id, menu_id, recipe_id=None, meal_time=None):
-    """Check if a recipe is saved by the user"""
-    conn = None
-    try:
-        logger.info(f"Checking if recipe is saved: user={user_id}, menu={menu_id}, recipe={recipe_id}")
-        conn = get_db_connection()
-        with conn.cursor() as cur:
-            if recipe_id and meal_time:
-                cur.execute("""
-                    SELECT COUNT(*) FROM saved_recipes
-                    WHERE user_id = %s AND menu_id = %s AND recipe_id = %s AND meal_time = %s
-                """, (user_id, menu_id, recipe_id, meal_time))
-            else:
-                cur.execute("""
-                    SELECT COUNT(*) FROM saved_recipes
-                    WHERE user_id = %s AND menu_id = %s AND recipe_id IS NULL
-                """, (user_id, menu_id))
-                
-            count = cur.fetchone()[0]
-            logger.info(f"Recipe saved status: {bool(count)}")
-            return count > 0
-    except Exception as e:
-        logger.error(f"Error checking if recipe is saved: {str(e)}", exc_info=True)
-        return False
-    finally:
-        if conn:
-            conn.close()
+    logger.info(f"Getting saved recipes for user: {user_id}")
 
-def get_saved_recipe_id(user_id, menu_id, recipe_id=None, meal_time=None):
-    """Get the saved_id for a recipe if it exists"""
-    conn = None
+    # Try with the simpler approach first - no joins
     try:
-        logger.info(f"Getting saved recipe ID: user={user_id}, menu={menu_id}, recipe={recipe_id}")
-        conn = get_db_connection()
-        with conn.cursor() as cur:
-            if recipe_id and meal_time:
-                cur.execute("""
-                    SELECT id FROM saved_recipes
-                    WHERE user_id = %s AND menu_id = %s AND recipe_id = %s AND meal_time = %s
-                """, (user_id, menu_id, recipe_id, meal_time))
-            else:
-                cur.execute("""
-                    SELECT id FROM saved_recipes
-                    WHERE user_id = %s AND menu_id = %s AND recipe_id IS NULL
-                """, (user_id, menu_id))
-                
-            result = cur.fetchone()
-            saved_id = result[0] if result else None
-            logger.info(f"Found saved recipe ID: {saved_id}")
-            return saved_id
+        with get_db_cursor(dict_cursor=True, autocommit=True) as (cur, conn):
+            # Simple query without join to get basic recipe data
+            cur.execute("""
+                SELECT * FROM saved_recipes
+                WHERE user_id = %s
+                ORDER BY created_at DESC
+            """, (user_id,))
+
+            recipes = cur.fetchall()
+            logger.info(f"Successfully fetched {len(recipes)} saved recipes for user {user_id}")
+
+            # If that worked, try to get menu nicknames separately
+            if recipes:
+                try:
+                    # Get menu IDs from recipes
+                    menu_ids = {r['menu_id'] for r in recipes if r['menu_id'] is not None}
+
+                    if menu_ids:
+                        # Get menu nicknames
+                        menu_id_list = list(menu_ids)
+                        placeholders = ', '.join(['%s'] * len(menu_id_list))
+                        cur.execute(f"""
+                            SELECT id, nickname FROM menus
+                            WHERE id IN ({placeholders})
+                        """, menu_id_list)
+
+                        menu_nicknames = {m['id']: m['nickname'] for m in cur.fetchall()}
+
+                        # Add menu nicknames to recipes
+                        for recipe in recipes:
+                            if recipe['menu_id'] in menu_nicknames:
+                                recipe['menu_nickname'] = menu_nicknames[recipe['menu_id']]
+                except Exception as menu_e:
+                    # If menu query fails, just continue with the recipes we have
+                    logger.warning(f"Error fetching menu nicknames: {str(menu_e)}")
+
+            return recipes
     except Exception as e:
-        logger.error(f"Error getting saved recipe ID: {str(e)}", exc_info=True)
-        return None
-    finally:
-        if conn:
-            conn.close()
+        logger.error(f"Error with simple saved recipes query: {str(e)}")
+
+        # As a fallback, try an even simpler approach with minimal fields
+        try:
+            with get_db_cursor(dict_cursor=True, autocommit=True) as (cur, conn):
+                cur.execute("""
+                    SELECT id, user_id, menu_id, recipe_id, recipe_name,
+                           meal_time, scraped_recipe_id, recipe_source, created_at
+                    FROM saved_recipes
+                    WHERE user_id = %s
+                    ORDER BY created_at DESC
+                """, (user_id,))
+
+                minimal_recipes = cur.fetchall()
+                logger.info(f"Fallback query returned {len(minimal_recipes)} recipes")
+                return minimal_recipes
+        except Exception as fallback_e:
+            logger.error(f"Even fallback recipe query failed: {str(fallback_e)}")
+            # Last resort - return empty list instead of failing
+            return []
 
 def get_saved_recipe_by_id(user_id, saved_id):
     """Get saved recipe details by ID"""
-    conn = None
-    try:
-        logger.info(f"Getting saved recipe by ID: {saved_id}")
-        conn = get_db_connection()
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("""
-                SELECT sr.*, m.nickname as menu_nickname
-                FROM saved_recipes sr
-                LEFT JOIN menus m ON sr.menu_id = m.id
-                WHERE sr.id = %s AND sr.user_id = %s
-            """, (saved_id, user_id))
-            
-            result = cur.fetchone()
-            logger.info(f"Found saved recipe: {result is not None}")
-            return result
-    except Exception as e:
-        logger.error(f"Error getting saved recipe by ID: {str(e)}", exc_info=True)
+    if not user_id or not saved_id:
+        logger.error("get_saved_recipe_by_id called with empty user_id or saved_id")
         return None
-    finally:
-        if conn:
-            conn.close()
 
-def track_recipe_interaction(user_id, recipe_id, interaction_type, rating=None):
-    """Record user interaction with a recipe"""
-    conn = None
     try:
-        logger.info(f"Tracking recipe interaction: user={user_id}, recipe={recipe_id}, type={interaction_type}")
-        conn = get_db_connection()
-        with conn.cursor() as cur:
-            cur.execute("""
-                INSERT INTO recipe_interactions 
-                (user_id, recipe_id, interaction_type, rating, timestamp)
-                VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)
-                RETURNING id
-            """, (user_id, recipe_id, interaction_type, rating))
-            interaction_id = cur.fetchone()[0]
-            conn.commit()
-            logger.info(f"Recorded interaction with ID: {interaction_id}")
-            return interaction_id
+        logger.info(f"Getting saved recipe by ID: {saved_id} for user {user_id}")
+
+        # Try with join query first
+        try:
+            with get_db_cursor(dict_cursor=True, autocommit=True) as (cur, conn):
+                cur.execute("""
+                    SELECT sr.*, m.nickname as menu_nickname
+                    FROM saved_recipes sr
+                    LEFT JOIN menus m ON sr.menu_id = m.id
+                    WHERE sr.id = %s AND sr.user_id = %s
+                """, (saved_id, user_id))
+
+                result = cur.fetchone()
+                if result:
+                    logger.info(f"Found saved recipe with ID {saved_id}")
+                    return result
+                else:
+                    logger.info(f"No saved recipe found with ID {saved_id}")
+                    return None
+        except Exception as e:
+            logger.warning(f"Error with joined query for saved recipe: {str(e)}")
+
+            # Try with simpler query as fallback
+            with get_db_cursor(dict_cursor=True, autocommit=True) as (cur, conn):
+                cur.execute("""
+                    SELECT * FROM saved_recipes
+                    WHERE id = %s AND user_id = %s
+                """, (saved_id, user_id))
+
+                result = cur.fetchone()
+                if result:
+                    logger.info(f"Found saved recipe with simpler query: {saved_id}")
+                    return result
+                else:
+                    logger.info(f"No saved recipe found with simpler query: {saved_id}")
+                    return None
+
     except Exception as e:
-        logger.error(f"Error tracking recipe interaction: {str(e)}", exc_info=True)
-        if conn:
-            conn.rollback()
+        logger.error(f"Error getting saved recipe by ID: {str(e)}")
         return None
-    finally:
-        if conn:
-            conn.close()
+
+# ---------------------------------------------------------------------------
+# Agent pipeline helpers
+# ---------------------------------------------------------------------------
+
+def get_recent_ingredients(user_id: int, days: int = 3) -> list:
+    """Return distinct ingredient names used by this user in the last N days.
+
+    Used by the skeleton agent to build the ingredient cooldown blocklist.
+    Returns an empty list if the table doesn't exist yet or on any error.
+    """
+    try:
+        with get_db_cursor(dict_cursor=False, autocommit=True) as (cur, conn):
+            cur.execute(
+                """
+                SELECT DISTINCT ingredient_name
+                FROM ingredient_usage_log
+                WHERE user_id = %s
+                  AND used_on_date >= CURRENT_DATE - INTERVAL '%s days'
+                ORDER BY ingredient_name
+                """,
+                (user_id, days),
+            )
+            rows = cur.fetchall()
+            return [r[0] for r in rows] if rows else []
+    except Exception as exc:
+        logger.warning("get_recent_ingredients failed for user %s: %s", user_id, exc)
+        return []
+
+
+def bulk_insert_ingredient_usage(user_id: int, menu_id, rows: list) -> None:
+    """Bulk-insert ingredient usage rows and prune entries older than 14 days.
+
+    Each item in rows: (user_id, menu_id, ingredient_name, used_on_date, meal_time)
+    This is a convenience wrapper; the orchestrator also calls the same SQL directly
+    when it has an open cursor.
+    """
+    if not rows:
+        return
+    try:
+        with get_db_cursor(dict_cursor=False) as (cur, conn):
+            cur.executemany(
+                """
+                INSERT INTO ingredient_usage_log
+                    (user_id, menu_id, ingredient_name, used_on_date, meal_time)
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT DO NOTHING
+                """,
+                rows,
+            )
+            cur.execute(
+                """
+                DELETE FROM ingredient_usage_log
+                WHERE user_id = %s
+                  AND used_on_date < CURRENT_DATE - INTERVAL '14 days'
+                """,
+                (user_id,),
+            )
+            conn.commit()
+    except Exception as exc:
+        logger.warning("bulk_insert_ingredient_usage failed for user %s: %s", user_id, exc)

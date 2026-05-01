@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/organization_model.dart';
 import '../services/api_service.dart';
+import 'organization_clients_screen.dart';
 
 class OrganizationScreen extends StatefulWidget {
   final int userId;
@@ -93,7 +94,7 @@ class _OrganizationScreenState extends State<OrganizationScreen> with SingleTick
           
           print("FETCHING CLIENTS FOR ORGANIZATION ID: $organizationId");
           
-          // Load clients - add debug info
+          // Load clients - use the original method with orgId parameter
           final clientsResult = await ApiService.getOrganizationClients(
             organizationId,
             widget.authToken
@@ -524,20 +525,43 @@ class _OrganizationScreenState extends State<OrganizationScreen> with SingleTick
             style: TextStyle(color: Colors.grey[700]),
           ),
           SizedBox(height: 24),
-          ElevatedButton.icon(
-            icon: Icon(Icons.add),
-            label: Text("Create New Menu"),
-            onPressed: () {
-              Navigator.pushNamed(
-                context, 
-                '/client-menu-creator',
-                arguments: {
-                  'organizationId': _organization?.id,
-                  'userId': widget.userId,
-                  'authToken': widget.authToken,
+          Column(
+            children: [
+              ElevatedButton.icon(
+                icon: Icon(Icons.add),
+                label: Text("Create New Menu"),
+                onPressed: () {
+                  Navigator.pushNamed(
+                    context,
+                    '/client-menu-creator',
+                    arguments: {
+                      'organizationId': _organization?.id,
+                      'userId': widget.userId,
+                      'authToken': widget.authToken,
+                    },
+                  );
                 },
-              );
-            },
+              ),
+              SizedBox(height: 16),
+              ElevatedButton.icon(
+                icon: Icon(Icons.people),
+                label: Text("Manage Clients"),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => OrganizationClientsScreen(
+                        userId: widget.userId,
+                        authToken: widget.authToken,
+                      ),
+                    ),
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.indigo,
+                ),
+              ),
+            ],
           ),
         ],
       ),

@@ -11,8 +11,17 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     const checkAuthStatus = async () => {
-      const storedUser = localStorage.getItem('user');
-      const token = localStorage.getItem('access_token');
+      let storedUser, token;
+      
+      // Handle localStorage safely for iOS Safari private browsing
+      try {
+        storedUser = localStorage.getItem('user');
+        token = localStorage.getItem('access_token');
+      } catch (error) {
+        console.warn('localStorage not available (possibly private browsing mode):', error);
+        setLoading(false);
+        return;
+      }
 
       try {
         if (storedUser && token) {
@@ -105,8 +114,13 @@ export const AuthProvider = ({ children }) => {
       setAccountType(response.account_type);
       setIsAuthenticated(true);
       
-      localStorage.setItem('user', JSON.stringify(userData));
-      localStorage.setItem('access_token', response.access_token);
+      // Handle localStorage safely for iOS Safari private browsing
+      try {
+        localStorage.setItem('user', JSON.stringify(userData));
+        localStorage.setItem('access_token', response.access_token);
+      } catch (error) {
+        console.warn('Could not save to localStorage (possibly private browsing mode):', error);
+      }
 
       return response;
     } catch (error) {

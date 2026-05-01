@@ -1,180 +1,67 @@
-import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import {
-  Box,
-  Container,
-  Paper,
-  Typography,
-  Button,
-  CircularProgress,
-  Alert,
-  Divider
-} from '@mui/material';
+import React, { useEffect } from 'react';
+import { Box, Typography, Paper, Container, Button, CircularProgress } from '@mui/material';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import krogerAuthService from '../services/krogerAuthService';
 
-// KrogerAuth component used to initiate the Kroger OAuth flow
 function KrogerAuth() {
-  const navigate = useNavigate();
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [connecting, setConnecting] = useState(false);
-  const [loginUrl, setLoginUrl] = useState(null);
-  const [connectionStatus, setConnectionStatus] = useState(null);
-
-  // Check the current Kroger connection status on component mount
   useEffect(() => {
-    const checkConnection = async () => {
+    // Start Kroger auth immediately on page load
+    const startAuth = async () => {
       try {
-        setLoading(true);
-        const status = await krogerAuthService.checkKrogerStatus();
-        setConnectionStatus(status);
-        
-        if (status.is_connected) {
-          // If already connected, redirect to cart or store selector
-          if (status.needs_store_selection) {
-            navigate('/kroger-store-selector');
-          }
-        }
-      } catch (err) {
-        setError("Error checking Kroger connection: " + err.message);
-      } finally {
-        setLoading(false);
+        await krogerAuthService.reconnectKroger();
+      } catch (error) {
+        console.error('Error starting Kroger authentication:', error);
       }
     };
-    
-    checkConnection();
-  }, [navigate]);
 
-  // Handle the connect button click
-  const handleConnect = async () => {
-    try {
-      setConnecting(true);
-      setError(null);
-      
-      // Use the krogerAuthService to initiate reconnection
-      const result = await krogerAuthService.reconnectKroger();
-      
-      if (result.success) {
-        setLoginUrl(result.redirectUrl);
-        // The redirect is handled by the service, but we set this for display purposes
-      } else {
-        setError(result.message || "Failed to connect to Kroger. Please try again.");
-      }
-    } catch (err) {
-      setError("Error connecting to Kroger: " + err.message);
-      setConnecting(false);
-    }
+    // Short delay to allow page to render before redirect
+    const timer = setTimeout(() => {
+      startAuth();
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  const handleConnectClick = () => {
+    krogerAuthService.reconnectKroger();
   };
-
-  if (loading) {
-    return (
-      <Container maxWidth="sm">
-        <Box sx={{ mt: 4, textAlign: 'center' }}>
-          <CircularProgress />
-          <Typography variant="body1" sx={{ mt: 2 }}>
-            Checking Kroger connection status...
-          </Typography>
-        </Box>
-      </Container>
-    );
-  }
 
   return (
     <Container maxWidth="sm">
-      <Paper elevation={3} sx={{ p: 4, mt: 4 }}>
+      <Paper elevation={3} sx={{ p: 4, mt: 4, textAlign: 'center' }}>
         <Typography variant="h4" gutterBottom>
           Connect to Kroger
         </Typography>
-        
-        <Typography variant="body1" paragraph>
-          Connect your Kroger account to add items from your shopping list directly to your Kroger cart.
-        </Typography>
 
-        <Divider sx={{ my: 2 }} />
-        
-        <Box sx={{ mt: 3, mb: 3 }}>
-          <Typography variant="h6" gutterBottom>
-            How it works:
+        <Box sx={{ my: 3 }}>
+          <Typography variant="body1" paragraph>
+            You're being redirected to Kroger to authorize your account connection.
           </Typography>
-          
-          <Typography variant="body2" paragraph>
-            1. Click the "Connect to Kroger" button below
+          <Typography variant="body1" paragraph>
+            This allows Smart Meal Planner to add items to your Kroger cart for easy grocery shopping.
           </Typography>
-          
-          <Typography variant="body2" paragraph>
-            2. You'll be redirected to Kroger's official login page
-          </Typography>
-          
-          <Typography variant="body2" paragraph>
-            3. Log in with your Kroger credentials
-          </Typography>
-          
-          <Typography variant="body2" paragraph>
-            4. Authorize Smart Meal Planner to access your Kroger cart
-          </Typography>
-          
-          <Typography variant="body2" paragraph>
-            5. Select your preferred Kroger store location
-          </Typography>
+
+          <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
+            <CircularProgress size={24} sx={{ mr: 1 }} />
+            <Typography variant="body2" color="text.secondary">
+              Redirecting to Kroger...
+            </Typography>
+          </Box>
         </Box>
-        
-        <Divider sx={{ my: 2 }} />
-        
-        <Box sx={{ mt: 3 }}>
-          <Typography variant="subtitle1" gutterBottom>
-            Security Information:
+
+        <Box sx={{ mt: 4 }}>
+          <Typography variant="body2" color="text.secondary" gutterBottom>
+            Not being redirected automatically?
           </Typography>
-          
-          <Typography variant="body2" paragraph>
-            • Your Kroger password is never stored by Smart Meal Planner
-          </Typography>
-          
-          <Typography variant="body2" paragraph>
-            • Authentication happens directly on Kroger's website
-          </Typography>
-          
-          <Typography variant="body2" paragraph>
-            • You can disconnect your account at any time
-          </Typography>
-        </Box>
-        
-        {connectionStatus && connectionStatus.is_connected && (
-          <Alert severity="success" sx={{ mt: 3 }}>
-            Your Kroger account is already connected!
-          </Alert>
-        )}
-        
-        {error && (
-          <Alert severity="error" sx={{ mt: 3 }}>
-            {error}
-          </Alert>
-        )}
-        
-        <Box sx={{ mt: 4, display: 'flex', justifyContent: 'space-between' }}>
-          <Button 
-            variant="outlined" 
-            onClick={() => navigate(-1)}
-          >
-            Back
-          </Button>
-          
           <Button
             variant="contained"
             color="primary"
+            onClick={handleConnectClick}
             startIcon={<ShoppingCartIcon />}
-            onClick={handleConnect}
-            disabled={connecting}
           >
-            {connecting ? 'Connecting...' : 'Connect to Kroger'}
+            Connect Manually
           </Button>
         </Box>
-        
-        {connecting && !loginUrl && (
-          <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
-            <CircularProgress size={24} />
-          </Box>
-        )}
       </Paper>
     </Container>
   );

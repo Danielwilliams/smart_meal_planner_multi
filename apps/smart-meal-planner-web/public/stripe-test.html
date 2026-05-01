@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stripe Checkout Test</title>
+    <script src="https://js.stripe.com/v3/"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 40px 20px;
+            line-height: 1.6;
+        }
+        .card {
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+            margin-bottom: 30px;
+        }
+        h1 {
+            color: #333;
+            margin-top: 0;
+        }
+        button {
+            background: #6772e5;
+            color: white;
+            border: 0;
+            border-radius: 4px;
+            padding: 12px 20px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        button:hover {
+            background: #555abf;
+        }
+        .error {
+            color: #e25950;
+            margin: 20px 0;
+            font-weight: 500;
+        }
+        .success {
+            color: #43a047;
+            margin: 20px 0;
+            font-weight: 500;
+        }
+        .code {
+            background: #f7fafc;
+            border-radius: 4px;
+            padding: 15px;
+            overflow-x: auto;
+            margin: 20px 0;
+            font-family: 'Courier New', Courier, monospace;
+        }
+        .log {
+            height: 150px;
+            overflow-y: auto;
+            margin-top: 20px;
+            padding: 10px;
+            background: #f7fafc;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>Stripe Checkout Test</h1>
+        <p>This page will test your Stripe checkout integration directly without going through your React application.</p>
+        
+        <div>
+            <h3>1. Enter your Stripe Publishable Key</h3>
+            <input type="text" id="publishableKey" placeholder="pk_test_..." style="width: 80%; padding: 8px;">
+        </div>
+        
+        <div style="margin-top: 20px;">
+            <h3>2. Enter your API Endpoint</h3>
+            <input type="text" id="apiEndpoint" placeholder="https://your-backend.up.railway.app/api/subscriptions/create-checkout" style="width: 80%; padding: 8px;">
+        </div>
+        
+        <div style="margin-top: 20px;">
+            <h3>3. Enter your Auth Token (if required)</h3>
+            <input type="text" id="authToken" placeholder="Bearer eyJ..." style="width: 80%; padding: 8px;">
+        </div>
+        
+        <div style="margin-top: 30px; display: flex; gap: 15px;">
+            <button onclick="createCheckoutSession('individual')">Test Individual Plan ($7.99)</button>
+            <button onclick="createCheckoutSession('organization')">Test Organization Plan ($49.99)</button>
+        </div>
+        
+        <div id="error" class="error" style="display: none;"></div>
+        <div id="success" class="success" style="display: none;"></div>
+        
+        <div class="log" id="log"></div>
+    </div>
+    
+    <div class="card">
+        <h3>Direct API Testing</h3>
+        <p>If the buttons above don't work, you can test your API directly using curl:</p>
+        <div class="code">
+            curl -X POST \<br>
+            &nbsp;&nbsp;https://your-backend.up.railway.app/api/subscriptions/create-checkout \<br>
+            &nbsp;&nbsp;-H 'Content-Type: application/json' \<br>
+            &nbsp;&nbsp;-H 'Authorization: Bearer your_auth_token' \<br>
+            &nbsp;&nbsp;-d '{<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;"subscription_type": "individual",<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;"payment_provider": "stripe",<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;"success_url": "https://your-app.vercel.app/subscription/success",<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;"cancel_url": "https://your-app.vercel.app/subscription/cancel"<br>
+            &nbsp;&nbsp;}'
+        </div>
+    </div>
+    
+    <script>
+        function log(message) {
+            const logElement = document.getElementById('log');
+            const logEntry = document.createElement('div');
+            logEntry.textContent = `${new Date().toLocaleTimeString()}: ${message}`;
+            logElement.appendChild(logEntry);
+            logElement.scrollTop = logElement.scrollHeight;
+        }
+        
+        async function createCheckoutSession(subscriptionType) {
+            log(`Creating ${subscriptionType} checkout session...`);
+            
+            // Clear previous messages
+            document.getElementById('error').style.display = 'none';
+            document.getElementById('success').style.display = 'none';
+            
+            // Get inputs
+            const publishableKey = document.getElementById('publishableKey').value.trim();
+            const apiEndpoint = document.getElementById('apiEndpoint').value.trim();
+            const authToken = document.getElementById('authToken').value.trim();
+            
+            if (!publishableKey) {
+                showError('Please enter your Stripe Publishable Key');
+                return;
+            }
+            
+            if (!apiEndpoint) {
+                showError('Please enter your API Endpoint');
+                return;
+            }
+            
+            try {
+                // Initialize Stripe
+                const stripe = Stripe(publishableKey);
+                log('Stripe initialized successfully');
+                
+                // Prepare request
+                const headers = {
+                    'Content-Type': 'application/json'
+                };
+                
+                if (authToken) {
+                    if (authToken.startsWith('Bearer ')) {
+                        headers['Authorization'] = authToken;
+                    } else {
+                        headers['Authorization'] = `Bearer ${authToken}`;
+                    }
+                }
+                
+                // Origin URL for success/cancel
+                const origin = window.location.origin;
+                
+                // Make API request
+                log('Making API request to create checkout session...');
+                const response = await fetch(apiEndpoint, {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify({
+                        subscription_type: subscriptionType,
+                        payment_provider: 'stripe',
+                        success_url: `${origin}/subscription/success`,
+                        cancel_url: `${origin}/subscription/cancel`
+                    })
+                });
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`API request failed with status ${response.status}: ${errorText}`);
+                }
+                
+                const data = await response.json();
+                log(`API response received: ${JSON.stringify(data)}`);
+                
+                if (data.checkout_url) {
+                    document.getElementById('success').textContent = 'Checkout session created! Redirecting to Stripe...';
+                    document.getElementById('success').style.display = 'block';
+                    log(`Redirecting to checkout URL: ${data.checkout_url}`);
+                    
+                    // Redirect to Stripe Checkout
+                    window.location.href = data.checkout_url;
+                } else if (data.session_id) {
+                    // Redirect using Stripe.js if session_id is provided
+                    log(`Redirecting using Stripe.js with session ID: ${data.session_id}`);
+                    const result = await stripe.redirectToCheckout({
+                        sessionId: data.session_id
+                    });
+                    
+                    if (result.error) {
+                        throw new Error(result.error.message);
+                    }
+                } else {
+                    throw new Error('No checkout URL or session ID found in response');
+                }
+                
+            } catch (error) {
+                console.error('Error:', error);
+                showError(error.message);
+            }
+        }
+        
+        function showError(message) {
+            const errorElement = document.getElementById('error');
+            errorElement.textContent = message;
+            errorElement.style.display = 'block';
+            log(`Error: ${message}`);
+        }
+    </script>
+</body>
+</html>

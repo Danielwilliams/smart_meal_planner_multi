@@ -36,6 +36,7 @@ import MealShoppingList from '../components/MealShoppingList';
 import ErrorBoundary from '../components/ErrorBoundary';
 import instacartService from '../services/instacartService';
 import instacartBackendService from '../services/instacartBackendService';
+import OnboardingWalkthrough from '../components/ImprovedOnboardingWalkthrough';
 
 function ShoppingListPage() {
   const { user } = useAuth();
@@ -1070,7 +1071,7 @@ const categorizeItems = (mealPlanData) => {
 
   return (
     <Container maxWidth="md">
-      <Typography variant="h4" gutterBottom>
+      <Typography variant="h4" gutterBottom data-testid="shopping-list-title">
         Shopping List
       </Typography>
 
@@ -1088,7 +1089,7 @@ const categorizeItems = (mealPlanData) => {
 
       <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
         {menuHistory.length > 0 && (
-          <FormControl sx={{ flex: 1 }}>
+          <FormControl sx={{ flex: 1 }} data-testid="menu-selector">
             <InputLabel>Select Menu</InputLabel>
             <Select
               value={selectedMenuId || ''}
@@ -1113,6 +1114,7 @@ const categorizeItems = (mealPlanData) => {
           onStoreChange={setSelectedStore}
           instacartRetailerId={instacartRetailerId}
           onSelectInstacartRetailer={handleSelectInstacartRetailer}
+          data-testid="store-selector"
         />
 
         {selectedStore !== 'mixed' && groceryList.length > 0 && (
@@ -1120,6 +1122,7 @@ const categorizeItems = (mealPlanData) => {
             variant="contained"
             onClick={handleStoreSearchAll}
             disabled={loading}
+            data-testid="add-all-to-cart-button"
           >
             Add All to {selectedStore.charAt(0).toUpperCase() + selectedStore.slice(1)} Cart
           </Button>
@@ -1130,7 +1133,7 @@ const categorizeItems = (mealPlanData) => {
       {groceryList && groceryList.length > 0 ? (
         <Box sx={{ width: '100%' }}>
           {/* Tab Navigation */}
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }} data-testid="shopping-list-tabs">
             <Tabs
               value={activeTab}
               onChange={(e, newValue) => {
@@ -1162,6 +1165,7 @@ const categorizeItems = (mealPlanData) => {
                 startIcon={creatingShoppingList ? <CircularProgress size={20} /> : <ShoppingCartIcon />}
                 onClick={() => handleCreateShoppingList(formatCategoriesForDisplay(groceryList), selectedStore)}
                 disabled={creatingShoppingList}
+                data-testid="create-instacart-list-button"
               >
                 {creatingShoppingList ? 'Creating...' : 'Create Instacart List'}
               </Button>
@@ -1277,6 +1281,7 @@ const categorizeItems = (mealPlanData) => {
           </Button>
         </DialogActions>
       </Dialog>
+      <OnboardingWalkthrough />
     </Container>
   );
 }

@@ -11,6 +11,7 @@ import { BrandingProvider, withBrandingGuard } from './context/BrandingContext';
 import NavBar from './components/NavBar';
 import LoginPage from './pages/LoginPage';
 import SignUpPage from './pages/SignUpPage';
+import CreateAccount from './pages/CreateAccount';
 import PreferencesPage from './pages/PreferencesPage';
 import MenuDisplayPage from './pages/MenuDisplayPage';
 import ShoppingListPage from './pages/ShoppingListPage';
@@ -20,8 +21,10 @@ import TestDebugPage from './pages/TestDebugPage';
 import CartPage from './pages/CartPage';  // Add this import
 import Home from './pages/Home';
 import LandingPage from './pages/LandingPage';
-// Import PrivateRoute component
+import PrivacyPolicy from './pages/PrivacyPolicy';
+// Import PrivateRoute and SubscriptionRoute components
 import PrivateRoute from './components/PrivateRoute';
+import SubscriptionRoute from './components/SubscriptionRoute';
 import ExampleMealPlansPage from './pages/ExampleMealPlansPage';
 import VerifyEmailPage from './pages/VerifyEmailPage';
 import SavedRecipesPage from './pages/SavedRecipesPage';
@@ -39,14 +42,20 @@ import ClientDashboard from './pages/ClientDashboard';
 import ClientSignupPage from './pages/ClientSignupPage';
 import ClientInvitationConnect from './pages/ClientInvitationConnect';
 import KrogerAuthCallback from './pages/KrogerAuthCallback';
+import KrogerAuth from './pages/KrogerAuth';
 import TestInvitation from './TestInvitation';
 import ApiTestPage from './pages/ApiTestPage';
 import InstacartTestPage from './pages/InstacartTestPage';
 import DebugSharedMenus from './pages/DebugSharedMenus';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
-import Support from './pages/Support';
-import KrogerAuth from './pages/KrogerAuth';
+import SupportPage from './pages/SupportPage';
+import SubscriptionPage from './pages/SubscriptionPage';
+import SubscriptionSuccessPage from './pages/SubscriptionSuccessPage';
+import SubscriptionCancelPage from './pages/SubscriptionCancelPage';
+import UserProfilePage from './pages/UserProfilePage';
+import TestWalkthroughPage from './pages/TestWalkthroughPage';
+import UserManagementPage from './components/UserManagement/UserManagementPage';
 
 
 function App() {
@@ -71,6 +80,7 @@ function App() {
               <Route path="/" element={<LandingPage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/signup" element={<SignUpPage />} />
+              <Route path="/create-account" element={<CreateAccount />} />
               <Route path="/forgot-password" element={<ForgotPasswordPage />} />
               <Route path="/reset-password" element={<ResetPasswordPage />} />
               {/* Client signup routes - simplified direct access */}
@@ -98,9 +108,9 @@ function App() {
               <Route 
                 path="/home" 
                 element={
-                  <PrivateRoute>
+                  <SubscriptionRoute>
                     <Home />
-                  </PrivateRoute>
+                  </SubscriptionRoute>
                 } 
               />
               <Route 
@@ -114,65 +124,73 @@ function App() {
               <Route 
                 path="/preferences-page" 
                 element={
-                  <PrivateRoute>
+                  <SubscriptionRoute>
                     <PreferencesPage />
-                  </PrivateRoute>
+                  </SubscriptionRoute>
+                } 
+              />
+              <Route 
+                path="/profile" 
+                element={
+                  <SubscriptionRoute>
+                    <UserProfilePage />
+                  </SubscriptionRoute>
                 } 
               />
               <Route 
                 path="/menu" 
                 element={
-                  <PrivateRoute>
+                  <SubscriptionRoute>
                     <MenuDisplayPage />
-                  </PrivateRoute>
+                  </SubscriptionRoute>
                 } 
               />
               <Route 
                 path="/menu/:menuId" 
                 element={
-                  <PrivateRoute>
+                  <SubscriptionRoute>
                     <MenuDisplayPage />
-                  </PrivateRoute>
+                  </SubscriptionRoute>
                 } 
               />
               <Route 
                 path="/menu-display" 
                 element={
-                  <PrivateRoute>
+                  <SubscriptionRoute>
                     <MenuDisplayPage />
-                  </PrivateRoute>
+                  </SubscriptionRoute>
                 } 
               />
               <Route 
                 path="/menu-display/:menuId" 
                 element={
-                  <PrivateRoute>
+                  <SubscriptionRoute>
                     <MenuDisplayPage />
-                  </PrivateRoute>
+                  </SubscriptionRoute>
                 } 
               />
               <Route 
                 path="/shopping-list" 
                 element={
-                  <PrivateRoute>
+                  <SubscriptionRoute>
                     <ShoppingListPage />
-                  </PrivateRoute>
+                  </SubscriptionRoute>
                 } 
               />
               <Route
                 path="/shopping-list/:menuId"
                 element={
-                  <PrivateRoute>
+                  <SubscriptionRoute>
                     <ShoppingListPage />
-                  </PrivateRoute>
+                  </SubscriptionRoute>
                 }
               />
               <Route
                 path="/grocery-list/:menuId"
                 element={
-                  <PrivateRoute>
+                  <SubscriptionRoute>
                     <ShoppingListPage />
-                  </PrivateRoute>
+                  </SubscriptionRoute>
                 }
               />
               {/* Debug Routes - Public for easy access */}
@@ -182,35 +200,52 @@ function App() {
               <Route path="/debug/api-test" element={<ApiTestPage />} />
               <Route path="/debug/instacart-test" element={<InstacartTestPage />} />
               <Route path="/debug/shared-menus" element={<DebugSharedMenus />} />
+              <Route path="/test-walkthrough" element={<TestWalkthroughPage />} />
               <Route 
                 path="/cart" 
                 element={
-                  <PrivateRoute>
+                  <SubscriptionRoute>
                     <CartPage />
-                  </PrivateRoute>
+                  </SubscriptionRoute>
                 } 
               />
               <Route 
                 path="/saved-recipes" 
                 element={
-                  <PrivateRoute>
+                  <SubscriptionRoute>
                     <SavedRecipesPage />
-                  </PrivateRoute>
+                  </SubscriptionRoute>
                 } 
               />
               <Route 
                 path="/organization/dashboard" 
                 element={
-                  <PrivateRoute>
+                  <SubscriptionRoute>
                     <OrganizationDashboard />
-                  </PrivateRoute>
+                  </SubscriptionRoute>
                 } 
               />
               <Route 
                 path="/organization/settings" 
                 element={
-                  <PrivateRoute>
+                  <SubscriptionRoute>
                     <OrganizationSettingsPage />
+                  </SubscriptionRoute>
+                } 
+              />
+              <Route 
+                path="/organization/users" 
+                element={
+                  <PrivateRoute>
+                    <UserManagementPage />
+                  </PrivateRoute>
+                } 
+              />
+              <Route 
+                path="/admin/users" 
+                element={
+                  <PrivateRoute>
+                    <UserManagementPage />
                   </PrivateRoute>
                 } 
               />
@@ -263,9 +298,39 @@ function App() {
                   </PrivateRoute>
                 } 
               />
-              
-              {/* Support Route */}
-              <Route path="/support" element={<PrivateRoute><Support /></PrivateRoute>} />
+              <Route
+                path="/support"
+                element={
+                  <PrivateRoute>
+                    <SupportPage />
+                  </PrivateRoute>
+                }
+              />
+
+              {/* Subscription Routes */}
+              <Route
+                path="/subscription"
+                element={<SubscriptionPage />}
+              />
+              <Route
+                path="/subscription/success"
+                element={
+                  <PrivateRoute>
+                    <SubscriptionSuccessPage />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/subscription/cancel"
+                element={
+                  <PrivateRoute>
+                    <SubscriptionCancelPage />
+                  </PrivateRoute>
+                }
+              />
+
+              {/* Public information pages */}
+              <Route path="/privacy-policy" element={<PrivacyPolicy />} />
 
               {/* Fallback route */}
               <Route path="*" element={<Navigate to="/" replace />} />

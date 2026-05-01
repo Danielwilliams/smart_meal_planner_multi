@@ -32,7 +32,15 @@ function LoginPage() {
   const isInvitation = query.get('invitation') === 'true';
   const invitationToken = query.get('token');
   const organizationId = query.get('org');
-  
+
+  // Check if we have subscription parameters
+  const subscriptionPlan = query.get('plan');
+  const paymentProvider = query.get('provider') || 'stripe';
+  const isFromSignup = query.get('message') === 'signup-complete';
+  const isCreateAccount = query.get('message') === 'create-account';
+  const hasSubscription = query.get('subscription') === 'true';
+  const discountCode = query.get('discount');
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -96,7 +104,12 @@ function LoginPage() {
         captchaToken
       });
 
-      console.log('Login Response:', response);
+      // SECURITY: Log response without any sensitive data
+      console.log('Login Response:', {
+        success: !!response.access_token,
+        account_type: response.account_type,
+        profile_complete: response.profile_complete
+      });
 
       // If this is an invitation login flow, redirect to the connect-to-organization page
       if (isInvitation && invitationToken && organizationId) {
@@ -105,7 +118,48 @@ function LoginPage() {
         return; // Exit early since we've already navigated
       }
 
-      // Standard redirect flow (if not handling invitation)
+      // If this login is part of a subscription flow
+      if (subscriptionPlan || hasSubscription) {
+        // Redirect to subscription checkout
+        if (subscriptionPlan) {
+          // If we have a specific plan, create checkout session and redirect
+          try {
+            const successUrl = `${window.location.origin}/subscription/success`;
+            const cancelUrl = `${window.location.origin}/subscription/cancel`;
+
+            // Import the subscription service dynamically to avoid circular dependencies
+            const subscriptionService = await import('../services/subscriptionService').then(module => module.default);
+
+            const checkoutResponse = await subscriptionService.createCheckoutSession(
+              subscriptionPlan,
+              paymentProvider,
+              successUrl,
+              cancelUrl,
+              discountCode
+            );
+
+            if (checkoutResponse && checkoutResponse.checkout_url) {
+              window.location.href = checkoutResponse.checkout_url;
+              return;
+            } else {
+              // If checkout session creation fails, redirect to subscription page
+              navigate('/subscription');
+              return;
+            }
+          } catch (checkoutError) {
+            console.error('Error creating checkout session:', checkoutError);
+            // Redirect to subscription page on error
+            navigate('/subscription');
+            return;
+          }
+        } else {
+          // If no specific plan but subscription=true, just go to subscription page
+          navigate('/subscription');
+          return;
+        }
+      }
+
+      // Standard redirect flow (if not handling invitation or subscription)
       if (response.account_type === 'organization') {
         navigate('/organization/dashboard');
       } else if (response.account_type === 'client') {
@@ -123,11 +177,7 @@ function LoginPage() {
         }
       }
     } catch (err) {
-      console.error('Full Login Error:', {
-        error: err,
-        response: err.response,
-        message: err.message
-      });
+      console.error('Login error:', err);
       
       const errorDetail = err.response?.data?.detail || err.message || 'An unexpected error occurred during login';
       setError(errorDetail);
@@ -139,7 +189,7 @@ function LoginPage() {
     } finally {
       setLoading(false);
     }
-  }, [email, password, executeRecaptcha, navigate, login, isInvitation, invitationToken, organizationId]);
+  }, [email, password, executeRecaptcha, navigate, login, isInvitation, invitationToken, organizationId, subscriptionPlan, paymentProvider, hasSubscription, discountCode]);
 
   const handleResendVerification = async () => {
     if (!email) {
@@ -164,6 +214,13 @@ function LoginPage() {
     if (isInvitation && invitationToken && organizationId) {
       // If this is an invitation flow, redirect to client-specific signup
       navigate(`/client-signup?token=${invitationToken}&org=${organizationId}`);
+    } else if (isCreateAccount && subscriptionPlan) {
+      // If coming from subscription page, create registration page with the plan info
+      const registrationPath = '/create-account' +
+        `?plan=${subscriptionPlan}` +
+        `&provider=${paymentProvider}` +
+        (discountCode ? `&discount=${discountCode}` : '');
+      navigate(registrationPath);
     } else {
       // Regular signup
       navigate('/signup');
@@ -281,6 +338,18 @@ function LoginPage() {
             >
               Sign In
             </Typography>
+
+            {isFromSignup && (
+              <Alert severity="success" sx={{ mb: 2 }}>
+                Account created successfully! Please sign in{hasSubscription ? ' to continue with your subscription' : ''}.
+              </Alert>
+            )}
+
+            {isCreateAccount && subscriptionPlan && (
+              <Alert severity="info" sx={{ mb: 2 }}>
+                To subscribe to the {subscriptionPlan.charAt(0).toUpperCase() + subscriptionPlan.slice(1)} plan, please sign in or create a new account.
+              </Alert>
+            )}
 
             {error && (
               <Alert severity={resendSuccess ? "success" : "error"} sx={{ mb: 2 }}>

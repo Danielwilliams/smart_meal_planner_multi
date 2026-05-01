@@ -81,6 +81,7 @@ const RecipeSaveDialog = ({
       
       console.log('Saving recipe:', saveData);
       
+      // Use the proper menu recipe endpoint
       const response = await fetch(`${API_BASE_URL}/saved-recipes/`, {
         method: 'POST',
         headers: {

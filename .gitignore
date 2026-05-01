@@ -10,6 +10,9 @@
 config.py
 secret_keys.py
 
+# Archive directory
+archive/
+
 # Python
 __pycache__/
 *.py[cod]
@@ -60,3 +63,17 @@ build/
 menu examples
 menu examples.txt
 menudata.csv
+venv/
+apps/smart-meal-planner-web/.env.stripe-sample
+apps/smart-meal-planner-backend/.env.stripe-sample
+apps/smart-meal-planner-backend/test_stripe_integration.py
+test-stripe-webhook.sh
+trigger-test-events.sh
+standalone_stripe_test.py
+OPENAI_SERVER_OPTIMIZATION.md
+apps/smart-meal-planner-backend/SNACK_INSTRUCTIONS_ENHANCEMENT.md
+apps/smart-meal-planner-backend/STRIPE_SETUP_INSTRUCTIONS.md
+apps/smart-meal-planner-backend/.env.example
+apps/smart-meal-planner-backend/scripts/create_subscription_record.py
+apps/smart-meal-planner-backend/SUBSCRIPTION_DEBUG_INSTRUCTIONS.md
+apps/smart-meal-planner-backend/scripts/test_db_tables.py

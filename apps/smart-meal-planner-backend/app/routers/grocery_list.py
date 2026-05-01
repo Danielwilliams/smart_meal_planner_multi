@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query, Body, BackgroundTasks
 from psycopg2.extras import RealDictCursor
-from ..db import get_db_connection
+# Use the enhanced DB with specialized connection pools
+from ..db import get_db_cursor, get_db_connection
 from ..utils.grocery_aggregator import aggregate_grocery_list
 from ..config import OPENAI_API_KEY
 from pydantic import BaseModel
@@ -39,11 +40,13 @@ def get_menu_details(menu_id: int):
     """
     Retrieve full menu details for a specific menu
     """
-    conn = get_db_connection()
     try:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        # Use autocommit for menu retrieval to prevent blocking during menu generation
+        with get_db_cursor(dict_cursor=True, autocommit=True) as (cursor, conn):
+            # Autocommit is enabled at connection creation time
+
             # Fetch the full menu details
-            cur.execute("""
+            cursor.execute("""
                 SELECT
                     id AS menu_id,
                     meal_plan_json,
@@ -53,17 +56,18 @@ def get_menu_details(menu_id: int):
                 FROM menus
                 WHERE id = %s
             """, (menu_id,))
-            menu = cur.fetchone()
+            menu = cursor.fetchone()
 
         if not menu:
             raise HTTPException(status_code=404, detail="Menu not found")
 
-        # Ensure meal_plan_json is parsed
+        # Convert to dict and ensure meal_plan_json is parsed
+        menu = dict(menu)
         menu['meal_plan'] = json.loads(menu['meal_plan_json']) if isinstance(menu['meal_plan_json'], str) else menu['meal_plan_json']
 
         return menu
     except Exception as e:
-        print("Error retrieving menu details:", e)
+        logger.error(f"Error retrieving menu details: {e}")
         # Return a more specific error
         if "not found" in str(e).lower():
             raise HTTPException(status_code=404, detail="Menu not found")
@@ -71,8 +75,6 @@ def get_menu_details(menu_id: int):
             raise HTTPException(status_code=403, detail="Permission error: You don't have access to this menu")
         else:
             raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
-    finally:
-        conn.close()
 
 
 @router.get("/{menu_id}/grocery-list")
@@ -561,9 +563,11 @@ async def post_ai_shopping_list(menu_id: int, background_tasks: BackgroundTasks,
     
     # If we don't have a valid cache entry, process the request
     # First, get the basic grocery list which is faster
-    conn = get_db_connection()
     try:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        # Use autocommit for fast grocery list operations
+        with get_db_cursor(dict_cursor=True, autocommit=True) as (cur, conn):
+            # Autocommit is enabled at connection creation time
+
             # Fetch the meal_plan_json field
             cur.execute("SELECT meal_plan_json FROM menus WHERE id=%s", (menu_id,))
             row = cur.fetchone()
@@ -632,8 +636,6 @@ async def post_ai_shopping_list(menu_id: int, background_tasks: BackgroundTasks,
             "status": "error",
             "menu_id": menu_id
         }
-    finally:
-        conn.close()
 
 @router.get("/{menu_id}/ai-shopping-list/status")
 async def get_ai_shopping_list_status(menu_id: int, preferences: Optional[str] = None):

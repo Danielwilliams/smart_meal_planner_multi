@@ -25,7 +25,8 @@ import {
   FavoriteBorder as FavoriteBorderIcon,
   Share as ShareIcon,
   Person as PersonIcon,
-  ShoppingCart as ShoppingCartIcon
+  ShoppingCart as ShoppingCartIcon,
+  Delete as DeleteIcon
 } from '@mui/icons-material';
 
 // Local Imports
@@ -37,6 +38,7 @@ import RecipeSaveDialog from '../components/RecipeSaveDialog';
 import MenuSharingModal from '../components/MenuSharingModal';
 import ModelSelectionDialog from '../components/ModelSelectionDialog';
 import MenuGenerationProgress from '../components/MenuGenerationProgress';
+import RateRecipeButton from '../components/RateRecipeButton';
 
 // Utility Functions
 function formatIngredient(ing) {
@@ -191,6 +193,9 @@ function MenuDisplayPage() {
     const fetchSavedRecipes = async () => {
       try {
         const saved = await apiService.getSavedRecipes();
+        console.log('🐛 DEBUG: Fetched saved recipes:', saved);
+        console.log('🐛 DEBUG: Number of saved recipes:', saved.length);
+        console.log('🐛 DEBUG: Sample saved recipe:', saved[0]);
         setSavedRecipes(saved);
       } catch (err) {
         console.error('Failed to fetch saved recipes', err);
@@ -656,6 +661,43 @@ function MenuDisplayPage() {
     }
   };
 
+  // Delete menu handler
+  const handleDeleteMenu = async (menuId) => {
+    if (!window.confirm('Are you sure you want to delete this menu? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      
+      await apiService.deleteMenu(menuId);
+      
+      // Refresh menu history
+      const history = await apiService.getMenuHistory(user.userId);
+      setMenuHistory(history);
+      
+      // If deleted menu was selected, select the latest menu
+      if (selectedMenuId === menuId) {
+        if (history && history.length > 0) {
+          const latestMenu = await apiService.getLatestMenu(user.userId);
+          setMenu(latestMenu);
+          setSelectedMenuId(latestMenu.menu_id);
+        } else {
+          setMenu(null);
+          setSelectedMenuId(null);
+        }
+      }
+      
+      setSnackbarMessage('Menu deleted successfully');
+      setSnackbarOpen(true);
+    } catch (err) {
+      console.error('Error deleting menu:', err);
+      setError('Failed to delete menu. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Print handling
   const handlePrint = () => {
     setPrintMode(true);
@@ -927,41 +969,70 @@ function MenuDisplayPage() {
                           dayNumber={day.dayNumber}
                           mealTime={meal.meal_time}
                           recipeTitle={meal.title}
-                          isSaved={savedRecipes.some(
-                            saved => saved.menu_id === menu.menu_id && 
-                                     saved.meal_time === meal.meal_time &&
-                                     saved.day_number === day.dayNumber
-                          )}
+                          isSaved={(() => {
+                            // Check if this menu recipe is saved (with debug logging)
+                            const isMenuSaved = savedRecipes.some(
+                              saved => (saved.menu_id === menu.menu_id || saved.menu_id === String(menu.menu_id)) && 
+                                       (saved.meal_time === meal.meal_time || saved.meal_time === String(meal.meal_time)) &&
+                                       (saved.day_number === day.dayNumber || saved.day_number === String(day.dayNumber))
+                            );
+                            console.log('🐛 DEBUG: Checking if saved:', {
+                              menuId: menu.menu_id,
+                              mealTime: meal.meal_time, 
+                              dayNumber: day.dayNumber,
+                              isMenuSaved,
+                              savedRecipesCount: savedRecipes.length,
+                              matchingRecipes: savedRecipes.filter(s => 
+                                (s.menu_id === menu.menu_id || s.menu_id === String(menu.menu_id))
+                              ),
+                              sampleSavedRecipe: savedRecipes[0]
+                            });
+                            return isMenuSaved;
+                          })()}
                           savedId={savedRecipes.find(
                             saved => saved.menu_id === menu.menu_id && 
                                      saved.recipe_id === `${menu.menu_id}-${day.dayNumber}-${meal.meal_time}` && 
                                      saved.meal_time === meal.meal_time
                           )?.id}
-                          onSaveSuccess={(result) => {
-                            if (result.isSaved) {
-                              // Add the new saved recipe to the state
-                              setSavedRecipes(prev => [
-                                ...prev,
-                                {
-                                  id: result.savedId,
-                                  menu_id: result.menuId,
-                                  recipe_id: result.recipeId,
-                                  meal_time: result.mealTime,
-                                  recipe_name: result.recipeTitle,
-                                  day_number: day.dayNumber
-                                }
-                              ]);
-                            } else {
-                              // Remove the unsaved recipe from state
-                              setSavedRecipes(prev => 
-                                prev.filter(item => 
-                                  !(item.menu_id === result.menuId && 
-                                    item.recipe_id === result.recipeId && 
-                                    item.meal_time === result.mealTime)
-                                )
-                              );
+                          onSaveSuccess={async (result) => {
+                            // Reload saved recipes from server to ensure correct state
+                            try {
+                              const saved = await apiService.getSavedRecipes();
+                              setSavedRecipes(saved);
+                            } catch (err) {
+                              console.error('Failed to refresh saved recipes', err);
+                              // Fallback to manual state update if reload fails
+                              if (result.isSaved) {
+                                setSavedRecipes(prev => [
+                                  ...prev,
+                                  {
+                                    id: result.savedId,
+                                    menu_id: result.menuId,
+                                    recipe_id: result.recipeId,
+                                    meal_time: result.mealTime,
+                                    recipe_name: result.recipeTitle,
+                                    day_number: day.dayNumber
+                                  }
+                                ]);
+                              } else {
+                                setSavedRecipes(prev => 
+                                  prev.filter(item => 
+                                    !(item.menu_id === result.menuId && 
+                                      item.recipe_id === result.recipeId && 
+                                      item.meal_time === result.mealTime)
+                                  )
+                                );
+                              }
                             }
                           }}
+                        />
+
+                        {/* Rate Recipe Button */}
+                        <RateRecipeButton
+                          recipeId={`${menu.menu_id}-${day.dayNumber}-${meal.meal_time}`}
+                          recipeTitle={meal.title}
+                          variant="icon"
+                          size="small"
                         />
 
                         {meal.appliance_used && (
@@ -1116,7 +1187,38 @@ function MenuDisplayPage() {
                               </Typography>
                             </li>
                           ))}
-                        </ul>               
+                        </ul>
+
+                        {/* Add instructions section for snacks */}
+                        {snack.instructions && snack.instructions.length > 0 && (
+                          <>
+                            <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                              <strong>Instructions:</strong>
+                            </Typography>
+                            {Array.isArray(snack.instructions) ? (
+                              <ol style={{
+                                margin: '8px 0',
+                                paddingLeft: '20px',
+                                wordBreak: 'break-word'
+                              }}>
+                                {snack.instructions.map((step, idx) => {
+                                  // Remove any leading numbers and dots from the step
+                                  const cleanStep = step.replace(/^\d+\.\s*/, '');
+                                  return (
+                                    <li key={idx}>
+                                      <Typography variant="body2">{cleanStep}</Typography>
+                                    </li>
+                                  );
+                                })}
+                              </ol>
+                            ) : (
+                              <Typography variant="body2" sx={{ mt: 1 }}>
+                                {snack.instructions}
+                              </Typography>
+                            )}
+                          </>
+                        )}
+
                         {snack.macros && (
                           <Box sx={{ 
                         mt: 2, 
@@ -1395,6 +1497,16 @@ function MenuDisplayPage() {
                         >
                           <EditIcon fontSize="small" />
                         </IconButton>
+                        <IconButton
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteMenu(menuItem.menu_id);
+                          }}
+                          sx={{ ml: 0.5, color: 'error.main' }}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
                       </>
                     )}
                   </Box>
@@ -1430,22 +1542,56 @@ function MenuDisplayPage() {
             }}
           />
 
-          <Button 
-            variant="contained" 
-            color="primary"
-            onClick={handleGenerateMenu}
-            disabled={loading}
-            sx={{ 
-              flex: { xs: '1 1 100%', sm: 1 },
-              height: { xs: '48px', sm: 'auto' },
-              fontSize: { xs: '1rem', sm: 'inherit' },
-              mb: { xs: 1, sm: 0 }
-            }}
-          >
-            {clientMode && selectedClient 
-              ? `Generate Menu for ${selectedClient.name}` 
-              : 'Generate New Menu'}
-          </Button>
+          {/* Show button for accounts that are not 'free' or 'client' */}
+          {(!user?.account_type || (user.account_type !== 'free' && user.account_type !== 'client')) ? (
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={handleGenerateMenu}
+              disabled={loading}
+              sx={{
+                flex: { xs: '1 1 100%', sm: 1 },
+                height: { xs: '48px', sm: 'auto' },
+                fontSize: { xs: '1rem', sm: 'inherit' },
+                mb: { xs: 1, sm: 0 }
+              }}
+            >
+              {clientMode && selectedClient
+                ? `Generate Menu for ${selectedClient.name}`
+                : 'Generate New Menu'}
+            </Button>
+          ) : (
+            <Box
+              sx={{
+                flex: { xs: '1 1 100%', sm: 1 },
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                border: '1px dashed',
+                borderColor: 'divider',
+                borderRadius: 1,
+                p: 2,
+                mb: { xs: 1, sm: 0 }
+              }}
+            >
+              <Typography variant="body2" align="center" color="text.secondary">
+                {user.account_type === 'client'
+                  ? "Menu generation is handled by your organization"
+                  : "Upgrade your subscription to generate new meal plans"}
+              </Typography>
+              {user.account_type !== 'client' && (
+                <Button
+                  variant="outlined"
+                  size="small"
+                  sx={{ mt: 1 }}
+                  onClick={() => navigate('/subscription')}
+                >
+                  View Plans
+                </Button>
+              )}
+            </Box>
+          )}
 
           {menu && (
             <>

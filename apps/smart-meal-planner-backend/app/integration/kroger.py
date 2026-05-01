@@ -179,11 +179,12 @@ def kroger_search_item(query: str, location_id: Optional[str] = None) -> Dict[st
                 "results": []
             }
         
-        # Prepare params WITH location ID
+        # Prepare params WITH location ID and fulfillment filter for availability
         params = {
             'filter.term': cleaned_query,
             'filter.limit': '50',
-            'filter.locationId': effective_location_id  # ALWAYS include location ID
+            'filter.locationId': effective_location_id,  # ALWAYS include location ID
+            'filter.fulfillment': 'ais'  # Filter for items available in store
         }
         
         logger.debug(f"Making search request to: {search_url}")
@@ -365,23 +366,39 @@ def refresh_kroger_token(user_id: int) -> Optional[str]:
 def add_to_kroger_cart(access_token: str, location_id: str, items: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
     Standalone function to add items to Kroger cart
-    
+
     Note: This function requires an access token with cart.basic:write scope,
     which can only be obtained through the authorization_code flow, not
     the client_credentials flow used for product search.
     """
+    # Better logging for debugging location ID issues
+    logger.info(f"KROGER CART ADD: Using location_id: {location_id}")
+    logger.info(f"KROGER CART ADD: Items count: {len(items)}")
+
+    # Validate location ID
+    if not location_id:
+        logger.error("Missing location_id for Kroger cart operation")
+        return {
+            "success": False,
+            "message": "Missing location_id - store selection required",
+            "needs_setup": True
+        }
+
     cart_url = f"{KROGER_BASE_URL}/cart/add"
-    
+
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {access_token}",
         "Accept": "application/json"
     }
 
+    # Log the full payload for debugging
     payload = {
         "locationId": location_id,
         "items": items
     }
+
+    logger.info(f"KROGER CART PAYLOAD: locationId={location_id}, items_count={len(items)}")
     
     try:
         response = requests.put(cart_url, headers=headers, json=payload)

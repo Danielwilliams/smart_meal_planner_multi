@@ -1,14 +1,16 @@
 # app/routers/organizations.py - New file
 
 from fastapi import APIRouter, Depends, HTTPException, Body
+import logging
 from app.utils.auth_utils import get_user_from_token
 from app.utils.auth_middleware import require_organization_owner
-from app.models.user import OrganizationCreate, Organization
-from app.db import get_db_connection
+from app.models.user import OrganizationCreate, Organization, UserManagementPermissions
+from app.db import get_db_connection, get_db_cursor
 from typing import List
 from app.utils.auth_middleware import require_organization_owner, require_organization_member
 from psycopg2.extras import RealDictCursor
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/organizations", tags=["Organizations"])
 
 @router.post("/", response_model=Organization)
@@ -19,9 +21,8 @@ async def create_organization(
     """Create a new organization with the current user as owner"""
     user_id = user.get('user_id')
     
-    conn = get_db_connection()
     try:
-        with conn.cursor() as cur:
+        with get_db_cursor() as (cur, conn):
             # Check if user already owns an organization
             cur.execute("""
                 SELECT id FROM organizations WHERE owner_id = %s
@@ -49,8 +50,9 @@ async def create_organization(
                 "owner_id": new_org[3],
                 "created_at": new_org[4].isoformat()
             }
-    finally:
-        conn.close()
+    except Exception as e:
+        logger.error(f"Error creating organization: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error creating organization")
 
 @router.get("/", response_model=List[Organization])
 async def get_user_organizations(user=Depends(get_user_from_token)):
@@ -60,10 +62,34 @@ async def get_user_organizations(user=Depends(get_user_from_token)):
     - If client: returns organizations where user is a client
     """
     user_id = user.get('user_id')
+    organization_id = user.get('organization_id')
+    role = user.get('role')
+    account_type = user.get('account_type')
     
-    conn = get_db_connection()
+    # If user has organization_id in JWT token, use it directly
+    if organization_id and account_type == 'organization' and role == 'owner':
+        try:
+            with get_db_cursor(dict_cursor=True) as (cur, conn):
+                cur.execute("""
+                    SELECT id, name, description, owner_id, created_at
+                    FROM organizations WHERE id = %s AND owner_id = %s
+                """, (organization_id, user_id))
+                
+                org = cur.fetchone()
+                if org:
+                    return [{
+                        "id": org['id'],
+                        "name": org['name'],
+                        "description": org['description'],
+                        "owner_id": org['owner_id'],
+                        "created_at": org['created_at'].isoformat()
+                    }]
+        except Exception as e:
+            logger.error(f"Error getting organization by JWT token: {str(e)}")
+    
+    # Fallback to the original logic for other cases
     try:
-        with conn.cursor() as cur:
+        with get_db_cursor(dict_cursor=True) as (cur, conn):
             # Check if user is an owner
             cur.execute("""
                 SELECT id, name, description, owner_id, created_at
@@ -73,11 +99,11 @@ async def get_user_organizations(user=Depends(get_user_from_token)):
             owned_orgs = cur.fetchall()
             if owned_orgs:
                 return [{
-                    "id": org[0],
-                    "name": org[1],
-                    "description": org[2],
-                    "owner_id": org[3],
-                    "created_at": org[4].isoformat()
+                    "id": org['id'],
+                    "name": org['name'],
+                    "description": org['description'],
+                    "owner_id": org['owner_id'],
+                    "created_at": org['created_at'].isoformat()
                 } for org in owned_orgs]
             
             # Check if user is a client
@@ -90,19 +116,20 @@ async def get_user_organizations(user=Depends(get_user_from_token)):
             
             client_orgs = cur.fetchall()
             return [{
-                "id": org[0],
-                "name": org[1],
-                "description": org[2],
-                "owner_id": org[3],
-                "created_at": org[4].isoformat()
+                "id": org['id'],
+                "name": org['name'],
+                "description": org['description'],
+                "owner_id": org['owner_id'],
+                "created_at": org['created_at'].isoformat()
             } for org in client_orgs]
-    finally:
-        conn.close()
+    except Exception as e:
+        logger.error(f"Error getting user organizations: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error fetching organizations")
 
 @router.get("/{org_id}")
 async def get_organization(
     org_id: int,
-    user=Depends(get_user_from_token, use_cache=False)
+    user=Depends(get_user_from_token)
 ):
     """Get organization details (basic info is public for invitation flow)"""
     # For non-authenticated requests or invitation flow, allow access to basic info
@@ -150,8 +177,11 @@ async def get_organization(
                     "owner_id": org[3],
                     "created_at": org[4].isoformat()
                 }
-    finally:
-        conn.close()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting organization: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error fetching organization")
 
 @router.get("/clients/{client_id}")
 async def get_client_details(
@@ -169,9 +199,8 @@ async def get_client_details(
             detail="You don't have permission to view this client's details"
         )
     
-    conn = get_db_connection()
     try:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        with get_db_cursor(dict_cursor=True) as (cur, conn):
             # Get client details
             cur.execute("""
                 SELECT 
@@ -203,58 +232,25 @@ async def get_client_details(
                 )
             
             return client
-    finally:
-        conn.close()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting client details: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error fetching client details")
 
-@router.get("/clients/{client_id}")
-async def get_client_details(
-    client_id: int,
-    user=Depends(get_user_from_token)
-):
-    """Get detailed information about a client"""
-    user_id = user.get('user_id')
-    org_id = user.get('organization_id')
+# User Management endpoints for organizations
+@router.get("/permissions", response_model=UserManagementPermissions)
+async def get_org_user_permissions(user=Depends(get_user_from_token)):
+    """Get organization user management permissions"""
+    if user.get('account_type') != 'organization':
+        return UserManagementPermissions()
     
-    # Check if user is organization owner or the client themselves
-    if user_id != client_id and user.get('role') != 'owner':
-        raise HTTPException(
-            status_code=403,
-            detail="You don't have permission to view this client's details"
-        )
-    
-    conn = get_db_connection()
-    try:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            # Get client details
-            cur.execute("""
-                SELECT 
-                    up.id, 
-                    up.email, 
-                    up.name, 
-                    up.account_type,
-                    up.profile_complete,
-                    oc.organization_id,
-                    oc.role,
-                    oc.status
-                FROM user_profiles up
-                LEFT JOIN organization_clients oc ON up.id = oc.client_id
-                WHERE up.id = %s
-            """, (client_id,))
-            
-            client = cur.fetchone()
-            if not client:
-                raise HTTPException(
-                    status_code=404,
-                    detail="Client not found"
-                )
-            
-            # If requesting a client from a different organization, only the owner can view
-            if client['organization_id'] != org_id and user.get('role') != 'owner':
-                raise HTTPException(
-                    status_code=403,
-                    detail="This client belongs to a different organization"
-                )
-            
-            return client
-    finally:
-        conn.close()
+    return UserManagementPermissions(
+        can_pause_users=True,
+        can_delete_users=True,
+        can_restore_users=True,
+        can_view_all_users=False,
+        can_manage_org_users=True,
+        is_system_admin=False
+    )
+

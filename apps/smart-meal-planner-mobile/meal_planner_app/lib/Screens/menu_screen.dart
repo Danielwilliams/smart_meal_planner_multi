@@ -756,22 +756,6 @@ class _MenuScreenState extends State<MenuScreen> {
                 );
               },
             ),
-            ListTile(
-              leading: Icon(Icons.compare_arrows),
-              title: Text('Compare Stores'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.pushNamed(context, '/compare');
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.receipt_long),
-              title: Text('Order History'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.pushNamed(context, '/order-history');
-              },
-            ),
             
             Divider(),
             
@@ -1402,6 +1386,40 @@ class _MenuScreenState extends State<MenuScreen> {
   
   // Build a grid to display macros
   Widget _buildMacrosGrid(Map<String, dynamic> macros) {
+    // Extract nutrition data from the proper nested structure
+    Map<String, dynamic>? nutritionData;
+    
+    // Check for perMeal structure (as seen in the menu JSON)
+    if (macros.containsKey('perMeal') && macros['perMeal'] is Map) {
+      nutritionData = macros['perMeal'] as Map<String, dynamic>;
+      print("📊 Using perMeal nutrition data: $nutritionData");
+    }
+    // Check for perServing structure
+    else if (macros.containsKey('perServing') && macros['perServing'] is Map) {
+      nutritionData = macros['perServing'] as Map<String, dynamic>;
+      print("📊 Using perServing nutrition data: $nutritionData");
+    }
+    // Fallback to direct macros if no nested structure
+    else {
+      nutritionData = macros;
+      print("📊 Using direct macros data: $nutritionData");
+    }
+    
+    // Helper function to extract numeric value from string (e.g., "15g" -> "15")
+    String extractValue(dynamic value) {
+      if (value == null) return 'N/A';
+      String stringValue = value.toString();
+      // Remove 'g' suffix and any other non-numeric characters except decimal points
+      String numericValue = stringValue.replaceAll(RegExp(r'[^0-9.]'), '');
+      return numericValue.isEmpty ? 'N/A' : numericValue;
+    }
+    
+    // Extract individual macro values
+    String calories = extractValue(nutritionData['calories']);
+    String protein = extractValue(nutritionData['protein']);
+    String carbs = extractValue(nutritionData['carbs']);
+    String fat = extractValue(nutritionData['fat']);
+    
     return Container(
       decoration: BoxDecoration(
         color: Colors.grey[100],
@@ -1412,15 +1430,15 @@ class _MenuScreenState extends State<MenuScreen> {
         children: [
           Row(
             children: [
-              _buildMacroItem("Calories", "${macros['calories'] ?? 'N/A'}", Colors.orange),
-              _buildMacroItem("Protein", "${macros['protein'] ?? 'N/A'}g", Colors.red),
+              _buildMacroItem("Calories", calories, Colors.orange),
+              _buildMacroItem("Protein", "${protein}g", Colors.red),
             ],
           ),
           SizedBox(height: 8),
           Row(
             children: [
-              _buildMacroItem("Carbs", "${macros['carbs'] ?? 'N/A'}g", Colors.green),
-              _buildMacroItem("Fat", "${macros['fat'] ?? 'N/A'}g", Colors.blue),
+              _buildMacroItem("Carbs", "${carbs}g", Colors.green),
+              _buildMacroItem("Fat", "${fat}g", Colors.blue),
             ],
           ),
         ],

@@ -74,6 +74,7 @@ export default function OrganizationSettingsPage() {
       Paleo: false,
       'Low-Carb': false,
       'Low-Fat': false,
+      'Low-Sodium': false,
       'Gluten-Free': false,
       'Dairy-Free': false,
       Other: false
@@ -176,6 +177,80 @@ export default function OrganizationSettingsPage() {
     'minimal-dishes': false
   });
 
+  const [preferredProteins, setPreferredProteins] = useState({
+    meat: {
+      chicken: false,
+      beef: false,
+      pork: false,
+      turkey: false,
+      lamb: false,
+      bison: false,
+      other: false
+    },
+    seafood: {
+      salmon: false,
+      tuna: false,
+      cod: false,
+      shrimp: false,
+      crab: false,
+      mussels: false,
+      other: false
+    },
+    vegetarian_vegan: {
+      tofu: false,
+      tempeh: false,
+      seitan: false,
+      lentils: false,
+      chickpeas: false,
+      black_beans: false,
+      other: false
+    },
+    other: {
+      eggs: false,
+      dairy_milk: false,
+      dairy_yogurt: false,
+      protein_powder_whey: false,
+      protein_powder_pea: false,
+      quinoa: false,
+      other: false
+    }
+  });
+
+  const [otherProteins, setOtherProteins] = useState({
+    meat: '',
+    seafood: '',
+    vegetarian_vegan: '',
+    other: ''
+  });
+
+  // Carb cycling preferences state for organization defaults
+  const [carbCyclingEnabled, setCarbCyclingEnabled] = useState(false);
+  
+  const [carbCyclingConfig, setCarbCyclingConfig] = useState({
+    pattern: '3-1-3',
+    high_carb_grams: 200,
+    moderate_carb_grams: 100,
+    low_carb_grams: 50,
+    no_carb_grams: 20,
+    weekly_schedule: {
+      monday: 'high',
+      tuesday: 'low',
+      wednesday: 'high',
+      thursday: 'moderate',
+      friday: 'high',
+      saturday: 'low',
+      sunday: 'low'
+    },
+    sync_with_workouts: false,
+    workout_days: [],
+    custom_pattern: false,
+    goals: {
+      primary: 'fat_loss',
+      secondary: 'maintain_muscle'
+    },
+    notes: ''
+  });
+
   useEffect(() => {
     if (organization?.id) {
       loadOrganizationSettings();
@@ -205,6 +280,14 @@ export default function OrganizationSettingsPage() {
         if (defaults.mealTimePreferences) setMealTimePreferences(defaults.mealTimePreferences);
         if (defaults.timeConstraints) setTimeConstraints(defaults.timeConstraints);
         if (defaults.prepPreferences) setPrepPreferences(defaults.prepPreferences);
+        if (defaults.preferredProteins) setPreferredProteins(defaults.preferredProteins);
+        if (defaults.otherProteins) setOtherProteins(defaults.otherProteins);
+        
+        // Load carb cycling defaults with null checking
+        if (defaults.carb_cycling_enabled !== undefined) setCarbCyclingEnabled(defaults.carb_cycling_enabled);
+        if (defaults.carb_cycling_config && typeof defaults.carb_cycling_config === 'object' && Object.keys(defaults.carb_cycling_config).length > 0) {
+          setCarbCyclingConfig(prev => ({ ...prev, ...defaults.carb_cycling_config }));
+        }
       }
       
     } catch (err) {
@@ -234,7 +317,12 @@ export default function OrganizationSettingsPage() {
           recipeTypePreferences,
           mealTimePreferences,
           timeConstraints,
-          prepPreferences
+          prepPreferences,
+          preferredProteins,
+          otherProteins,
+          // Include carb cycling preferences
+          carb_cycling_enabled: carbCyclingEnabled,
+          carb_cycling_config: carbCyclingConfig
         }
       };
 
@@ -345,6 +433,14 @@ export default function OrganizationSettingsPage() {
             setTimeConstraints={setTimeConstraints}
             prepPreferences={prepPreferences}
             setPrepPreferences={setPrepPreferences}
+            preferredProteins={preferredProteins}
+            setPreferredProteins={setPreferredProteins}
+            otherProteins={otherProteins}
+            setOtherProteins={setOtherProteins}
+            carbCyclingEnabled={carbCyclingEnabled}
+            setCarbCyclingEnabled={setCarbCyclingEnabled}
+            carbCyclingConfig={carbCyclingConfig}
+            setCarbCyclingConfig={setCarbCyclingConfig}
             loading={saving}
             message=""
             error=""

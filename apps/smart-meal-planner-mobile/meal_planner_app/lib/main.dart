@@ -26,11 +26,18 @@ import 'Screens/client_recipes_screen.dart';
 import 'Screens/client_menus_screen.dart';
 import 'Screens/client_preferences_screen.dart';
 import 'Screens/create_client_menu_screen.dart';
+import 'Screens/subscription_page.dart';
+import 'Screens/instacart_retailer_selector_screen.dart';
+import 'Screens/instacart_search_results_screen.dart';
+import 'Screens/instacart_cart_screen.dart';
 import 'Providers/auth_providers.dart';
+import 'Providers/subscription_provider.dart';
+import 'components/subscription_route_wrapper.dart';
 import 'common/custom_theme.dart';
 import 'services/theme_service.dart';
-import 'services/api_service.dart';
+import 'services/api_service.dart' show navigatorKey, ApiService;
 import 'models/cart_model.dart';
+import 'models/menu_model.dart'; // Import the Menu model
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -43,52 +50,70 @@ class CartState extends ChangeNotifier {
   Map<String, List<dynamic>> storeCarts = {
     'Walmart': [],
     'Kroger': [],
+    'Instacart': [],
   };
-  
+
   // Track totals for each store
   Map<String, double> storeTotals = {
     'Walmart': 0.0,
     'Kroger': 0.0,
+    'Instacart': 0.0,
   };
-  
+
   // Add a single item to cart
   void addItemToCart(String store, Map<String, dynamic> item) {
     print("CART STATE: Adding item to $store cart: ${item['name']}");
+    // Make sure the store exists in the cart
+    if (!storeCarts.containsKey(store)) {
+      storeCarts[store] = [];
+      storeTotals[store] = 0.0;
+    }
     storeCarts[store]!.add(item);
     recalculateTotal(store);
     notifyListeners();
   }
-  
+
   // Add multiple items to cart
   void addItemsToCart(String store, List<Map<String, dynamic>> items) {
     print("CART STATE: Adding ${items.length} items to $store cart");
+    // Make sure the store exists in the cart
+    if (!storeCarts.containsKey(store)) {
+      storeCarts[store] = [];
+      storeTotals[store] = 0.0;
+    }
     for (var item in items) {
       storeCarts[store]!.add(item);
     }
     recalculateTotal(store);
     notifyListeners();
   }
-  
+
   // Remove an item from cart
   void removeItemFromCart(String store, dynamic item) {
     print("CART STATE: Removing item from $store cart");
-    storeCarts[store]!.removeWhere((cartItem) => 
-      cartItem['name'] == item['name'] && 
-      cartItem['ingredient'] == item['ingredient']);
-    recalculateTotal(store);
-    notifyListeners();
+    if (storeCarts.containsKey(store)) {
+      storeCarts[store]!.removeWhere((cartItem) =>
+        cartItem['name'] == item['name'] &&
+        cartItem['ingredient'] == item['ingredient']);
+      recalculateTotal(store);
+      notifyListeners();
+    }
   }
-  
+
   // Clear a store's cart
   void clearCart(String store) {
     print("CART STATE: Clearing $store cart");
-    storeCarts[store]!.clear();
-    storeTotals[store] = 0.0;
-    notifyListeners();
+    if (storeCarts.containsKey(store)) {
+      storeCarts[store]!.clear();
+      storeTotals[store] = 0.0;
+      notifyListeners();
+    }
   }
-  
+
   // Recalculate total for a store
   void recalculateTotal(String store) {
+    if (!storeCarts.containsKey(store)) return;
+
     double total = 0.0;
     for (var item in storeCarts[store]!) {
       if (item.containsKey('price') && item['price'] != null) {
@@ -107,14 +132,14 @@ class CartState extends ChangeNotifier {
     }
     storeTotals[store] = total;
   }
-  
+
   // Debug method to print current cart state
   void printCartState() {
     for (var store in storeCarts.keys) {
       print("$store cart has ${storeCarts[store]!.length} items");
       for (var i = 0; i < storeCarts[store]!.length; i++) {
         var item = storeCarts[store]![i];
-        print("  Item $i: ${item['name']} (${item['ingredient']})");
+        print("  Item $i: ${item['name'] ?? 'Unknown'} (${item['ingredient'] ?? 'No ingredient'})");
       }
     }
   }
@@ -190,6 +215,7 @@ class _MealPlannerAppState extends State<MealPlannerApp> {
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => CartState()),
         ChangeNotifierProvider(create: (_) => AppState()),
+        ChangeNotifierProvider(create: (_) => SubscriptionProvider()),
         Provider<ThemeService>(
           create: (_) => ThemeService(
             toggleTheme: _toggleThemeMode,
@@ -211,17 +237,50 @@ class _MealPlannerAppState extends State<MealPlannerApp> {
             '/login': (context) => LoginScreen(),
             '/signup': (context) => SignUpScreen(),
             '/forgot-password': (context) => ForgotPasswordScreen(),
+            '/subscription': (context) => SubscriptionPage(),
             '/reset-password': (context) {
               final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
               return ResetPasswordScreen(token: args?['token'] ?? '');
             },
             '/kroger-auth': (context) {
               final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+              
+              print('📱 /kroger-auth route called with args: $args');
+              
+              // Check if this is a deep link callback with auth code
+              final code = args?['code'];
+              if (code != null) {
+                print('🎉 Deep link callback received with auth code: ${code.substring(0, 10)}...');
+                // This is a callback from Kroger OAuth - handle it
+                return KrogerAuthScreen(
+                  userId: auth.userId ?? 0,
+                  authToken: auth.authToken ?? '',
+                );
+              }
+              
+              // Regular auth screen launch
               return KrogerAuthScreen(
                 authUrl: args?['authUrl'],
                 userId: args?['userId'] ?? auth.userId ?? 0,
                 authToken: args?['authToken'] ?? auth.authToken ?? '',
               );
+            },
+            '/kroger-auth-callback': (context) {
+              // Handle deep link callback from Kroger OAuth
+              final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+              final code = args?['code'];
+              
+              if (auth.isLoggedIn && code != null) {
+                // Process the authorization code
+                // This will typically be handled by the KrogerAuthScreen when it resumes
+                return KrogerAuthScreen(
+                  userId: auth.userId ?? 0,
+                  authToken: auth.authToken ?? '',
+                );
+              }
+              
+              // Fallback to login if not authenticated
+              return LoginScreen();
             },
           },
           onGenerateRoute: (settings) {
@@ -377,8 +436,43 @@ class _MealPlannerAppState extends State<MealPlannerApp> {
                       needsSearch: args?['needsSearch'],
                       ingredientCount: args?['ingredientCount'],
                       localCartItem: args?['localCartItem'],
-                      localCartItems: args?['localCartItems'] != null ? 
+                      localCartItems: args?['localCartItems'] != null ?
                         List<Map<String, dynamic>>.from(args?['localCartItems']) : null,
+                    )
+                  );
+
+                // Instacart integration routes
+                case '/instacart-retailers':
+                  final args = settings.arguments as Map<String, dynamic>?;
+                  return MaterialPageRoute(
+                    builder: (_) => InstacartRetailerSelectorScreen(
+                      userId: userId,
+                      authToken: token,
+                      initialZipCode: args?['zipCode'],
+                      onRetailerSelected: args?['onRetailerSelected'],
+                    )
+                  );
+
+                case '/instacart-search':
+                  final args = settings.arguments as Map<String, dynamic>?;
+                  return MaterialPageRoute(
+                    builder: (_) => InstacartSearchResultsScreen(
+                      userId: userId,
+                      authToken: token,
+                      retailerId: args?['retailerId'] ?? '',
+                      retailerName: args?['retailerName'] ?? 'Retailer',
+                      ingredients: args?['ingredients'] ?? <String>[],
+                    )
+                  );
+
+                case '/instacart-cart':
+                  final args = settings.arguments as Map<String, dynamic>?;
+                  return MaterialPageRoute(
+                    builder: (_) => InstacartCartScreen(
+                      userId: userId,
+                      authToken: token,
+                      retailerId: args?['retailerId'] ?? '',
+                      retailerName: args?['retailerName'] ?? 'Retailer',
                     )
                   );
               }
@@ -412,6 +506,7 @@ class MainNavigationScreen extends StatefulWidget {
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
   late PageController _pageController;
   bool _isLoading = true;
+  List<String> tabOrder = ['menu', 'browse', 'shop', 'profile']; // Default tab order
   
   @override
   void initState() {
@@ -501,9 +596,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       // Combine results - if either source indicates organization, show organization tab
       final isOrganization = isOrganizationFromAuth || isOrganizationFromApi;
       
-      // IMPORTANT: If all checks fail, set to true to always show the bottom tab
-      // This ensures the bottom bar will always appear even if the organization check fails
-      Provider.of<AppState>(context, listen: false).setOrganizationStatus(true);
+      // Update the app state with the correct organization status
+      Provider.of<AppState>(context, listen: false).setOrganizationStatus(isOrganization);
       // Update the actual organization state for the correct tab content
       Provider.of<AppState>(context, listen: false).setIsActuallyOrganization(isOrganization);
       
@@ -511,11 +605,12 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     } catch (e) {
       print("Error checking organization status: $e");
       
-      // Always show bottom tab in case of error
-      Provider.of<AppState>(context, listen: false).setOrganizationStatus(true);
-      
+      // Use organization status from auth provider in case of error
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      Provider.of<AppState>(context, listen: false).setIsActuallyOrganization(authProvider.isOrganization);
+      final isOrgAccount = authProvider.isOrganization;
+
+      Provider.of<AppState>(context, listen: false).setOrganizationStatus(isOrgAccount);
+      Provider.of<AppState>(context, listen: false).setIsActuallyOrganization(isOrgAccount);
       
       setState(() => _isLoading = false);
     }
@@ -524,6 +619,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   void _selectTab(int index) {
     final appState = Provider.of<AppState>(context, listen: false);
     appState.setSelectedTab(index);
+
+    // Animate to the tab
     _pageController.animateToPage(
       index,
       duration: Duration(milliseconds: 300),
@@ -570,13 +667,16 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     final Map<String, Widget> allScreens = {
       'menu': MenuScreen(userId: widget.userId, authToken: widget.authToken),
       'browse': RecipeBrowserScreen(userId: widget.userId, authToken: widget.authToken),
-      'shop': CartsScreen(userId: widget.userId, authToken: widget.authToken),
+      'shop': MenuHistoryScreen(
+        userId: widget.userId,
+        authToken: widget.authToken,
+      ),
       'organization': OrganizationScreen(userId: widget.userId, authToken: widget.authToken),
       'profile': ProfileScreen(userId: widget.userId, authToken: widget.authToken),
     };
     
-    // Define tab order based on user type
-    List<String> tabOrder = hasOrganizationTab
+    // Update tab order based on user type
+    tabOrder = hasOrganizationTab
       ? ['menu', 'browse', 'shop', 'organization', 'profile']
       : ['menu', 'browse', 'shop', 'profile'];
     
@@ -599,8 +699,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         label: 'Browse',
       ),
       BottomNavigationBarItem(
-        icon: Icon(Icons.shopping_cart),
-        label: 'Shop',
+        icon: Icon(Icons.shopping_basket),
+        label: 'Shopping',
       ),
     ];
     
@@ -618,6 +718,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       label: 'Profile',
     ));
     
+    // Temporarily bypass subscription check for testing
     return Scaffold(
       body: PageView(
         controller: _pageController,

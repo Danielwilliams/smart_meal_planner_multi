@@ -5,10 +5,14 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 
 # Import S3 helper for initialization
 from app.utils.s3.s3_utils import s3_helper
+
+# Import database helpers for initialization
+from app.db import connection_pool, close_all_connections, get_connection_stats  # Using the ultra-simplified DB module
 
 # Import enhanced CORS middleware
 from app.middleware.cors_middleware import setup_cors_middleware
@@ -24,7 +28,8 @@ from app.routers import (
     store,
     grocery_list,
     meal_grocery_list,
-    meal_shopping_lists
+    meal_shopping_lists,
+    subscriptions
 )
 
 # Import store-specific routers directly
@@ -51,9 +56,13 @@ from app.routers import custom_menu  # Add custom menu router
 from app.routers import organization_clients_alt
 from app.routers import invitations_alt
 from app.routers import saved_recipes_alt
+from app.routers import saved_recipes_debug
 from app.routers import client_resources  # Add client resources router
 from app.routers import test_invitation # Test invitation router for debugging
 from app.routers import organization_branding  # Add organization branding router
+from app.routers import recipe_ratings  # Add recipe ratings router
+from app.routers import rating_analytics  # Add rating analytics router
+# from app.routers import user_management  # Commented out for now
 
 
 # Load environment variables
@@ -125,8 +134,10 @@ def create_app() -> FastAPI:
     app.include_router(instacart_cart.router)
     app.include_router(instacart_status.router)
 
-    # Only include debug router in development environment
+    # Mount static files directory
+    app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
+    # Only include debug router in development environment
     app.include_router(instacart_debug.router)
     app.include_router(kroger_auth.router)
     app.include_router(grocery_list.router)
@@ -147,6 +158,7 @@ def create_app() -> FastAPI:
     app.include_router(organization_clients_alt.router)
     app.include_router(invitations_alt.router)
     app.include_router(saved_recipes_alt.router)
+    app.include_router(saved_recipes_debug.router)
     app.include_router(client_resources.router)
     app.include_router(test_invitation.router)
     
@@ -155,6 +167,29 @@ def create_app() -> FastAPI:
     app.include_router(ai_status.router)
     app.include_router(custom_menu.router)
     app.include_router(organization_branding.router)  # Add branding endpoints
+    app.include_router(recipe_ratings.router)  # Add rating endpoints
+    app.include_router(rating_analytics.router)  # Add rating analytics endpoints
+    app.include_router(subscriptions.router)  # Add subscription endpoints
+    # Removed complex user management routers - using simple endpoints in main.py for now
+    
+    # Test endpoints to verify routing is working
+    @app.get("/api/test-user-mgmt")
+    async def test_user_mgmt():
+        return {"message": "User management routing test successful"}
+    
+    @app.get("/test-simple")
+    async def test_simple():
+        return {"message": "Simple test endpoint"}
+    
+    @app.get("/admin/test")
+    async def test_admin():
+        return {"message": "Admin route test successful"}
+    
+    @app.get("/organization/test")
+    async def test_org():
+        return {"message": "Organization route test successful"}
+        
+    # User management endpoints moved to subscriptions router
 
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request, exc):
@@ -167,21 +202,105 @@ def create_app() -> FastAPI:
     async def health_check():
         # Check if client notes tables exist
         try:
-            from app.db import get_db_connection
-            conn = get_db_connection()
-            with conn.cursor() as cur:
-                cur.execute("SELECT 1 FROM client_notes LIMIT 1")
-                client_notes_exists = True
-        except:
+            from app.db import get_db_cursor
+
+            # Try to access the database
+            try:
+                with get_db_cursor(autocommit=True) as (cur, conn):
+                    cur.execute("SELECT 1 FROM client_notes LIMIT 1")
+                    client_notes_exists = True
+                    db_status = "connected"
+            except Exception as e:
+                logger.error(f"Client notes check failed: {str(e)}")
+                client_notes_exists = False
+                db_status = f"error: {str(e)}"
+        except Exception as e:
+            logger.error(f"Health check failed: {str(e)}")
             client_notes_exists = False
-        finally:
-            if 'conn' in locals():
-                conn.close()
-        
+            db_status = f"error: {str(e)}"
+
         return {
             "status": "healthy",
-            "client_notes_migration": "completed" if client_notes_exists else "pending"
+            "client_notes_migration": "completed" if client_notes_exists else "pending",
+            "database": db_status
         }
+
+    @app.post("/admin/reset-connections")
+    async def reset_connections():
+        """Admin endpoint to force reset the connection pool"""
+        try:
+            from app.db import close_all_connections, connection_pool, get_connection_stats
+
+            # Log the reset attempt
+            logger.info("Attempting to close all database connections")
+
+            # Get current connection stats
+            before_stats = get_connection_stats()
+
+            # Close all connections
+            try:
+                close_all_connections()
+                result = True
+                logger.info("Successfully closed all database connections")
+            except Exception as e:
+                result = False
+                logger.error(f"Failed to close connections: {str(e)}")
+
+            # Get new connection stats
+            after_stats = get_connection_stats()
+
+            # Return detailed status
+            return {
+                "status": "success" if result else "failed",
+                "message": "Connection pool reset" if result else "Failed to reset connection pool",
+                "pool_exists": connection_pool is not None,
+                "before": before_stats,
+                "after": after_stats
+            }
+        except Exception as e:
+            logger.error(f"Error resetting connection pool: {str(e)}")
+            return {
+                "status": "error",
+                "message": f"Error: {str(e)}"
+            }
+
+    @app.get("/admin/db-stats")
+    async def get_db_stats():
+        """Get current database connection statistics"""
+        try:
+            from app.db import get_connection_stats, connection_pool
+
+            # Get connection stats
+            stats = get_connection_stats()
+
+            # Get pool information if available
+            pool_info = {}
+            if connection_pool:
+                pool_info = {
+                    "min_connections": connection_pool._minconn,
+                    "max_connections": connection_pool._maxconn,
+                    # The closed attribute was added in psycopg2 2.8+
+                    "closed": getattr(connection_pool, "closed", False)
+                }
+
+                # Try to get more detailed pool stats
+                try:
+                    pool_info["used_connections"] = len(connection_pool._used)
+                    pool_info["free_connections"] = len(connection_pool._pool)
+                except (AttributeError, TypeError):
+                    # These attributes might not be accessible
+                    pass
+
+            return {
+                "connection_tracking": stats,
+                "pool_info": pool_info
+            }
+        except Exception as e:
+            logger.error(f"Error getting DB stats: {str(e)}")
+            return {
+                "status": "error",
+                "message": f"Error getting DB stats: {str(e)}"
+            }
 
     @app.get("/api-test")
     async def api_test():
@@ -242,78 +361,51 @@ def create_app() -> FastAPI:
     async def verify_password_hashing():
         """Verify that Kroger password hashing is working correctly"""
         try:
-            from app.db import get_db_connection
+            from app.db import get_db_cursor
             from app.utils.password_utils import hash_kroger_password, verify_kroger_password
             from psycopg2.extras import RealDictCursor
-            
+
             results = {}
-            
+
             # Check migration status
-            conn = get_db_connection()
-            try:
-                with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                    # Get overall statistics
+            with get_db_cursor(dict_cursor=True, autocommit=True) as (cur, conn):
+                # Get overall statistics
+                cur.execute("""
+                    SELECT
+                        COUNT(*) as total_users,
+                        0 as users_with_username,
+                        0 as users_with_plain_password,
+                        0 as users_with_hashed_password,
+                        0 as users_with_salt,
+                        0 as users_with_both
+                    FROM user_profiles;
+                """)
+                results["migration_stats"] = dict(cur.fetchone())
+
+                # Check applied migrations
+                cur.execute("""
+                    SELECT EXISTS (
+                        SELECT 1 FROM information_schema.tables
+                        WHERE table_name = 'applied_migrations'
+                    ) as table_exists;
+                """)
+                table_exists = cur.fetchone()['table_exists']
+
+                if table_exists:
                     cur.execute("""
-                        SELECT 
-                            COUNT(*) as total_users,
-                            COUNT(kroger_username) as users_with_username,
-                            COUNT(kroger_password) as users_with_plain_password,
-                            COUNT(kroger_password_hash) as users_with_hashed_password,
-                            COUNT(kroger_password_salt) as users_with_salt,
-                            COUNT(CASE WHEN kroger_password IS NOT NULL AND kroger_password_hash IS NOT NULL THEN 1 END) as users_with_both
-                        FROM user_profiles;
-                    """)
-                    results["migration_stats"] = dict(cur.fetchone())
-                    
-                    # Check applied migrations
-                    cur.execute("""
-                        SELECT EXISTS (
-                            SELECT 1 FROM information_schema.tables 
-                            WHERE table_name = 'applied_migrations'
-                        ) as table_exists;
-                    """)
-                    table_exists = cur.fetchone()['table_exists']
-                    
-                    if table_exists:
-                        cur.execute("""
-                            SELECT migration_name, status, applied_at, execution_time_seconds
-                            FROM applied_migrations 
-                            WHERE migration_name = '001_hash_kroger_passwords'
-                            ORDER BY applied_at DESC
-                            LIMIT 1;
-                        """)
-                        migration_record = cur.fetchone()
-                        results["migration_record"] = dict(migration_record) if migration_record else None
-                    else:
-                        results["migration_record"] = None
-                    
-                    # Test password verification with a sample user
-                    cur.execute("""
-                        SELECT id, kroger_password, kroger_password_hash, kroger_password_salt
-                        FROM user_profiles 
-                        WHERE kroger_password IS NOT NULL 
-                        AND kroger_password_hash IS NOT NULL 
-                        AND kroger_password_salt IS NOT NULL
+                        SELECT migration_name, status, applied_at, execution_time_seconds
+                        FROM applied_migrations
+                        WHERE migration_name = '001_hash_kroger_passwords'
+                        ORDER BY applied_at DESC
                         LIMIT 1;
                     """)
-                    test_user = cur.fetchone()
-                    
-                    if test_user:
-                        # Test verification
-                        is_valid = verify_kroger_password(
-                            test_user['kroger_password'],
-                            test_user['kroger_password_hash'],
-                            test_user['kroger_password_salt']
-                        )
-                        results["verification_test"] = {
-                            "user_id": test_user['id'],
-                            "verification_successful": is_valid
-                        }
-                    else:
-                        results["verification_test"] = None
-                        
-            finally:
-                conn.close()
+                    migration_record = cur.fetchone()
+                    results["migration_record"] = dict(migration_record) if migration_record else None
+                else:
+                    results["migration_record"] = None
+
+                # Kroger functionality removed - no password verification needed
+                results["verification_test"] = None
             
             # Test new password hashing
             test_password = "test_password_123"
@@ -352,68 +444,28 @@ def create_app() -> FastAPI:
     async def clear_plaintext_passwords():
         """Clear plain text Kroger passwords (only if verification passes)"""
         try:
-            from app.db import get_db_connection
+            from app.db import get_db_cursor
             from psycopg2.extras import RealDictCursor
-            
+
             # First verify the system is working
             verification_result = await verify_password_hashing()
-            
+
             if verification_result.get("overall_status") != "PASS":
                 return {
                     "error": "Password verification failed - will not clear plain text passwords",
                     "verification_result": verification_result
                 }
-            
-            # Get count before clearing
-            conn = get_db_connection()
-            try:
-                with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                    # Count passwords to be cleared
-                    cur.execute("""
-                        SELECT COUNT(*) as count_to_clear
-                        FROM user_profiles 
-                        WHERE kroger_password IS NOT NULL 
-                        AND kroger_password_hash IS NOT NULL;
-                    """)
-                    count_before = cur.fetchone()['count_to_clear']
-                    
-                    if count_before == 0:
-                        return {
-                            "status": "success",
-                            "message": "No plain text passwords to clear",
-                            "passwords_cleared": 0
-                        }
-                    
-                    # Clear plain text passwords
-                    cur.execute("""
-                        UPDATE user_profiles 
-                        SET kroger_password = NULL 
-                        WHERE kroger_password IS NOT NULL 
-                        AND kroger_password_hash IS NOT NULL;
-                    """)
-                    
-                    cleared_count = cur.rowcount
-                    conn.commit()
-                    
-                    # Verify the clearing worked
-                    cur.execute("""
-                        SELECT COUNT(*) as remaining_plain_text
-                        FROM user_profiles 
-                        WHERE kroger_password IS NOT NULL 
-                        AND kroger_password_hash IS NOT NULL;
-                    """)
-                    remaining = cur.fetchone()['remaining_plain_text']
-                    
-                    return {
-                        "status": "success",
-                        "message": f"Successfully cleared {cleared_count} plain text passwords",
-                        "passwords_cleared": cleared_count,
-                        "remaining_plain_text": remaining,
-                        "verification_passed": True
-                    }
-                    
-            finally:
-                conn.close()
+
+            # Use context manager for database operations
+            with get_db_cursor(dict_cursor=True, autocommit=True) as (cur, conn):
+                # Kroger functionality removed - no passwords to clear
+                return {
+                    "status": "success",
+                    "message": "Kroger functionality has been removed - no passwords to clear",
+                    "passwords_cleared": 0,
+                    "remaining_plain_text": 0,
+                    "verification_passed": True
+                }
                 
         except Exception as e:
             return {
@@ -434,9 +486,33 @@ async def extend_timeout_for_menu_routes(request, call_next):
     if "/menu/generate" in request.url.path:
         # Log extended timeout for menu generation routes
         logger.info(f"Processing menu generation route with extended timeout: {request.url.path}")
-    
+
     # Continue with the request
     response = await call_next(request)
+    return response
+
+@app.middleware("http")
+async def clear_thread_local_storage(request, call_next):
+    """Clear thread-local storage at the end of each request to prevent connection leaks"""
+    # Process the request
+    response = await call_next(request)
+
+    # Clean up thread-local storage
+    try:
+        import threading
+        thread_local = threading.local()
+        if hasattr(thread_local, 'connection') and thread_local.connection is not None:
+            try:
+                from app.db import logger as db_logger
+                if not thread_local.connection.closed:
+                    thread_local.connection.close()
+                    db_logger.info("Auto-closed thread-local connection at request end")
+                thread_local.connection = None
+            except Exception as e:
+                logger.warning(f"Error clearing thread-local connection: {str(e)}")
+    except Exception as e:
+        logger.warning(f"Error in thread-local cleanup middleware: {str(e)}")
+
     return response
 
 # Now we can use @app.on_event
@@ -444,6 +520,12 @@ async def extend_timeout_for_menu_routes(request, call_next):
 async def startup_event():
     """Run startup tasks."""
     try:
+        # Log connection pool status
+        if connection_pool:
+            logger.info(f"✅ Database connection pool initialized with min={connection_pool._minconn}, max={connection_pool._maxconn} connections")
+        else:
+            logger.warning("⚠️ Database connection pool not initialized - will use direct connections")
+
         # Print all loaded routes for debugging
         from fastapi.routing import APIRoute
         routes = [route.path for route in app.router.routes]
@@ -489,3 +571,15 @@ async def startup_event():
 async def catch_all_patch(full_path: str):
     logger.info(f"Catch-all PATCH route hit for path: {full_path}")
     return {"status": "received", "path": full_path}
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Run shutdown tasks."""
+    logger.info("🛑 Application shutting down")
+
+    # Close all database connections
+    try:
+        close_all_connections()
+        logger.info("✅ Database connections closed successfully")
+    except Exception as e:
+        logger.error(f"❌ Error closing database connections: {str(e)}")

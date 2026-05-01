@@ -1,6 +1,6 @@
 # app/routers/client_notes.py
 from fastapi import APIRouter, HTTPException, Depends, status, Query
-from app.db import get_db_connection
+from app.db import get_db_cursor
 from app.models.user import (
     ClientNote, ClientNoteCreate, ClientNoteUpdate,
     ClientNoteTemplate, ClientNoteTemplateCreate
@@ -16,42 +16,34 @@ logger = logging.getLogger(__name__)
 
 def get_user_organization_id(user_id: int) -> int:
     """Get the organization ID for a user, ensuring they are an organization owner"""
-    conn = get_db_connection()
-    try:
-        with conn.cursor() as cur:
-            # Check if user owns an organization
-            cur.execute("""
-                SELECT id FROM organizations 
-                WHERE owner_id = %s
-            """, (user_id,))
-            
-            result = cur.fetchone()
-            if not result:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Access denied: User is not an organization owner"
-                )
-            return result[0]
-    finally:
-        conn.close()
+    with get_db_cursor() as (cur, conn):
+        # Check if user owns an organization
+        cur.execute("""
+            SELECT id FROM organizations 
+            WHERE owner_id = %s
+        """, (user_id,))
+        
+        result = cur.fetchone()
+        if not result:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied: User is not an organization owner"
+            )
+        return result[0]
 
 def verify_client_access(organization_id: int, client_id: int):
     """Verify that the organization has access to the specified client"""
-    conn = get_db_connection()
-    try:
-        with conn.cursor() as cur:
-            cur.execute("""
-                SELECT 1 FROM organization_clients 
-                WHERE organization_id = %s AND client_id = %s
-            """, (organization_id, client_id))
-            
-            if not cur.fetchone():
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Client not found or not associated with this organization"
-                )
-    finally:
-        conn.close()
+    with get_db_cursor() as (cur, conn):
+        cur.execute("""
+            SELECT 1 FROM organization_clients 
+            WHERE organization_id = %s AND client_id = %s
+        """, (organization_id, client_id))
+        
+        if not cur.fetchone():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Client not found or not associated with this organization"
+            )
 
 @router.get("/{organization_id}/clients/{client_id}")
 async def get_client_notes(
@@ -75,9 +67,8 @@ async def get_client_notes(
     # Verify organization has access to client
     verify_client_access(organization_id, client_id)
     
-    conn = get_db_connection()
     try:
-        with conn.cursor() as cur:
+        with get_db_cursor() as (cur, conn):
             # Build query with filters
             where_conditions = [
                 "cn.organization_id = %s",
@@ -164,8 +155,6 @@ async def get_client_notes(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get client notes"
         )
-    finally:
-        conn.close()
 
 @router.post("/{organization_id}")
 async def create_client_note(

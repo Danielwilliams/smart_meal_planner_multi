@@ -4,6 +4,7 @@ import {
   Box, Typography, Card, CardMedia, CardContent, Button
 } from '@mui/material';
 import apiService from '../services/apiService';
+import OnboardingWalkthrough from '../components/ImprovedOnboardingWalkthrough';
 
 function Menu() {
   const [menuData, setMenuData] = useState(null);
@@ -27,12 +28,21 @@ function Menu() {
       <Typography variant="h5" sx={{ mb: 2 }}>
         Weekly Menu
       </Typography>
+      <Box data-testid="menu-settings-panel" sx={{ mb: 3, p: 2, border: '1px solid #ccc', borderRadius: 1 }}>
+        <Typography variant="h6" gutterBottom>
+          Menu Settings
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          Configure your meal plan preferences here (days, people, budget)
+        </Typography>
+      </Box>
       {!menuData && (
-        <Button variant="contained" onClick={handleGenerateMenu}>
+        <Button variant="contained" onClick={handleGenerateMenu} data-testid="generate-menu-button">
           Generate Meal Plan
         </Button>
       )}
-      {menuData && menuData.days && menuData.days.map((day, idx) => (
+      <Box data-testid="menu-display-area">
+        {menuData && menuData.days && menuData.days.map((day, idx) => (
         <Box key={idx} sx={{ my: 2 }}>
           <Typography variant="h6">Day {day.dayNumber}</Typography>
           {day.meals && day.meals.map((meal, mIdx) => (
@@ -52,7 +62,9 @@ function Menu() {
             </Card>
           ))}
         </Box>
-      ))}
+        ))}
+      </Box>
+      <OnboardingWalkthrough />
     </Box>
   );
 }

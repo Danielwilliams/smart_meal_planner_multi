@@ -33,6 +33,75 @@ async def test_endpoint():
     """Test endpoint to verify routing works"""
     return {"status": "saved-recipes route working"}
 
+@router.get("/debug")
+async def debug_saved_recipes(user = Depends(get_user_from_token)):
+    """Debug endpoint to check saved recipes table status"""
+    # Check if user is authenticated
+    if not user:
+        logger.error("Authentication required for saved recipes debug")
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required"
+        )
+
+    user_id = user.get('user_id')
+    logger.info(f"DEBUG: Checking saved recipes for user {user_id}")
+
+    result = {
+        "user_id": user_id,
+        "table_info": {},
+        "user_recipes": {}
+    }
+
+    try:
+        from app.db import get_db_connection, get_db_cursor, connection_pool, get_connection_stats
+
+        # Get connection stats
+        result["connection_stats"] = get_connection_stats()
+
+        # Check if the saved_recipes table exists
+        with get_db_cursor(dict_cursor=True, autocommit=True) as (cur, conn):
+            # Check table exists
+            cur.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables
+                    WHERE table_schema = 'public'
+                    AND table_name = 'saved_recipes'
+                ) as table_exists
+            """)
+            table_exists = cur.fetchone()['table_exists']
+            result["table_info"]["table_exists"] = table_exists
+
+            if table_exists:
+                # Count total recipes
+                cur.execute("SELECT COUNT(*) as total FROM saved_recipes")
+                result["table_info"]["total_recipes"] = cur.fetchone()['total']
+
+                # Count user's recipes
+                cur.execute("SELECT COUNT(*) as user_recipes FROM saved_recipes WHERE user_id = %s", (user_id,))
+                result["user_recipes"]["count"] = cur.fetchone()['user_recipes']
+
+                # Get recipe IDs if any exist
+                if result["user_recipes"]["count"] > 0:
+                    cur.execute("""
+                        SELECT id, recipe_name, created_at
+                        FROM saved_recipes
+                        WHERE user_id = %s
+                        ORDER BY created_at DESC
+                        LIMIT 10
+                    """, (user_id,))
+                    result["user_recipes"]["samples"] = cur.fetchall()
+                else:
+                    result["user_recipes"]["samples"] = []
+
+        return result
+    except Exception as e:
+        logger.error(f"Error in debug endpoint: {str(e)}")
+        return {
+            "error": str(e),
+            "user_id": user_id
+        }
+
 @router.post("/")
 async def add_saved_recipe(
     req: SaveRecipeRequest,
@@ -40,10 +109,18 @@ async def add_saved_recipe(
     client_id: Optional[int] = Query(None)  # Optional client ID for organization owners
 ):
     """Save a recipe or entire menu to user's favorites with complete recipe data"""
+    # Check if user is authenticated
+    if not user:
+        logger.error("Authentication required to save recipes")
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required"
+        )
+
     user_id = user.get('user_id')
     logger.info(f"POST /saved-recipes/ called for user {user_id}")
     logger.info(f"Request data: {req.dict()}")
-    
+
     try:
         # Log the incoming request data in detail
         logger.info(f"Received recipe save request: {req}")
@@ -99,24 +176,85 @@ async def add_saved_recipe(
             else:
                 recipe_source = 'menu'
         
-        # Save the recipe with all available data
-        saved_id = save_recipe(
-            user_id=user_id,
-            menu_id=req.menu_id,
-            recipe_id=req.recipe_id,
-            recipe_name=req.recipe_name,
-            day_number=req.day_number,
-            meal_time=req.meal_time,
-            notes=req.notes,
-            macros=req.macros,
-            ingredients=req.ingredients,
-            instructions=req.instructions,
-            complexity_level=req.complexity_level,
-            appliance_used=req.appliance_used,
-            servings=req.servings,
-            scraped_recipe_id=req.scraped_recipe_id,
-            recipe_source=recipe_source
-        )
+        # Save the recipe using direct connection pattern (avoiding context manager)
+        conn = get_db_connection()
+        try:
+            with conn.cursor() as cur:
+                # Check if already saved
+                if recipe_source == 'scraped':
+                    # For scraped recipes
+                    cur.execute("""
+                        SELECT id FROM saved_recipes
+                        WHERE user_id = %s AND scraped_recipe_id = %s
+                    """, (user_id, req.scraped_recipe_id))
+                elif req.recipe_id and req.menu_id:
+                    # For regular menu recipes with recipe_id
+                    cur.execute("""
+                        SELECT id FROM saved_recipes
+                        WHERE user_id = %s AND menu_id = %s AND recipe_id = %s AND meal_time = %s
+                    """, (user_id, req.menu_id, req.recipe_id, req.meal_time))
+                elif req.menu_id:
+                    # For entire menu
+                    cur.execute("""
+                        SELECT id FROM saved_recipes
+                        WHERE user_id = %s AND menu_id = %s AND recipe_id IS NULL
+                    """, (user_id, req.menu_id))
+                elif req.scraped_recipe_id:
+                    # Backup check for scraped recipes without recipe_source
+                    cur.execute("""
+                        SELECT id FROM saved_recipes
+                        WHERE user_id = %s AND scraped_recipe_id = %s
+                    """, (user_id, req.scraped_recipe_id))
+                else:
+                    logger.warning("No valid identifiers provided for recipe checking")
+                    
+                existing = cur.fetchone()
+                
+                # Convert complex objects to JSON
+                import json
+                macros_json = json.dumps(req.macros) if req.macros else None
+                ingredients_json = json.dumps(req.ingredients) if req.ingredients else None
+                instructions_json = json.dumps(req.instructions) if req.instructions else None
+                
+                if existing:
+                    # Update if already exists
+                    saved_id = existing[0]
+                    cur.execute("""
+                        UPDATE saved_recipes SET
+                        recipe_name = COALESCE(%s, recipe_name),
+                        day_number = COALESCE(%s, day_number),
+                        notes = COALESCE(%s, notes),
+                        macros = COALESCE(%s, macros),
+                        ingredients = COALESCE(%s, ingredients),
+                        instructions = COALESCE(%s, instructions),
+                        complexity_level = COALESCE(%s, complexity_level),
+                        appliance_used = COALESCE(%s, appliance_used),
+                        servings = COALESCE(%s, servings)
+                        WHERE id = %s
+                        RETURNING id
+                    """, (
+                        req.recipe_name, req.day_number, req.notes, macros_json, ingredients_json, 
+                        instructions_json, req.complexity_level, req.appliance_used, req.servings, saved_id
+                    ))
+                else:
+                    # Insert new saved recipe
+                    cur.execute("""
+                        INSERT INTO saved_recipes (
+                            user_id, menu_id, recipe_id, recipe_name, day_number,
+                            meal_time, notes, macros, ingredients, instructions,
+                            complexity_level, appliance_used, servings, scraped_recipe_id, recipe_source
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        RETURNING id
+                    """, (
+                        user_id, req.menu_id, req.recipe_id, req.recipe_name, req.day_number,
+                        req.meal_time, req.notes, macros_json, ingredients_json, instructions_json,
+                        req.complexity_level, req.appliance_used, req.servings, req.scraped_recipe_id, recipe_source
+                    ))
+                
+                saved_id = cur.fetchone()[0]
+                conn.commit()
+        finally:
+            conn.close()
         
         if saved_id:
             return {
@@ -145,8 +283,16 @@ async def remove_saved_recipe(
     user = Depends(get_user_from_token)
 ):
     """Remove a recipe from saved/favorites"""
+    # Check if user is authenticated
+    if not user:
+        logger.error("Authentication required to remove saved recipes")
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required"
+        )
+
     user_id = user.get('user_id')
-    
+
     try:
         success = unsave_recipe(user_id=user_id, saved_id=saved_id)
         
@@ -173,20 +319,28 @@ async def list_saved_recipes(
     user = Depends(get_user_from_token)
 ):
     """Get all saved recipes for current user"""
+    # Check if user is authenticated
+    if not user:
+        logger.error("Authentication required for saved recipes access")
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required"
+        )
+
     user_id = user.get('user_id')
-    
+
     try:
         saved_recipes = get_user_saved_recipes(user_id)
-        
+
         return {
-            "status": "success", 
+            "status": "success",
             "saved_recipes": saved_recipes
         }
-    
+
     except Exception as e:
         logger.error(f"Error fetching saved recipes: {str(e)}")
         raise HTTPException(
-            status_code=500, 
+            status_code=500,
             detail=f"Error fetching saved recipes: {str(e)}"
         )
 
@@ -199,8 +353,16 @@ async def get_client_saved_recipes(
     Get all saved recipes for a specific client.
     Only accessible by organization owners for their clients.
     """
+    # Check if user is authenticated
+    if not user:
+        logger.error("Authentication required to access client saved recipes")
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required"
+        )
+
     trainer_id = user.get('user_id')
-    
+
     try:
         # Verify the trainer has access to this client
         conn = get_db_connection()
@@ -266,11 +428,18 @@ async def check_recipe_saved(
 ):
     """
     Check if a recipe is saved by the current user.
-    
+
     Required parameters:
     - Either menu_id OR scraped_recipe_id must be provided
     """
-    """Check if a recipe is saved by the current user"""
+    # Check if user is authenticated
+    if not user:
+        logger.error("Authentication required to check saved recipes")
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required"
+        )
+
     user_id = user.get('user_id')
 
     # Parse string parameters to proper types
@@ -348,8 +517,16 @@ async def get_saved_recipe_details(
     user = Depends(get_user_from_token)
 ):
     """Get details of a specific saved recipe"""
+    # Check if user is authenticated
+    if not user:
+        logger.error("Authentication required to view saved recipe details")
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required"
+        )
+
     user_id = user.get('user_id')
-    
+
     try:
         recipe = get_saved_recipe_by_id(user_id, saved_id)
         

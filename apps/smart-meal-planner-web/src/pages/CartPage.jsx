@@ -780,7 +780,7 @@ function CartPage() {
 
         // Use hardcoded client ID for consistency (same as in krogerAuthService)
         const clientId = 'smartmealplannerio-243261243034247652497361364a447078555731455949714a464f61656e5a676b444e552e42796961517a4f4576367156464b3564774c3039777a614700745159802496692';
-        const redirectUri = 'https://smart-meal-planner-multi.vercel.app/kroger/callback';
+        const redirectUri = 'https://smartmealplannerio.com/kroger/callback';
         // These scopes are for authorization_code flow which is used in user OAuth process
         // Make sure to include cart.basic:write scope for cart operations
         const scope = 'product.compact cart.basic:write profile.compact';
@@ -1021,36 +1021,41 @@ function CartPage() {
         // Clear the store selection needed flag
         sessionStorage.removeItem('kroger_needs_store_selection');
 
-        // First try to update the location with the backend - critical for persistence!
-        console.log("Updating store location in backend DB...");
-        apiService.updateKrogerLocation(locationId)
-          .then(response => {
-            console.log("Backend store location update response:", response);
-            if (response && response.success) {
-              console.log("Successfully updated store location in backend DB");
-            } else {
-              console.warn("Backend returned non-success response:", response);
-              // We'll continue anyway since we have the location stored locally
-            }
-          })
-          .catch(updateErr => {
-            console.error('Error updating store location with backend:', updateErr);
+        // IMPORTANT: Update the location with the backend FIRST before proceeding
+        // This ensures cross-device persistence via the database
+        let backendUpdateSuccess = false;
+        try {
+          console.log("Updating store location in backend DB...");
+          const response = await apiService.updateKrogerLocation(locationId);
 
-            // Check if this is a database schema issue
-            if (updateErr.response?.data?.error?.includes('client_id') ||
-                updateErr.response?.data?.error?.includes('column')) {
-              console.log("Database schema issue detected, setting flag");
-              localStorage.setItem('database_schema_issue', 'true');
-            }
+          console.log("Backend store location update response:", response);
+          if (response && response.success) {
+            console.log("Successfully updated store location in backend DB");
+            backendUpdateSuccess = true;
+          } else {
+            console.warn("Backend returned non-success response:", response);
+            // We'll continue with client-side only as fallback
+          }
+        } catch (updateErr) {
+          console.error('Error updating store location with backend:', updateErr);
 
-            // Continue despite the error - we'll use the locally stored location
-          });
+          // Check if this is a database schema issue
+          if (updateErr.response?.data?.error?.includes('client_id') ||
+              updateErr.response?.data?.error?.includes('column')) {
+            console.log("Database schema issue detected, setting flag");
+            localStorage.setItem('database_schema_issue', 'true');
+          }
+        }
 
         // Always close the store selector dialog
         setShowStoreSelector(false);
 
-        // Show success message regardless of backend success
-        setSnackbarMessage('Store location updated successfully');
+        // Show success message with info about backend persistence
+        if (backendUpdateSuccess) {
+          setSnackbarMessage('Store location saved to your account successfully');
+        } else {
+          setSnackbarMessage('Store location updated for this session');
+        }
         setSnackbarOpen(true);
 
         // Wait a short time before attempting search to ensure storage is updated
@@ -1595,7 +1600,7 @@ function CartPage() {
             // Process the auth code
             const result = await krogerAuthService.processAuthCode(
               krogerAuthCode,
-              krogerAuthRedirectUri || 'https://smart-meal-planner-multi.vercel.app/kroger/callback'
+              krogerAuthRedirectUri || 'https://smartmealplannerio.com/kroger/callback'
             );
 
             console.log("Auth code processing result:", result);

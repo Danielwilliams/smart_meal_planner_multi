@@ -3,6 +3,13 @@ import '../models/menu_model.dart';
 import '../services/api_service.dart';
 
 class MenuHistoryScreen extends StatefulWidget {
+  // Optional parameters that can be passed directly to the widget
+  final int? userId;
+  final String? authToken;
+
+  // Constructor
+  MenuHistoryScreen({this.userId, this.authToken});
+
   @override
   _MenuHistoryScreenState createState() => _MenuHistoryScreenState();
 }
@@ -13,16 +20,33 @@ class _MenuHistoryScreenState extends State<MenuHistoryScreen> {
   bool _isLoading = true;
   int _userId = 0;
   String _authToken = '';
-  Function(Menu)? _onMenuSelected;
+  dynamic _onMenuSelected;
   
   // For menu filtering
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
   
   @override
+  void initState() {
+    super.initState();
+
+    // If userId and authToken were passed directly to the widget, use them
+    if (widget.userId != null && widget.authToken != null) {
+      _userId = widget.userId!;
+      _authToken = widget.authToken!;
+      print("Using userId and authToken from widget constructor");
+
+      // Fetch menus if we have auth info
+      if (_userId > 0 && _authToken.isNotEmpty) {
+        _fetchMenus();
+      }
+    }
+  }
+
+  @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    
+
     // Get arguments passed from MenuScreen
     final args = ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>?;
     
@@ -77,7 +101,7 @@ class _MenuHistoryScreenState extends State<MenuHistoryScreen> {
       
       // Get callback function
       if (args.containsKey('onMenuSelected')) {
-        _onMenuSelected = args['onMenuSelected'] as Function(Menu)?;
+        _onMenuSelected = args['onMenuSelected'];
         print("onMenuSelected callback received: ${_onMenuSelected != null}");
       }
       
@@ -315,11 +339,27 @@ class _MenuHistoryScreenState extends State<MenuHistoryScreen> {
                       ),
                       child: InkWell(
                         onTap: () {
-                          // Return the selected menu to the previous screen
+                          // If we have a callback, use it
                           if (_onMenuSelected != null) {
-                            _onMenuSelected!(menu);
+                            try {
+                              _onMenuSelected(menu);
+                            } catch (e) {
+                              print("Error calling menu selected callback: $e");
+                            }
+                            Navigator.pop(context);
+                          } else {
+                            // No callback, navigate directly to shopping list
+                            Navigator.pushNamed(
+                              context,
+                              '/shopping-list',
+                              arguments: {
+                                'userId': _userId,
+                                'authToken': _authToken,
+                                'menuId': menu.id,
+                                'menuTitle': menu.title,
+                              },
+                            );
                           }
-                          Navigator.pop(context);
                         },
                         borderRadius: BorderRadius.circular(10),
                         child: Padding(
