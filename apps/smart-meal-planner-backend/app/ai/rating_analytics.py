@@ -74,10 +74,16 @@ class RatingAnalytics:
         logger.info(f"Extracting preferences for user {user_id}")
         
         try:
-            # Get all user ratings with recipe metadata
+            # Get all user ratings — scraped recipes via recipe_interactions,
+            # plus AI-generated meal ratings stored only in saved_recipes.quick_rating
+            # (AI meals have no scraped_recipe_id so quick_rate never creates a recipe_interactions row)
             user_ratings = self.execute_analytics_query("""
-                SELECT 
-                    ri.*,
+                SELECT
+                    ri.id,
+                    ri.user_id,
+                    ri.rating_score,
+                    ri.rating_aspects,
+                    ri.updated_at          AS rating_time,
                     sr.title,
                     sr.cuisine,
                     sr.complexity,
@@ -85,13 +91,34 @@ class RatingAnalytics:
                     sr.cook_time,
                     sr.total_time,
                     sr.servings
-                    -- Removed non-existent columns: ingredients, categories, diet_tags, flavor_profile, spice_level
                 FROM recipe_interactions ri
                 LEFT JOIN scraped_recipes sr ON ri.recipe_id = sr.id
-                WHERE ri.user_id = %s 
+                WHERE ri.user_id = %s
                 AND ri.rating_score IS NOT NULL
-                ORDER BY ri.updated_at DESC
-            """, (user_id,), fetch_all=True)
+
+                UNION ALL
+
+                SELECT
+                    sv.id,
+                    sv.user_id,
+                    sv.quick_rating        AS rating_score,
+                    NULL                   AS rating_aspects,
+                    sv.created_at          AS rating_time,
+                    sv.recipe_name         AS title,
+                    NULL                   AS cuisine,
+                    sv.complexity_level    AS complexity,
+                    NULL                   AS prep_time,
+                    NULL                   AS cook_time,
+                    NULL                   AS total_time,
+                    sv.servings
+                FROM saved_recipes sv
+                WHERE sv.user_id = %s
+                AND sv.quick_rating IS NOT NULL
+                AND sv.scraped_recipe_id IS NULL
+                AND sv.recipe_id IS NULL
+
+                ORDER BY rating_time DESC
+            """, (user_id, user_id), fetch_all=True)
             
             if not user_ratings:
                 return self._default_preferences()
