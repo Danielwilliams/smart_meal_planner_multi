@@ -81,8 +81,13 @@ class RatingAnalytics:
                 SELECT
                     ri.id,
                     ri.user_id,
+                    ri.recipe_id,
                     ri.rating_score,
                     ri.rating_aspects,
+                    ri.made_recipe,
+                    ri.would_make_again,
+                    ri.difficulty_rating,
+                    ri.time_accuracy,
                     ri.updated_at          AS rating_time,
                     sr.title,
                     sr.cuisine,
@@ -101,8 +106,13 @@ class RatingAnalytics:
                 SELECT
                     sv.id,
                     sv.user_id,
+                    NULL                   AS recipe_id,
                     sv.quick_rating        AS rating_score,
                     NULL                   AS rating_aspects,
+                    NULL                   AS made_recipe,
+                    NULL                   AS would_make_again,
+                    NULL                   AS difficulty_rating,
+                    NULL                   AS time_accuracy,
                     sv.created_at          AS rating_time,
                     sv.recipe_name         AS title,
                     NULL                   AS cuisine,
@@ -365,21 +375,30 @@ class RatingAnalytics:
     
     def _analyze_behavioral_patterns(self, ratings: List) -> Dict:
         """Analyze user rating and cooking behaviors"""
-        made_recipes = [r for r in ratings if r['made_recipe']]
-        would_remake = [r for r in ratings if r['would_make_again'] is True]
-        
-        # Calculate engagement metrics
+        made_recipes = [r for r in ratings if r.get('made_recipe')]
+        would_remake = [r for r in ratings if r.get('would_make_again') is True]
+
         made_percentage = len(made_recipes) / len(ratings) if ratings else 0
         remake_rate = len(would_remake) / len(made_recipes) if made_recipes else 0
-        
-        # Rating distribution
+
         rating_distribution = Counter([r['rating_score'] for r in ratings])
-        
-        # Rating recency (how recently they've been rating)
-        recent_ratings = len([r for r in ratings if 
-                            datetime.fromisoformat(r['updated_at'].replace('Z', '+00:00')) > 
-                            datetime.now().replace(tzinfo=None) - timedelta(days=30)])
-        
+
+        # Use rating_time alias (set in UNION query for both sources)
+        recent_ratings = 0
+        cutoff = datetime.now() - timedelta(days=30)
+        for r in ratings:
+            try:
+                rt = r.get('rating_time')
+                if rt:
+                    ts = rt if isinstance(rt, datetime) else datetime.fromisoformat(str(rt).replace('Z', '+00:00'))
+                    if ts.replace(tzinfo=None) > cutoff:
+                        recent_ratings += 1
+            except Exception:
+                pass
+
+        unique_recipes = len(set(r['recipe_id'] for r in ratings if r.get('recipe_id')))
+        exploration = unique_recipes / len(ratings) if ratings else 0
+
         return {
             'cooking_engagement': made_percentage,
             'recipe_satisfaction': remake_rate,
@@ -387,7 +406,7 @@ class RatingAnalytics:
             'rating_distribution': dict(rating_distribution),
             'recent_activity': recent_ratings,
             'total_recipes_made': len(made_recipes),
-            'exploration_tendency': len(set([r['recipe_id'] for r in ratings])) / len(ratings) if ratings else 0
+            'exploration_tendency': exploration
         }
     
     def _default_preferences(self) -> Dict:
