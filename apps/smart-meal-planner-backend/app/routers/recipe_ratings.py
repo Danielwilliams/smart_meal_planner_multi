@@ -255,63 +255,41 @@ async def rate_recipe(
         )
     
     try:
-        # Convert rating_aspects to JSON string if it exists
         import json
         rating_aspects_json = json.dumps(rating.rating_aspects.model_dump()) if rating.rating_aspects else None
-        
-        # Check if rating already exists
-        existing_rating = execute_rating_query("""
-            SELECT id FROM recipe_interactions 
-            WHERE user_id = %s AND recipe_id = %s 
-            AND rating_score IS NOT NULL
-        """, (user_id, recipe_id), fetch_one=True)
-        
-        if existing_rating:
-            # Update existing rating
-            updated_rating = execute_rating_query("""
-                UPDATE recipe_interactions 
-                SET rating_score = %s,
-                    rating_aspects = %s::jsonb,
-                    feedback_text = %s,
-                    made_recipe = %s,
-                    would_make_again = %s,
-                    difficulty_rating = %s,
-                    time_accuracy = %s,
-                    interaction_type = 'rating',
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE id = %s
-                RETURNING *
-            """, (
-                rating.rating_score,
-                rating_aspects_json,
-                rating.feedback_text,
-                rating.made_recipe,
-                rating.would_make_again,
-                rating.difficulty_rating,
-                rating.time_accuracy,
-                existing_rating['id']
-            ), fetch_one=True)
-        else:
-            # Insert new rating
-            updated_rating = execute_rating_query("""
-                INSERT INTO recipe_interactions 
-                (user_id, recipe_id, interaction_type, rating_score, rating_aspects, 
-                 feedback_text, made_recipe, would_make_again, difficulty_rating, 
+
+        # Single atomic upsert — relies on the partial unique index
+        # idx_recipe_interactions_user_recipe_rating (user_id, recipe_id)
+        # WHERE interaction_type = 'rating' added in migration 016.
+        updated_rating = execute_rating_query("""
+            INSERT INTO recipe_interactions
+                (user_id, recipe_id, interaction_type, rating_score, rating_aspects,
+                 feedback_text, made_recipe, would_make_again, difficulty_rating,
                  time_accuracy, timestamp, updated_at)
-                VALUES (%s, %s, 'rating', %s, %s::jsonb, %s, %s, %s, %s, %s, 
-                        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                RETURNING *
-            """, (
-                user_id,
-                recipe_id,
-                rating.rating_score,
-                rating_aspects_json,
-                rating.feedback_text,
-                rating.made_recipe,
-                rating.would_make_again,
-                rating.difficulty_rating,
-                rating.time_accuracy
-            ), fetch_one=True)
+            VALUES (%s, %s, 'rating', %s, %s::jsonb, %s, %s, %s, %s, %s,
+                    CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            ON CONFLICT (user_id, recipe_id) WHERE interaction_type = 'rating'
+            DO UPDATE SET
+                rating_score      = EXCLUDED.rating_score,
+                rating_aspects    = EXCLUDED.rating_aspects,
+                feedback_text     = EXCLUDED.feedback_text,
+                made_recipe       = EXCLUDED.made_recipe,
+                would_make_again  = EXCLUDED.would_make_again,
+                difficulty_rating = EXCLUDED.difficulty_rating,
+                time_accuracy     = EXCLUDED.time_accuracy,
+                updated_at        = CURRENT_TIMESTAMP
+            RETURNING *
+        """, (
+            user_id,
+            recipe_id,
+            rating.rating_score,
+            rating_aspects_json,
+            rating.feedback_text,
+            rating.made_recipe,
+            rating.would_make_again,
+            rating.difficulty_rating,
+            rating.time_accuracy,
+        ), fetch_one=True)
         
         result = {
             "success": True,
@@ -686,32 +664,18 @@ async def quick_rate_saved_recipe(
         recipe_id = saved_recipe['scraped_recipe_id'] or saved_recipe['recipe_id']
         if recipe_id:
             logger.info(f"Creating/updating full rating for recipe {recipe_id}")
-            
-            # Check if rating already exists
-            existing_rating = execute_rating_query("""
-                SELECT id FROM recipe_interactions 
-                WHERE user_id = %s AND recipe_id = %s 
-                AND rating_score IS NOT NULL
-            """, (user_id, recipe_id), fetch_one=True)
-            
-            if existing_rating:
-                # Update existing rating
-                execute_rating_query("""
-                    UPDATE recipe_interactions 
-                    SET rating_score = %s,
-                        updated_at = CURRENT_TIMESTAMP
-                    WHERE id = %s
-                """, (rating.quick_rating, existing_rating['id']))
-                interaction_id = existing_rating['id']
-            else:
-                # Insert new rating
-                new_rating = execute_rating_query("""
-                    INSERT INTO recipe_interactions 
+
+            result_row = execute_rating_query("""
+                INSERT INTO recipe_interactions
                     (user_id, recipe_id, interaction_type, rating_score, timestamp, updated_at)
-                    VALUES (%s, %s, 'rating', %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                    RETURNING id
-                """, (user_id, recipe_id, rating.quick_rating), fetch_one=True)
-                interaction_id = new_rating['id']
+                VALUES (%s, %s, 'rating', %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                ON CONFLICT (user_id, recipe_id) WHERE interaction_type = 'rating'
+                DO UPDATE SET
+                    rating_score = EXCLUDED.rating_score,
+                    updated_at   = CURRENT_TIMESTAMP
+                RETURNING id
+            """, (user_id, recipe_id, rating.quick_rating), fetch_one=True)
+            interaction_id = result_row['id']
             
             # Link the rating to the saved recipe
             execute_rating_query("""
