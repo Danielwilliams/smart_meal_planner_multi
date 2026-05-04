@@ -86,16 +86,16 @@ async def check_instacart_status(current_user: dict = Depends(get_current_user))
             api_value = api_key[len("InstacartAPI "):]
             expected_header = api_key  # We keep the prefix for the header
 
-        # Debug info
+        # Debug info — never include raw api_key in response
         debug_info = {
             "env_variable": "INSTACART_API_KEY",
             "api_key_present": True,
-            "api_key": api_key,  # ONLY FOR DEBUGGING
+            "masked_key": masked_key,
             "format": api_format,
             "length": len(api_key),
             "value_length": len(api_value),
             "expected_headers": {
-                "Instacart-Connect-Api-Key": api_key,
+                "Instacart-Connect-Api-Key": masked_key,
                 "Content-Type": "application/json",
                 "Accept": "application/json"
             },

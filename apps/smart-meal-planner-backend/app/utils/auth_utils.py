@@ -11,56 +11,52 @@ logger = logging.getLogger(__name__)
 
 async def get_user_from_token(request: Request, use_cache=True):
     """
-    Enhanced token validation with organization role checking
-    Allows optional authentication for public endpoints
-    
-    Args:
-        request: The FastAPI request object
-        use_cache: Whether to use cached token data
-        
-    Returns:
-        dict: User payload with organization data, or None if no valid token
+    Token validation with organization role checking.
+    Raises HTTP 401 on any auth failure — use get_optional_user_from_token
+    for endpoints that support anonymous access.
     """
     auth_header = request.headers.get('Authorization')
     if not auth_header:
-        logger.error("No Authorization header found")
-        # For endpoints that allow anonymous access, return None instead of raising
-        return None
-    
+        raise HTTPException(status_code=401, detail="Authorization header required")
+
     try:
         if auth_header.startswith('Bearer '):
             token = auth_header.split(' ')[1]
         else:
             token = auth_header
-            
+
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        
+
         if not payload.get('user_id'):
             logger.error("Token payload missing user_id")
             raise HTTPException(status_code=401, detail="Invalid token payload")
-        
-        # Get user's organization info if any
+
         user_id = payload.get('user_id')
         organization_data = await get_user_organization_role(user_id)
-        
-        # Add organization data to the payload
         payload.update(organization_data)
-            
+
         return payload
-        
+
     except jwt.ExpiredSignatureError:
-        logger.error("Token has expired")
-        # For endpoints that allow anonymous access, return None instead of raising
-        if 'allow_anonymous' in locals() and allow_anonymous:
-            return None
         raise HTTPException(status_code=401, detail="Token has expired")
     except jwt.PyJWTError as e:
         logger.error(f"JWT validation error: {str(e)}")
-        # For endpoints that allow anonymous access, return None instead of raising
-        return None
+        raise HTTPException(status_code=401, detail="Invalid token")
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Unexpected error in token validation: {str(e)}")
-        # For endpoints that allow anonymous access, return None instead of raising
+        raise HTTPException(status_code=401, detail="Authentication failed")
+
+
+async def get_optional_user_from_token(request: Request):
+    """
+    Token validation that returns None instead of raising for public endpoints
+    that optionally personalize content for authenticated users.
+    """
+    try:
+        return await get_user_from_token(request)
+    except HTTPException:
         return None
 
 async def get_user_organization_role(user_id: int):

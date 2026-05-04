@@ -39,9 +39,8 @@ if not all([AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, S3_BUCKET_NAME]):
 
 
 
-# JWT configuration - IMPORTANT: Don't use this default in production!
-# Using a strong default for development to prevent errors
-JWT_SECRET = os.getenv("JWT_SECRET", "VeryStrongDevelopmentSecretKeyDoNotUseInProduction2025")
+# JWT configuration — no default; app refuses to start without this set
+JWT_SECRET = os.getenv("JWT_SECRET")
 JWT_ALGORITHM = "HS256"
 
 # External API configurations
@@ -64,7 +63,7 @@ RECAPTCHA_SECRET_KEY = os.getenv("RECAPTCHA_SECRET_KEY", "")
 
 # Email configuration
 SMTP_USERNAME = os.getenv("SMTP_USERNAME", "signup@smartmealplannerio.com")
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", ".*+~?00D7y;,bV1t")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
 SMTP_SERVER = os.getenv("SMTP_SERVER", "mboxhosting.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 FRONTEND_URL = "https://smartmealplannerio.com"
@@ -87,16 +86,19 @@ def debug_environment_vars():
 def validate_environment():
     critical_vars = [
         ("DATABASE_USER", DB_USER),
-        ("DATABASE_PASSWORD", DB_PASSWORD)
-        # JWT_SECRET now has a default, so we don't need to check for it
-        # OPENAI_API_KEY is optional and checked separately
+        ("DATABASE_PASSWORD", DB_PASSWORD),
+        ("JWT_SECRET", JWT_SECRET),
+        ("SMTP_PASSWORD", SMTP_PASSWORD),
     ]
-    
+
     missing_vars = [var for var, value in critical_vars if not value]
-    
+
     if missing_vars:
-        logger.error(f"Missing critical environment variables: {', '.join(missing_vars)}")
-        return False
+        raise RuntimeError(
+            f"Missing critical environment variables: {', '.join(missing_vars)}. "
+            "App cannot start safely without these set."
+        )
+    return True
     
     # Check S3 configuration but don't fail validation if missing
     s3_vars = [
