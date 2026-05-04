@@ -853,8 +853,9 @@ def generate_meal_plan_variety(req: GenerateMealPlanRequest, job_id: str = None)
 
 # Background Job Endpoints
 @router.post("/generate-async")
-async def start_menu_generation_async(req: GenerateMealPlanRequest, background_tasks: BackgroundTasks):
-    """Debug the asyncio.create_task approach to see why thread pool isn't working"""
+async def start_menu_generation_async(req: GenerateMealPlanRequest, background_tasks: BackgroundTasks, current_user: dict = Depends(get_user_from_token)):
+    """Start async menu generation — user_id is always taken from the auth token."""
+    req.user_id = current_user["user_id"]  # never trust client-supplied user_id
     try:
         logger.info(f"DEBUG_ASYNCIO: Starting menu generation for user {req.user_id}")
         
@@ -900,14 +901,16 @@ async def start_menu_generation_async(req: GenerateMealPlanRequest, background_t
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/job-status/{job_id}")
-async def get_menu_generation_status(job_id: str):
-    """Get the status of a background menu generation job with cache optimization"""
+async def get_menu_generation_status(job_id: str, current_user: dict = Depends(get_user_from_token)):
+    """Get the status of a background menu generation job."""
     try:
-        # Use cached status first to reduce database load during generation
         status = get_cached_job_status(job_id)
 
         if not status:
             raise HTTPException(status_code=404, detail="Job not found")
+
+        if status.get("user_id") != current_user["user_id"]:
+            raise HTTPException(status_code=403, detail="Access denied")
 
         # Format response
         response = {
@@ -936,8 +939,10 @@ async def get_menu_generation_status(job_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/active-jobs/{user_id}")
-async def get_active_jobs_for_user(user_id: int):
-    """Get any active menu generation jobs for a user with optimized caching"""
+async def get_active_jobs_for_user(user_id: int, current_user: dict = Depends(get_user_from_token)):
+    """Get any active menu generation jobs for a user."""
+    if current_user["user_id"] != user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     try:
         # First check in-memory cache for active jobs (much faster)
         active_from_cache = []
@@ -1120,8 +1125,10 @@ async def run_generation_with_thread_pool(job_id: str, req: GenerateMealPlanRequ
                 })
 
 @router.get("/latest/{user_id}")
-def get_latest_menu(user_id: int):
-    """Fetch the most recent menu for a user with minimal connection time"""
+def get_latest_menu(user_id: int, current_user: dict = Depends(get_user_from_token)):
+    """Fetch the most recent menu for a user."""
+    if current_user["user_id"] != user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     try:
         # Use autocommit for quick menu retrieval
         with get_db_cursor(dict_cursor=True, autocommit=True) as (cursor, conn):
@@ -1153,8 +1160,10 @@ def get_latest_menu(user_id: int):
         raise HTTPException(status_code=500, detail="Error fetching latest menu")
 
 @router.get("/history/{user_id}")
-def get_menu_history(user_id: int):
-    """Get menu history for a user"""
+def get_menu_history(user_id: int, current_user: dict = Depends(get_user_from_token)):
+    """Get menu history for a user."""
+    if current_user["user_id"] != user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     # Use autocommit for menu history retrieval
     with get_db_cursor(dict_cursor=True, autocommit=True) as (cursor, conn):
         # Autocommit is enabled at connection creation time
@@ -1191,11 +1200,16 @@ def get_menu_history(user_id: int):
             raise HTTPException(status_code=500, detail="Error fetching menu history")
 
 @router.patch("/{menu_id}/nickname")
-async def update_menu_nickname(menu_id: int, nickname: str = Body(..., embed=True)):
-    """Update the nickname for a menu"""
-    # Use the general pool for standard write operations
+async def update_menu_nickname(menu_id: int, nickname: str = Body(..., embed=True), current_user: dict = Depends(get_user_from_token)):
+    """Update the nickname for a menu."""
     with get_db_cursor(dict_cursor=True) as (cursor, conn):
         try:
+            cursor.execute("SELECT user_id FROM menus WHERE id = %s", (menu_id,))
+            menu = cursor.fetchone()
+            if not menu:
+                raise HTTPException(status_code=404, detail="Menu not found")
+            if menu["user_id"] != current_user["user_id"]:
+                raise HTTPException(status_code=403, detail="Access denied")
             cursor.execute("""
                 UPDATE menus
                 SET nickname = %s
@@ -1216,14 +1230,14 @@ async def update_menu_nickname(menu_id: int, nickname: str = Body(..., embed=Tru
             raise HTTPException(status_code=500, detail="Error updating menu nickname")
 
 @router.get("/{menu_id}/grocery-list")
-def get_grocery_list(menu_id: int):
-    """Get grocery list for a specific menu"""
+def get_grocery_list(menu_id: int, current_user: dict = Depends(get_user_from_token)):
+    """Get grocery list for a specific menu."""
     # Use autocommit for grocery list operations
     with get_db_cursor(dict_cursor=True, autocommit=True) as (cursor, conn):
         # Autocommit is enabled at connection creation time
         try:
             cursor.execute("""
-                SELECT meal_plan_json
+                SELECT meal_plan_json, user_id
                 FROM menus
                 WHERE id = %s;
             """, (menu_id,))
@@ -1231,6 +1245,8 @@ def get_grocery_list(menu_id: int):
             menu = cursor.fetchone()
             if not menu:
                 raise HTTPException(status_code=404, detail="No grocery list found for this menu.")
+            if menu["user_id"] != current_user["user_id"]:
+                raise HTTPException(status_code=403, detail="Access denied")
 
             # Dump full menu data for debugging
             logging.info(f"Menu {menu_id} data retrieved: meal_plan_json exists: {menu.get('meal_plan_json') is not None}")
@@ -1471,8 +1487,10 @@ def add_grocery_list_to_cart(
             raise HTTPException(status_code=500, detail="Error adding items to cart")
 
 @router.get("/latest/{user_id}/grocery-list")
-def get_latest_grocery_list(user_id: int):
-    """Get grocery list for user's latest menu"""
+def get_latest_grocery_list(user_id: int, current_user: dict = Depends(get_user_from_token)):
+    """Get grocery list for user's latest menu."""
+    if current_user["user_id"] != user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     # Use the context manager for safer database operations
     with get_db_cursor(dict_cursor=True) as (cursor, conn):
         try:
@@ -1504,9 +1522,10 @@ def get_latest_grocery_list(user_id: int):
 @router.get("/{menu_id}")
 def get_menu_details(
     menu_id: int,
-    user_id: int = Query(None)
+    current_user: dict = Depends(get_user_from_token)
 ):
-    """Retrieve full menu details for a specific menu"""
+    """Retrieve full menu details for a specific menu."""
+    user_id = current_user["user_id"]
     # Use the context manager for safer database operations
     with get_db_cursor(dict_cursor=True) as (cur, conn):
         try:
@@ -1526,7 +1545,11 @@ def get_menu_details(
             if not menu:
                 raise HTTPException(status_code=404, detail="Menu not found")
 
-            # Track that user viewed this menu if user_id provided
+            # Verify ownership
+            if menu["user_id"] != user_id:
+                raise HTTPException(status_code=403, detail="Access denied")
+
+            # Track that user viewed this menu
             if user_id:
                 track_recipe_interaction(user_id, menu_id, "viewed")
 
@@ -1565,39 +1588,11 @@ def get_menu_details(
             raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/shared")
-async def get_shared_menus(user_id: int = Query(...)):
-    """Get menus shared with the current user"""
-    # Use the context manager for safer database operations
-    with get_db_cursor(dict_cursor=True) as (cursor, conn):
-        try:
-            cursor.execute("""
-                SELECT
-                    m.id as menu_id,
-                    m.meal_plan_json,
-                    m.user_id,
-                    m.created_at,
-                    m.nickname,
-                    sm.permission_level,
-                    up.name as shared_by_name
-                FROM menus m
-                JOIN shared_menus sm ON m.id = sm.menu_id
-                JOIN user_profiles up ON m.user_id = up.id
-                WHERE sm.shared_with = %s
-                ORDER BY m.created_at DESC
-            """, (user_id,))
-
-            shared_menus = cursor.fetchall()
-            return shared_menus
-
-        except Exception as e:
-            logger.error(f"Error fetching shared menus: {str(e)}")
-            raise HTTPException(status_code=500, detail="Internal server error")
-
-
 @router.get("/shared/{user_id}")
-async def get_shared_menus(user_id: int):
-    """Get menus shared with the current user"""
+async def get_shared_menus(user_id: int, current_user: dict = Depends(get_user_from_token)):
+    """Get menus shared with the current user."""
+    if current_user["user_id"] != user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     # Use the context manager for safer database operations
     with get_db_cursor(dict_cursor=True) as (cursor, conn):
         try:

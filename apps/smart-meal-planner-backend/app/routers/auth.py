@@ -462,8 +462,10 @@ async def get_current_user(current_user: Dict[str, Any] = Depends(get_user_from_
     }
 
 @router.patch("/{user_id}/progress")
-async def update_user_progress(user_id: int, progress: UserProgress):
+async def update_user_progress(user_id: int, progress: UserProgress, current_user: dict = Depends(get_user_from_token)):
     """Update user progress flags in the database"""
+    if current_user.get("user_id") != user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     try:
         with get_db_cursor(dict_cursor=False) as (cursor, conn):
             # Build dynamic update query

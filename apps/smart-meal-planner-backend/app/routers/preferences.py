@@ -1,9 +1,10 @@
 import json
 import traceback
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from psycopg2.extras import RealDictCursor
 from ..db import get_db_connection, get_db_cursor
 from ..models.user import PreferencesUpdate
+from ..utils.auth_utils import get_user_from_token
 import logging
 
 # Set up logging
@@ -14,7 +15,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/preferences", tags=["Preferences"])
 
 @router.get("/{id}")
-def get_user_preferences(id: int):
+def get_user_preferences(id: int, current_user: dict = Depends(get_user_from_token)):
+    requesting_id = current_user.get("user_id")
+    is_org = current_user.get("account_type") in ("organization", "admin") or current_user.get("is_admin")
+    if requesting_id != id and not is_org:
+        raise HTTPException(status_code=403, detail="Access denied")
     try:
         with get_db_cursor(dict_cursor=True) as (cursor, conn):
             cursor.execute("""
@@ -423,7 +428,11 @@ def get_user_preferences(id: int):
         )
 
 @router.put("/{id}")
-async def update_preferences(id: int, preferences: PreferencesUpdate):
+async def update_preferences(id: int, preferences: PreferencesUpdate, current_user: dict = Depends(get_user_from_token)):
+    requesting_id = current_user.get("user_id")
+    is_org = current_user.get("account_type") in ("organization", "admin") or current_user.get("is_admin")
+    if requesting_id != id and not is_org:
+        raise HTTPException(status_code=403, detail="Access denied")
     try:
         # Debug logging
         logger.debug(f"Received preferences object: {preferences}")
