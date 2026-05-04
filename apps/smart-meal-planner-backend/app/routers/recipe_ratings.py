@@ -378,15 +378,14 @@ async def get_recipe_ratings(recipe_id: int):
         # Get recent reviews - simplified without join
         try:
             recent_reviews = execute_rating_query("""
-                SELECT 
+                SELECT
                     rating_score,
                     feedback_text,
                     made_recipe,
                     would_make_again,
-                    updated_at,
-                    user_id
+                    updated_at
                 FROM recipe_interactions
-                WHERE recipe_id = %s 
+                WHERE recipe_id = %s
                 AND rating_score IS NOT NULL
                 ORDER BY updated_at DESC
                 LIMIT 5

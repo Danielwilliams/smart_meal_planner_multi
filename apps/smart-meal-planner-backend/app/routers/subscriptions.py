@@ -127,7 +127,7 @@ async def validate_discount_options():
 @router.post("/validate-discount")
 async def validate_discount_code(
     request: DiscountCodeRequest,
-    user: Optional[Dict] = Depends(get_user_from_token)
+    user: Dict = Depends(get_user_from_token)
 ):
     """
     Validate a discount code and return its details

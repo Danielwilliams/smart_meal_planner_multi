@@ -1,7 +1,8 @@
 import os
 import logging
 from typing import List
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
+from app.utils.auth_utils import admin_required
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -226,7 +227,7 @@ def create_app() -> FastAPI:
         }
 
     @app.post("/admin/reset-connections")
-    async def reset_connections():
+    async def reset_connections(admin=Depends(admin_required)):
         """Admin endpoint to force reset the connection pool"""
         try:
             from app.db import close_all_connections, connection_pool, get_connection_stats
@@ -265,7 +266,7 @@ def create_app() -> FastAPI:
             }
 
     @app.get("/admin/db-stats")
-    async def get_db_stats():
+    async def get_db_stats(admin=Depends(admin_required)):
         """Get current database connection statistics"""
         try:
             from app.db import get_connection_stats, connection_pool
@@ -316,7 +317,7 @@ def create_app() -> FastAPI:
         }
     
     @app.post("/admin/run-migrations")
-    async def manual_migration_trigger():
+    async def manual_migration_trigger(admin=Depends(admin_required)):
         """Manually trigger database migrations - use with caution"""
         try:
             from app.migrations.migration_runner import run_startup_migrations
@@ -336,7 +337,7 @@ def create_app() -> FastAPI:
             }
         
     @app.get("/check-s3-vars")
-    async def check_s3_vars():
+    async def check_s3_vars(admin=Depends(admin_required)):
         """Check S3 environment variables (safe, doesn't expose sensitive data)"""
         s3_vars = {
             "AWS_ACCESS_KEY_ID": bool(os.getenv("AWS_ACCESS_KEY_ID")),
@@ -358,7 +359,7 @@ def create_app() -> FastAPI:
         }
     
     @app.get("/verify-password-hashing")
-    async def verify_password_hashing():
+    async def verify_password_hashing(admin=Depends(admin_required)):
         """Verify that Kroger password hashing is working correctly"""
         try:
             from app.db import get_db_cursor
@@ -441,7 +442,7 @@ def create_app() -> FastAPI:
             }
     
     @app.post("/clear-plaintext-passwords")
-    async def clear_plaintext_passwords():
+    async def clear_plaintext_passwords(admin=Depends(admin_required)):
         """Clear plain text Kroger passwords (only if verification passes)"""
         try:
             from app.db import get_db_cursor

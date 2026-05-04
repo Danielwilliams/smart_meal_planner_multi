@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 from ..integration.kroger import add_to_kroger_cart
 from ..integration.walmart import add_to_cart as add_to_walmart_cart
 from ..db import track_recipe_interaction, is_recipe_saved
-from ..utils.auth_utils import get_user_from_token
+from ..utils.auth_utils import get_user_from_token, admin_required
 from datetime import datetime
 
 # Concurrency control - increased limit for better user experience
@@ -2465,7 +2465,7 @@ async def unshare_menu(
             raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/db-stats")
-async def get_database_connection_stats():
+async def get_database_connection_stats(admin=Depends(admin_required)):
     """Get database connection pool statistics for monitoring"""
     try:
         with _stats_lock:
@@ -2503,7 +2503,7 @@ async def get_database_connection_stats():
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/debug/concurrency")
-async def get_concurrency_debug_info():
+async def get_concurrency_debug_info(admin=Depends(admin_required)):
     """Get current concurrency state for debugging blocking issues"""
     try:
         with _status_cache_lock:
