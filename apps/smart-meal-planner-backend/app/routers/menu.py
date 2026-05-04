@@ -1,6 +1,5 @@
 ﻿import json
 import time
-import re
 import os
 import asyncio
 import uuid
@@ -8,16 +7,12 @@ from typing import List, Optional, Dict, Any, Set
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, Query, Body, Depends, status, BackgroundTasks
 import openai
-
-# Feature flag for optimized generation method
 from psycopg2.extras import RealDictCursor
-# Use the enhanced DB with specialized connection pools
 from ..db import get_db_connection, get_db_cursor
 from ..config import OPENAI_API_KEY
 from ..models.user import GenerateMealPlanRequest
 from ..models.menus import SaveMenuRequest
 from pydantic import BaseModel
-from ..crud import menu_crud
 import threading
 import logging
 from ..utils.grocery_aggregator import aggregate_grocery_list
