@@ -24,9 +24,16 @@ const instacartBackendAxios = axios.create({
   }
 });
 
-// Add a request interceptor for logging
+// Attach the JWT from localStorage to every Instacart request — backend
+// routes use Depends(get_user_from_token) and 401 without a Bearer token.
 instacartBackendAxios.interceptors.request.use(
   config => {
+    const token = localStorage.getItem('access_token');
+    if (token) {
+      config.headers.Authorization = token.startsWith('Bearer ')
+        ? token
+        : `Bearer ${token}`;
+    }
     console.log(`InstacartBackendService Request: ${config.method.toUpperCase()} ${config.url}`);
     return config;
   },

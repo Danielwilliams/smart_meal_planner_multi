@@ -144,23 +144,121 @@ Two account types: `individual` and `organization`. Organizations have coaches w
 ### Subscription Enforcement
 `SUBSCRIPTION_ENFORCE=true` gates features by tier. `SUBSCRIPTION_TEST_MODE=true` bypasses enforcement for testing. Stripe webhooks hit `/api/v2/webhooks/stripe`.
 
-## Database — Key Tables
+## Database — Tables
+
+51 tables in `public` schema (49 base + 3 views). Verified against live Railway DB.
+
+### Auth & Users
 
 | Table | Purpose |
 |---|---|
-| `user_profiles` | Auth + all preferences (JSONB fields for meal_times, appliances, flavor_preferences, carb_cycling_config, preferred_proteins) |
-| `menus` | Generated meal plans — `meal_plan_json` JSONB, `grocery_list` JSONB, `pipeline_version` (v1_monolithic \| v2_threestage) |
-| `scraped_recipes` | ~1000 real recipes — title, cuisine, complexity, instructions, diet_tags JSONB, flavor_profile JSONB |
-| `recipe_ingredients` | Normalized ingredient rows per recipe (recipe_id FK) |
-| `recipe_nutrition` | Calories, protein, carbs, fat per recipe |
-| `recipe_interactions` | User ratings: rating_score (1–5), made_recipe, would_make_again, difficulty_rating |
-| `saved_recipes` | User bookmarks linking to scraped_recipes |
-| `ingredient_usage_log` | Per-user ingredient history for 3-day cooldown (populated by pipeline) |
-| `generation_pipeline_log` | Per-stage debug log: model, tokens, duration, output JSON |
-| `organizations` | Org accounts |
-| `organization_clients` | Coach ↔ client relationships |
-| `shared_menus` | Menus shared from org to client |
+| `user_profiles` | **The real users table.** Auth + all preferences (~64 columns). JSONB: `meal_times`, `appliances` (json, not jsonb), `flavor_preferences`, `carb_cycling_config`, `preferred_proteins`, `other_proteins`, `recipe_type_preferences`, `meal_time_preferences`, `time_constraints`, `prep_preferences`. Most FKs across the DB point here. |
+| `users` | **Vestigial.** 5 columns, 1 row. Only `user_management_logs` references it. Don't use for new code. |
+| `user_tokens` | JWT/session tokens — `(user_id, token, expires_at)` |
+| `password_reset_requests` | Reset token + expiry |
+| `user_management_logs` | Admin actions audit log (action, performed_by, ip_address, metadata) |
+| `user_model_preferences` | Per-user AI model selection override |
+
+### Menus & Generation
+
+| Table | Purpose |
+|---|---|
+| `menus` | Generated meal plans. Columns: `id, user_id, total_cost, duration_days, meal_times (TEXT — JSON-encoded), snacks_per_day, meal_plan_json (jsonb), created_at, nickname, created_by, shared_with_organization, for_client_id, ai_model_used, pipeline_version`. **No `grocery_list` column** — grocery list is computed at request time. |
+| `menu_generation_jobs` | Async job tracking. PK is `job_id` (varchar UUID). Holds `request_data`, `result_data`, `progress`, `status`. |
+| `menu_ratings` | Per-user menu ratings — `(user_id, menu_id)` unique, includes variety/practicality/family_approval scores |
 | `custom_menus` | User-built menus outside the AI pipeline |
+| `generation_pipeline_log` | Per-stage debug log — model, tokens, duration, stage_input/output JSONB. PK is uuid. |
+| `ingredient_usage_log` | Per-user ingredient history (used by skeleton agent's 3-day cooldown — pruned at 14 days) |
+| `recommendation_metrics` | Track which recommendation source led to a menu selection |
+| `shared_menus` | Menus shared from coach → client |
+
+### Recipe Library (scraped)
+
+| Table | Purpose |
+|---|---|
+| `scraped_recipes` | ~1000 real recipes — title, cuisine, complexity, instructions (jsonb), `diet_tags` (jsonb), `flavor_profile` (jsonb), appliances (jsonb), categories (jsonb), metadata (jsonb) |
+| `recipe_ingredients` | Normalized ingredient rows per recipe — `(recipe_id, name, amount, unit, category, is_main_ingredient)`. **`unit` lives on this table** — recipe_matcher reads it directly into the meal dict. |
+| `recipe_nutrition` | Calories, macros, micronutrients per recipe (cal, protein, carbs, fat, fiber, sugar, sodium, etc.) |
+| `recipe_tags` | `(recipe_id, tag)` rows for tagging |
+| `recipe_components` | Recipe broken into reusable components (sauce, base, protein, etc.) |
+| `component_compatibility` | Compatibility scores between two component IDs |
+| `recipe_interactions` | User ratings on scraped recipes — `rating_score (1–5)`, `made_recipe`, `would_make_again`, `difficulty_rating`, `time_accuracy` |
+| `saved_recipes` | User bookmarks. **Footgun:** column literally named `"recipe_identifier "` (trailing space) with a unique index on it. Also has a unique-on-`recipe_id` constraint that works only because the app constructs `recipe_id` as `"{menu_id}-{day}-{meal_time}"`. |
+| `shared_recipes` | Recipes shared between orgs/users |
+
+### User-Created Recipes
+
+| Table | Purpose |
+|---|---|
+| `user_recipes` | User-authored recipes (separate from `scraped_recipes`) — title, cuisine, macros, is_public |
+| `user_recipe_ingredients` | Ingredients per user recipe |
+| `user_recipe_steps` | Ordered instruction steps per user recipe |
+
+### Organizations / Coach Features
+
+| Table | Purpose |
+|---|---|
+| `organizations` | Org accounts — `(id, name, owner_id → user_profiles, subscription_id)` |
+| `organization_clients` | Coach ↔ client relationships (status, role) |
+| `organization_settings` | Per-org config — JSONB `branding_settings`, `default_client_preferences`, contact info |
+| `organization_menu_defaults` | Org-level default planning period, meals per day, serving sizes, nutritional targets |
+| `organization_nutritional_standards` | Named macro/calorie standards an org can apply to clients |
+| `organization_recipes` | Org's curated recipe library (joins `scraped_recipes` or `user_recipes`) with approval workflow |
+| `organization_recipe_categories` | Org-defined recipe categories (color, sort_order) |
+| `client_invitations` | Pending invite tokens (email, organization_id, expires_at) |
+| `client_notes` | Coach notes about clients (priority, tags jsonb, archived flag) |
+| `client_note_templates` | Reusable note templates per org |
+| `onboarding_forms` | Org-defined intake forms — `form_fields` jsonb |
+| `onboarding_responses` | Client responses to onboarding forms |
+
+### Subscriptions / Billing
+
+| Table | Purpose |
+|---|---|
+| `subscriptions` | Active subs (Stripe + PayPal both supported) — `unique` on `user_id` AND on `organization_id` |
+| `subscription_events` | Webhook event log per subscription |
+| `invoices` | Invoice records linked to a subscription |
+| `payment_methods` | Stripe/PayPal payment methods |
+| `orders` | Store cart orders (Kroger/Walmart/Instacart) |
+
+### AI / ML
+
+| Table | Purpose |
+|---|---|
+| `ai_models` | Available AI models registry (model_name, model_type, model_path, is_active, version) |
+| `model_training_state` | Tracks recipe-recommendation model training runs |
+
+### Store Integration
+
+| Table | Purpose |
+|---|---|
+| `store_products` | Cached store product lookups (Kroger/Walmart) — ingredient_name → product_id, price |
+| `grocery_items` | Generic grocery item catalogue (name, price, store) |
+| `temp_kroger_tokens` | Short-lived OAuth token handoff during Kroger auth flow |
+
+### Misc
+
+| Table | Purpose |
+|---|---|
+| `applied_migrations` | Run-on-startup migration log (migration_name unique, status, error_message) |
+| `recipe_preferences_backup` | **Backup table** — do not write to it |
+
+### Views
+
+| View | Purpose |
+|---|---|
+| `menu_ratings_summary` | Aggregated stats per menu (total ratings, averages, reuse %) |
+| `recipe_ratings_summary` | Aggregated stats per recipe (total, avg, distribution by score) |
+| `user_rating_preferences` | Per-user rating profile (avg rating, variance, remake_ratio, feedback patterns) |
+
+### Schema notes / footguns
+
+- **`menus.meal_times` is TEXT (JSON-encoded string), but `user_profiles.meal_times` is JSONB.** Don't pass the former into a JSONB op without a cast.
+- **`user_profiles.appliances` is `json`, not `jsonb`** (column 36). The other JSON-ish columns on this table are `jsonb`.
+- `user_profiles` has gaps in `ordinal_position` (31, 32, 48, 49 dropped) — `SELECT *` works, but column count varies between dumps and live schema.
+- `saved_recipes` column **`"recipe_identifier "`** has a trailing space (column 10, type `character(1)`). Unique index quotes the trailing space. Treat as legacy — prefer the `(user_id, menu_id, recipe_id, meal_time)` composite unique key.
+- Most FKs use `ON DELETE NO ACTION`; a handful use `CASCADE` (organization-scoped child tables, recipe sub-rows) or `SET NULL` (`menu_generation_jobs.client_id`, `organization_recipes.category_id`, `user_profiles.organization_id`).
+- `recipe_preferences_backup` exists from a migration — don't reference it in app code.
 
 ## User Preferences Schema (user_profiles)
 
