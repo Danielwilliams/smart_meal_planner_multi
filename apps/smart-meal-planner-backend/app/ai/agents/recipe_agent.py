@@ -201,7 +201,8 @@ def _build_day_prompt(
                 "meal_time": s["meal_time"],
                 "title": "GENERATE a unique, descriptive meal title",
                 "ingredients": [
-                    {"name": "str", "quantity": "str", "unit": "str",
+                    {"name": "str", "quantity": "str",
+                     "unit": "REQUIRED measurement unit — e.g. 'lb', 'oz', 'g', 'kg', 'cup', 'tbsp', 'tsp', 'piece', 'slice', 'fillet', 'clove', 'medium', 'large' — NEVER leave empty",
                      "calories": "int", "protein": "Xg", "carbs": "Xg", "fat": "Xg"}
                 ],
                 "instructions": ["Step 1", "Step 2", "Step 3"],

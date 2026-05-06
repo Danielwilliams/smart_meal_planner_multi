@@ -189,8 +189,16 @@ def _log_ingredient_usage(cursor, user_id: int, menu_id: int | None, day_results
 # ---------------------------------------------------------------------------
 
 def _assemble_meal_plan(day_results: list[dict]) -> dict:
-    """Wrap day results in the {meal_plan: {days: [...]}} envelope."""
-    return {"meal_plan": {"days": day_results}}
+    """Wrap day results in the {meal_plan: {days: [...]}} envelope.
+    Renames day_number -> dayNumber to match the frontend's expected schema.
+    """
+    days = []
+    for day in day_results:
+        remapped = {**day}
+        if "day_number" in remapped:
+            remapped["dayNumber"] = remapped.pop("day_number")
+        days.append(remapped)
+    return {"meal_plan": {"days": days}}
 
 
 def _build_basic_grocery_list(day_results: list[dict]) -> dict:
