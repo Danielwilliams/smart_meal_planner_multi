@@ -168,6 +168,16 @@ def _build_day_prompt(
 
     system_lines += [
         "",
+        "INGREDIENT UNITS — MANDATORY RULES:",
+        "  • Every ingredient MUST have a unit. Use standardized units: cup, tbsp, tsp, oz, lb, g, slice, clove, can, bunch, pinch, dash.",
+        "  • quantity must be a number only (e.g. '2', '0.5', '1/4'). NEVER embed the unit in the quantity field.",
+        "  • unit must be a measurement word only (e.g. 'cup', 'tbsp', 'oz', 'lb'). NEVER leave it blank.",
+        "  • Exception: countable whole items (eggs, bananas, tortillas, bagels) may use unit='' with a whole-number quantity.",
+        "  • BAD:  {\"name\": \"lean ground beef\", \"quantity\": \"1\", \"unit\": \"\"}",
+        "  • GOOD: {\"name\": \"lean ground beef\", \"quantity\": \"1\", \"unit\": \"lb\"}",
+        "  • BAD:  {\"name\": \"olive oil\", \"quantity\": \"2 tbsp\", \"unit\": \"\"}",
+        "  • GOOD: {\"name\": \"olive oil\", \"quantity\": \"2\", \"unit\": \"tbsp\"}",
+        "",
         "Return ONLY valid JSON matching the schema in the user message. No prose, no markdown fences.",
     ]
     system_prompt = "\n".join(system_lines)
