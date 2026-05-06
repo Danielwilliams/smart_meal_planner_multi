@@ -836,6 +836,26 @@ async def _run_agent_pipeline(req: GenerateMealPlanRequest, job_id: str = None) 
             user_id=preference_user_id,
             job_id=job_id,
         )
+
+        # Save the generated menu to the menus table.
+        # The pipeline commits its own ingredient-usage writes above,
+        # so we open a fresh transaction here for the menu insert.
+        meal_plan_json = json.dumps(result.get("meal_plan", {}))
+        cursor.execute("""
+            INSERT INTO menus (user_id, meal_plan_json, for_client_id)
+            VALUES (%s, %s, %s)
+            RETURNING id
+        """, (
+            req.user_id,
+            meal_plan_json,
+            req.for_client_id if req.for_client_id else None,
+        ))
+        menu_row = cursor.fetchone()
+        menu_id = menu_row["id"]
+        conn.commit()
+        result["menu_id"] = menu_id
+        logger.info("Pipeline: saved menu %d for user %d", menu_id, req.user_id)
+
     return result
 
 
