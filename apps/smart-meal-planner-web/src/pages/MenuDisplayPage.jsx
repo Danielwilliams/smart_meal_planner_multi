@@ -43,20 +43,17 @@ import RateRecipeButton from '../components/RateRecipeButton';
 // Utility Functions
 function formatIngredient(ing) {
   if (typeof ing === 'string') return ing;
-  
-  if (ing.name && ing.quantity) {
-    return `${ing.quantity} ${ing.name}`;
-  }
 
-  if (ing.ingredient && ing.amount) {
-    return `${ing.amount} ${ing.ingredient}`;
-  }
+  const qty  = ing.quantity ?? ing.amount ?? '';
+  const unit = ing.unit ?? '';
+  const name = ing.name ?? ing.ingredient ?? ing.item ?? '';
 
-  if (ing.item && ing.quantity) {
-    return `${ing.quantity} ${ing.item}`;
-  }
+  if (!name) return JSON.stringify(ing);
 
-  return JSON.stringify(ing);
+  return [qty, unit, name]
+    .map(s => String(s).trim())
+    .filter(Boolean)
+    .join(' ');
 }
 
 function getComplexityColor(level) {

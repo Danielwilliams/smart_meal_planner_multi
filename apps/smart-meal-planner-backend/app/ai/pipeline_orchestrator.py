@@ -188,15 +188,51 @@ def _log_ingredient_usage(cursor, user_id: int, menu_id: int | None, day_results
 # Output assembly
 # ---------------------------------------------------------------------------
 
-def _assemble_meal_plan(day_results: list[dict]) -> dict:
+def _build_day_summary(day: dict, constraints: dict) -> dict:
+    """Per-day macro/calorie targets — frontend reads day.summary.{calorie_goal,
+    protein_goal, carbs_goal, fat_goal} on the unexpanded day card.
+    Mirrors the gram math in recipe_agent._build_day_prompt so on-card targets
+    match the values the recipes were generated against.
+    """
+    cal_goal     = constraints.get("calorie_goal", 2000)
+    protein_pct  = constraints.get("macro_protein_pct", 30)
+    carbs_pct    = constraints.get("macro_carbs_pct", 40)
+    fat_pct      = constraints.get("macro_fat_pct", 30)
+
+    protein_g = round((cal_goal * protein_pct / 100) / 4)
+    fat_g     = round((cal_goal * fat_pct / 100) / 9)
+    carb_target = day.get("carb_target_grams")
+    if carb_target:
+        carbs_g = carb_target
+        effective_calories = (protein_g * 4) + (carbs_g * 4) + (fat_g * 9)
+    else:
+        carbs_g = round((cal_goal * carbs_pct / 100) / 4)
+        effective_calories = cal_goal
+
+    return {
+        "calorie_goal":  f"{effective_calories} cal",
+        "protein_goal":  f"{protein_g}g ({protein_pct}%)",
+        "carbs_goal":    f"{carbs_g}g ({carbs_pct}%)" if not carb_target else f"{carbs_g}g",
+        "fat_goal":      f"{fat_g}g ({fat_pct}%)",
+        "protein_grams": str(protein_g),
+        "carbs_grams":   str(carbs_g),
+        "fat_grams":     str(fat_g),
+    }
+
+
+def _assemble_meal_plan(day_results: list[dict], constraints: dict | None = None) -> dict:
     """Wrap day results in the {meal_plan: {days: [...]}} envelope.
     Renames day_number -> dayNumber to match the frontend's expected schema.
+    Adds a per-day summary block (calorie + macro targets) so the day overview
+    card on the frontend can show goals before the accordion is expanded.
     """
     days = []
     for day in day_results:
         remapped = {**day}
         if "day_number" in remapped:
             remapped["dayNumber"] = remapped.pop("day_number")
+        if constraints and "summary" not in remapped:
+            remapped["summary"] = _build_day_summary(day, constraints)
         days.append(remapped)
     return {"meal_plan": {"days": days}}
 
@@ -397,7 +433,7 @@ async def run_pipeline(
     # ------------------------------------------------------------------
     # Assemble output
     # ------------------------------------------------------------------
-    meal_plan_dict  = _assemble_meal_plan(day_results)
+    meal_plan_dict  = _assemble_meal_plan(day_results, constraints)
     grocery_list    = _build_basic_grocery_list(day_results)
 
     validation_summary = {

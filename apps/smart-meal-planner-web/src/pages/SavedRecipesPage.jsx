@@ -246,20 +246,17 @@ const SavedRecipesPage = () => {
     if (typeof ingredient === 'string') {
       return ingredient;
     }
-    
-    if (ingredient.ingredient && ingredient.amount) {
-      return `${ingredient.amount} ${ingredient.ingredient}`;
-    }
-    
-    if (ingredient.name && ingredient.quantity) {
-      return `${ingredient.quantity} ${ingredient.name}`;
-    }
-    
-    if (ingredient.item && ingredient.quantity) {
-      return `${ingredient.quantity} ${ingredient.item}`;
-    }
-    
-    return JSON.stringify(ingredient);
+
+    const qty  = ingredient.quantity ?? ingredient.amount ?? '';
+    const unit = ingredient.unit ?? '';
+    const name = ingredient.name ?? ingredient.ingredient ?? ingredient.item ?? '';
+
+    if (!name) return JSON.stringify(ingredient);
+
+    return [qty, unit, name]
+      .map(s => String(s).trim())
+      .filter(Boolean)
+      .join(' ');
   };
 
   return (
