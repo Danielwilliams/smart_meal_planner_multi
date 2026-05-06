@@ -844,14 +844,26 @@ async def _run_agent_pipeline(req: GenerateMealPlanRequest, job_id: str = None) 
         pipeline_meal_plan = result.get("meal_plan", {})
         meal_plan_for_db = pipeline_meal_plan.get("meal_plan", pipeline_meal_plan)
         meal_plan_json = json.dumps(meal_plan_for_db)
+        nickname = (
+            getattr(req, "nickname", None)
+            or f"{req.duration_days}-day meal plan"
+        )
         cursor.execute("""
-            INSERT INTO menus (user_id, meal_plan_json, for_client_id)
-            VALUES (%s, %s, %s)
+            INSERT INTO menus (
+                user_id, meal_plan_json, duration_days, meal_times,
+                snacks_per_day, for_client_id, ai_model_used, nickname
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
         """, (
             req.user_id,
             meal_plan_json,
+            req.duration_days,
+            json.dumps(req.meal_times),
+            req.snacks_per_day,
             req.for_client_id if req.for_client_id else None,
+            req.ai_model or "default",
+            nickname,
         ))
         menu_row = cursor.fetchone()
         menu_id = menu_row["id"]
