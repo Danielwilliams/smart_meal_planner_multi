@@ -838,9 +838,12 @@ async def _run_agent_pipeline(req: GenerateMealPlanRequest, job_id: str = None) 
         )
 
         # Save the generated menu to the menus table.
-        # The pipeline commits its own ingredient-usage writes above,
-        # so we open a fresh transaction here for the menu insert.
-        meal_plan_json = json.dumps(result.get("meal_plan", {}))
+        # _assemble_meal_plan wraps days as {"meal_plan": {"days": [...]}}
+        # but meal_plan_json in the DB should be {"days": [...]} so the
+        # frontend can access menu.meal_plan.days directly.
+        pipeline_meal_plan = result.get("meal_plan", {})
+        meal_plan_for_db = pipeline_meal_plan.get("meal_plan", pipeline_meal_plan)
+        meal_plan_json = json.dumps(meal_plan_for_db)
         cursor.execute("""
             INSERT INTO menus (user_id, meal_plan_json, for_client_id)
             VALUES (%s, %s, %s)
