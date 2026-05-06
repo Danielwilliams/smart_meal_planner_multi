@@ -337,7 +337,7 @@ async def run(
         List of day dicts in the existing meal plan format
         (day_number + meals array with full recipe data).
     """
-    model = os.getenv("RECIPE_MODEL", "gpt-4")
+    model = os.getenv("RECIPE_MODEL", "gpt-4o")
     max_parallel = int(os.getenv("MAX_PARALLEL_DAYS", "3"))
     semaphore = asyncio.Semaphore(max_parallel)
 

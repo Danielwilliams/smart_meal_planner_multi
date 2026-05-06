@@ -350,7 +350,7 @@ async def run(
     """
     disliked = global_constraints.get("disliked_ingredients", [])
     restrictions = global_constraints.get("dietary_restrictions", [])
-    model = os.getenv("VALIDATOR_MODEL", "gpt-3.5-turbo")
+    model = os.getenv("VALIDATOR_MODEL", "gpt-4o-mini")
 
     # Phase A
     result = validate_plan(day_results, disliked, restrictions)

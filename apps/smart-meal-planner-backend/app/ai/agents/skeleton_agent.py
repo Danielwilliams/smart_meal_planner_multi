@@ -319,7 +319,7 @@ async def run(
         diet_type=diet_type,
     )
 
-    model = os.getenv("SKELETON_MODEL", "gpt-3.5-turbo")
+    model = os.getenv("SKELETON_MODEL", "gpt-4o-mini")
     t0 = time.time()
     tokens_used = 0
 
