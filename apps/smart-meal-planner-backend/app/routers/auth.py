@@ -47,12 +47,19 @@ async def send_verification_email(email: str, verification_token: str):
             email, SMTP_SERVER, SMTP_PORT, SMTP_USERNAME,
         )
 
+        # Port 465 = implicit SSL (SMTPS). Port 587 (or anything else) = STARTTLS.
+        # Some hosts/PaaS providers block outbound 587 but allow 465.
         # smtplib.SMTP has no default timeout; without one a TLS or auth hang
         # blocks the background task indefinitely and the email never sends.
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=15) as server:
-            server.starttls()
-            server.login(SMTP_USERNAME, SMTP_PASSWORD)
-            server.send_message(msg)
+        if int(SMTP_PORT) == 465:
+            with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT, timeout=15) as server:
+                server.login(SMTP_USERNAME, SMTP_PASSWORD)
+                server.send_message(msg)
+        else:
+            with smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=15) as server:
+                server.starttls()
+                server.login(SMTP_USERNAME, SMTP_PASSWORD)
+                server.send_message(msg)
 
         logger.info("Verification email sent successfully to %s", email)
     except Exception as e:
