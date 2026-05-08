@@ -57,36 +57,70 @@ async def sign_up(user_data: UserSignUp, background_tasks: BackgroundTasks):
         with get_db_cursor(dict_cursor=False, autocommit=True) as (cursor, conn):
             # Autocommit is enabled at connection creation time
             
-            # Check if email already exists
-            cursor.execute("SELECT id FROM user_profiles WHERE email = %s", (user_data.email,))
+            # Block signup if an ACTIVE account exists with this email.
+            cursor.execute(
+                "SELECT id FROM user_profiles WHERE email = %s AND is_active = TRUE",
+                (user_data.email,),
+            )
             if cursor.fetchone():
                 raise HTTPException(status_code=400, detail="Email already registered")
-            
+
+            # If a soft-deleted row exists with this email, recycle it (preserves
+            # the user_id so any FKs from other tables stay valid) instead of
+            # inserting a duplicate that could collide with a UNIQUE constraint.
+            cursor.execute(
+                "SELECT id FROM user_profiles WHERE email = %s AND is_active = FALSE",
+                (user_data.email,),
+            )
+            existing_deleted = cursor.fetchone()
+
             # Create verification token
             verification_token = jwt.encode({
                 'email': user_data.email,
                 'exp': datetime.utcnow() + timedelta(hours=24)
             }, JWT_SECRET, algorithm=JWT_ALGORITHM)
-            
+
             # Hash password
             hashed_password = bcrypt.hashpw(user_data.password.encode('utf-8'), bcrypt.gensalt())
-            
-            # Insert user with verified=False
-            cursor.execute("""
-                INSERT INTO user_profiles 
-                (email, name, hashed_password, verified, verification_token, account_type)
-                VALUES (%s, %s, %s, %s, %s, %s)
-                RETURNING id
-            """, (
-                user_data.email,
-                user_data.name,
-                hashed_password.decode('utf-8'),
-                False,
-                verification_token,
-                user_data.account_type
-            ))
-            
-            user_id = cursor.fetchone()[0]
+
+            if existing_deleted:
+                user_id = existing_deleted[0]
+                cursor.execute("""
+                    UPDATE user_profiles SET
+                        name = %s,
+                        hashed_password = %s,
+                        verified = FALSE,
+                        verification_token = %s,
+                        account_type = %s,
+                        is_active = TRUE,
+                        deleted_at = NULL,
+                        deleted_by = NULL,
+                        paused_at = NULL,
+                        paused_by = NULL,
+                        pause_reason = NULL
+                    WHERE id = %s
+                """, (
+                    user_data.name,
+                    hashed_password.decode('utf-8'),
+                    verification_token,
+                    user_data.account_type,
+                    user_id,
+                ))
+            else:
+                cursor.execute("""
+                    INSERT INTO user_profiles
+                    (email, name, hashed_password, verified, verification_token, account_type)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                """, (
+                    user_data.email,
+                    user_data.name,
+                    hashed_password.decode('utf-8'),
+                    False,
+                    verification_token,
+                    user_data.account_type
+                ))
+                user_id = cursor.fetchone()[0]
             
             # If this is an organization account, create the organization
             if user_data.account_type == "organization" and user_data.organization_name:
