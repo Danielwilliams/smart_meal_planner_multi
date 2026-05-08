@@ -94,7 +94,8 @@ function PreferencesPage() {
       carbs: '',
       fat: '',
       calories: ''
-    }
+    },
+    zipCode: ''
   });
   
   // New preference states
@@ -333,7 +334,10 @@ function PreferencesPage() {
           carbs: existingPreferences.macro_carbs?.toString() || '',
           fat: existingPreferences.macro_fat?.toString() || '',
           calories: existingPreferences.calorie_goal?.toString() || ''
-        }
+        },
+
+        // ZIP code (used for store-locator prefill)
+        zipCode: existingPreferences.zip_code || ''
       }));
 
       // Load new preference types if they exist in the database
@@ -549,6 +553,7 @@ useEffect(() => {
         appliances: preferences.appliances,
         prep_complexity: preferences.prepComplexity,
         servings_per_meal: preferences.servingsPerMeal,
+        zip_code: preferences.zipCode || null,
         // Enhanced preference fields (these take precedence in the menu generation process)
         flavor_preferences: flavorPreferences,
         spice_level: spiceLevel,
@@ -1005,6 +1010,27 @@ useEffect(() => {
               </Select>
             </FormControl>
           )}
+        </Box>
+
+        <Box sx={{ mt: 3, mb: 2 }}>
+          <Typography variant="subtitle1" gutterBottom>
+            ZIP Code
+          </Typography>
+          <TextField
+            fullWidth
+            label="ZIP Code"
+            value={preferences.zipCode}
+            onChange={(e) => {
+              const value = e.target.value.replace(/\D/g, '').slice(0, 5);
+              setPreferences(prev => ({ ...prev, zipCode: value }));
+            }}
+            inputProps={{
+              inputMode: 'numeric',
+              pattern: '[0-9]*',
+              maxLength: 5
+            }}
+            helperText="Used to find nearby Kroger and Instacart stores"
+          />
         </Box>
 
         <Box sx={{ mt: 3, mb: 2 }}>

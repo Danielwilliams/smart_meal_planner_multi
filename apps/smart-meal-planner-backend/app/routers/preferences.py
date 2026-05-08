@@ -46,7 +46,8 @@ def get_user_preferences(id: int, current_user: dict = Depends(get_user_from_tok
                     preferred_proteins,
                     other_proteins,
                     carb_cycling_enabled,
-                    carb_cycling_config
+                    carb_cycling_config,
+                    zip_code
                 FROM user_profiles
                 WHERE id = %s
             """, (id,))
@@ -211,7 +212,8 @@ def get_user_preferences(id: int, current_user: dict = Depends(get_user_from_tok
                             "secondary": "maintain_muscle"
                         },
                         "notes": ""
-                    }
+                    },
+                    "zip_code": ""
                 }
 
             # Handle JSONB fields
@@ -571,6 +573,17 @@ async def update_preferences(id: int, preferences: PreferencesUpdate, current_us
             if carb_cycling_config_data is not None:
                 update_fields.append("carb_cycling_config = %s::jsonb")
                 params.append(json.dumps(carb_cycling_config_data))
+
+            # Handle zip_code (camelCase + snake_case)
+            zip_code_data = None
+            if hasattr(preferences, 'zipCode') and preferences.zipCode is not None:
+                zip_code_data = preferences.zipCode
+            elif hasattr(preferences, 'zip_code') and preferences.zip_code is not None:
+                zip_code_data = preferences.zip_code
+
+            if zip_code_data is not None:
+                update_fields.append("zip_code = %s")
+                params.append(zip_code_data)
 
             # Add id to params
             params.append(id)

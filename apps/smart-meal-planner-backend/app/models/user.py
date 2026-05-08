@@ -116,6 +116,10 @@ class PreferencesUpdate(BaseModel):
     carbCyclingConfig: Optional[Dict[str, Any]] = None
     carb_cycling_config: Optional[Dict[str, Any]] = None  # Alias for carbCyclingConfig
 
+    # Location (used for store-locator prefill on Kroger/Instacart pickers)
+    zip_code: Optional[str] = None
+    zipCode: Optional[str] = None  # Alias for zip_code
+
 
 class GenerateMenuRequest(BaseModel):
     meal_types: List[str]  # e.g. ["breakfast", "lunch", "dinner"]

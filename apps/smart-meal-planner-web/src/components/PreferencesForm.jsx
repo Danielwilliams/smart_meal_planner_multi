@@ -503,6 +503,25 @@ const PreferencesForm = ({
 
       <Divider sx={{ my: 3 }} />
 
+      {/* ZIP Code (used to prefill Kroger / Instacart store pickers) */}
+      <Box sx={{ mb: 3 }}>
+        <TextField
+          fullWidth
+          label="ZIP Code"
+          value={preferences.zipCode || ''}
+          onChange={(e) => {
+            const value = e.target.value.replace(/\D/g, '').slice(0, 5);
+            setPreferences(prev => ({ ...prev, zipCode: value }));
+          }}
+          inputProps={{
+            inputMode: 'numeric',
+            pattern: '[0-9]*',
+            maxLength: 5
+          }}
+          helperText="Used to find nearby Kroger and Instacart stores"
+        />
+      </Box>
+
       {/* Servings and Complexity */}
       <Grid container spacing={3}>
         <Grid item xs={12} sm={6}>

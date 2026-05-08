@@ -99,7 +99,8 @@ function ClientPreferencesPage() {
       carbs: '',
       fat: '',
       calories: ''
-    }
+    },
+    zipCode: ''
   });
   
   // New preference states
@@ -304,7 +305,8 @@ function ClientPreferencesPage() {
               carbs: clientPrefs.macro_carbs || '',
               fat: clientPrefs.macro_fat || '',
               calories: clientPrefs.calorie_goal || ''
-            }
+            },
+            zipCode: clientPrefs.zipCode || clientPrefs.zip_code || ''
           };
           
           setPreferences(updatedPrefs);
@@ -620,6 +622,7 @@ function ClientPreferencesPage() {
         snacks_per_day: selectedSnackTimes > 0 ? preferences.snacksPerDay : 0,
         servings_per_meal: preferences.servingsPerMeal,
         prep_complexity: preferences.prepComplexity,
+        zip_code: preferences.zipCode || null,
         flavor_preferences: flavorPreferences,
         recipe_type_preferences: recipeTypePreferences,
         meal_time_preferences: mealTimePreferences,

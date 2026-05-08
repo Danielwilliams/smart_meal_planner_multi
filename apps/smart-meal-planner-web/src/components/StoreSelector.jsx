@@ -1,5 +1,5 @@
 // src/components/StoreSelector.jsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -27,6 +27,7 @@ import {
   AccessTime as TimeIcon 
 } from '@mui/icons-material';
 import apiService, { axiosInstance } from '../services/apiService';
+import { useAuth } from '../context/AuthContext';
 
 // Main store type selector component for ShoppingListPage
 const StoreTypeSelector = ({
@@ -58,12 +59,33 @@ export const StoreSelector = ({
   onStoreSelect,
   storeType = 'kroger'
 }) => {
+  const { user } = useAuth();
   const [zipCode, setZipCode] = useState('');
   const [stores, setStores] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [searchRadius, setSearchRadius] = useState(10);
   const [showHours, setShowHours] = useState({});
+
+  // Prefill the ZIP from the user's saved profile when the dialog opens.
+  // Skips if the user already typed something in this session.
+  useEffect(() => {
+    if (!open || !user?.userId || zipCode) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const prefs = await apiService.getUserPreferences(user.userId);
+        if (!cancelled && prefs?.zip_code) {
+          const sanitized = String(prefs.zip_code).replace(/\D/g, '').slice(0, 5);
+          // Only set if the user hasn't started typing in the meantime.
+          setZipCode(prev => prev || sanitized);
+        }
+      } catch (err) {
+        console.warn('Could not prefill ZIP from user preferences:', err?.message || err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [open, user?.userId]);
 
   const handleZipCodeChange = (e) => {
     const value = e.target.value.replace(/\D/g, '').slice(0, 5);
