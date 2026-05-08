@@ -26,29 +26,37 @@ router = APIRouter(prefix="/auth", tags=["Auth"])
 async def send_verification_email(email: str, verification_token: str):
     try:
         verification_link = f"{FRONTEND_URL}/verify-email?token={verification_token}"
-        
+
         msg = MIMEText(f"""
         Welcome to Smart Meal Planner!
-        
+
         Please verify your email by clicking the link below:
         {verification_link}
-        
+
         This link will expire in 24 hours.
-        
+
         If you didn't create this account, please ignore this email.
         """)
-        
+
         msg['Subject'] = 'Verify your Smart Meal Planner account'
         msg['From'] = SMTP_USERNAME
         msg['To'] = email
-        
+
+        logger.info(
+            "Sending verification email to %s via %s:%s as %s",
+            email, SMTP_SERVER, SMTP_PORT, SMTP_USERNAME,
+        )
+
         with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
             server.starttls()
             server.login(SMTP_USERNAME, SMTP_PASSWORD)
             server.send_message(msg)
-            
+
+        logger.info("Verification email sent successfully to %s", email)
     except Exception as e:
-        print(f"Error sending verification email: {str(e)}")
+        # This runs as a FastAPI BackgroundTask — re-raising would only log to
+        # uvicorn's task error path, which is easy to miss. Log explicitly.
+        logger.error("Failed to send verification email to %s: %s", email, e, exc_info=True)
         raise
 
 @router.post("/signup")
