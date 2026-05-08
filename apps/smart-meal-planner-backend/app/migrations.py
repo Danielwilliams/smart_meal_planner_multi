@@ -36,8 +36,67 @@ def run_migrations():
     update_recipe_components_structure()
     add_enhanced_preferences_to_user_profiles()
     fix_user_management_logs_fk()
+    fix_subscriptions_payment_provider_check()
 
     logger.info("Database migrations completed successfully")
+
+
+def fix_subscriptions_payment_provider_check():
+    """
+    Widen subscriptions.payment_provider CHECK constraint to allow 'none' for
+    free-tier rows. The original constraint only permitted 'stripe' / 'paypal',
+    which blocks signup because migrate_to_free_tier() inserts a free-tier row
+    with payment_provider='none'.
+
+    Idempotent: drops the existing constraint (any name) and re-adds one that
+    accepts 'stripe', 'paypal', and 'none'.
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            cursor.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables
+                    WHERE table_schema = 'public' AND table_name = 'subscriptions'
+                )
+            """)
+            if not cursor.fetchone()[0]:
+                logger.info("subscriptions table does not exist, skipping payment_provider check fix")
+                return
+
+            cursor.execute("""
+                SELECT tc.constraint_name
+                FROM information_schema.table_constraints tc
+                JOIN information_schema.constraint_column_usage ccu
+                  ON tc.constraint_name = ccu.constraint_name
+                WHERE tc.table_schema = 'public'
+                  AND tc.table_name = 'subscriptions'
+                  AND tc.constraint_type = 'CHECK'
+                  AND ccu.column_name = 'payment_provider'
+            """)
+            existing = [row[0] for row in cursor.fetchall()]
+
+            for name in existing:
+                logger.info("Dropping existing payment_provider check constraint: %s", name)
+                cursor.execute(
+                    f'ALTER TABLE subscriptions DROP CONSTRAINT "{name}"'
+                )
+
+            logger.info("Adding subscriptions_payment_provider_check allowing 'stripe', 'paypal', 'none'")
+            cursor.execute("""
+                ALTER TABLE subscriptions
+                ADD CONSTRAINT subscriptions_payment_provider_check
+                CHECK (payment_provider IN ('stripe', 'paypal', 'none'))
+            """)
+            conn.commit()
+    except Exception as e:
+        logger.error(f"Error widening subscriptions.payment_provider check: {e}", exc_info=True)
+        if conn:
+            conn.rollback()
+    finally:
+        if conn:
+            conn.close()
 
 
 def fix_user_management_logs_fk():
