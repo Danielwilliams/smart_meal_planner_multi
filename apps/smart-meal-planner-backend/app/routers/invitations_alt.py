@@ -79,7 +79,7 @@ async def send_invitation_email(email, token, org_id, user_exists, organization_
     msg.attach(MIMEText(body, 'plain'))
     
     try:
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=15) as server:
             server.starttls()
             server.login(SMTP_USERNAME, SMTP_PASSWORD)
             server.send_message(msg)

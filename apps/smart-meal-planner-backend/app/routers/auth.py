@@ -47,7 +47,9 @@ async def send_verification_email(email: str, verification_token: str):
             email, SMTP_SERVER, SMTP_PORT, SMTP_USERNAME,
         )
 
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+        # smtplib.SMTP has no default timeout; without one a TLS or auth hang
+        # blocks the background task indefinitely and the email never sends.
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=15) as server:
             server.starttls()
             server.login(SMTP_USERNAME, SMTP_PASSWORD)
             server.send_message(msg)
@@ -720,8 +722,8 @@ async def send_password_reset_email(email: str, name: str, reset_token: str):
         msg['Subject'] = 'Reset your Smart Meal Planner password'
         msg['From'] = SMTP_USERNAME
         msg['To'] = email
-        
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=15) as server:
             server.starttls()
             server.login(SMTP_USERNAME, SMTP_PASSWORD)
             server.send_message(msg)

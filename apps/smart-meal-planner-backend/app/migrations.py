@@ -35,155 +35,17 @@ def run_migrations():
     add_notes_to_scraped_recipes()
     update_recipe_components_structure()
     add_enhanced_preferences_to_user_profiles()
-    fix_user_management_logs_fk()
-    fix_subscriptions_payment_provider_check()
+    # NOTE: fix_user_management_logs_fk and fix_subscriptions_payment_provider_check
+    # live as versioned migrations under app/migrations/versions/ (017 and 018).
+    # The migration_runner in app/migrations/ is what actually runs at startup,
+    # not this legacy run_migrations() entry point. New schema fixes should go
+    # under app/migrations/versions/.
 
     logger.info("Database migrations completed successfully")
 
 
-def fix_subscriptions_payment_provider_check():
-    """
-    Widen subscriptions.payment_provider CHECK constraint to allow 'none' for
-    free-tier rows. The original constraint only permitted 'stripe' / 'paypal',
-    which blocks signup because migrate_to_free_tier() inserts a free-tier row
-    with payment_provider='none'.
-
-    Idempotent: drops the existing constraint (any name) and re-adds one that
-    accepts 'stripe', 'paypal', and 'none'.
-    """
-    conn = None
-    try:
-        conn = get_db_connection()
-        with conn.cursor() as cursor:
-            cursor.execute("""
-                SELECT EXISTS (
-                    SELECT FROM information_schema.tables
-                    WHERE table_schema = 'public' AND table_name = 'subscriptions'
-                )
-            """)
-            if not cursor.fetchone()[0]:
-                logger.info("subscriptions table does not exist, skipping payment_provider check fix")
-                return
-
-            cursor.execute("""
-                SELECT tc.constraint_name
-                FROM information_schema.table_constraints tc
-                JOIN information_schema.constraint_column_usage ccu
-                  ON tc.constraint_name = ccu.constraint_name
-                WHERE tc.table_schema = 'public'
-                  AND tc.table_name = 'subscriptions'
-                  AND tc.constraint_type = 'CHECK'
-                  AND ccu.column_name = 'payment_provider'
-            """)
-            existing = [row[0] for row in cursor.fetchall()]
-
-            for name in existing:
-                logger.info("Dropping existing payment_provider check constraint: %s", name)
-                cursor.execute(
-                    f'ALTER TABLE subscriptions DROP CONSTRAINT "{name}"'
-                )
-
-            logger.info("Adding subscriptions_payment_provider_check allowing 'stripe', 'paypal', 'none'")
-            cursor.execute("""
-                ALTER TABLE subscriptions
-                ADD CONSTRAINT subscriptions_payment_provider_check
-                CHECK (payment_provider IN ('stripe', 'paypal', 'none'))
-            """)
-            conn.commit()
-    except Exception as e:
-        logger.error(f"Error widening subscriptions.payment_provider check: {e}", exc_info=True)
-        if conn:
-            conn.rollback()
-    finally:
-        if conn:
-            conn.close()
-
-
-def fix_user_management_logs_fk():
-    """
-    Repoint user_management_logs FKs from the vestigial `users` table to
-    `user_profiles`. Some installs created the table referencing `users(id)`,
-    which causes admin pause/delete audit-log inserts to fail because real
-    users live in user_profiles. The audit log row was silently dropped AND
-    (because the inner try/except didn't use a savepoint) the parent
-    transaction got aborted, rolling back the user update too.
-
-    Idempotent: skips columns whose FK already points to user_profiles.
-    """
-    conn = None
-    try:
-        conn = get_db_connection()
-        with conn.cursor() as cursor:
-            cursor.execute("""
-                SELECT EXISTS (
-                    SELECT FROM information_schema.tables
-                    WHERE table_schema = 'public'
-                      AND table_name = 'user_management_logs'
-                )
-            """)
-            if not cursor.fetchone()[0]:
-                logger.info("user_management_logs table does not exist, skipping FK repoint")
-                return
-
-            for fk_column in ('user_id', 'performed_by'):
-                cursor.execute("""
-                    SELECT tc.constraint_name, ccu.table_name
-                    FROM information_schema.table_constraints tc
-                    JOIN information_schema.key_column_usage kcu
-                      ON tc.constraint_name = kcu.constraint_name
-                    JOIN information_schema.constraint_column_usage ccu
-                      ON tc.constraint_name = ccu.constraint_name
-                    WHERE tc.table_schema = 'public'
-                      AND tc.table_name = 'user_management_logs'
-                      AND tc.constraint_type = 'FOREIGN KEY'
-                      AND kcu.column_name = %s
-                """, (fk_column,))
-                row = cursor.fetchone()
-
-                if not row:
-                    logger.info(
-                        "No FK on user_management_logs.%s; adding one pointing to user_profiles",
-                        fk_column,
-                    )
-                    cursor.execute(f"""
-                        ALTER TABLE user_management_logs
-                        ADD CONSTRAINT user_management_logs_{fk_column}_fkey
-                        FOREIGN KEY ({fk_column}) REFERENCES user_profiles(id)
-                    """)
-                    continue
-
-                constraint_name, referenced_table = row
-                if referenced_table == 'user_profiles':
-                    logger.info(
-                        "user_management_logs.%s FK already points to user_profiles; skipping",
-                        fk_column,
-                    )
-                    continue
-
-                logger.info(
-                    "Repointing user_management_logs.%s FK (%s) from %s to user_profiles",
-                    fk_column,
-                    constraint_name,
-                    referenced_table,
-                )
-                cursor.execute(
-                    f'ALTER TABLE user_management_logs DROP CONSTRAINT "{constraint_name}"'
-                )
-                cursor.execute(f"""
-                    ALTER TABLE user_management_logs
-                    ADD CONSTRAINT user_management_logs_{fk_column}_fkey
-                    FOREIGN KEY ({fk_column}) REFERENCES user_profiles(id)
-                """)
-
-            conn.commit()
-            logger.info("user_management_logs FKs are now pointing at user_profiles")
-    except Exception as e:
-        logger.error(f"Error repointing user_management_logs FKs: {e}", exc_info=True)
-        if conn:
-            conn.rollback()
-    finally:
-        if conn:
-            conn.close()
+# Removed: fix_user_management_logs_fk + fix_subscriptions_payment_provider_check
+# moved to app/migrations/versions/017_* and 018_*.
 
 def update_recipe_components_structure():
     """
