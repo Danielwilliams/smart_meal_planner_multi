@@ -127,10 +127,12 @@ async def validate_discount_options():
 @router.post("/validate-discount")
 async def validate_discount_code(
     request: DiscountCodeRequest,
-    user: Dict = Depends(get_user_from_token)
 ):
     """
     Validate a discount code and return its details
+
+    Public endpoint: callable during the signup flow before the user has a token.
+    Only echoes back coupon metadata from Stripe; no user context is needed.
 
     Args:
         request: Contains the discount code and subscription type
