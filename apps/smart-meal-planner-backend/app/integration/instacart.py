@@ -19,8 +19,10 @@ from fastapi import HTTPException, status
 logger = logging.getLogger(__name__)
 
 # Constants
-BASE_URL = "https://connect.instacart.com"  # Production server URL
-DEV_BASE_URL = "https://connect.dev.instacart.tools"  # Development server for reference
+PROD_BASE_URL = "https://connect.instacart.com"
+DEV_BASE_URL = "https://connect.dev.instacart.tools"
+# Set INSTACART_ENV=dev on Railway to route to the dev endpoint; anything else = production
+BASE_URL = DEV_BASE_URL if os.environ.get("INSTACART_ENV", "").lower() == "dev" else PROD_BASE_URL
 API_VERSION = "idp/v1"  # IDP API version according to docs
 
 class InstacartClient:
@@ -62,6 +64,7 @@ class InstacartClient:
         masked_key = self.formatted_api_key[:4] + "..." + self.formatted_api_key[-4:] if len(self.formatted_api_key) > 8 else "***masked***"
         logger.info(f"Initialized Instacart client with masked key: {masked_key}")
         logger.info(f"Header set: Authorization: Bearer {masked_key}")
+        logger.info(f"Instacart endpoint: {BASE_URL} (INSTACART_ENV={os.environ.get('INSTACART_ENV', 'production')})")
     
     def _make_request(
         self, 
