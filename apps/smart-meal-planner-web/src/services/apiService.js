@@ -130,13 +130,32 @@ axiosInstance.interceptors.request.use((config) => {
   return Promise.reject(error);
 });
 
-// Add response interceptor for handling token expiration
+// Add response interceptor for handling token expiration.
+// Only treat 401 as a "session expired" event when the user actually had a token
+// AND the request wasn't to an auth-flow endpoint. Auth endpoints (login, signup,
+// verify-email, password reset) legitimately return 401 for things like
+// "wrong password" or "please verify your email"; bouncing to /login on those
+// would wipe the error message before the calling page can render it.
+const AUTH_FLOW_PATHS = [
+  '/auth/login',
+  '/auth/signup',
+  '/auth/verify-email',
+  '/auth/resend-verification',
+  '/auth/forgot-password',
+  '/auth/reset-password',
+];
+
 axiosInstance.interceptors.response.use(
   (response) => response,
   async (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('access_token');
-      window.location.href = '/login';
+      const url = error.config?.url || '';
+      const hadToken = !!localStorage.getItem('access_token');
+      const isAuthFlow = AUTH_FLOW_PATHS.some((p) => url.includes(p));
+      if (hadToken && !isAuthFlow) {
+        localStorage.removeItem('access_token');
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(error);
   }
