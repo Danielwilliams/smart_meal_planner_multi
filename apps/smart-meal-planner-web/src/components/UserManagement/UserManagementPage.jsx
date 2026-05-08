@@ -89,7 +89,7 @@ const UserManagementPage = () => {
     try {
       console.log('Fetching permissions from:', apiBasePath);
 
-      const response = await apiService.post(`${apiBasePath}/permissions`, {});
+      const response = await apiService.get(`${apiBasePath}/permissions`);
       console.log('Permissions response:', response);
 
       // Handle case where response might be a string

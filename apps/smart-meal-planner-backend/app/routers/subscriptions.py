@@ -3275,6 +3275,43 @@ async def update_user_payment_method(
     }
 
 # User Management endpoints added to subscriptions router since it works
+
+
+def _log_user_management_action(cur, user_id, action, performed_by, reason=None):
+    """
+    Insert a user_management_logs row inside a SAVEPOINT so a failure here
+    (e.g., FK violation against a stale `users` table) doesn't poison the
+    outer transaction and silently roll back the user update.
+    """
+    try:
+        cur.execute("SAVEPOINT log_user_action")
+        if reason is None:
+            cur.execute(
+                """
+                INSERT INTO user_management_logs
+                (user_id, action, performed_by, performed_at)
+                VALUES (%s, %s, %s, NOW())
+                """,
+                (user_id, action, performed_by),
+            )
+        else:
+            cur.execute(
+                """
+                INSERT INTO user_management_logs
+                (user_id, action, performed_by, reason, performed_at)
+                VALUES (%s, %s, %s, %s, NOW())
+                """,
+                (user_id, action, performed_by, reason),
+            )
+        cur.execute("RELEASE SAVEPOINT log_user_action")
+    except Exception as log_error:
+        try:
+            cur.execute("ROLLBACK TO SAVEPOINT log_user_action")
+        except Exception:
+            pass
+        logger.warning("Could not log %s action for user %s: %s", action, user_id, log_error)
+
+
 @router.get("/user-management/admin/permissions")
 async def admin_permissions(current_user: Dict[str, Any] = Depends(get_user_from_token)):
     """Get admin user management permissions"""
@@ -3525,20 +3562,12 @@ async def pause_user_admin(
             user = cur.fetchone()
             if not user:
                 raise HTTPException(status_code=404, detail="User not found or already inactive")
-            
-            # Log action if table exists
-            try:
-                cur.execute("""
-                    INSERT INTO user_management_logs 
-                    (user_id, action, performed_by, reason, performed_at)
-                    VALUES (%s, %s, %s, %s, NOW())
-                """, (user_id, 'paused', current_user['user_id'], reason))
-            except Exception as log_error:
-                logger.warning(f"Could not log action: {log_error}")
-            
+
+            _log_user_management_action(cur, user_id, 'paused', current_user['user_id'], reason)
+
             conn.commit()
             return {"status": "success", "message": f"User {user['name']} has been paused"}
-    
+
     except Exception as e:
         logger.error(f"Error pausing user: {str(e)}")
         raise HTTPException(status_code=500, detail="Error pausing user")
@@ -3575,23 +3604,15 @@ async def pause_user_org(
             
             # Update user
             cur.execute("""
-                UPDATE user_profiles 
-                SET paused_at = NOW(), 
-                    paused_by = %s, 
+                UPDATE user_profiles
+                SET paused_at = NOW(),
+                    paused_by = %s,
                     pause_reason = %s
                 WHERE id = %s
             """, (current_user['user_id'], reason, user_id))
-            
-            # Log action if table exists
-            try:
-                cur.execute("""
-                    INSERT INTO user_management_logs 
-                    (user_id, action, performed_by, reason, performed_at)
-                    VALUES (%s, %s, %s, %s, NOW())
-                """, (user_id, 'paused', current_user['user_id'], reason))
-            except Exception as log_error:
-                logger.warning(f"Could not log action: {log_error}")
-            
+
+            _log_user_management_action(cur, user_id, 'paused', current_user['user_id'], reason)
+
             conn.commit()
             return {"status": "success", "message": f"User {user['name']} has been paused"}
     
@@ -3623,20 +3644,12 @@ async def unpause_user_admin(
             user = cur.fetchone()
             if not user:
                 raise HTTPException(status_code=404, detail="User not found or inactive")
-            
-            # Log action if table exists
-            try:
-                cur.execute("""
-                    INSERT INTO user_management_logs 
-                    (user_id, action, performed_by, performed_at)
-                    VALUES (%s, %s, %s, NOW())
-                """, (user_id, 'unpaused', current_user['user_id']))
-            except Exception as log_error:
-                logger.warning(f"Could not log action: {log_error}")
-            
+
+            _log_user_management_action(cur, user_id, 'unpaused', current_user['user_id'])
+
             conn.commit()
             return {"status": "success", "message": f"User {user['name']} has been unpaused"}
-    
+
     except Exception as e:
         logger.error(f"Error unpausing user: {str(e)}")
         raise HTTPException(status_code=500, detail="Error unpausing user")
@@ -3670,23 +3683,15 @@ async def unpause_user_org(
             
             # Update user
             cur.execute("""
-                UPDATE user_profiles 
-                SET paused_at = NULL, 
-                    paused_by = NULL, 
+                UPDATE user_profiles
+                SET paused_at = NULL,
+                    paused_by = NULL,
                     pause_reason = NULL
                 WHERE id = %s
             """, (user_id,))
-            
-            # Log action if table exists
-            try:
-                cur.execute("""
-                    INSERT INTO user_management_logs 
-                    (user_id, action, performed_by, performed_at)
-                    VALUES (%s, %s, %s, NOW())
-                """, (user_id, 'unpaused', current_user['user_id']))
-            except Exception as log_error:
-                logger.warning(f"Could not log action: {log_error}")
-            
+
+            _log_user_management_action(cur, user_id, 'unpaused', current_user['user_id'])
+
             conn.commit()
             return {"status": "success", "message": f"User {user['name']} has been unpaused"}
     
@@ -3724,20 +3729,12 @@ async def delete_user_admin(
             user = cur.fetchone()
             if not user:
                 raise HTTPException(status_code=404, detail="User not found or already deleted")
-            
-            # Log action if table exists
-            try:
-                cur.execute("""
-                    INSERT INTO user_management_logs 
-                    (user_id, action, performed_by, reason, performed_at)
-                    VALUES (%s, %s, %s, %s, NOW())
-                """, (user_id, 'deleted', current_user['user_id'], reason))
-            except Exception as log_error:
-                logger.warning(f"Could not log action: {log_error}")
-            
+
+            _log_user_management_action(cur, user_id, 'deleted', current_user['user_id'], reason)
+
             conn.commit()
             return {"status": "success", "message": f"User {user['name']} has been deleted"}
-    
+
     except Exception as e:
         logger.error(f"Error deleting user: {str(e)}")
         raise HTTPException(status_code=500, detail="Error deleting user")
@@ -3774,23 +3771,15 @@ async def delete_user_org(
             
             # Update user
             cur.execute("""
-                UPDATE user_profiles 
-                SET is_active = FALSE, 
-                    deleted_at = NOW(), 
+                UPDATE user_profiles
+                SET is_active = FALSE,
+                    deleted_at = NOW(),
                     deleted_by = %s
                 WHERE id = %s
             """, (current_user['user_id'], user_id))
-            
-            # Log action if table exists
-            try:
-                cur.execute("""
-                    INSERT INTO user_management_logs 
-                    (user_id, action, performed_by, reason, performed_at)
-                    VALUES (%s, %s, %s, %s, NOW())
-                """, (user_id, 'deleted', current_user['user_id'], reason))
-            except Exception as log_error:
-                logger.warning(f"Could not log action: {log_error}")
-            
+
+            _log_user_management_action(cur, user_id, 'deleted', current_user['user_id'], reason)
+
             conn.commit()
             return {"status": "success", "message": f"User {user['name']} has been deleted"}
     
