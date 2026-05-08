@@ -278,8 +278,8 @@ def create_app() -> FastAPI:
             pool_info = {}
             if connection_pool:
                 pool_info = {
-                    "min_connections": connection_pool._minconn,
-                    "max_connections": connection_pool._maxconn,
+                    "min_connections": getattr(connection_pool, '_minconn', getattr(connection_pool, 'minconn', None)),
+                    "max_connections": getattr(connection_pool, '_maxconn', getattr(connection_pool, 'maxconn', None)),
                     # The closed attribute was added in psycopg2 2.8+
                     "closed": getattr(connection_pool, "closed", False)
                 }
@@ -521,9 +521,12 @@ async def clear_thread_local_storage(request, call_next):
 async def startup_event():
     """Run startup tasks."""
     try:
-        # Log connection pool status
+        # Log connection pool status. Use getattr so a psycopg2 version mismatch
+        # (private attribute name change) can't crash startup and skip migrations.
         if connection_pool:
-            logger.info(f"✅ Database connection pool initialized with min={connection_pool._minconn}, max={connection_pool._maxconn} connections")
+            min_conn = getattr(connection_pool, '_minconn', getattr(connection_pool, 'minconn', 'unknown'))
+            max_conn = getattr(connection_pool, '_maxconn', getattr(connection_pool, 'maxconn', 'unknown'))
+            logger.info(f"✅ Database connection pool initialized with min={min_conn}, max={max_conn} connections")
         else:
             logger.warning("⚠️ Database connection pool not initialized - will use direct connections")
 
