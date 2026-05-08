@@ -1282,7 +1282,9 @@ async def create_checkout_session(
                                 status=SubscriptionStatus.active,
                                 current_period_start=datetime.fromtimestamp(subscription.current_period_start),
                                 current_period_end=datetime.fromtimestamp(subscription.current_period_end),
-                                payment_provider=PaymentProvider.stripe
+                                payment_provider=PaymentProvider.stripe,
+                                monthly_amount=0.00,  # Free coupon path: no recurring charge
+                                currency='USD',
                             )
                             
                             create_subscription(subscription_data)
