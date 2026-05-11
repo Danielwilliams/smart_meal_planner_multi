@@ -75,6 +75,12 @@ FRONTEND_URL = "https://smartmealplannerio.com"
 RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
 RESEND_FROM_EMAIL = os.getenv("RESEND_FROM_EMAIL", SMTP_USERNAME)
 
+# Maileroo (also HTTP-based transactional email). The "sending key" from the
+# Maileroo dashboard goes here. From-address must be on a verified domain.
+MAILEROO_API_KEY = os.getenv("MAILEROO_API_KEY", "")
+MAILEROO_FROM_EMAIL = os.getenv("MAILEROO_FROM_EMAIL", SMTP_USERNAME)
+MAILEROO_FROM_NAME = os.getenv("MAILEROO_FROM_NAME", "Smart Meal Planner")
+
 
 def debug_environment_vars():
     kroger_vars = [

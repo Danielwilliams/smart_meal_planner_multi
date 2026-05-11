@@ -11,7 +11,11 @@ import requests
 from app.config import RECAPTCHA_SECRET_KEY, JWT_SECRET, JWT_ALGORITHM
 from email.mime.text import MIMEText
 import smtplib
-from app.config import SMTP_USERNAME, SMTP_PASSWORD, SMTP_SERVER, SMTP_PORT, FRONTEND_URL, RESEND_API_KEY, RESEND_FROM_EMAIL
+from app.config import (
+    SMTP_USERNAME, SMTP_PASSWORD, SMTP_SERVER, SMTP_PORT, FRONTEND_URL,
+    RESEND_API_KEY, RESEND_FROM_EMAIL,
+    MAILEROO_API_KEY, MAILEROO_FROM_EMAIL, MAILEROO_FROM_NAME,
+)
 from app.utils.auth_utils import get_user_from_token
 from typing import Dict, Any, Optional, List
 from psycopg2.extras import RealDictCursor
@@ -22,6 +26,35 @@ logger = logging.getLogger(__name__)
 
 # Define router only once at the top
 router = APIRouter(prefix="/auth", tags=["Auth"])
+
+def _send_email_via_maileroo(to_email: str, subject: str, text_body: str) -> None:
+    """
+    Send a plaintext email via Maileroo's HTTP API (POST /api/v2/emails).
+    Requires MAILEROO_API_KEY. The `from` address must be on a verified domain.
+    Raises on transport failure or when the API returns success=false.
+    """
+    response = requests.post(
+        "https://smtp.maileroo.com/api/v2/emails",
+        headers={
+            "X-Api-Key": MAILEROO_API_KEY,
+            "Content-Type": "application/json",
+        },
+        json={
+            "from": {
+                "address": MAILEROO_FROM_EMAIL,
+                "display_name": MAILEROO_FROM_NAME,
+            },
+            "to": [{"address": to_email}],
+            "subject": subject,
+            "plain": text_body,
+        },
+        timeout=15,
+    )
+    response.raise_for_status()
+    body = response.json() if response.content else {}
+    if not body.get("success", False):
+        raise RuntimeError(f"Maileroo API returned failure: {body.get('message')}")
+
 
 def _send_email_via_resend(to_email: str, subject: str, text_body: str) -> None:
     """
@@ -61,8 +94,17 @@ async def send_verification_email(email: str, verification_token: str):
         )
         subject = "Verify your Smart Meal Planner account"
 
-        # Prefer Resend when configured — it uses an HTTP API and works on PaaS
-        # hosts (like Railway) whose egress firewalls block outbound SMTP.
+        # Provider preference: Maileroo > Resend > SMTP. Both HTTP providers
+        # work around PaaS egress firewalls that block outbound SMTP (Railway).
+        if MAILEROO_API_KEY:
+            logger.info(
+                "Sending verification email to %s via Maileroo (from=%s)",
+                email, MAILEROO_FROM_EMAIL,
+            )
+            _send_email_via_maileroo(email, subject, text_body)
+            logger.info("Verification email sent successfully via Maileroo to %s", email)
+            return
+
         if RESEND_API_KEY:
             logger.info(
                 "Sending verification email to %s via Resend (from=%s)",
@@ -751,6 +793,11 @@ async def send_password_reset_email(email: str, name: str, reset_token: str):
             "Smart Meal Planner Team"
         )
         subject = "Reset your Smart Meal Planner password"
+
+        if MAILEROO_API_KEY:
+            logger.info("Sending password reset email to %s via Maileroo", email)
+            _send_email_via_maileroo(email, subject, text_body)
+            return
 
         if RESEND_API_KEY:
             logger.info("Sending password reset email to %s via Resend", email)
