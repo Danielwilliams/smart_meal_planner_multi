@@ -1287,9 +1287,9 @@ class _RecipeBrowserScreenState extends State<RecipeBrowserScreen> {
       recipe: recipe,
       userId: widget.userId,
       authToken: widget.authToken,
-      onRatePressed: () {
+      onRatePressed: (existingRating) {
         HapticFeedback.mediumImpact();
-        _showRatingDialog(recipe);
+        _showRatingDialog(recipe, existingRating: existingRating);
       },
     );
   }
@@ -1310,15 +1310,15 @@ class _RecipeBrowserScreenState extends State<RecipeBrowserScreen> {
   }
 
   // Show comprehensive rating dialog (matching web app)
-  void _showRatingDialog(Recipe recipe) {
+  void _showRatingDialog(Recipe recipe, {Map<String, dynamic>? existingRating}) {
     showDialog(
       context: context,
       builder: (context) => _ComprehensiveRatingDialog(
         recipe: recipe,
         userId: widget.userId,
         authToken: widget.authToken,
+        existingRating: existingRating,
         onRatingSubmitted: () async {
-          // Refresh rating widget by incrementing refresh key
           print("🔄 Rating submitted successfully, refreshing rating display");
           setState(() {
             _ratingRefreshKey++;
@@ -1335,12 +1335,14 @@ class _ComprehensiveRatingDialog extends StatefulWidget {
   final Recipe recipe;
   final int userId;
   final String authToken;
+  final Map<String, dynamic>? existingRating; // pre-populate if user already rated
   final VoidCallback onRatingSubmitted;
 
   const _ComprehensiveRatingDialog({
     required this.recipe,
     required this.userId,
     required this.authToken,
+    this.existingRating,
     required this.onRatingSubmitted,
   });
 
@@ -1351,7 +1353,7 @@ class _ComprehensiveRatingDialog extends StatefulWidget {
 class _ComprehensiveRatingDialogState extends State<_ComprehensiveRatingDialog> {
   bool _isLoading = false;
   String _errorMessage = '';
-  
+
   // Main rating state (matching web app structure)
   double _overallRating = 0;
   bool _madeRecipe = false;
@@ -1359,7 +1361,7 @@ class _ComprehensiveRatingDialogState extends State<_ComprehensiveRatingDialog> 
   double _difficultyRating = 0;
   double _timeAccuracy = 0;
   String _feedbackText = '';
-  
+
   // Detailed aspect ratings
   double _tasteRating = 0;
   double _easeOfPreparationRating = 0;
@@ -1367,6 +1369,35 @@ class _ComprehensiveRatingDialogState extends State<_ComprehensiveRatingDialog> 
   double _portionSizeRating = 0;
   double _nutritionBalanceRating = 0;
   double _presentationRating = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _prefillFromExisting();
+  }
+
+  void _prefillFromExisting() {
+    // existingRating structure: {'rating': { rating_score, made_recipe, ... }}
+    final r = widget.existingRating?['rating'] as Map<String, dynamic>?;
+    if (r == null) return;
+
+    _overallRating = (r['rating_score'] as num?)?.toDouble() ?? 0;
+    _madeRecipe = r['made_recipe'] == true;
+    _wouldMakeAgain = r['would_make_again'] as bool?;
+    _difficultyRating = (r['difficulty_rating'] as num?)?.toDouble() ?? 0;
+    _timeAccuracy = (r['time_accuracy'] as num?)?.toDouble() ?? 0;
+    _feedbackText = r['feedback_text']?.toString() ?? '';
+
+    final aspects = r['rating_aspects'] as Map<String, dynamic>?;
+    if (aspects != null) {
+      _tasteRating = (aspects['taste'] as num?)?.toDouble() ?? 0;
+      _easeOfPreparationRating = (aspects['ease_of_preparation'] as num?)?.toDouble() ?? 0;
+      _ingredientAvailabilityRating = (aspects['ingredient_availability'] as num?)?.toDouble() ?? 0;
+      _portionSizeRating = (aspects['portion_size'] as num?)?.toDouble() ?? 0;
+      _nutritionBalanceRating = (aspects['nutrition_balance'] as num?)?.toDouble() ?? 0;
+      _presentationRating = (aspects['presentation'] as num?)?.toDouble() ?? 0;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1396,7 +1427,9 @@ class _ComprehensiveRatingDialogState extends State<_ComprehensiveRatingDialog> 
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Rate Recipe',
+                            widget.existingRating?['rating'] != null
+                                ? 'Update Rating'
+                                : 'Rate Recipe',
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
@@ -1553,7 +1586,8 @@ class _ComprehensiveRatingDialogState extends State<_ComprehensiveRatingDialog> 
                       // Feedback Text
                       _buildSectionTitle('Additional Comments (Optional)'),
                       SizedBox(height: 8),
-                      TextField(
+                      TextFormField(
+                        initialValue: _feedbackText,
                         maxLines: 4,
                         decoration: InputDecoration(
                           hintText: 'Share your experience with this recipe...',
@@ -1782,7 +1816,8 @@ class _RecipeRatingWidget extends StatefulWidget {
   final Recipe recipe;
   final int userId;
   final String authToken;
-  final VoidCallback onRatePressed;
+  // Passes the user's existing rating (or null) so the dialog can pre-populate.
+  final void Function(Map<String, dynamic>? existingRating) onRatePressed;
 
   const _RecipeRatingWidget({
     super.key,
@@ -1947,14 +1982,51 @@ class _RecipeRatingWidgetState extends State<_RecipeRatingWidget> {
 
         SizedBox(height: 16),
 
-        // Rate this recipe button
+        // Show user's own rating if they've already rated
+        () {
+          final userRating = _ratingData?['user_rating'] as Map<String, dynamic>?;
+          final existingScore = (userRating?['rating']?['rating_score'] as num?)?.toInt();
+          if (existingScore != null && existingScore > 0) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                children: [
+                  Text(
+                    'Your rating: ',
+                    style: TextStyle(fontSize: 13, color: Colors.grey[700]),
+                  ),
+                  ...List.generate(5, (i) => Icon(
+                    i < existingScore ? Icons.star : Icons.star_border,
+                    color: Colors.amber,
+                    size: 18,
+                  )),
+                  SizedBox(width: 4),
+                  Text(
+                    '$existingScore/5',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                  ),
+                ],
+              ),
+            );
+          }
+          return SizedBox.shrink();
+        }(),
+
+        // Rate / Update button
         Row(
           children: [
             Expanded(
               child: ElevatedButton.icon(
-                onPressed: widget.onRatePressed,
+                onPressed: () {
+                  final userRating = _ratingData?['user_rating'] as Map<String, dynamic>?;
+                  widget.onRatePressed(userRating);
+                },
                 icon: Icon(Icons.star_border),
-                label: Text("Rate this recipe"),
+                label: Text(
+                  (_ratingData?['user_rating']?['rating']?['rating_score'] as num?) != null
+                      ? 'Update Rating'
+                      : 'Rate this recipe',
+                ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Theme.of(context).primaryColor,
                   foregroundColor: Colors.white,

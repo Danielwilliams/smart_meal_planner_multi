@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../services/api_service.dart';
 
 class ClientPreferencesScreen extends StatefulWidget {
@@ -551,8 +552,10 @@ class _ClientPreferencesScreenState extends State<ClientPreferencesScreen> {
               color: Theme.of(context).primaryColor,
             ),
           ),
-          SizedBox(height: 24),
-          
+          SizedBox(height: 16),
+          _buildAdvancedPrefsBanner(),
+          SizedBox(height: 16),
+
           // Diet Type
           Card(
             child: Padding(
@@ -923,5 +926,65 @@ class _ClientPreferencesScreenState extends State<ClientPreferencesScreen> {
         ],
       ),
     );
+  }
+
+  // Banner shown above the edit form to set expectations: only the basics are
+  // editable on mobile (diet, restrictions, calories, macros). The full set
+  // (ZIP, recipe types, proteins, carb cycling, store integrations, etc.)
+  // lives on the personal preferences screen but is not yet wired up for
+  // coach-edits-client; coaches should use the web dashboard for that.
+  Widget _buildAdvancedPrefsBanner() {
+    return Card(
+      color: Colors.blue[50],
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            Icon(Icons.info_outline, color: Colors.blue[700]),
+            SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Advanced preferences on web',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blue[900],
+                    ),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    'Recipe types, proteins, carb cycling, store settings, and '
+                    'meal-prep details are managed on the web dashboard.',
+                    style: TextStyle(fontSize: 13, color: Colors.blue[900]),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(width: 8),
+            TextButton.icon(
+              icon: Icon(Icons.open_in_new, size: 18),
+              label: Text('Open'),
+              onPressed: _openClientPreferencesOnWeb,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openClientPreferencesOnWeb() async {
+    final url = Uri.parse(
+      'https://smartmealplannerio.com/organization/clients/${widget.clientId}/preferences',
+    );
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+    } else {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not open browser. URL: $url')),
+      );
+    }
   }
 }

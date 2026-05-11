@@ -25,6 +25,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _inviteFormKey = GlobalKey<FormState>();
   final _clientNameController = TextEditingController();
   final _clientEmailController = TextEditingController();
+
+  // Controllers for change-password dialog
+  final _currentPasswordController = TextEditingController();
+  final _newPasswordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
+  bool _changingPassword = false;
+
+  // Controllers for edit-profile dialog
+  final _editNameController = TextEditingController();
+  final _editEmailController = TextEditingController();
+  bool _updatingProfile = false;
   
   @override
   void initState() {
@@ -36,6 +47,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void dispose() {
     _clientNameController.dispose();
     _clientEmailController.dispose();
+    _currentPasswordController.dispose();
+    _newPasswordController.dispose();
+    _confirmPasswordController.dispose();
+    _editNameController.dispose();
+    _editEmailController.dispose();
     super.dispose();
   }
   
@@ -143,6 +159,202 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
   
+  void _showEditProfileDialog(BuildContext context) {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    _editNameController.text = authProvider.userName ?? '';
+    _editEmailController.text = authProvider.userEmail ?? '';
+    final formKey = GlobalKey<FormState>();
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: Text('Edit Profile'),
+          content: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: _editNameController,
+                  decoration: InputDecoration(
+                    labelText: 'Display Name',
+                    prefixIcon: Icon(Icons.person_outline),
+                  ),
+                  textCapitalization: TextCapitalization.words,
+                  validator: (v) =>
+                      (v == null || v.trim().isEmpty) ? 'Name cannot be empty' : null,
+                ),
+                SizedBox(height: 12),
+                TextFormField(
+                  controller: _editEmailController,
+                  decoration: InputDecoration(
+                    labelText: 'Email',
+                    prefixIcon: Icon(Icons.email_outlined),
+                  ),
+                  keyboardType: TextInputType.emailAddress,
+                  validator: (v) {
+                    if (v == null || v.trim().isEmpty) return 'Email cannot be empty';
+                    if (!RegExp(r'^[\w\.\-]+@([\w\-]+\.)+[\w]{2,}$').hasMatch(v.trim())) {
+                      return 'Enter a valid email';
+                    }
+                    return null;
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: _updatingProfile ? null : () => Navigator.pop(dialogContext),
+              child: Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: _updatingProfile
+                  ? null
+                  : () async {
+                      if (!formKey.currentState!.validate()) return;
+                      setDialogState(() => _updatingProfile = true);
+                      try {
+                        final newName = _editNameController.text.trim();
+                        final newEmail = _editEmailController.text.trim().toLowerCase();
+                        final result = await ApiService.updateProfile(
+                          authToken: widget.authToken,
+                          name: newName != (authProvider.userName ?? '') ? newName : null,
+                          email: newEmail != (authProvider.userEmail ?? '') ? newEmail : null,
+                        );
+                        if (!mounted) return;
+                        Navigator.pop(dialogContext);
+                        final ok = result.containsKey('name') || result.containsKey('message');
+                        if (ok) {
+                          authProvider.updateUserInfo(
+                            name: result['name']?.toString(),
+                            email: result['email']?.toString(),
+                          );
+                        }
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                          content: Text(ok
+                              ? 'Profile updated'
+                              : result['detail'] ?? result['error'] ?? 'Failed to update profile'),
+                          backgroundColor: ok ? Colors.green : Colors.red,
+                        ));
+                      } finally {
+                        if (mounted) setState(() => _updatingProfile = false);
+                      }
+                    },
+              child: _updatingProfile
+                  ? SizedBox(
+                      width: 18, height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showChangePasswordDialog(BuildContext context) {
+    _currentPasswordController.clear();
+    _newPasswordController.clear();
+    _confirmPasswordController.clear();
+    final formKey = GlobalKey<FormState>();
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: Text('Change Password'),
+          content: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: _currentPasswordController,
+                  decoration: InputDecoration(
+                    labelText: 'Current Password',
+                    prefixIcon: Icon(Icons.lock_outline),
+                  ),
+                  obscureText: true,
+                  validator: (v) =>
+                      (v == null || v.isEmpty) ? 'Enter your current password' : null,
+                ),
+                SizedBox(height: 12),
+                TextFormField(
+                  controller: _newPasswordController,
+                  decoration: InputDecoration(
+                    labelText: 'New Password',
+                    prefixIcon: Icon(Icons.lock),
+                  ),
+                  obscureText: true,
+                  validator: (v) {
+                    if (v == null || v.isEmpty) return 'Enter a new password';
+                    if (v.length < 8) return 'At least 8 characters required';
+                    return null;
+                  },
+                ),
+                SizedBox(height: 12),
+                TextFormField(
+                  controller: _confirmPasswordController,
+                  decoration: InputDecoration(
+                    labelText: 'Confirm New Password',
+                    prefixIcon: Icon(Icons.lock),
+                  ),
+                  obscureText: true,
+                  validator: (v) => v != _newPasswordController.text
+                      ? 'Passwords do not match'
+                      : null,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: _changingPassword ? null : () => Navigator.pop(dialogContext),
+              child: Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: _changingPassword
+                  ? null
+                  : () async {
+                      if (!formKey.currentState!.validate()) return;
+                      setDialogState(() => _changingPassword = true);
+                      try {
+                        final result = await ApiService.changePassword(
+                          authToken: widget.authToken,
+                          currentPassword: _currentPasswordController.text,
+                          newPassword: _newPasswordController.text,
+                        );
+                        if (!mounted) return;
+                        Navigator.pop(dialogContext);
+                        final ok = result['message']?.toString().contains('success') == true;
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                          content: Text(ok
+                              ? 'Password updated successfully'
+                              : result['detail'] ?? result['message'] ?? 'Failed to update password'),
+                          backgroundColor: ok ? Colors.green : Colors.red,
+                        ));
+                      } finally {
+                        if (mounted) setState(() => _changingPassword = false);
+                      }
+                    },
+              child: _changingPassword
+                  ? SizedBox(
+                      width: 18, height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : Text('Update Password'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // Show dialog to invite clients
   void _showInviteDialog(BuildContext context) {
     showDialog(
@@ -773,10 +985,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ),
                   ListTile(
+                    leading: Icon(Icons.edit_outlined),
+                    title: Text('Edit Profile'),
+                    subtitle: Text('Update name and email'),
+                    trailing: Icon(Icons.chevron_right),
+                    onTap: () => _showEditProfileDialog(context),
+                  ),
+                  ListTile(
                     leading: Icon(Icons.settings),
                     title: Text('Preferences'),
                     trailing: Icon(Icons.chevron_right),
                     onTap: () => Navigator.pushNamed(context, '/preferences'),
+                  ),
+                  ListTile(
+                    leading: Icon(Icons.lock_outline),
+                    title: Text('Change Password'),
+                    trailing: Icon(Icons.chevron_right),
+                    onTap: () => _showChangePasswordDialog(context),
+                  ),
+                  ListTile(
+                    leading: Icon(Icons.menu_book_outlined),
+                    title: Text('My Recipes'),
+                    subtitle: Text('Create and manage custom recipes'),
+                    trailing: Icon(Icons.chevron_right),
+                    onTap: () => Navigator.pushNamed(context, '/my-recipes'),
                   ),
                   ListTile(
                     leading: Icon(Icons.location_on),

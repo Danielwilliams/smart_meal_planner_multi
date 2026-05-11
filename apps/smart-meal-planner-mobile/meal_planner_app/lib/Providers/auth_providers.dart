@@ -26,6 +26,15 @@ class AuthProvider extends ChangeNotifier {
   // For debugging - allow access to the last account info response
   Map<String, dynamic> get lastAccountResponse => _lastAccountResponse;
 
+  void updateUserInfo({String? name, String? email}) async {
+    if (name != null) _userName = name;
+    if (email != null) _userEmail = email;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    if (name != null) prefs.setString('user_name', name);
+    if (email != null) prefs.setString('user_email', email);
+  }
+
   // For debugging - provide methods to override account type
   void overrideAccountType(String type, bool isOrg) {
     _accountType = type;

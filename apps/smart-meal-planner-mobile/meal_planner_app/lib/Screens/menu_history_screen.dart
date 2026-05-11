@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/menu_model.dart';
 import '../services/api_service.dart';
+import '../widgets/menu_rating_dialog.dart';
 
 class MenuHistoryScreen extends StatefulWidget {
   // Optional parameters that can be passed directly to the widget
@@ -395,6 +396,20 @@ class _MenuHistoryScreenState extends State<MenuHistoryScreen> {
                                         ),
                                       ),
                                     ),
+                                  IconButton(
+                                    icon: Icon(Icons.star_outline, size: 20),
+                                    tooltip: 'Rate this menu',
+                                    padding: EdgeInsets.zero,
+                                    constraints: BoxConstraints(),
+                                    onPressed: _authToken != null
+                                        ? () => showMenuRatingDialog(
+                                              context: context,
+                                              menuId: menu.id,
+                                              menuTitle: menu.title,
+                                              authToken: _authToken!,
+                                            )
+                                        : null,
+                                  ),
                                 ],
                               ),
                               SizedBox(height: 8),

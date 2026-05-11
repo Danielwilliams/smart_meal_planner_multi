@@ -27,6 +27,8 @@ import 'Screens/client_menus_screen.dart';
 import 'Screens/client_preferences_screen.dart';
 import 'Screens/create_client_menu_screen.dart';
 import 'Screens/subscription_page.dart';
+import 'Screens/user_recipes_screen.dart';
+import 'Screens/user_recipe_form_screen.dart';
 import 'Screens/instacart_retailer_selector_screen.dart';
 import 'Screens/instacart_search_results_screen.dart';
 import 'Screens/instacart_cart_screen.dart';
@@ -410,6 +412,19 @@ class _MealPlannerAppState extends State<MealPlannerApp> {
                       recipeId: args['recipeId'],
                       recipeTitle: args['recipeTitle'],
                     )
+                  );
+                case '/my-recipes':
+                  return MaterialPageRoute(
+                    builder: (_) => UserRecipesScreen(userId: userId, authToken: token),
+                  );
+                case '/my-recipe-form':
+                  final args = settings.arguments as Map<String, dynamic>?;
+                  return MaterialPageRoute(
+                    builder: (_) => UserRecipeFormScreen(
+                      userId: userId,
+                      authToken: token,
+                      existingRecipe: args?['recipe'] as Map<String, dynamic>?,
+                    ),
                   );
                 case '/menu-history':
                   return MaterialPageRoute(

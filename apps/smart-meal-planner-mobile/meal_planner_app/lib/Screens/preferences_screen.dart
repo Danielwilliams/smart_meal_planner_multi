@@ -34,9 +34,15 @@ class _PreferencesScreenState extends State<PreferencesScreen> with SingleTicker
   final TextEditingController _otherDietTypeController = TextEditingController();
   final TextEditingController _otherRecipeTypeController = TextEditingController();
   
-  // Recipe types
-  String? _selectedRecipeType;
+  // Recipe types — multi-select to match the web app
+  List<String> _selectedRecipeTypes = [];
   String _otherRecipeType = '';
+
+  // Location — used by store locators (Kroger, Instacart) to find nearby stores.
+  // Maps to user_profiles.zip_code on the backend; distinct from _krogerZipCode
+  // (which is a Kroger-specific override on this screen).
+  String _zipCode = '';
+  final TextEditingController _zipCodeController = TextEditingController();
   
   // Macros
   int _calorieGoal = 2000;
@@ -129,6 +135,58 @@ class _PreferencesScreenState extends State<PreferencesScreen> with SingleTicker
     'one-pot': false,
     'minimal-dishes': false
   };
+
+  // Preferred proteins — nested by category (mirrors web's preferred_proteins JSONB)
+  Map<String, Map<String, bool>> _preferredProteins = {
+    'meat': {
+      'chicken': false, 'beef': false, 'pork': false, 'turkey': false,
+      'lamb': false, 'bison': false, 'other': false,
+    },
+    'seafood': {
+      'salmon': false, 'tuna': false, 'cod': false, 'shrimp': false,
+      'crab': false, 'mussels': false, 'other': false,
+    },
+    'vegetarian_vegan': {
+      'tofu': false, 'tempeh': false, 'seitan': false, 'lentils': false,
+      'chickpeas': false, 'black_beans': false, 'other': false,
+    },
+    'other': {
+      'eggs': false, 'dairy_milk': false, 'dairy_yogurt': false,
+      'protein_powder_whey': false, 'protein_powder_pea': false,
+      'quinoa': false, 'other': false,
+    },
+  };
+
+  // Custom "other" protein names per category (mirrors web's other_proteins)
+  Map<String, String> _otherProteins = {
+    'meat': '', 'seafood': '', 'vegetarian_vegan': '', 'other': '',
+  };
+  final Map<String, TextEditingController> _otherProteinControllers = {
+    'meat': TextEditingController(),
+    'seafood': TextEditingController(),
+    'vegetarian_vegan': TextEditingController(),
+    'other': TextEditingController(),
+  };
+
+  // Carb cycling
+  bool _carbCyclingEnabled = false;
+  Map<String, dynamic> _carbCyclingConfig = {
+    'pattern': '3-1-3',
+    'high_carb_grams': 200,
+    'moderate_carb_grams': 100,
+    'low_carb_grams': 50,
+    'no_carb_grams': 20,
+    'weekly_schedule': {
+      'monday': 'high', 'tuesday': 'low', 'wednesday': 'high',
+      'thursday': 'moderate', 'friday': 'high', 'saturday': 'low',
+      'sunday': 'low',
+    },
+    'sync_with_workouts': false,
+    'workout_days': <String>[],
+    'custom_pattern': false,
+    'goals': {'primary': 'fat_loss', 'secondary': 'maintain_muscle'},
+    'notes': '',
+  };
   
   // Function to format label from key
   String _formatLabel(String key) {
@@ -177,6 +235,10 @@ class _PreferencesScreenState extends State<PreferencesScreen> with SingleTicker
     _dislikedIngredientController.dispose();
     _otherDietTypeController.dispose();
     _otherRecipeTypeController.dispose();
+    _zipCodeController.dispose();
+    for (final ctrl in _otherProteinControllers.values) {
+      ctrl.dispose();
+    }
     _krogerZipCodeController.dispose();
     _krogerLocationIdController.dispose();
     _krogerUsernameController.dispose();
@@ -264,14 +326,32 @@ class _PreferencesScreenState extends State<PreferencesScreen> with SingleTicker
             _dislikedIngredients = [];
           }
           
-          // Set recipe type - handle potential null or non-string values
+          // Set recipe types — backend stores as a comma-separated string
+          // (e.g., "Italian, Mexican, Asian"). Parse into a list for multi-select.
           try {
-            _selectedRecipeType = result['recipe_type']?.toString() ?? 'Mixed';
+            final rawRecipeTypes = result['recipe_type']?.toString() ?? '';
+            _selectedRecipeTypes = rawRecipeTypes
+                .split(',')
+                .map((s) => s.trim())
+                .where((s) => s.isNotEmpty)
+                .toList();
+            if (_selectedRecipeTypes.isEmpty) {
+              _selectedRecipeTypes = ['Mixed'];
+            }
             _otherRecipeType = result['other_recipe_type']?.toString() ?? '';
             _otherRecipeTypeController.text = _otherRecipeType;
           } catch (e) {
             print("Error parsing recipe type: $e");
-            _selectedRecipeType = 'Mixed';
+            _selectedRecipeTypes = ['Mixed'];
+          }
+
+          // ZIP code (user_profiles.zip_code) — used by store locators
+          try {
+            _zipCode = result['zip_code']?.toString() ?? '';
+            _zipCodeController.text = _zipCode;
+          } catch (e) {
+            print("Error parsing zip_code: $e");
+            _zipCode = '';
           }
           
           // Set macros - safely parse integers
@@ -419,6 +499,61 @@ class _PreferencesScreenState extends State<PreferencesScreen> with SingleTicker
           } catch (e) {
             print("Error parsing prep_preferences: $e");
             // Keep default values
+          }
+
+          // Preferred proteins — merge stored values into the default nested structure
+          try {
+            final stored = result['preferred_proteins'];
+            if (stored is Map) {
+              for (final category in _preferredProteins.keys) {
+                final categoryData = stored[category];
+                if (categoryData is Map) {
+                  categoryData.forEach((key, value) {
+                    if (_preferredProteins[category]!.containsKey(key)) {
+                      _preferredProteins[category]![key] =
+                          value == true || value == "true" || value == 1;
+                    }
+                  });
+                }
+              }
+            }
+          } catch (e) {
+            print("Error parsing preferred_proteins: $e");
+          }
+
+          // Other proteins (custom text per category)
+          try {
+            final stored = result['other_proteins'];
+            if (stored is Map) {
+              for (final category in _otherProteins.keys) {
+                final value = stored[category]?.toString() ?? '';
+                _otherProteins[category] = value;
+                _otherProteinControllers[category]!.text = value;
+              }
+            }
+          } catch (e) {
+            print("Error parsing other_proteins: $e");
+          }
+
+          // Carb cycling enabled flag
+          try {
+            final raw = result['carb_cycling_enabled'];
+            _carbCyclingEnabled = raw == true || raw == "true" || raw == 1;
+          } catch (e) {
+            print("Error parsing carb_cycling_enabled: $e");
+            _carbCyclingEnabled = false;
+          }
+
+          // Carb cycling config — merge stored values onto the default config
+          try {
+            final stored = result['carb_cycling_config'];
+            if (stored is Map) {
+              stored.forEach((key, value) {
+                _carbCyclingConfig[key] = value;
+              });
+            }
+          } catch (e) {
+            print("Error parsing carb_cycling_config: $e");
           }
           
           // Get Kroger credentials from database
@@ -732,14 +867,17 @@ class _PreferencesScreenState extends State<PreferencesScreen> with SingleTicker
       _krogerUsername = _krogerUsernameController.text.trim();
       _krogerPassword = _krogerPasswordController.text.trim();
       
+      _zipCode = _zipCodeController.text.trim();
+
       final preferences = {
         // Original preferences
         'diet_type': _selectedDietType,
         'other_diet_type': _selectedDietType == 'Other' ? _otherDietTypeController.text.trim() : '',
         'dietary_restrictions': _dietaryRestrictions.join(', '),
         'disliked_ingredients': _dislikedIngredients.join(', '),
-        'recipe_type': _selectedRecipeType,
-        'other_recipe_type': _selectedRecipeType == 'Other' ? _otherRecipeTypeController.text.trim() : '',
+        'recipe_type': _selectedRecipeTypes.join(', '),
+        'other_recipe_type': _selectedRecipeTypes.contains('Other') ? _otherRecipeTypeController.text.trim() : '',
+        'zip_code': _zipCode.isEmpty ? null : _zipCode,
         'calorie_goal': _calorieGoal,
         'macro_protein': _proteinPercentage,
         'macro_carbs': _carbsPercentage,
@@ -765,6 +903,15 @@ class _PreferencesScreenState extends State<PreferencesScreen> with SingleTicker
         'meal_time_preferences': _mealTimePreferences,
         'time_constraints': _timeConstraints,
         'prep_preferences': _prepPreferences,
+
+        // Proteins + carb cycling (parity with web Preferences page)
+        'preferred_proteins': _preferredProteins,
+        'other_proteins': {
+          for (final entry in _otherProteinControllers.entries)
+            entry.key: entry.value.text.trim(),
+        },
+        'carb_cycling_enabled': _carbCyclingEnabled,
+        'carb_cycling_config': _carbCyclingConfig,
       };
       
       // Save to API
@@ -916,10 +1063,92 @@ class _PreferencesScreenState extends State<PreferencesScreen> with SingleTicker
           ),
           SizedBox(height: 8),
           _buildDislikedIngredientsSelector(),
+          SizedBox(height: 24),
+
+          Text(
+            'Preferred Proteins',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          SizedBox(height: 4),
+          Text(
+            'Pick the proteins the planner should prioritize.',
+            style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+          ),
+          SizedBox(height: 8),
+          _buildPreferredProteinsSection(),
           SizedBox(height: 16),
         ],
       ),
     );
+  }
+
+  Widget _buildPreferredProteinsSection() {
+    const categoryLabels = {
+      'meat': 'Meat',
+      'seafood': 'Seafood',
+      'vegetarian_vegan': 'Vegetarian / Vegan',
+      'other': 'Other',
+    };
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: _preferredProteins.keys.map((category) {
+        final proteins = _preferredProteins[category]!;
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                categoryLabels[category] ?? category,
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              ),
+              SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: proteins.keys.map((proteinKey) {
+                  final selected = proteins[proteinKey] ?? false;
+                  return FilterChip(
+                    label: Text(_formatProteinLabel(proteinKey)),
+                    selected: selected,
+                    selectedColor: Colors.blue,
+                    labelStyle: TextStyle(
+                      color: selected ? Colors.white : Colors.black,
+                      fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                    ),
+                    onSelected: (value) {
+                      setState(() {
+                        _preferredProteins[category]![proteinKey] = value;
+                      });
+                    },
+                  );
+                }).toList(),
+              ),
+              if (proteins['other'] == true) ...[
+                SizedBox(height: 8),
+                TextField(
+                  controller: _otherProteinControllers[category],
+                  decoration: InputDecoration(
+                    labelText: 'Other ${categoryLabels[category]} (comma-separated)',
+                    border: OutlineInputBorder(),
+                    hintText: 'e.g. venison, duck',
+                  ),
+                ),
+              ],
+            ],
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  String _formatProteinLabel(String key) {
+    // Underscore separators come from the schema (e.g., dairy_milk, protein_powder_whey).
+    return key
+        .split('_')
+        .map((w) => w.isEmpty ? w : w[0].toUpperCase() + w.substring(1))
+        .join(' ');
   }
 
   Widget _buildDietTypeSelector() {
@@ -1047,8 +1276,8 @@ class _PreferencesScreenState extends State<PreferencesScreen> with SingleTicker
           spacing: 8,
           runSpacing: 8,
           children: recipeTypes.map((type) {
-            final isSelected = _selectedRecipeType == type;
-            return ChoiceChip(
+            final isSelected = _selectedRecipeTypes.contains(type);
+            return FilterChip(
               label: Text(type),
               selected: isSelected,
               selectedColor: Colors.blue,
@@ -1058,13 +1287,19 @@ class _PreferencesScreenState extends State<PreferencesScreen> with SingleTicker
               ),
               onSelected: (selected) {
                 setState(() {
-                  _selectedRecipeType = selected ? type : null;
+                  if (selected) {
+                    if (!_selectedRecipeTypes.contains(type)) {
+                      _selectedRecipeTypes.add(type);
+                    }
+                  } else {
+                    _selectedRecipeTypes.remove(type);
+                  }
                 });
               },
             );
           }).toList(),
         ),
-        if (_selectedRecipeType == 'Other') ...[  
+        if (_selectedRecipeTypes.contains('Other')) ...[
           SizedBox(height: 16),
           TextField(
             controller: _otherRecipeTypeController,
@@ -1191,8 +1426,177 @@ class _PreferencesScreenState extends State<PreferencesScreen> with SingleTicker
               ],
             ),
           ),
+          SizedBox(height: 24),
+
+          Text(
+            'Carb Cycling',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          SizedBox(height: 8),
+          _buildCarbCyclingSection(),
         ],
       ),
+    );
+  }
+
+  Widget _buildCarbCyclingSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: Text('Enable Carb Cycling'),
+          subtitle: Text(
+            'Vary daily carb intake across the week (high/moderate/low days).',
+            style: TextStyle(fontSize: 12),
+          ),
+          value: _carbCyclingEnabled,
+          onChanged: (value) {
+            setState(() => _carbCyclingEnabled = value);
+          },
+        ),
+        if (_carbCyclingEnabled) ...[
+          SizedBox(height: 8),
+          DropdownButtonFormField<String>(
+            value: _carbCyclingConfig['pattern']?.toString() ?? '3-1-3',
+            decoration: InputDecoration(
+              labelText: 'Pattern',
+              border: OutlineInputBorder(),
+            ),
+            items: const [
+              DropdownMenuItem(value: '3-1-3', child: Text('3-1-3: 3 High / 1 Moderate / 3 Low')),
+              DropdownMenuItem(value: '2-2-3', child: Text('2-2-3: 2 High / 2 Moderate / 3 Low')),
+              DropdownMenuItem(value: '4-0-3', child: Text('4-0-3: 4 High / 0 Moderate / 3 Low')),
+              DropdownMenuItem(value: '5-0-2', child: Text('5-0-2: 5 High / 0 Moderate / 2 Low')),
+              DropdownMenuItem(value: 'custom', child: Text('Custom')),
+            ],
+            onChanged: (value) {
+              if (value == null) return;
+              setState(() => _carbCyclingConfig['pattern'] = value);
+            },
+          ),
+          SizedBox(height: 16),
+          Text(
+            'Weekly Schedule',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          ),
+          SizedBox(height: 8),
+          ...['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+              .map(_buildCarbCyclingDayRow),
+          SizedBox(height: 16),
+          Text(
+            'Carb Targets (grams per day)',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          ),
+          SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(child: _buildCarbGramField('high_carb_grams', 'High')),
+              SizedBox(width: 8),
+              Expanded(child: _buildCarbGramField('moderate_carb_grams', 'Moderate')),
+            ],
+          ),
+          SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(child: _buildCarbGramField('low_carb_grams', 'Low')),
+              SizedBox(width: 8),
+              Expanded(child: _buildCarbGramField('no_carb_grams', 'No Carb')),
+            ],
+          ),
+          SizedBox(height: 16),
+          DropdownButtonFormField<String>(
+            value: (_carbCyclingConfig['goals'] is Map
+                    ? _carbCyclingConfig['goals']['primary']?.toString()
+                    : null) ??
+                'fat_loss',
+            decoration: InputDecoration(
+              labelText: 'Primary Goal',
+              border: OutlineInputBorder(),
+            ),
+            items: const [
+              DropdownMenuItem(value: 'fat_loss', child: Text('Fat Loss')),
+              DropdownMenuItem(value: 'muscle_gain', child: Text('Muscle Gain')),
+              DropdownMenuItem(value: 'performance', child: Text('Performance')),
+              DropdownMenuItem(value: 'maintenance', child: Text('Maintenance')),
+            ],
+            onChanged: (value) {
+              if (value == null) return;
+              setState(() {
+                final goals = Map<String, dynamic>.from(
+                  (_carbCyclingConfig['goals'] as Map?) ?? {},
+                );
+                goals['primary'] = value;
+                _carbCyclingConfig['goals'] = goals;
+              });
+            },
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildCarbCyclingDayRow(String day) {
+    final schedule = Map<String, dynamic>.from(
+      (_carbCyclingConfig['weekly_schedule'] as Map?) ?? {},
+    );
+    final tier = schedule[day]?.toString() ?? 'moderate';
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(
+              day[0].toUpperCase() + day.substring(1),
+              style: TextStyle(fontWeight: FontWeight.w500),
+            ),
+          ),
+          Expanded(
+            child: DropdownButtonFormField<String>(
+              value: tier,
+              isDense: true,
+              decoration: InputDecoration(
+                border: OutlineInputBorder(),
+                contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+              ),
+              items: const [
+                DropdownMenuItem(value: 'high', child: Text('High')),
+                DropdownMenuItem(value: 'moderate', child: Text('Moderate')),
+                DropdownMenuItem(value: 'low', child: Text('Low')),
+                DropdownMenuItem(value: 'no_carb', child: Text('No Carb')),
+              ],
+              onChanged: (value) {
+                if (value == null) return;
+                setState(() {
+                  schedule[day] = value;
+                  _carbCyclingConfig['weekly_schedule'] = schedule;
+                });
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCarbGramField(String key, String label) {
+    final current = _carbCyclingConfig[key];
+    final controllerText = current?.toString() ?? '';
+    return TextFormField(
+      initialValue: controllerText,
+      keyboardType: TextInputType.number,
+      decoration: InputDecoration(
+        labelText: label,
+        border: OutlineInputBorder(),
+        suffixText: 'g',
+      ),
+      onChanged: (value) {
+        final parsed = int.tryParse(value);
+        if (parsed != null) {
+          _carbCyclingConfig[key] = parsed;
+        }
+      },
     );
   }
 
@@ -1402,7 +1806,43 @@ class _PreferencesScreenState extends State<PreferencesScreen> with SingleTicker
             }).toList(),
           ),
           SizedBox(height: 24),
-          
+
+          // Fine-grained meal time preferences — distinct from the legacy
+          // breakfast/lunch/dinner/snacks toggles above. Mirrors the web
+          // PreferencesPage 'Meal Time Preferences' section.
+          Text(
+            'Detailed Meal Time Preferences',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          SizedBox(height: 4),
+          Text(
+            'Which specific meal slots should the planner consider?',
+            style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+          ),
+          SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _mealTimePreferences.keys.map((slot) {
+              final selected = _mealTimePreferences[slot] ?? false;
+              return FilterChip(
+                label: Text(_formatLabel(slot)),
+                selected: selected,
+                selectedColor: Colors.blue,
+                labelStyle: TextStyle(
+                  color: selected ? Colors.white : Colors.black,
+                  fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                ),
+                onSelected: (value) {
+                  setState(() {
+                    _mealTimePreferences[slot] = value;
+                  });
+                },
+              );
+            }).toList(),
+          ),
+          SizedBox(height: 24),
+
           Text(
             'Servings',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
@@ -1864,6 +2304,37 @@ class _PreferencesScreenState extends State<PreferencesScreen> with SingleTicker
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Profile ZIP code — saves to user_profiles.zip_code and is read by
+          // both Kroger and Instacart store locators to find nearby stores.
+          Text(
+            'Your ZIP Code',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          SizedBox(height: 8),
+          TextField(
+            controller: _zipCodeController,
+            keyboardType: TextInputType.number,
+            maxLength: 5,
+            decoration: InputDecoration(
+              labelText: 'ZIP Code',
+              border: OutlineInputBorder(),
+              helperText: 'Used to find nearby Kroger and Instacart stores',
+              counterText: '',
+            ),
+            onChanged: (value) {
+              // Keep only digits, max 5
+              final digits = value.replaceAll(RegExp(r'[^0-9]'), '');
+              final trimmed = digits.length > 5 ? digits.substring(0, 5) : digits;
+              if (trimmed != value) {
+                _zipCodeController.value = TextEditingValue(
+                  text: trimmed,
+                  selection: TextSelection.collapsed(offset: trimmed.length),
+                );
+              }
+            },
+          ),
+          SizedBox(height: 24),
+
           // Kroger settings
           Text(
             'Kroger Settings',

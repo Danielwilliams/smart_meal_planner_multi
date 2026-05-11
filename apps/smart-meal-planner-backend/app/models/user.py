@@ -47,6 +47,14 @@ class ResetPasswordRequest(BaseModel):
     reset_token: str
     new_password: str
 
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+class UpdateProfileRequest(BaseModel):
+    name: Optional[str] = None
+    email: Optional[str] = None
+
 class PreferencesUpdate(BaseModel):
     # Basic settings
     servingsPerMeal: Optional[int] = Field(default=1, ge=1, le=10)

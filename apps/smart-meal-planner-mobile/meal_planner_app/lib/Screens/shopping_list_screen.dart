@@ -1111,24 +1111,24 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> with SingleTick
         // Debug print to verify items were added
         cartState.printCartState();
 
-        // Show success message with VIEW CART action (same as Kroger)
+        // Build the ingredient strings for just this meal
+        final mealIngredientStrings = cartItems.map((item) {
+          final name = item['name']?.toString() ?? '';
+          final qty = item['quantity']?.toString() ?? '';
+          final unit = item['unit']?.toString() ?? '';
+          return [qty, unit, name].where((s) => s.isNotEmpty).join(' ').trim();
+        }).where((s) => s.isNotEmpty).toList();
+
+        // Show success message with CHECKOUT action — routes to Instacart flow
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text("Added ${cartItems.length} items from $mealTitle to $_selectedStore cart"),
+              content: Text("Added ${cartItems.length} items from $mealTitle to Instacart"),
               action: SnackBarAction(
-                label: 'VIEW CART',
-                onPressed: () {
-                  Navigator.pushNamed(
-                    context,
-                    '/carts',
-                    arguments: {
-                      'userId': widget.userId,
-                      'authToken': validToken, // Use the refreshed token
-                      'selectedStore': _selectedStore,
-                    }
-                  );
-                },
+                label: 'CHECKOUT',
+                onPressed: () => _showInstacartDialog(
+                  overrideIngredients: mealIngredientStrings,
+                ),
               ),
             )
           );
@@ -1597,7 +1597,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> with SingleTick
   }
 
   // Show Instacart integration dialog
-  Future<void> _showInstacartDialog() async {
+  Future<void> _showInstacartDialog({List<String>? overrideIngredients}) async {
     try {
       setState(() {
         _isLoading = true;
@@ -1678,7 +1678,8 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> with SingleTick
                     print("Converted to retailerIdStr: $retailerIdStr");
                     print("Converted to retailerNameStr: $retailerNameStr");
 
-                    _createInstacartList(retailerIdStr, retailerNameStr);
+                    _createInstacartList(retailerIdStr, retailerNameStr,
+                        overrideIngredients: overrideIngredients);
                   };
 
                   Navigator.pushNamed(
@@ -1724,7 +1725,8 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> with SingleTick
   }
 
   // Create Instacart shopping list
-  Future<void> _createInstacartList(dynamic retailerId, dynamic retailerName) async {
+  Future<void> _createInstacartList(dynamic retailerId, dynamic retailerName,
+      {List<String>? overrideIngredients}) async {
     try {
       setState(() {
         _isLoading = true;
@@ -1760,39 +1762,29 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> with SingleTick
       print("Safe retailerId for navigation: $safeRetailerId (${safeRetailerId.runtimeType})");
       print("Safe retailerName for navigation: $safeRetailerName (${safeRetailerName.runtimeType})");
 
-      // Prepare ingredients list - only include checked items, or mark all as checked if none selected
+      // Prepare ingredients list — use override (by-meal) or full categorized list
       List<String> ingredients = [];
       bool anyChecked = false;
-
-      // First check if any items are already checked
-      _categorizedItems.forEach((category, items) {
-        for (var item in items) {
-          if (item['checked'] == true) {
-            anyChecked = true;
-            break;
+      if (overrideIngredients != null) {
+        ingredients = overrideIngredients;
+      } else {
+        _categorizedItems.forEach((category, items) {
+          for (var item in items) {
+            if (item['checked'] == true) { anyChecked = true; break; }
           }
-        }
-      });
-
-      _categorizedItems.forEach((category, items) {
-        for (var item in items) {
-          // If some items are checked, only include checked items
-          // If no items are checked, include all items and mark them as checked
-          if (anyChecked && item['checked'] != true) {
-            // Skip unchecked items if we have some checked items
-            continue;
+        });
+        _categorizedItems.forEach((category, items) {
+          for (var item in items) {
+            if (anyChecked && item['checked'] != true) continue;
+            String ingredient = item['name'];
+            if (item['quantity'] != null && item['quantity'].toString().isNotEmpty) {
+              ingredient = "${ingredient}: ${item['quantity']} ${item['unit'] ?? ''}".trim();
+            }
+            ingredients.add(ingredient);
+            item['checked'] = true;
           }
-
-          String ingredient = item['name'];
-          if (item['quantity'] != null && item['quantity'].toString().isNotEmpty) {
-            ingredient = "${ingredient}: ${item['quantity']} ${item['unit'] ?? ''}".trim();
-          }
-          ingredients.add(ingredient);
-
-          // Mark the item as checked in the UI
-          item['checked'] = true;
-        }
-      });
+        });
+      }
 
       if (ingredients.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(

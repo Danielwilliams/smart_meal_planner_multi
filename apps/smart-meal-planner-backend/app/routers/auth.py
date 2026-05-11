@@ -1,7 +1,7 @@
 # app/routers/auth.py
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, Request
 from datetime import datetime, timedelta
-from ..models.user import UserSignUp, UserLogin, ForgotPasswordRequest, ResetPasswordRequest, UserProgress, ResendVerificationRequest
+from ..models.user import UserSignUp, UserLogin, ForgotPasswordRequest, ResetPasswordRequest, ChangePasswordRequest, UpdateProfileRequest, UserProgress, ResendVerificationRequest
 from ..db import get_db_connection, get_db_cursor
 from pydantic import EmailStr
 import bcrypt
@@ -774,6 +774,99 @@ async def reset_password(request: ResetPasswordRequest):
     except Exception as e:
         logger.error(f"Reset password error: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+@router.put("/update-profile")
+async def update_profile(
+    request: UpdateProfileRequest,
+    current_user: Dict[str, Any] = Depends(get_user_from_token)
+):
+    """Update display name and/or email for the authenticated user."""
+    if request.name is None and request.email is None:
+        raise HTTPException(status_code=400, detail="Nothing to update")
+
+    try:
+        user_id = current_user["id"]
+        fields, values = [], []
+
+        if request.name is not None:
+            name = request.name.strip()
+            if not name:
+                raise HTTPException(status_code=400, detail="Name cannot be empty")
+            fields.append("name = %s")
+            values.append(name)
+
+        if request.email is not None:
+            email = request.email.strip().lower()
+            if not email:
+                raise HTTPException(status_code=400, detail="Email cannot be empty")
+            fields.append("email = %s")
+            values.append(email)
+
+        values.append(user_id)
+
+        with get_db_cursor(dict_cursor=True) as (cursor, conn):
+            # Check email uniqueness if changing email
+            if request.email is not None:
+                cursor.execute(
+                    "SELECT id FROM user_profiles WHERE email = %s AND id != %s",
+                    (request.email.strip().lower(), user_id)
+                )
+                if cursor.fetchone():
+                    raise HTTPException(status_code=400, detail="Email already in use")
+
+            cursor.execute(
+                f"UPDATE user_profiles SET {', '.join(fields)} WHERE id = %s RETURNING name, email",
+                values
+            )
+            updated = cursor.fetchone()
+            conn.commit()
+
+        return {"message": "Profile updated", "name": updated["name"], "email": updated["email"]}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Update profile error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.post("/change-password")
+async def change_password(
+    request: ChangePasswordRequest,
+    current_user: Dict[str, Any] = Depends(get_user_from_token)
+):
+    """Change password for the authenticated user (requires current password)."""
+    try:
+        user_id = current_user["id"]
+
+        with get_db_cursor(dict_cursor=False) as (cursor, conn):
+            cursor.execute(
+                "SELECT hashed_password FROM user_profiles WHERE id = %s",
+                (user_id,)
+            )
+            row = cursor.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="User not found")
+
+            stored_hash = row[0]
+            if not bcrypt.checkpw(request.current_password.encode("utf-8"), stored_hash.encode("utf-8")):
+                raise HTTPException(status_code=400, detail="Current password is incorrect")
+
+            new_hash = bcrypt.hashpw(request.new_password.encode("utf-8"), bcrypt.gensalt())
+            cursor.execute(
+                "UPDATE user_profiles SET hashed_password = %s WHERE id = %s",
+                (new_hash.decode("utf-8"), user_id)
+            )
+            conn.commit()
+
+        return {"message": "Password updated successfully"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Change password error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
 
 async def send_password_reset_email(email: str, name: str, reset_token: str):
     """Send password reset email to user"""

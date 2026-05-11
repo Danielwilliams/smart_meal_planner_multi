@@ -2347,6 +2347,51 @@ class ApiService {
     }
   }
   
+  static Future<Map<String, dynamic>> updateProfile({
+    required String authToken,
+    String? name,
+    String? email,
+  }) async {
+    try {
+      final body = <String, dynamic>{};
+      if (name != null) body['name'] = name;
+      if (email != null) body['email'] = email;
+      final url = Uri.parse("$baseUrl/auth/update-profile");
+      final response = await http.put(
+        url,
+        headers: _getHeaders(authToken),
+        body: jsonEncode(body),
+      );
+      final parsed = _parseResponse(response);
+      if (parsed is Map) return _toStringDynamicMap(parsed);
+      return {"error": "No response"};
+    } catch (e) {
+      print("updateProfile error: $e");
+      return {"error": "$e"};
+    }
+  }
+
+  static Future<Map<String, dynamic>> changePassword({
+    required String authToken,
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    try {
+      final result = await _post(
+        "/auth/change-password",
+        {"current_password": currentPassword, "new_password": newPassword},
+        authToken,
+      );
+      if (result != null && result is Map) {
+        return _toStringDynamicMap(result);
+      }
+      return {"success": false, "message": "No response from server"};
+    } catch (e) {
+      print("Change password error: $e");
+      return {"success": false, "message": "Error: $e"};
+    }
+  }
+
   // Get saved recipes
   static Future<Map<String, dynamic>> getSavedRecipes(int userId, String authToken) async {
     try {
@@ -2432,6 +2477,30 @@ class ApiService {
     } catch (e) {
       print("Error getting recipe details: $e");
       return null;
+    }
+  }
+
+  static Future<Map<String, dynamic>> rateMenu({
+    required String authToken,
+    required int menuId,
+    required int overallRating,
+    int? varietyScore,
+    int? nutritionBalance,
+    int? practicality,
+    String? feedbackText,
+  }) async {
+    try {
+      final body = <String, dynamic>{'overall_rating': overallRating};
+      if (varietyScore != null) body['variety_score'] = varietyScore;
+      if (nutritionBalance != null) body['nutrition_balance'] = nutritionBalance;
+      if (practicality != null) body['practicality'] = practicality;
+      if (feedbackText != null && feedbackText.isNotEmpty) body['feedback_text'] = feedbackText;
+      final result = await _post("/ratings/menus/$menuId/rate", body, authToken);
+      if (result is Map) return _toStringDynamicMap(result);
+      return {"error": "No response"};
+    } catch (e) {
+      print("rateMenu error: $e");
+      return {"error": "$e"};
     }
   }
 
@@ -3938,6 +4007,76 @@ class ApiService {
     } catch (e) {
       print("Error calling $method $endpoint: $e");
       return null;
+    }
+  }
+
+  // ── User-created recipes ──────────────────────────────────────────────────
+
+  static Future<List<dynamic>> getUserRecipes(String authToken) async {
+    try {
+      final result = await _get("/api/user-recipes/", authToken);
+      if (result is List) return result;
+      if (result is Map && result['recipes'] is List) return result['recipes'] as List;
+      return [];
+    } catch (e) {
+      print("getUserRecipes error: $e");
+      return [];
+    }
+  }
+
+  static Future<Map<String, dynamic>?> getUserRecipe(
+      int recipeId, String authToken) async {
+    try {
+      final result = await _get("/api/user-recipes/$recipeId", authToken);
+      if (result is Map) return _toStringDynamicMap(result);
+      return null;
+    } catch (e) {
+      print("getUserRecipe error: $e");
+      return null;
+    }
+  }
+
+  static Future<Map<String, dynamic>> createUserRecipe(
+      Map<String, dynamic> data, String authToken) async {
+    try {
+      final result = await _post("/api/user-recipes/", data, authToken);
+      if (result is Map) return _toStringDynamicMap(result);
+      return {"error": "No response"};
+    } catch (e) {
+      print("createUserRecipe error: $e");
+      return {"error": "$e"};
+    }
+  }
+
+  static Future<Map<String, dynamic>> updateUserRecipe(
+      int recipeId, Map<String, dynamic> data, String authToken) async {
+    try {
+      final url = Uri.parse("$baseUrl/api/user-recipes/$recipeId");
+      final response = await http.put(
+        url,
+        headers: _getHeaders(authToken),
+        body: jsonEncode(data),
+      );
+      final parsed = _parseResponse(response);
+      if (parsed is Map) return _toStringDynamicMap(parsed);
+      return {"error": "Unexpected response"};
+    } catch (e) {
+      print("updateUserRecipe error: $e");
+      return {"error": "$e"};
+    }
+  }
+
+  static Future<bool> deleteUserRecipe(int recipeId, String authToken) async {
+    try {
+      final url = Uri.parse("$baseUrl/api/user-recipes/$recipeId");
+      final response = await http.delete(
+        url,
+        headers: _getHeaders(authToken),
+      );
+      return response.statusCode >= 200 && response.statusCode < 300;
+    } catch (e) {
+      print("deleteUserRecipe error: $e");
+      return false;
     }
   }
 }

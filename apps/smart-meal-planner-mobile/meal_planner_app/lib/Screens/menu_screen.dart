@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../services/api_service.dart';
 import '../models/menu_model.dart';
 import '../Providers/auth_providers.dart';
+import '../widgets/menu_rating_dialog.dart';
 
 class MenuScreen extends StatefulWidget {
   final int userId;
@@ -578,6 +579,17 @@ class _MenuScreenState extends State<MenuScreen> {
           ],
         ),
         actions: [
+          if (_currentMenu != null)
+            IconButton(
+              icon: Icon(Icons.star_outline),
+              tooltip: 'Rate this menu',
+              onPressed: () => showMenuRatingDialog(
+                context: context,
+                menuId: _currentMenu!.id,
+                menuTitle: _currentMenu!.title,
+                authToken: widget.authToken,
+              ),
+            ),
           // Only show history button if we have more than 1 saved menu
           if (_savedMenus.length > 1)
             IconButton(
