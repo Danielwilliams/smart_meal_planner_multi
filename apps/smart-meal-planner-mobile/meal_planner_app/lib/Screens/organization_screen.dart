@@ -30,7 +30,7 @@ class _OrganizationScreenState extends State<OrganizationScreen> with SingleTick
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     _loadUserInfo();
   }
   
@@ -241,6 +241,7 @@ class _OrganizationScreenState extends State<OrganizationScreen> with SingleTick
             Tab(text: "Clients"),
             Tab(text: "Invitations"),
             Tab(text: "Shared Menus"),
+            Tab(text: "Recipes"),
           ],
         ),
       ),
@@ -379,6 +380,10 @@ class _OrganizationScreenState extends State<OrganizationScreen> with SingleTick
                       _buildClientsTab(),
                       _buildInvitationsTab(),
                       _buildSharedMenusTab(),
+                      _OrgRecipesTab(
+                        orgId: _organization?.id,
+                        authToken: widget.authToken,
+                      ),
                     ],
                   ),
                 ),
@@ -830,5 +835,402 @@ class _OrganizationScreenState extends State<OrganizationScreen> with SingleTick
   
   String _formatDate(DateTime date) {
     return "${date.month}/${date.day}/${date.year}";
+  }
+}
+
+// ── Org Recipes Tab ──────────────────────────────────────────────────────────
+
+class _OrgRecipesTab extends StatefulWidget {
+  final int? orgId;
+  final String authToken;
+
+  const _OrgRecipesTab({required this.orgId, required this.authToken});
+
+  @override
+  _OrgRecipesTabState createState() => _OrgRecipesTabState();
+}
+
+class _OrgRecipesTabState extends State<_OrgRecipesTab>
+    with AutomaticKeepAliveClientMixin {
+  bool _isLoading = true;
+  List<dynamic> _recipes = [];
+  String _error = '';
+
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    if (widget.orgId == null) {
+      setState(() {
+        _error = 'Organization ID not available';
+        _isLoading = false;
+      });
+      return;
+    }
+    setState(() {
+      _isLoading = true;
+      _error = '';
+    });
+    try {
+      final list = await ApiService.getOrgRecipes(widget.orgId!, widget.authToken);
+      setState(() => _recipes = list);
+    } catch (e) {
+      setState(() => _error = 'Failed to load recipes: $e');
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _showAddRecipeDialog() async {
+    final queryCtrl = TextEditingController();
+    List<dynamic> results = [];
+    bool searching = false;
+    bool adding = false;
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDS) => AlertDialog(
+          title: const Text('Add Recipe to Library'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: queryCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Search recipes',
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                        ),
+                        onSubmitted: (_) async {
+                          if (queryCtrl.text.trim().isEmpty) return;
+                          setDS(() => searching = true);
+                          try {
+                            final res = await ApiService.searchRecipes(
+                              userId: 0,
+                              authToken: widget.authToken,
+                              query: queryCtrl.text.trim(),
+                              pageSize: 10,
+                            );
+                            setDS(() => results = res['recipes'] as List? ?? []);
+                          } finally {
+                            setDS(() => searching = false);
+                          }
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      icon: searching
+                          ? const SizedBox(
+                              width: 18, height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(Icons.search),
+                      onPressed: searching
+                          ? null
+                          : () async {
+                              if (queryCtrl.text.trim().isEmpty) return;
+                              setDS(() => searching = true);
+                              try {
+                                final res = await ApiService.searchRecipes(
+                                  userId: 0,
+                                  authToken: widget.authToken,
+                                  query: queryCtrl.text.trim(),
+                                  pageSize: 10,
+                                );
+                                setDS(() =>
+                                    results = res['recipes'] as List? ?? []);
+                              } finally {
+                                setDS(() => searching = false);
+                              }
+                            },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                if (results.isNotEmpty)
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 260),
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: results.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (_, i) {
+                        final r = results[i] as Map<String, dynamic>;
+                        return ListTile(
+                          dense: true,
+                          title: Text(r['title']?.toString() ?? '',
+                              style: const TextStyle(fontSize: 13)),
+                          subtitle: Text(r['cuisine']?.toString() ?? '',
+                              style: const TextStyle(fontSize: 11)),
+                          trailing: adding
+                              ? const SizedBox(
+                                  width: 18, height: 18,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2))
+                              : IconButton(
+                                  icon: const Icon(Icons.add_circle_outline,
+                                      size: 20, color: Colors.green),
+                                  onPressed: () async {
+                                    setDS(() => adding = true);
+                                    try {
+                                      final result =
+                                          await ApiService.addRecipeToOrg(
+                                        orgId: widget.orgId!,
+                                        recipeId: r['id'] as int,
+                                        authToken: widget.authToken,
+                                      );
+                                      if (!mounted) return;
+                                      Navigator.pop(ctx);
+                                      final ok =
+                                          result.containsKey('id') ||
+                                              result.containsKey('recipe_id');
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(SnackBar(
+                                        content: Text(ok
+                                            ? '${r['title']} added to library'
+                                            : result['detail'] ??
+                                                result['error'] ??
+                                                'Failed to add recipe'),
+                                        backgroundColor:
+                                            ok ? Colors.green : Colors.red,
+                                      ));
+                                      if (ok) _load();
+                                    } finally {
+                                      if (mounted) setDS(() => adding = false);
+                                    }
+                                  },
+                                ),
+                        );
+                      },
+                    ),
+                  )
+                else if (!searching)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: Text('Search for a recipe to add',
+                        style: TextStyle(
+                            color: Colors.grey[600], fontSize: 13)),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showRecipeDetail(Map<String, dynamic> recipe) {
+    final isApproved = recipe['is_approved'] == true;
+    final status = recipe['approval_status']?.toString() ?? 'pending';
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      isScrollControlled: true,
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(recipe['title']?.toString() ?? 'Recipe',
+                style: const TextStyle(
+                    fontSize: 18, fontWeight: FontWeight.bold)),
+            if (recipe['cuisine'] != null)
+              Text(recipe['cuisine'].toString(),
+                  style: TextStyle(color: Colors.grey[600])),
+            const SizedBox(height: 12),
+            _statusChip(status),
+            const SizedBox(height: 16),
+            if (recipe['internal_notes'] != null &&
+                recipe['internal_notes'].toString().isNotEmpty) ...[
+              const Text('Internal Notes',
+                  style: TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 4),
+              Text(recipe['internal_notes'].toString(),
+                  style: TextStyle(color: Colors.grey[700])),
+              const SizedBox(height: 12),
+            ],
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: Icon(
+                        isApproved ? Icons.cancel_outlined : Icons.check_circle_outline,
+                        size: 18),
+                    label: Text(isApproved ? 'Unapprove' : 'Approve'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: isApproved ? Colors.orange : Colors.green,
+                    ),
+                    onPressed: () async {
+                      Navigator.pop(ctx);
+                      final result = await ApiService.approveOrgRecipe(
+                        orgId: widget.orgId!,
+                        orgRecipeId: recipe['id'] as int,
+                        approved: !isApproved,
+                        authToken: widget.authToken,
+                      );
+                      if (!mounted) return;
+                      final ok = !result.containsKey('error');
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                        content: Text(ok
+                            ? isApproved
+                                ? 'Recipe unapproved'
+                                : 'Recipe approved'
+                            : 'Failed to update approval'),
+                        backgroundColor: ok ? null : Colors.red,
+                      ));
+                      if (ok) _load();
+                    },
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _statusChip(String status) {
+    Color bg, fg;
+    String label;
+    switch (status) {
+      case 'approved':
+        bg = Colors.green[100]!; fg = Colors.green[800]!; label = 'Approved';
+        break;
+      case 'needs_revision':
+        bg = Colors.orange[100]!; fg = Colors.orange[800]!; label = 'Needs Revision';
+        break;
+      default:
+        bg = Colors.grey[200]!; fg = Colors.grey[700]!; label = 'Pending';
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+          color: bg, borderRadius: BorderRadius.circular(10)),
+      child: Text(label,
+          style: TextStyle(
+              fontSize: 11, fontWeight: FontWeight.bold, color: fg)),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    return Scaffold(
+      floatingActionButton: widget.orgId != null
+          ? FloatingActionButton(
+              onPressed: _showAddRecipeDialog,
+              tooltip: 'Add Recipe',
+              child: const Icon(Icons.add),
+            )
+          : null,
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _error.isNotEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.error_outline,
+                          size: 48, color: Colors.red),
+                      const SizedBox(height: 16),
+                      Text(_error, textAlign: TextAlign.center),
+                      const SizedBox(height: 16),
+                      ElevatedButton(onPressed: _load, child: const Text('Retry')),
+                    ],
+                  ),
+                )
+              : _recipes.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.menu_book_outlined,
+                              size: 64, color: Colors.grey[400]),
+                          const SizedBox(height: 16),
+                          const Text('No recipes in library',
+                              style: TextStyle(
+                                  fontSize: 18, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 8),
+                          Text('Tap + to search and add recipes',
+                              style: TextStyle(color: Colors.grey[600])),
+                        ],
+                      ),
+                    )
+                  : RefreshIndicator(
+                      onRefresh: _load,
+                      child: ListView.builder(
+                        padding: const EdgeInsets.all(12),
+                        itemCount: _recipes.length,
+                        itemBuilder: (ctx, i) {
+                          final r = _recipes[i] as Map<String, dynamic>;
+                          final status =
+                              r['approval_status']?.toString() ?? 'pending';
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            child: ListTile(
+                              title: Text(r['title']?.toString() ?? 'Recipe',
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w600)),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  if (r['cuisine'] != null)
+                                    Text(r['cuisine'].toString(),
+                                        style: TextStyle(
+                                            fontSize: 12,
+                                            color: Colors.grey[600])),
+                                  const SizedBox(height: 4),
+                                  _statusChip(status),
+                                ],
+                              ),
+                              isThreeLine: true,
+                              trailing: r['usage_count'] != null &&
+                                      (r['usage_count'] as int) > 0
+                                  ? Column(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Text('${r['usage_count']}',
+                                            style: const TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 16)),
+                                        Text('uses',
+                                            style: TextStyle(
+                                                fontSize: 10,
+                                                color: Colors.grey[600])),
+                                      ],
+                                    )
+                                  : const Icon(Icons.chevron_right,
+                                      color: Colors.grey),
+                              onTap: () => _showRecipeDetail(r),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+    );
   }
 }

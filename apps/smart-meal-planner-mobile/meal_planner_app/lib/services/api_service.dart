@@ -3965,6 +3965,240 @@ class ApiService {
     }
   }
 
+  // Get the org ID owned by the current user (first org returned by /auth/me)
+  static Future<int?> getUserOrganizationId(String authToken) async {
+    try {
+      final result = await getUserOrganizations(authToken);
+      if (result is List && result.isNotEmpty) {
+        final first = result[0];
+        if (first is Map) {
+          final id = first['id'];
+          return id is int ? id : int.tryParse(id.toString());
+        }
+      }
+      return null;
+    } catch (e) {
+      print("getUserOrganizationId error: $e");
+      return null;
+    }
+  }
+
+  // ── Organization Recipes ─────────────────────────────────────────────────
+
+  static Future<List<dynamic>> getOrgRecipes(
+      int orgId, String authToken) async {
+    try {
+      final result =
+          await _get("/api/organization-recipes/$orgId/recipes", authToken);
+      if (result is List) return result;
+      return [];
+    } catch (e) {
+      print("getOrgRecipes error: $e");
+      return [];
+    }
+  }
+
+  static Future<Map<String, dynamic>> addRecipeToOrg({
+    required int orgId,
+    required int recipeId,
+    required String authToken,
+    List<String> tags = const [],
+    String? internalNotes,
+    String? clientNotes,
+  }) async {
+    try {
+      final body = <String, dynamic>{'recipe_id': recipeId, 'tags': tags};
+      if (internalNotes != null) body['internal_notes'] = internalNotes;
+      if (clientNotes != null) body['client_notes'] = clientNotes;
+      final result =
+          await _post("/api/organization-recipes/$orgId/recipes", body, authToken);
+      if (result is Map) return _toStringDynamicMap(result);
+      return {"error": "No response"};
+    } catch (e) {
+      print("addRecipeToOrg error: $e");
+      return {"error": "$e"};
+    }
+  }
+
+  static Future<Map<String, dynamic>> updateOrgRecipe({
+    required int orgId,
+    required int orgRecipeId,
+    required Map<String, dynamic> data,
+    required String authToken,
+  }) async {
+    try {
+      final url = Uri.parse(
+          "$baseUrl/api/organization-recipes/$orgId/recipes/$orgRecipeId");
+      final response = await http.put(
+        url,
+        headers: _getHeaders(authToken),
+        body: jsonEncode(data),
+      );
+      final parsed = _parseResponse(response);
+      if (parsed is Map) return _toStringDynamicMap(parsed);
+      return {"error": "No response"};
+    } catch (e) {
+      print("updateOrgRecipe error: $e");
+      return {"error": "$e"};
+    }
+  }
+
+  static Future<Map<String, dynamic>> approveOrgRecipe({
+    required int orgId,
+    required int orgRecipeId,
+    required bool approved,
+    required String authToken,
+    String? complianceNotes,
+  }) async {
+    try {
+      final body = <String, dynamic>{'approved': approved};
+      if (complianceNotes != null) body['compliance_notes'] = complianceNotes;
+      final result = await _post(
+        "/api/organization-recipes/$orgId/recipes/$orgRecipeId/approve",
+        body,
+        authToken,
+      );
+      if (result is Map) return _toStringDynamicMap(result);
+      return {"error": "No response"};
+    } catch (e) {
+      print("approveOrgRecipe error: $e");
+      return {"error": "$e"};
+    }
+  }
+
+  // ── Client Notes ─────────────────────────────────────────────────────────
+
+  static Future<List<dynamic>> getClientNotes({
+    required int orgId,
+    required int clientId,
+    required String authToken,
+    bool includeArchived = false,
+  }) async {
+    try {
+      final result = await _get(
+        "/api/client-notes/$orgId/clients/$clientId?include_archived=$includeArchived",
+        authToken,
+      );
+      if (result is List) return result;
+      return [];
+    } catch (e) {
+      print("getClientNotes error: $e");
+      return [];
+    }
+  }
+
+  static Future<Map<String, dynamic>> createClientNote({
+    required int orgId,
+    required Map<String, dynamic> data,
+    required String authToken,
+  }) async {
+    try {
+      final result = await _post("/api/client-notes/$orgId", data, authToken);
+      if (result is Map) return _toStringDynamicMap(result);
+      return {"error": "No response"};
+    } catch (e) {
+      print("createClientNote error: $e");
+      return {"error": "$e"};
+    }
+  }
+
+  static Future<Map<String, dynamic>> updateClientNote({
+    required int orgId,
+    required int noteId,
+    required Map<String, dynamic> data,
+    required String authToken,
+  }) async {
+    try {
+      final url = Uri.parse("$baseUrl/api/client-notes/$orgId/notes/$noteId");
+      final response = await http.put(
+        url,
+        headers: _getHeaders(authToken),
+        body: jsonEncode(data),
+      );
+      final parsed = _parseResponse(response);
+      if (parsed is Map) return _toStringDynamicMap(parsed);
+      return {"error": "No response"};
+    } catch (e) {
+      print("updateClientNote error: $e");
+      return {"error": "$e"};
+    }
+  }
+
+  static Future<bool> deleteClientNote({
+    required int orgId,
+    required int noteId,
+    required String authToken,
+  }) async {
+    try {
+      final url =
+          Uri.parse("$baseUrl/api/client-notes/$orgId/notes/$noteId");
+      final response =
+          await http.delete(url, headers: _getHeaders(authToken));
+      return response.statusCode >= 200 && response.statusCode < 300;
+    } catch (e) {
+      print("deleteClientNote error: $e");
+      return false;
+    }
+  }
+
+  // ── Onboarding Forms ──────────────────────────────────────────────────────
+
+  static Future<List<dynamic>> getOrgForms({
+    required int orgId,
+    required String authToken,
+  }) async {
+    try {
+      final result =
+          await _get("/api/onboarding-forms/$orgId", authToken);
+      if (result is Map && result['forms'] is List) return result['forms'] as List;
+      if (result is List) return result;
+      return [];
+    } catch (e) {
+      print("getOrgForms error: $e");
+      return [];
+    }
+  }
+
+  static Future<Map<String, dynamic>> submitOrgForm({
+    required int orgId,
+    required int formId,
+    required Map<String, dynamic> responses,
+    required String authToken,
+  }) async {
+    try {
+      final result = await _post(
+        "/api/onboarding-forms/$orgId/$formId/submit",
+        responses,
+        authToken,
+      );
+      if (result is Map) return _toStringDynamicMap(result);
+      return {"error": "No response"};
+    } catch (e) {
+      print("submitOrgForm error: $e");
+      return {"error": "$e"};
+    }
+  }
+
+  // Invite a client to the organization by email (sends invitation email)
+  static Future<Map<String, dynamic>> inviteClient({
+    required int orgId,
+    required String email,
+    required String authToken,
+  }) async {
+    try {
+      final result = await _post(
+        "/organizations/$orgId/invitations",
+        {"email": email},
+        authToken,
+      );
+      if (result is Map) return _toStringDynamicMap(result);
+      return {"success": false, "error": "No response"};
+    } catch (e) {
+      print("inviteClient error: $e");
+      return {"success": false, "error": "$e"};
+    }
+  }
+
   // Get meal-specific shopping lists for a menu
   static Future<Map<String, dynamic>?> getMealShoppingLists(String authToken, int menuId) async {
     try {

@@ -44,7 +44,9 @@ class ClientUser extends UserProfile {
   final String? dietType;
   final List<String>? allergies;
   final String? notes;
-  
+  // 'active' | 'inactive' | 'pending'
+  final String status;
+
   ClientUser({
     required int id,
     required String name,
@@ -58,6 +60,7 @@ class ClientUser extends UserProfile {
     this.dietType,
     this.allergies,
     this.notes,
+    this.status = 'active',
   }) : super(
     id: id,
     name: name,
@@ -69,9 +72,8 @@ class ClientUser extends UserProfile {
     isOrganization: isOrganization,
     organizationId: organizationId,
   );
-  
+
   factory ClientUser.fromJson(Map<String, dynamic> json) {
-    // Parse allergies from various formats
     List<String>? allergies;
     if (json['allergies'] != null) {
       if (json['allergies'] is List) {
@@ -80,24 +82,37 @@ class ClientUser extends UserProfile {
         allergies = json['allergies'].toString().split(',').map((a) => a.trim()).toList();
       }
     }
-    
+
+    // Derive status: explicit 'status' field takes priority, then is_active, then default active
+    final rawStatus = json['status']?.toString().toLowerCase();
+    final isActive = json['is_active'] ?? true;
+    final String status;
+    if (rawStatus == 'pending') {
+      status = 'pending';
+    } else if (rawStatus == 'inactive' || isActive == false) {
+      status = 'inactive';
+    } else {
+      status = 'active';
+    }
+
     return ClientUser(
       id: json['id'] is int ? json['id'] : int.tryParse(json['id'].toString()) ?? 0,
       name: json['name'] ?? json['username'] ?? '',
       email: json['email'] ?? '',
       accountType: json['account_type'] ?? json['accountType'],
-      isActive: json['is_active'] ?? true,
-      createdAt: json['created_at'] != null 
-          ? DateTime.tryParse(json['created_at']) 
+      isActive: isActive == true,
+      createdAt: json['created_at'] != null
+          ? DateTime.tryParse(json['created_at'])
           : null,
       subscription: json['subscription'],
       isOrganization: json['is_organization'],
-      organizationId: json['organization_id'] is int 
-          ? json['organization_id'] 
-          : int.tryParse(json['organization_id'].toString()),
+      organizationId: json['organization_id'] is int
+          ? json['organization_id']
+          : int.tryParse(json['organization_id']?.toString() ?? ''),
       dietType: json['diet_type'] ?? json['dietType'],
       allergies: allergies,
       notes: json['notes'],
+      status: status,
     );
   }
 }
