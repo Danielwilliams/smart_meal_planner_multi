@@ -336,20 +336,18 @@ async def resend_verification_email(request: ResendVerificationRequest, backgrou
             if verified:
                 raise HTTPException(status_code=400, detail="Account is already verified")
             
-            # Generate a new verification token if needed
-            if not existing_token:
-                verification_token = jwt.encode({
-                    'email': email,
-                    'exp': datetime.utcnow() + timedelta(hours=24)
-                }, JWT_SECRET, algorithm=JWT_ALGORITHM)
-                
-                cursor.execute("""
-                    UPDATE user_profiles
-                    SET verification_token = %s
-                    WHERE id = %s
-                """, (verification_token, user_id))
-            else:
-                verification_token = existing_token
+            # Always issue a fresh token on resend. Reusing the stored token meant
+            # that once it expired, every resend just re-emailed the same dead token.
+            verification_token = jwt.encode({
+                'email': email,
+                'exp': datetime.utcnow() + timedelta(hours=24)
+            }, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+            cursor.execute("""
+                UPDATE user_profiles
+                SET verification_token = %s
+                WHERE id = %s
+            """, (verification_token, user_id))
         
         # Send verification email in background
         background_tasks.add_task(send_verification_email, email, verification_token)
