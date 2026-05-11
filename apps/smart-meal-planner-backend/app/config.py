@@ -68,6 +68,13 @@ SMTP_SERVER = os.getenv("SMTP_SERVER", "mboxhosting.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 FRONTEND_URL = "https://smartmealplannerio.com"
 
+# Resend (HTTP-based transactional email). When RESEND_API_KEY is set, the app
+# routes outbound mail through Resend's HTTP API instead of SMTP — useful when
+# the hosting platform's egress firewall blocks outbound port 25/465/587 (as
+# Railway does for mboxhosting).
+RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
+RESEND_FROM_EMAIL = os.getenv("RESEND_FROM_EMAIL", SMTP_USERNAME)
+
 
 def debug_environment_vars():
     kroger_vars = [

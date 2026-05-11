@@ -11,7 +11,7 @@ import requests
 from app.config import RECAPTCHA_SECRET_KEY, JWT_SECRET, JWT_ALGORITHM
 from email.mime.text import MIMEText
 import smtplib
-from app.config import SMTP_USERNAME, SMTP_PASSWORD, SMTP_SERVER, SMTP_PORT, FRONTEND_URL
+from app.config import SMTP_USERNAME, SMTP_PASSWORD, SMTP_SERVER, SMTP_PORT, FRONTEND_URL, RESEND_API_KEY, RESEND_FROM_EMAIL
 from app.utils.auth_utils import get_user_from_token
 from typing import Dict, Any, Optional, List
 from psycopg2.extras import RealDictCursor
@@ -23,34 +23,67 @@ logger = logging.getLogger(__name__)
 # Define router only once at the top
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
+def _send_email_via_resend(to_email: str, subject: str, text_body: str) -> None:
+    """
+    Send a plaintext email via Resend's HTTP API. Raises on failure so the caller
+    can log and decide whether to surface the error. Requires RESEND_API_KEY.
+
+    The `from` address must be either onboarding@resend.dev (test only — can only
+    deliver to the Resend account owner's email) or an address on a domain you've
+    verified in the Resend dashboard.
+    """
+    response = requests.post(
+        "https://api.resend.com/emails",
+        headers={
+            "Authorization": f"Bearer {RESEND_API_KEY}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "from": RESEND_FROM_EMAIL,
+            "to": [to_email],
+            "subject": subject,
+            "text": text_body,
+        },
+        timeout=15,
+    )
+    response.raise_for_status()
+
+
 async def send_verification_email(email: str, verification_token: str):
     try:
         verification_link = f"{FRONTEND_URL}/verify-email?token={verification_token}"
 
-        msg = MIMEText(f"""
-        Welcome to Smart Meal Planner!
+        text_body = (
+            "Welcome to Smart Meal Planner!\n\n"
+            f"Please verify your email by clicking the link below:\n{verification_link}\n\n"
+            "This link will expire in 24 hours.\n\n"
+            "If you didn't create this account, please ignore this email."
+        )
+        subject = "Verify your Smart Meal Planner account"
 
-        Please verify your email by clicking the link below:
-        {verification_link}
+        # Prefer Resend when configured — it uses an HTTP API and works on PaaS
+        # hosts (like Railway) whose egress firewalls block outbound SMTP.
+        if RESEND_API_KEY:
+            logger.info(
+                "Sending verification email to %s via Resend (from=%s)",
+                email, RESEND_FROM_EMAIL,
+            )
+            _send_email_via_resend(email, subject, text_body)
+            logger.info("Verification email sent successfully via Resend to %s", email)
+            return
 
-        This link will expire in 24 hours.
-
-        If you didn't create this account, please ignore this email.
-        """)
-
-        msg['Subject'] = 'Verify your Smart Meal Planner account'
+        # Fallback: SMTP via mboxhosting (or whatever SMTP_SERVER points at).
+        msg = MIMEText(text_body)
+        msg['Subject'] = subject
         msg['From'] = SMTP_USERNAME
         msg['To'] = email
 
         logger.info(
-            "Sending verification email to %s via %s:%s as %s",
+            "Sending verification email to %s via %s:%s as %s (SMTP fallback)",
             email, SMTP_SERVER, SMTP_PORT, SMTP_USERNAME,
         )
 
         # Port 465 = implicit SSL (SMTPS). Port 587 (or anything else) = STARTTLS.
-        # Some hosts/PaaS providers block outbound 587 but allow 465.
-        # smtplib.SMTP has no default timeout; without one a TLS or auth hang
-        # blocks the background task indefinitely and the email never sends.
         if int(SMTP_PORT) == 465:
             with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT, timeout=15) as server:
                 server.login(SMTP_USERNAME, SMTP_PASSWORD)
@@ -61,10 +94,8 @@ async def send_verification_email(email: str, verification_token: str):
                 server.login(SMTP_USERNAME, SMTP_PASSWORD)
                 server.send_message(msg)
 
-        logger.info("Verification email sent successfully to %s", email)
+        logger.info("Verification email sent successfully via SMTP to %s", email)
     except Exception as e:
-        # This runs as a FastAPI BackgroundTask — re-raising would only log to
-        # uvicorn's task error path, which is easy to miss. Log explicitly.
         logger.error("Failed to send verification email to %s: %s", email, e, exc_info=True)
         raise
 
@@ -708,33 +739,39 @@ async def send_password_reset_email(email: str, name: str, reset_token: str):
     """Send password reset email to user"""
     try:
         reset_link = f"{FRONTEND_URL}/reset-password?token={reset_token}"
-        
-        msg = MIMEText(f"""
-        Hi {name},
-        
-        We received a request to reset your password for your Smart Meal Planner account.
-        
-        Click the link below to reset your password:
-        {reset_link}
-        
-        This link will expire in 1 hour for security reasons.
-        
-        If you didn't request this password reset, please ignore this email.
-        Your password will not be changed unless you click the link above.
-        
-        Best regards,
-        Smart Meal Planner Team
-        """)
-        
-        msg['Subject'] = 'Reset your Smart Meal Planner password'
+
+        text_body = (
+            f"Hi {name},\n\n"
+            "We received a request to reset your password for your Smart Meal Planner account.\n\n"
+            f"Click the link below to reset your password:\n{reset_link}\n\n"
+            "This link will expire in 1 hour for security reasons.\n\n"
+            "If you didn't request this password reset, please ignore this email.\n"
+            "Your password will not be changed unless you click the link above.\n\n"
+            "Best regards,\n"
+            "Smart Meal Planner Team"
+        )
+        subject = "Reset your Smart Meal Planner password"
+
+        if RESEND_API_KEY:
+            logger.info("Sending password reset email to %s via Resend", email)
+            _send_email_via_resend(email, subject, text_body)
+            return
+
+        msg = MIMEText(text_body)
+        msg['Subject'] = subject
         msg['From'] = SMTP_USERNAME
         msg['To'] = email
 
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=15) as server:
-            server.starttls()
-            server.login(SMTP_USERNAME, SMTP_PASSWORD)
-            server.send_message(msg)
-            
+        if int(SMTP_PORT) == 465:
+            with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT, timeout=15) as server:
+                server.login(SMTP_USERNAME, SMTP_PASSWORD)
+                server.send_message(msg)
+        else:
+            with smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=15) as server:
+                server.starttls()
+                server.login(SMTP_USERNAME, SMTP_PASSWORD)
+                server.send_message(msg)
+
     except Exception as e:
         logger.error(f"Error sending password reset email: {str(e)}")
         raise
