@@ -1228,18 +1228,22 @@ class _MenuScreenState extends State<MenuScreen> {
   
   // Build meal tile with real data
   Widget _buildMealTile(String mealType, MenuItem meal) {
-    // Capitalize first letter of meal type
     final displayType = mealType.substring(0, 1).toUpperCase() + mealType.substring(1);
-    
+
+    final subtitleParts = <String>[displayType];
+    if (meal.servings != null && meal.servings! > 0) {
+      subtitleParts.add('${meal.servings} serving${meal.servings! != 1 ? 's' : ''}');
+    }
+    if (meal.cookTime != null && meal.cookTime!.isNotEmpty) {
+      subtitleParts.add(meal.cookTime!);
+    }
+
     return ListTile(
       leading: Icon(_getMealIcon(mealType)),
       title: Text(meal.name),
-      subtitle: Text(displayType),
+      subtitle: Text(subtitleParts.join(' · ')),
       trailing: Icon(Icons.chevron_right),
-      onTap: () {
-        // Would open recipe details
-        _showRecipeDetails(meal);
-      },
+      onTap: () => _showRecipeDetails(meal),
     );
   }
   
@@ -1279,6 +1283,32 @@ class _MenuScreenState extends State<MenuScreen> {
                     meal.name,
                     style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
                   ),
+                  if (meal.servings != null || meal.cookTime != null) ...[
+                    SizedBox(height: 6),
+                    Wrap(
+                      spacing: 12,
+                      children: [
+                        if (meal.servings != null && meal.servings! > 0)
+                          Row(mainAxisSize: MainAxisSize.min, children: [
+                            Icon(Icons.people_outline, size: 16, color: Colors.grey[600]),
+                            SizedBox(width: 4),
+                            Text(
+                              '${meal.servings} serving${meal.servings! != 1 ? 's' : ''}',
+                              style: TextStyle(fontSize: 14, color: Colors.grey[700]),
+                            ),
+                          ]),
+                        if (meal.cookTime != null && meal.cookTime!.isNotEmpty)
+                          Row(mainAxisSize: MainAxisSize.min, children: [
+                            Icon(Icons.timer_outlined, size: 16, color: Colors.grey[600]),
+                            SizedBox(width: 4),
+                            Text(
+                              meal.cookTime!,
+                              style: TextStyle(fontSize: 14, color: Colors.grey[700]),
+                            ),
+                          ]),
+                      ],
+                    ),
+                  ],
                   if (meal.description != null) ...[
                     SizedBox(height: 8),
                     Text(

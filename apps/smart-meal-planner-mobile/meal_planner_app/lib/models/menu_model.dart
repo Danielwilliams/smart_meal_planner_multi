@@ -290,7 +290,10 @@ class MenuItem {
   final Map<String, dynamic>? macros;
   final List<String>? ingredients;
   final List<String>? instructions;
-  
+  final int? servings;
+  final String? prepTime;
+  final String? cookTime;
+
   MenuItem({
     required this.name,
     this.description,
@@ -298,6 +301,9 @@ class MenuItem {
     this.macros,
     this.ingredients,
     this.instructions,
+    this.servings,
+    this.prepTime,
+    this.cookTime,
   });
   
   factory MenuItem.fromJson(Map<String, dynamic> json) {
@@ -602,6 +608,20 @@ class MenuItem {
       return null;
     }
     
+    // Serving size and time fields
+    int? servings;
+    try {
+      final raw = json['servings'];
+      if (raw != null) servings = raw is int ? raw : int.tryParse(raw.toString());
+    } catch (_) {}
+
+    String? prepTime;
+    String? cookTime;
+    try {
+      prepTime = safeString('prep_time') ?? safeString('prepTime');
+      cookTime = safeString('cook_time') ?? safeString('cookTime') ?? safeString('total_time');
+    } catch (_) {}
+
     // Create the MenuItem with all the parsed data
     return MenuItem(
       name: getName(),
@@ -610,6 +630,9 @@ class MenuItem {
       macros: macros,
       ingredients: ingredients,
       instructions: instructions,
+      servings: servings,
+      prepTime: prepTime,
+      cookTime: cookTime,
     );
   }
 }
