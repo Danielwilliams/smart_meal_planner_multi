@@ -147,6 +147,61 @@ def _check_restrictions(day_results: list[dict], dietary_restrictions: list[str]
     return violations
 
 
+# Proteins that require meaningful cook time — used for cook time sanity check
+_RAW_PROTEINS = [
+    "chicken", "beef", "pork", "turkey", "lamb", "bison", "veal",
+    "salmon", "tuna", "cod", "tilapia", "shrimp", "scallop", "lobster",
+    "crab", "fish", "steak", "sausage", "bacon", "ham",
+]
+
+# Minimum realistic cook time (minutes) for meals containing these proteins
+_MIN_COOK_MINUTES = 5   # shrimp/scallops can genuinely be ~3-4 min, 5 is a safe floor
+_MIN_BONE_IN_MINUTES = 20  # bone-in or whole cuts need more time
+
+_BONE_IN_MARKERS = [
+    "whole chicken", "bone-in", "drumstick", "thigh with bone",
+    "rack of", "roast chicken", "whole turkey",
+]
+
+
+def _check_cook_times(day_results: list[dict]) -> list[dict]:
+    """Flag meals whose cook_time_minutes is implausibly low for raw protein."""
+    violations = []
+    for day in day_results:
+        day_num = day.get("day_number", 0)
+        for meal in day.get("meals", []):
+            cook_time = meal.get("cook_time_minutes") or 0
+            if not isinstance(cook_time, (int, float)):
+                try:
+                    cook_time = int(cook_time)
+                except (ValueError, TypeError):
+                    cook_time = 0
+
+            ing_names = _ingredient_names(meal)
+            full_text = " ".join(ing_names + [meal.get("title", "").lower()])
+
+            has_raw_protein = any(p in full_text for p in _RAW_PROTEINS)
+            if not has_raw_protein:
+                continue
+
+            has_bone_in = any(b in full_text for b in _BONE_IN_MARKERS)
+            min_required = _MIN_BONE_IN_MINUTES if has_bone_in else _MIN_COOK_MINUTES
+
+            if cook_time < min_required:
+                violations.append({
+                    "day": day_num,
+                    "meal_time": meal.get("meal_time", ""),
+                    "type": "unrealistic_cook_time",
+                    "detail": (
+                        f'cook_time_minutes={cook_time} is too low for a meal '
+                        f'with raw protein in "{meal.get("title", "")}" '
+                        f'(minimum {min_required} min)'
+                    ),
+                    "meal": meal,
+                })
+    return violations
+
+
 def validate_plan(
     day_results: list[dict],
     disliked: list[str],
@@ -157,6 +212,7 @@ def validate_plan(
         _check_duplicates(day_results)
         + _check_disliked(day_results, disliked)
         + _check_restrictions(day_results, dietary_restrictions)
+        + _check_cook_times(day_results)
     )
     return {"clean": len(violations) == 0, "violations": violations}
 
@@ -195,7 +251,11 @@ def _build_fix_prompt(
         f"  • NEVER use these ingredients: {disliked_str}\n"
         f"  • Follow ALL dietary restrictions: {restrictions_str}\n"
         f"  • Diet type: {diet_type or 'Mixed'}\n"
-        f"  • MUST be a UNIQUE title — do NOT use any of these existing titles: {titles_str}\n\n"
+        f"  • MUST be a UNIQUE title — do NOT use any of these existing titles: {titles_str}\n"
+        f"  • cook_time_minutes must be realistic — NEVER 0 or under 5 for raw protein\n"
+        f"  • If the meal contains meat or seafood, the instructions MUST state the required\n"
+        f"    internal temperature: chicken/turkey 165°F, ground beef/pork 160°F,\n"
+        f"    whole beef/pork/lamb 145°F (rest 3 min), fish/seafood 145°F\n\n"
         "Return ONLY valid JSON for a single meal. No prose, no markdown fences."
     )
 

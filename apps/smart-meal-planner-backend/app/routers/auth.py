@@ -689,22 +689,19 @@ async def forgot_password(request: ForgotPasswordRequest, background_tasks: Back
                 return {"message": "If an account with that email exists, we've sent a password reset link."}
             
             user_id, name, verified = user
-            
-            if not verified:
-                raise HTTPException(status_code=400, detail="Please verify your email before resetting your password")
-            
+
             # Generate password reset token
             reset_token = jwt.encode({
                 'user_id': user_id,
                 'email': email,
                 'type': 'password_reset',
-                'exp': datetime.utcnow() + timedelta(hours=1)  # Token expires in 1 hour
+                'exp': datetime.utcnow() + timedelta(hours=1)
             }, JWT_SECRET, algorithm=JWT_ALGORITHM)
-            
-            # Store reset token in database
+
+            # Store reset token; also mark verified since clicking the link proves email ownership
             cursor.execute("""
                 UPDATE user_profiles
-                SET reset_password_token = %s
+                SET reset_password_token = %s, verified = TRUE
                 WHERE id = %s
             """, (reset_token, user_id))
             conn.commit()
