@@ -337,7 +337,7 @@ function PreferencesPage() {
         },
 
         // ZIP code (used for store-locator prefill)
-        zipCode: existingPreferences.zip_code || ''
+        zipCode: existingPreferences.zip_code ? String(existingPreferences.zip_code) : ''
       }));
 
       // Load new preference types if they exist in the database
@@ -553,7 +553,7 @@ useEffect(() => {
         appliances: preferences.appliances,
         prep_complexity: preferences.prepComplexity,
         servings_per_meal: preferences.servingsPerMeal,
-        zip_code: preferences.zipCode || null,
+        zip_code: preferences.zipCode ? String(preferences.zipCode) : null,
         // Enhanced preference fields (these take precedence in the menu generation process)
         flavor_preferences: flavorPreferences,
         spice_level: spiceLevel,

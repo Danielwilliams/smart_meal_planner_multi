@@ -128,6 +128,12 @@ class PreferencesUpdate(BaseModel):
     zip_code: Optional[str] = None
     zipCode: Optional[str] = None  # Alias for zip_code
 
+    @validator("zip_code", "zipCode", pre=True, always=True)
+    def coerce_zip_to_str(cls, v):
+        if v is None:
+            return None
+        return str(v)
+
 
 class GenerateMenuRequest(BaseModel):
     meal_types: List[str]  # e.g. ["breakfast", "lunch", "dinner"]
